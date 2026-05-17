@@ -188,6 +188,22 @@ function revokeInvite(token) {
   Logger.log("Revoked invite: " + token);
 }
 
+// Nuclear option: kicks every authenticated device. Each user will need a
+// fresh invite link from you to regain access. Invites themselves are NOT
+// touched — only issued auth tokens.
+function revokeAllAuthTokens() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  var count = 0;
+  for (var key in all) {
+    if (key.indexOf("auth:") === 0) {
+      props.deleteProperty(key);
+      count++;
+    }
+  }
+  Logger.log("Revoked " + count + " auth token(s). Every device must redeem a new invite.");
+}
+
 // ─── READ OPERATIONS ───────────────────────────────────
 
 function getTabNames() {
