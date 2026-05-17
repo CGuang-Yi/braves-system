@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cougar Company Data System</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{--bg:#0D1117;--surface:#161B22;--surface2:#21262D;--border:#30363D;--text:#E6EDF3;--muted:#8B949E;--dim:#484F58;--accent:#58A6FF;--accentDim:#1F6FEB;--green:#3FB950;--red:#F85149;--orange:#D29922;--yellow:#E3B341;--purple:#BC8CFF;--teal:#39D2C0;--pink:#F778BA}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);font-size:13px;display:flex;height:100vh;overflow:hidden}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* Sidebar */
+#sidebar{width:190px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+#sidebar .logo{padding:14px 12px;border-bottom:1px solid var(--border)}
+#sidebar .logo small{font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
+#sidebar .logo h2{font-size:14px;margin-top:2px}
+.nav-btn{display:flex;align-items:center;gap:8px;padding:9px 12px;border:none;cursor:pointer;background:transparent;color:var(--muted);font:inherit;font-size:12px;text-align:left;border-left:2px solid transparent;transition:all .15s;width:100%}
+.nav-btn:hover{background:var(--surface2)}
+.nav-btn.active{background:var(--surface2);color:var(--accent);font-weight:600;border-left-color:var(--accent)}
+#sidebar-footer{margin-top:auto;padding:12px;border-top:1px solid var(--border);font-size:10px;color:var(--dim)}
+
+/* Main */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#topbar{padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;gap:10px;align-items:center}
+#topbar input{flex:1;max-width:350px;padding:7px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit;font-size:12px;outline:none}
+#content{flex:1;padding:20px;overflow-y:auto}
+
+/* Components */
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;flex:1;min-width:120}
+.stat label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.stat .val{font-size:22px;font-weight:700;margin-top:2px;font-family:'JetBrains Mono',monospace}
+.stat .sub{font-size:10px;color:var(--muted);margin-top:1px}
+.stats-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.badge-green{background:#3FB95022;color:var(--green);border:1px solid #3FB95044}
+.badge-red{background:#F8514922;color:var(--red);border:1px solid #F8514944}
+.badge-orange{background:#D2992222;color:var(--orange);border:1px solid #D2992244}
+.badge-yellow{background:#E3B34122;color:var(--yellow);border:1px solid #E3B34144}
+.badge-purple{background:#BC8CFF22;color:var(--purple);border:1px solid #BC8CFF44}
+.badge-accent{background:#58A6FF22;color:var(--accent);border:1px solid #58A6FF44}
+
+.btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
+.btn:hover{filter:brightness(1.2)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--accentDim);border-color:var(--accent)}
+.btn-success{background:#23863644;color:var(--green);border-color:#3FB95044}
+.btn-danger{background:#DA363322;color:var(--red);border-color:#F8514944}
+
+table{width:100%;border-collapse:collapse}
+th{padding:8px 10px;background:var(--surface2);color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px;text-align:center;border-bottom:1px solid var(--border);position:sticky;top:0}
+td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:center;font-size:12px}
+tr:hover{background:var(--surface2)}
+.table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);max-height:60vh;overflow-y:auto}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px}
+.card h3{font-size:13px;color:var(--muted);margin-bottom:12px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* Forms */
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.form-group input,.form-group select{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;outline:none}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.modal-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
+.hidden{display:none!important}
+
+/* Sync */
+.sync-panel{background:var(--surface);border:1px solid #58A6FF44;border-radius:8px;padding:20px;margin-bottom:20px}
+.sync-log{max-height:160px;overflow-y:auto;font-size:11px;font-family:'JetBrains Mono',monospace}
+.sync-log div{padding:2px 0;border-bottom:1px solid var(--border)}
+
+@media(max-width:768px){
+  #sidebar{width:60px}
+  .nav-btn span:last-child{display:none}
+  .grid-2{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="logo">
+    <small>40 SAR COUGAR</small>
+    <h2>Data System</h2>
+  </div>
+  <button class="nav-btn active" data-nav="dashboard"><span>📊</span><span>Dashboard</span></button>
+  <button class="nav-btn" data-nav="roster"><span>👥</span><span>Roster</span></button>
+  <button class="nav-btn" data-nav="attendance"><span>📋</span><span>Attendance</span></button>
+  <button class="nav-btn" data-nav="medical"><span>🏥</span><span>Medical</span></button>
+  <button class="nav-btn" data-nav="ippt"><span>🏃</span><span>IPPT</span></button>
+  <button class="nav-btn" data-nav="rm"><span>🥾</span><span>Route March</span></button>
+  <button class="nav-btn" data-nav="soc"><span>🪖</span><span>SOC</span></button>
+  <button class="nav-btn" data-nav="polar"><span>⌚</span><span>Polar Flow</span></button>
+  <button class="nav-btn" data-nav="sync"><span>🔄</span><span>Sync & I/O</span></button>
+  <div id="sidebar-footer">
+    <div id="sync-indicator">● Not synced</div>
+    <div id="str-counter"></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="topbar">
+    <span>🔍</span>
+    <input id="search-input" placeholder="Search 4D or Name...">
+    <div id="search-results" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+  </div>
+  <div id="content"></div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="modal-title"></h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const STATE = {
+  nav: "dashboard",
+  apiUrl: localStorage.getItem("cougar-api-url") || "",
+  roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [],
+  charts: {}
+};
+
+// Default data from chat context
+const DEFAULTS = {
+  roster: [
+    {id:"C1108",name:"JAMES TAN",plt:1,sect:1,status:"Active",conditions:"",notes:""},
+    {id:"C1114",name:"DYLAN CHIN",plt:1,sect:1,status:"Active",conditions:"",notes:""},
+    {id:"C1203",name:"DALSON",plt:1,sect:2,status:"RMJ",conditions:"Sprain ankle",notes:"7D RMJ"},
+    {id:"C1205",name:"SHAUN",plt:1,sect:2,status:"Active",conditions:"",notes:""},
+    {id:"C1305",name:"EDWIN",plt:1,sect:3,status:"Active",conditions:"",notes:""},
+    {id:"C1309",name:"AMOS",plt:1,sect:3,status:"Active",conditions:"Skin irritation",notes:""},
+    {id:"C1401",name:"ISAAC CHAU",plt:1,sect:4,status:"Active",conditions:"",notes:""},
+    {id:"C1402",name:"THAM JUN CAI",plt:1,sect:4,status:"Active",conditions:"",notes:""},
+    {id:"C1407",name:"ADEN LUCAS TAN",plt:1,sect:4,status:"Active",conditions:"",notes:""},
+    {id:"C4101",name:"ONG YEE HEN",plt:4,sect:1,status:"RSI",conditions:"",notes:"Sore throat"},
+    {id:"C4107",name:"JIAO RONG YU",plt:4,sect:1,status:"MC/LD",conditions:"",notes:"Fever 38.9"},
+    {id:"C4115",name:"PRAVIN",plt:4,sect:1,status:"LD",conditions:"Spine Issue",notes:"3D LD"},
+    {id:"C4201",name:"ANG HAN WEI",plt:4,sect:2,status:"Active",conditions:"",notes:""},
+    {id:"C4204",name:"LIM JUN YI GAVIN",plt:4,sect:2,status:"Active",conditions:"",notes:""},
+    {id:"C4208",name:"TORRENCE CHAN",plt:4,sect:2,status:"RSI",conditions:"",notes:"Blood in phlegm"},
+    {id:"C4210",name:"ALVAN",plt:4,sect:2,status:"Active",conditions:"",notes:""},
+    {id:"C4301",name:"RODERICK",plt:4,sect:3,status:"Active",conditions:"",notes:""},
+    {id:"C4306",name:"HUI YAM HO",plt:4,sect:3,status:"Warded",conditions:"Swollen Hand",notes:""},
+    {id:"C4308",name:"LIM YU HENG",plt:4,sect:3,status:"LD",conditions:"",notes:"Fever cough"},
+    {id:"C4314",name:"SIM KAI RUI",plt:4,sect:3,status:"Active",conditions:"",notes:""},
+    {id:"C4408",name:"ADYL",plt:4,sect:4,status:"Active",conditions:"",notes:""},
+  ],
+  medical: [
+    {id:1,d4:"C4107",date:"15 May",type:"RSI",reason:"Fever 38.1, cough",status:"MC(1D)+LD(1D)",conductMissed:"Multiple"},
+    {id:2,d4:"C1203",date:"15 May",type:"Injury",reason:"Sprain ankle",status:"RMJ(7D)",conductMissed:"Multiple"},
+    {id:3,d4:"C1108",date:"15 May",type:"RSI",reason:"Fever 38.3, sore throat",status:"RSI/LD",conductMissed:"ORI Run, Oregon"},
+    {id:4,d4:"C4306",date:"16 May",type:"Injury",reason:"Swollen Hand",status:"Warded",conductMissed:"Oregon, Str Cir"},
+    {id:5,d4:"C4115",date:"16 May",type:"Injury",reason:"Spine Issue",status:"LD(3D)",conductMissed:"Oregon, Str Cir"},
+    {id:6,d4:"C4208",date:"17 May",type:"RSI",reason:"Cough, blood in phlegm",status:"Pending",conductMissed:""},
+  ],
+  attendance: [
+    {id:1,date:"15 May",conduct:"0730 CPT",total:110,participating:99,px:1,rsi:10,fallout:0,by:"Joel"},
+    {id:2,date:"15 May",conduct:"Orientation Run",total:110,participating:103,px:7,rsi:0,fallout:4,by:"Joel"},
+    {id:3,date:"16 May",conduct:"Oregon Circuit 1",total:110,participating:104,px:3,rsi:3,fallout:6,by:"Josiah"},
+    {id:4,date:"16 May",conduct:"Strength Circuit 1",total:111,participating:104,px:6,rsi:0,fallout:1,by:"Josiah"},
+    {id:5,date:"17 May",conduct:"Metabolic Circuit 2",total:111,participating:103,px:4,rsi:4,fallout:0,by:"radley"},
+  ]
+};
+
+// ═══════════════════════════════════════════════════════
+// LOCAL PERSISTENCE
+// ═══════════════════════════════════════════════════════
+function saveLocal() {
+  const d = {roster:STATE.roster,medical:STATE.medical,attendance:STATE.attendance,ippt:STATE.ippt,rm:STATE.rm,soc:STATE.soc,polar:STATE.polar};
+  localStorage.setItem("cougar-data", JSON.stringify(d));
+}
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem("cougar-data");
+    if (raw) {
+      const d = JSON.parse(raw);
+      STATE.roster = d.roster || DEFAULTS.roster;
+      STATE.medical = d.medical || DEFAULTS.medical;
+      STATE.attendance = d.attendance || DEFAULTS.attendance;
+      STATE.ippt = d.ippt || [];
+      STATE.rm = d.rm || [];
+      STATE.soc = d.soc || [];
+      STATE.polar = d.polar || [];
+    } else {
+      STATE.roster = [...DEFAULTS.roster];
+      STATE.medical = [...DEFAULTS.medical];
+      STATE.attendance = [...DEFAULTS.attendance];
+    }
+  } catch { 
+    STATE.roster = [...DEFAULTS.roster];
+    STATE.medical = [...DEFAULTS.medical];
+    STATE.attendance = [...DEFAULTS.attendance];
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// GOOGLE SHEETS API (via Apps Script)
+// ═══════════════════════════════════════════════════════
+const API = {
+  async get(action, tab) {
+    if (!STATE.apiUrl) throw new Error("No API URL configured");
+    const url = `${STATE.apiUrl}?action=${action}${tab ? "&tab=" + tab : ""}`;
+    const res = await fetch(url);
+    return res.json();
+  },
+  async post(body) {
+    if (!STATE.apiUrl) throw new Error("No API URL configured");
+    const res = await fetch(STATE.apiUrl, {
+      method: "POST",
+      headers: {"Content-Type": "text/plain"}, // Apps Script requires this
+      body: JSON.stringify(body)
+    });
+    return res.json();
+  },
+  async pullAll() {
+    const data = await this.get("readAll");
+    if (data.error) throw new Error(data.error);
+    if (data.roster?.length) STATE.roster = data.roster;
+    if (data.medical?.length) STATE.medical = data.medical;
+    if (data.attendance?.length) STATE.attendance = data.attendance;
+    if (data.ippt?.length) STATE.ippt = data.ippt;
+    if (data.rm?.length) STATE.rm = data.rm;
+    if (data.soc?.length) STATE.soc = data.soc;
+    if (data.polar?.length) STATE.polar = data.polar;
+    saveLocal();
+    return data;
+  },
+  async pushTab(tabName, data) {
+    return this.post({ action: "write", tab: tabName, data });
+  },
+  async appendRow(tabName, row) {
+    return this.post({ action: "append", tab: tabName, row });
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+const getName = d4 => STATE.roster.find(r => r.id === d4)?.name || d4;
+const getAward = s => { if(!s||s===0)return"N/A";if(s>=85)return"Gold";if(s>=75)return"Silver";if(s>=61)return"Pass";return"Fail" };
+const badge = (text, cls) => `<span class="badge badge-${cls}">${text}</span>`;
+const statusBadge = s => badge(s, s==="Active"?"green":s==="Warded"?"red":"orange");
+const typeBadge = t => badge(t, t==="RSI"?"orange":t==="Injury"?"red":"yellow");
+const awardBadge = s => { const a=getAward(s); const c={Gold:"yellow",Silver:"accent",Pass:"green",Fail:"red","N/A":"accent"}; return badge(a,c[a]||"accent") };
+const pct = (a,b) => b?Math.round(a/b*100):0;
+
+function exportCSV(data, filename) {
+  const csv = Papa.unparse(data);
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
+function exportJSON(data, filename) {
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════
+document.querySelectorAll(".nav-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    STATE.nav = btn.dataset.nav;
+    render();
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════════════
+document.getElementById("search-input").addEventListener("input", e => {
+  const q = e.target.value.toLowerCase();
+  const res = document.getElementById("search-results");
+  if (!q) { res.innerHTML = ""; return; }
+  const matches = STATE.roster.filter(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)).slice(0,5);
+  res.innerHTML = matches.map(r => `<button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openPerson('${r.id}')">${r.id}</button>`).join("");
+});
+
+// ═══════════════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════════════
+function openModal(title, html) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-body").innerHTML = html;
+  document.getElementById("modal-overlay").classList.remove("hidden");
+}
+function closeModal() {
+  document.getElementById("modal-overlay").classList.add("hidden");
+}
+
+function openPerson(d4) {
+  const p = STATE.roster.find(r=>r.id===d4); if(!p) return;
+  const med = STATE.medical.filter(m=>m.d4===d4);
+  const ippts = STATE.ippt.filter(i=>i.d4===d4).sort((a,b)=>a.attempt-b.attempt);
+  const rms = STATE.rm.filter(r=>r.d4===d4).sort((a,b)=>a.rmNum-b.rmNum);
+  const socs = STATE.soc.filter(s=>s.d4===d4).sort((a,b)=>a.socNum-b.socNum);
+  
+  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.id} — P${p.plt}S${p.sect} — ${statusBadge(p.status)}</div>`;
+  if(p.conditions) html += `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--red)">Pre-existing: ${p.conditions}</div>`;
+  
+  html += `<div class="stats-row"><div class="stat"><label>RSIs</label><div class="val" style="color:${med.length>1?'var(--red)':'var(--muted)'}">${med.length}</div></div>`;
+  html += `<div class="stat"><label>IPPT Best</label><div class="val" style="color:var(--orange)">${ippts.length?Math.max(...ippts.map(i=>+i.score)):"—"}</div></div>`;
+  html += `<div class="stat"><label>RMs</label><div class="val" style="color:var(--teal)">${rms.length}</div></div>`;
+  html += `<div class="stat"><label>SOCs</label><div class="val" style="color:var(--purple)">${socs.length}</div></div></div>`;
+  
+  if(ippts.length) {
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">IPPT Progression</h4>`;
+    html += `<canvas id="person-ippt-chart" height="140"></canvas>`;
+    html += ippts.map(i=>`<span class="badge badge-accent" style="margin:2px">#${i.attempt}: ${i.score} ${awardBadge(i.score)}</span>`).join("");
+  }
+  if(rms.length) {
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Route March</h4><div style="display:flex;gap:8px;flex-wrap:wrap">`;
+    html += rms.map(r=>`<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">RM ${r.rmNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--teal)">${r.time}</div></div>`).join("");
+    html += `</div>`;
+  }
+  if(socs.length) {
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">SOC</h4><div style="display:flex;gap:8px;flex-wrap:wrap">`;
+    html += socs.map(s=>`<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">SOC ${s.socNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--purple)">${s.time}</div></div>`).join("");
+    html += `</div>`;
+  }
+  if(med.length) {
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Medical History</h4>`;
+    html += med.map(m=>`<div style="background:var(--surface2);border-radius:6px;padding:6px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px"><span style="color:var(--muted)">${m.date}</span> ${typeBadge(m.type)} ${m.reason} ${m.status?`<span style="color:var(--muted)">— ${m.status}</span>`:""}</div>`).join("");
+  }
+  
+  openModal(p.name, html);
+  
+  // Draw chart after modal opens
+  setTimeout(()=>{
+    const canvas = document.getElementById("person-ippt-chart");
+    if(canvas && ippts.length) {
+      new Chart(canvas, {
+        type:"line", data:{labels:ippts.map(i=>"#"+i.attempt),datasets:[{data:ippts.map(i=>+i.score),borderColor:"#D29922",backgroundColor:"#D2992233",fill:true,tension:.3,pointRadius:5}]},
+        options:{plugins:{legend:{display:false}},scales:{y:{min:0,max:100,grid:{color:"#30363D"}},x:{grid:{color:"#30363D"}}}}
+      });
+    }
+  }, 100);
+}
+
+// ═══════════════════════════════════════════════════════
+// FORM HELPERS
+// ═══════════════════════════════════════════════════════
+function rosterSelect(id="form-d4") {
+  return `<select id="${id}" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px"><option value="">Select...</option>${STATE.roster.map(r=>`<option value="${r.id}">${r.id} ${r.name}</option>`).join("")}</select>`;
+}
+function formField(id, label, type="text", placeholder="") {
+  return `<div class="form-group"><label>${label}</label><input id="${id}" type="${type}" placeholder="${placeholder}"></div>`;
+}
+function formSelect(id, label, options) {
+  return `<div class="form-group"><label>${label}</label><select id="${id}">${options.map(o=>typeof o==="string"?`<option value="${o}">${o}</option>`:`<option value="${o[0]}">${o[1]}</option>`).join("")}</select></div>`;
+}
+const gv = id => document.getElementById(id)?.value || "";
+
+// ═══════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════
+function render() {
+  // Destroy old charts
+  Object.values(STATE.charts).forEach(c=>c.destroy());
+  STATE.charts = {};
+  
+  const el = document.getElementById("content");
+  const active = STATE.roster.filter(r=>r.status==="Active").length;
+  document.getElementById("str-counter").textContent = `Str: ${STATE.roster.length} | Active: ${active}`;
+  
+  switch(STATE.nav) {
+    case "dashboard": renderDashboard(el); break;
+    case "roster": renderRoster(el); break;
+    case "attendance": renderAttendance(el); break;
+    case "medical": renderMedical(el); break;
+    case "ippt": renderIPPT(el); break;
+    case "rm": renderRM(el); break;
+    case "soc": renderSOC(el); break;
+    case "polar": renderPolar(el); break;
+    case "sync": renderSync(el); break;
+    default: el.innerHTML = "";
+  }
+}
+
+function renderDashboard(el) {
+  const active = STATE.roster.filter(r=>r.status==="Active").length;
+  const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a,c)=>a+(c.participating/c.total*100),0)/STATE.attendance.length) : 0;
+  
+  el.innerHTML = `
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Company Strength Board</h2>
+    <div class="stats-row">
+      <div class="stat"><label>Total Str</label><div class="val">${STATE.roster.length}</div></div>
+      <div class="stat"><label>Active</label><div class="val" style="color:var(--green)">${active}</div></div>
+      <div class="stat"><label>MC/LD/RSI</label><div class="val" style="color:var(--red)">${STATE.roster.length-active}</div></div>
+      <div class="stat"><label>Med Events</label><div class="val" style="color:var(--orange)">${STATE.medical.length}</div></div>
+      <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h3>Status Breakdown</h3><canvas id="chart-status" height="200"></canvas></div>
+      <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
+    </div>
+    <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel</h3>
+    <div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Plt</th><th>Status</th><th>Conditions</th><th>Notes</th></tr></thead><tbody>
+    ${STATE.roster.filter(r=>r.status!=="Active").map(r=>`<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${r.plt}</td><td>${statusBadge(r.status)}</td><td style="text-align:left">${r.conditions||""}</td><td style="text-align:left">${r.notes||""}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  
+  // Status pie chart
+  const statusCounts = {};
+  STATE.roster.forEach(r => { statusCounts[r.status] = (statusCounts[r.status]||0)+1 });
+  STATE.charts.status = new Chart(document.getElementById("chart-status"), {
+    type:"doughnut",
+    data:{labels:Object.keys(statusCounts),datasets:[{data:Object.values(statusCounts),backgroundColor:Object.keys(statusCounts).map(s=>s==="Active"?"#3FB950":s==="Warded"?"#F85149":s==="RMJ"?"#E3B341":"#D29922")}]},
+    options:{plugins:{legend:{position:"right",labels:{color:"#8B949E",font:{size:11}}}}}
+  });
+  
+  // Participation bar chart
+  STATE.charts.participation = new Chart(document.getElementById("chart-participation"), {
+    type:"bar",
+    data:{labels:STATE.attendance.map(a=>a.conduct?.slice(0,12)),datasets:[{data:STATE.attendance.map(a=>pct(a.participating,a.total)),backgroundColor:"#58A6FF44",borderColor:"#58A6FF",borderWidth:1}]},
+    options:{plugins:{legend:{display:false}},scales:{y:{min:80,max:100,grid:{color:"#30363D"},ticks:{color:"#8B949E"}},x:{grid:{display:false},ticks:{color:"#8B949E",font:{size:9}}}}}
+  });
+}
+
+function renderRoster(el) {
+  const rsiCount = {};
+  STATE.medical.forEach(m=>{rsiCount[m.d4]=(rsiCount[m.d4]||0)+1});
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700">Master Roster (${STATE.roster.length})</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="exportCSV(STATE.roster,'roster.csv')">Export CSV</button>
+        <button class="btn btn-success" onclick="pushTab('Roster',STATE.roster)">Push to Sheet</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Plt</th><th>Sect</th><th>Status</th><th>Conditions</th><th>RSIs</th></tr></thead><tbody>
+    ${STATE.roster.map(r=>`<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${r.plt}</td><td>${r.sect}</td><td>${statusBadge(r.status)}</td><td style="text-align:left">${r.conditions||""}</td><td style="color:${(rsiCount[r.id]||0)>1?'var(--red)':'var(--muted)'}">${rsiCount[r.id]||0}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+
+function renderAttendance(el) {
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700">Conduct Attendance</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)">Push to Sheet</button>
+        <button class="btn btn-primary" onclick="openAttendanceForm()">+ Log</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Conduct</th><th>Total</th><th>Part.</th><th>PX</th><th>RSI</th><th>Fallout</th><th>Rate</th><th>By</th></tr></thead><tbody>
+    ${STATE.attendance.map(a=>{const r=pct(a.participating,a.total);return`<tr><td>${a.date}</td><td style="text-align:left">${a.conduct}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${a.px>0?'var(--orange)':'var(--muted)'}">${a.px}</td><td style="color:${a.rsi>0?'var(--red)':'var(--muted)'}">${a.rsi}</td><td style="color:${a.fallout>0?'var(--red)':'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${r>=95?'var(--green)':'var(--orange)'}">${r}%</td><td>${a.by||""}</td></tr>`}).join("")}
+    </tbody></table></div>`;
+}
+
+function renderMedical(el) {
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700">Medical & Injury Log</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)">Push to Sheet</button>
+        <button class="btn btn-primary" onclick="openMedicalForm()">+ Report</button>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat"><label>Total</label><div class="val" style="color:var(--red)">${STATE.medical.length}</div></div>
+      <div class="stat"><label>RSI</label><div class="val" style="color:var(--orange)">${STATE.medical.filter(m=>m.type==="RSI").length}</div></div>
+      <div class="stat"><label>Injury</label><div class="val" style="color:var(--red)">${STATE.medical.filter(m=>m.type==="Injury").length}</div></div>
+      <div class="stat"><label>Pending</label><div class="val" style="color:var(--purple)">${STATE.medical.filter(m=>m.status==="Pending").length}</div></div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>4D</th><th>Name</th><th>Type</th><th>Reason</th><th>Status</th><th>Missed</th></tr></thead><tbody>
+    ${STATE.medical.map(m=>`<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date}</td><td class="mono" style="font-weight:700;color:var(--accent)">${m.d4}</td><td style="text-align:left">${getName(m.d4)}</td><td>${typeBadge(m.type)}</td><td style="text-align:left">${m.reason}</td><td>${badge(m.status||"-",m.status==="Pending"?"purple":"orange")}</td><td style="text-align:left">${m.conductMissed||""}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+
+function renderIPPT(el) {
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700">IPPT Tracker</h2>
+      <div style="display:flex;gap:8px">
+        <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importIPPT(this)" style="display:none"></label>
+        <button class="btn btn-success" onclick="pushTab('IPPT',STATE.ippt)">Push to Sheet</button>
+        <button class="btn btn-primary" onclick="openIPPTForm()">+ Add</button>
+      </div>
+    </div>
+    ${STATE.ippt.length?`<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>#</th><th>Date</th><th>PU</th><th>SU</th><th>2.4km</th><th>Score</th><th>Award</th></tr></thead><tbody>
+    ${STATE.ippt.map(i=>`<tr><td class="mono" style="font-weight:700">${i.d4}</td><td style="text-align:left">${getName(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${i.score}</td><td>${awardBadge(i.score)}</td></tr>`).join("")}
+    </tbody></table></div>`:`<div style="padding:40px;text-align:center;color:var(--muted)">No IPPT data yet. Add results or import CSV.</div>`}`;
+}
+
+function renderRM(el) {
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700">Route March Tracker</h2>
+      <div style="display:flex;gap:8px">
+        <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importRM(this)" style="display:none"></label>
+        <button class="btn btn-success" onclick="pushTab('RouteMarch',STATE.rm)">Push to Sheet</button>
+        <button class="btn btn-primary" onclick="openRMForm()">+ Add</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${[{n:1,d:"3KM"},{n:2,d:"3KM"},{n:3,d:"3KM"},{n:4,d:"4KM"},{n:5,d:"8KM"},{n:6,d:"12KM"}].map(rm=>`<div style="flex:1;min-width:90px;background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid ${STATE.rm.some(r=>r.rmNum==rm.n)?'var(--green)':'var(--border)'};text-align:center"><div style="font-size:16px;font-weight:700;color:${STATE.rm.some(r=>r.rmNum==rm.n)?'var(--green)':'var(--muted)'}">RM ${rm.n}</div><div style="font-size:10px;color:var(--muted)">${rm.d}</div><div style="font-size:10px;color:var(--dim)">${STATE.rm.filter(r=>r.rmNum==rm.n).length} entries</div></div>`).join("")}
+    </div>
+    ${STATE.rm.length?`<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>RM</th><th>Date</th><th>Time</th><th>Avg HR</th><th>Max HR</th><th>Pass</th></tr></thead><tbody>
+    ${STATE.rm.map(r=>`<tr><td class="mono" style="font-weight:700">${r.d4}</td><td style="text-align:left">${getName(r.d4)}</td><td>${r.rmNum}</td><td>${r.date}</td><td class="mono" style="font-weight:700">${r.time}</td><td>${r.avgHr}</td><td>${r.maxHr}</td><td>${badge(r.pass==="Y"?"PASS":"FAIL",r.pass==="Y"?"green":"red")}</td></tr>`).join("")}
+    </tbody></table></div>`:""}`;
+}
+
+function renderSOC(el) {
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700">SOC Tracker</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-success" onclick="pushTab('SOC',STATE.soc)">Push to Sheet</button>
+        <button class="btn btn-primary" onclick="openSOCForm()">+ Add</button>
+      </div>
+    </div>
+    ${STATE.soc.length?`<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>SOC#</th><th>Date</th><th>Time</th><th>Avg HR</th><th>Pass</th></tr></thead><tbody>
+    ${STATE.soc.map(s=>`<tr><td class="mono">${s.d4}</td><td style="text-align:left">${getName(s.d4)}</td><td>${s.socNum}</td><td>${s.date}</td><td class="mono" style="font-weight:700">${s.time}</td><td>${s.avgHr}</td><td>${badge(s.pass==="Y"?"PASS":"FAIL",s.pass==="Y"?"green":"red")}</td></tr>`).join("")}
+    </tbody></table></div>`:`<div style="padding:40px;text-align:center;color:var(--muted)">No SOC data yet.</div>`}`;
+}
+
+function renderPolar(el) {
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-size:18px;font-weight:700">Polar Flow Data</h2>
+      <div style="display:flex;gap:8px">
+        <label class="btn btn-primary" style="cursor:pointer">Import Polar CSV<input type="file" accept=".csv" onchange="importPolar(this)" style="display:none"></label>
+        <button class="btn btn-success" onclick="pushTab('PolarFlow',STATE.polar)">Push to Sheet</button>
+      </div>
+    </div>
+    <div class="card"><h3>Expected CSV Columns</h3><code class="mono" style="font-size:11px;color:var(--accent)">4D, Conduct, Date, Avg HR, Max HR, Min HR, Calories, Training Load, Recovery, Duration, Distance</code></div>
+    ${STATE.polar.length?`<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Conduct</th><th>Date</th><th>Avg HR</th><th>Max HR</th><th>Cal</th><th>Load</th><th>Dur</th></tr></thead><tbody>
+    ${STATE.polar.map(p=>`<tr><td class="mono">${p.d4}</td><td style="text-align:left">${getName(p.d4)}</td><td style="text-align:left">${p.conduct}</td><td>${p.date}</td><td style="color:${+p.avgHr>160?'var(--red)':+p.avgHr>140?'var(--orange)':'var(--green)'}">${p.avgHr}</td><td>${p.maxHr}</td><td>${p.calories}</td><td>${p.trainingLoad}</td><td>${p.duration}m</td></tr>`).join("")}
+    </tbody></table></div>`:`<div style="padding:40px;text-align:center;color:var(--muted)">No Polar data. Import a CSV.</div>`}`;
+}
+
+function renderSync(el) {
+  el.innerHTML = `
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Sync & Import / Export</h2>
+    <div class="sync-panel">
+      <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">🔗 Google Sheets Connection</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Paste your Google Apps Script Web App URL below. See README for setup instructions.</p>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:12px">
+        <div class="form-group" style="flex:1"><label>Apps Script URL</label><input id="api-url-input" value="${STATE.apiUrl}" placeholder="https://script.google.com/macros/s/.../exec" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;width:100%;outline:none"></div>
+        <button class="btn" onclick="saveApiUrl()">Save</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn btn-primary" onclick="doPull()" id="pull-btn">⬇ Pull from Sheet</button>
+        <button class="btn btn-success" onclick="doPushAll()" id="push-btn">⬆ Push All to Sheet</button>
+        <button class="btn" onclick="doPing()">🏓 Test Connection</button>
+      </div>
+      <div id="sync-log" class="sync-log card" style="padding:10px"></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="color:var(--green)">📥 Import</h3>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label class="btn" style="cursor:pointer;text-align:center">Full Backup (JSON)<input type="file" accept=".json" onchange="importBackup(this)" style="display:none"></label>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--accent)">📤 Export</h3>
+        <button class="btn" onclick="exportJSON({roster:STATE.roster,medical:STATE.medical,attendance:STATE.attendance,ippt:STATE.ippt,rm:STATE.rm,soc:STATE.soc,polar:STATE.polar},'cougar_backup.json')" style="margin-bottom:8px;width:100%">Full Backup (JSON)</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn" onclick="exportCSV(STATE.roster,'roster.csv')" style="font-size:10px">Roster</button>
+          <button class="btn" onclick="exportCSV(STATE.medical,'medical.csv')" style="font-size:10px">Medical</button>
+          <button class="btn" onclick="exportCSV(STATE.attendance,'attendance.csv')" style="font-size:10px">Attend.</button>
+          <button class="btn" onclick="exportCSV(STATE.ippt,'ippt.csv')" style="font-size:10px">IPPT</button>
+          <button class="btn" onclick="exportCSV(STATE.rm,'rm.csv')" style="font-size:10px">RM</button>
+          <button class="btn" onclick="exportCSV(STATE.soc,'soc.csv')" style="font-size:10px">SOC</button>
+          <button class="btn" onclick="exportCSV(STATE.polar,'polar.csv')" style="font-size:10px">Polar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// SYNC ACTIONS
+// ═══════════════════════════════════════════════════════
+function syncLog(msg, color) {
+  const el = document.getElementById("sync-log");
+  if(!el) return;
+  const t = new Date().toLocaleTimeString();
+  el.innerHTML = `<div style="color:${color||'var(--muted)'}">${t} — ${msg}</div>` + el.innerHTML;
+}
+
+function saveApiUrl() {
+  STATE.apiUrl = document.getElementById("api-url-input").value.trim();
+  localStorage.setItem("cougar-api-url", STATE.apiUrl);
+  syncLog("API URL saved", "var(--green)");
+}
+
+async function doPing() {
+  try {
+    syncLog("Pinging...");
+    const res = await API.get("ping");
+    if(res.ok) syncLog(`Connected! Tabs: ${res.sheets?.join(", ")}`, "var(--green)");
+    else syncLog(`Error: ${res.error}`, "var(--red)");
+  } catch(e) { syncLog(`Failed: ${e.message}`, "var(--red)"); }
+}
+
+async function doPull() {
+  try {
+    syncLog("Pulling all data...");
+    document.getElementById("pull-btn").disabled = true;
+    const data = await API.pullAll();
+    syncLog(`Pull complete! Sheet: ${data.sheetName}`, "var(--green)");
+    render();
+  } catch(e) { syncLog(`Pull failed: ${e.message}`, "var(--red)"); }
+  finally { const b=document.getElementById("pull-btn"); if(b) b.disabled=false; }
+}
+
+async function doPushAll() {
+  const tabs=[["Roster",STATE.roster],["Medical",STATE.medical],["Attendance",STATE.attendance],["IPPT",STATE.ippt],["RouteMarch",STATE.rm],["SOC",STATE.soc],["PolarFlow",STATE.polar]];
+  document.getElementById("push-btn").disabled = true;
+  for(const[name,data] of tabs) {
+    if(data.length) {
+      try { await pushTab(name, data); } catch(e) { syncLog(`${name} failed: ${e.message}`, "var(--red)"); }
+    }
+  }
+  const b=document.getElementById("push-btn"); if(b) b.disabled=false;
+}
+
+async function pushTab(tabName, data) {
+  try {
+    syncLog(`Pushing ${tabName} (${data.length} rows)...`);
+    const res = await API.pushTab(tabName, data);
+    if(res.ok) syncLog(`${tabName}: ${res.rowsWritten} rows written ✓`, "var(--green)");
+    else syncLog(`${tabName}: ${res.error}`, "var(--red)");
+  } catch(e) { syncLog(`${tabName}: ${e.message}`, "var(--red)"); }
+}
+
+// ═══════════════════════════════════════════════════════
+// FORM OPENERS + SUBMITTERS
+// ═══════════════════════════════════════════════════════
+function openMedicalForm() {
+  openModal("Report Medical/RSI", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4")}</div>
+      ${formField("f-date","Date","text","17 May")}
+      ${formSelect("f-type","Type",["RSI","Injury","Fallout","MC","LD"])}
+      ${formField("f-reason","Reason","text","Fever, sore throat...")}
+      ${formSelect("f-status","Status",["","RSI","MC","LD","RMJ","Warded","Pending","Active"])}
+      ${formField("f-missed","Conducts Missed","text","Oregon Circuit...")}
+      <button class="btn btn-primary" onclick="submitMedical()">Submit</button>
+    </div>`);
+}
+function submitMedical() {
+  const entry={id:Date.now(),d4:gv("f-d4"),date:gv("f-date"),type:gv("f-type"),reason:gv("f-reason"),status:gv("f-status"),conductMissed:gv("f-missed")};
+  STATE.medical.push(entry);
+  if(entry.d4&&entry.status){const r=STATE.roster.find(x=>x.id===entry.d4);if(r)r.status=entry.status;}
+  saveLocal(); closeModal(); render();
+  if(STATE.apiUrl) API.appendRow("Medical",entry).catch(()=>{});
+}
+
+function openAttendanceForm() {
+  openModal("Log Conduct Attendance", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${formField("f-date","Date","text","17 May")}
+      ${formField("f-conduct","Conduct","text","Metabolic Circuit 2")}
+      <div class="form-row">
+        ${formField("f-total","Total Str","number")}
+        ${formField("f-part","Participating","number")}
+        ${formField("f-px","PX","number")}
+        ${formField("f-rsi","RSI","number")}
+        ${formField("f-fallout","Fallout","number")}
+        ${formField("f-by","Submitted By")}
+      </div>
+      <button class="btn btn-primary" onclick="submitAttendance()">Submit</button>
+    </div>`);
+}
+function submitAttendance() {
+  const entry={id:Date.now(),date:gv("f-date"),conduct:gv("f-conduct"),total:+gv("f-total"),participating:+gv("f-part"),px:+gv("f-px"),rsi:+gv("f-rsi"),fallout:+gv("f-fallout"),by:gv("f-by")};
+  STATE.attendance.push(entry);
+  saveLocal(); closeModal(); render();
+  if(STATE.apiUrl) API.appendRow("Attendance",entry).catch(()=>{});
+}
+
+function openIPPTForm() {
+  openModal("Add IPPT Result", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4")}</div>
+      ${formSelect("f-attempt","Attempt",["1","2","3","4"])}
+      ${formField("f-date","Date","text","26 May")}
+      <div class="form-row">
+        ${formField("f-pu","Push-ups","number")}
+        ${formField("f-su","Sit-ups","number")}
+        ${formField("f-run","2.4km (mm:ss)","text","12:30")}
+        ${formField("f-score","Total Score","number")}
+      </div>
+      <button class="btn btn-primary" onclick="submitIPPT()">Submit</button>
+    </div>`);
+}
+function submitIPPT() {
+  const entry={id:Date.now(),d4:gv("f-d4"),attempt:+gv("f-attempt"),date:gv("f-date"),pushups:+gv("f-pu"),situps:+gv("f-su"),runTime:gv("f-run"),score:+gv("f-score")};
+  STATE.ippt.push(entry);
+  saveLocal(); closeModal(); render();
+  if(STATE.apiUrl) API.appendRow("IPPT",entry).catch(()=>{});
+}
+
+function openRMForm() {
+  openModal("Add Route March Result", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4")}</div>
+      ${formSelect("f-rm","RM #",["1","2","3","4","5","6"])}
+      ${formField("f-date","Date")}
+      ${formField("f-time","Completion Time","text","1:15:30")}
+      <div class="form-row">
+        ${formField("f-avghr","Avg HR","number")}
+        ${formField("f-maxhr","Max HR","number")}
+      </div>
+      ${formSelect("f-pass","Pass",[["Y","Pass"],["N","Fail"]])}
+      <button class="btn btn-primary" onclick="submitRM()">Submit</button>
+    </div>`);
+}
+function submitRM() {
+  const entry={id:Date.now(),d4:gv("f-d4"),rmNum:+gv("f-rm"),date:gv("f-date"),time:gv("f-time"),avgHr:+gv("f-avghr"),maxHr:+gv("f-maxhr"),pass:gv("f-pass")};
+  STATE.rm.push(entry);
+  saveLocal(); closeModal(); render();
+  if(STATE.apiUrl) API.appendRow("RouteMarch",entry).catch(()=>{});
+}
+
+function openSOCForm() {
+  openModal("Add SOC Result", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4")}</div>
+      ${formSelect("f-soc","SOC #",["1","2","3","4","5"])}
+      ${formField("f-date","Date")}
+      ${formField("f-time","Completion Time","text","7:30")}
+      ${formField("f-avghr","Avg HR","number")}
+      ${formSelect("f-pass","Pass",[["Y","Pass"],["N","Fail"]])}
+      <button class="btn btn-primary" onclick="submitSOC()">Submit</button>
+    </div>`);
+}
+function submitSOC() {
+  const entry={id:Date.now(),d4:gv("f-d4"),socNum:+gv("f-soc"),date:gv("f-date"),time:gv("f-time"),avgHr:+gv("f-avghr"),pass:gv("f-pass")};
+  STATE.soc.push(entry);
+  saveLocal(); closeModal(); render();
+  if(STATE.apiUrl) API.appendRow("SOC",entry).catch(()=>{});
+}
+
+// ═══════════════════════════════════════════════════════
+// CSV IMPORTERS
+// ═══════════════════════════════════════════════════════
+function importIPPT(input) {
+  Papa.parse(input.files[0],{header:true,skipEmptyLines:true,complete:r=>{
+    r.data.forEach((row,i)=>STATE.ippt.push({id:Date.now()+i,d4:row["4D"]||"",attempt:+row["Attempt"]||0,date:row["Date"]||"",pushups:+row["Push-ups"]||0,situps:+row["Sit-ups"]||0,runTime:row["2.4km"]||"",score:+row["Score"]||0}));
+    saveLocal();render();
+  }});input.value="";
+}
+function importRM(input) {
+  Papa.parse(input.files[0],{header:true,skipEmptyLines:true,complete:r=>{
+    r.data.forEach((row,i)=>STATE.rm.push({id:Date.now()+i,d4:row["4D"]||"",rmNum:+row["RM"]||0,date:row["Date"]||"",time:row["Time"]||"",avgHr:+row["Avg HR"]||0,maxHr:+row["Max HR"]||0,pass:row["Pass"]||"Y"}));
+    saveLocal();render();
+  }});input.value="";
+}
+function importPolar(input) {
+  Papa.parse(input.files[0],{header:true,skipEmptyLines:true,complete:r=>{
+    r.data.forEach((row,i)=>STATE.polar.push({id:Date.now()+i,d4:row["4D"]||"",conduct:row["Conduct"]||"",date:row["Date"]||"",avgHr:+row["Avg HR"]||0,maxHr:+row["Max HR"]||0,minHr:+row["Min HR"]||0,calories:+row["Calories"]||0,trainingLoad:+row["Training Load"]||0,duration:+row["Duration"]||0,distance:+row["Distance"]||0}));
+    saveLocal();render();
+  }});input.value="";
+}
+function importBackup(input) {
+  const reader=new FileReader();
+  reader.onload=e=>{try{const d=JSON.parse(e.target.result);
+    if(d.roster)STATE.roster=d.roster;if(d.medical)STATE.medical=d.medical;if(d.attendance)STATE.attendance=d.attendance;
+    if(d.ippt)STATE.ippt=d.ippt;if(d.rm)STATE.rm=d.rm;if(d.soc)STATE.soc=d.soc;if(d.polar)STATE.polar=d.polar;
+    saveLocal();render();
+  }catch(err){alert("Import failed: "+err.message)}};
+  reader.readAsText(input.files[0]);input.value="";
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+loadLocal();
+render();
+</script>
+</body>
+</html>
