@@ -258,6 +258,27 @@ const API = {
 // HELPERS
 // ═══════════════════════════════════════════════════════
 const getName = d4 => STATE.roster.find(r => r.id === d4)?.name || d4;
+
+// Short sequential IDs instead of timestamps
+let _idCounter = Math.floor(Math.random()*9000)+1000;
+const nextId = () => ++_idCounter;
+
+// Smart CSV column resolver — case-insensitive, handles aliases
+function col(row, ...names) {
+  for (const n of names) {
+    for (const key of Object.keys(row)) {
+      if (key.trim().toLowerCase() === n.toLowerCase()) return row[key];
+    }
+  }
+  return "";
+}
+function colNum(row, ...names) { return +(col(row, ...names)) || 0; }
+
+// Validate CSV has required columns, return missing ones
+function checkCols(headers, required) {
+  const lower = headers.map(h => h.trim().toLowerCase());
+  return required.filter(r => !lower.some(h => h === r.toLowerCase()));
+}
 const getAward = s => { if(!s||s===0)return"N/A";if(s>=85)return"Gold";if(s>=75)return"Silver";if(s>=61)return"Pass";return"Fail" };
 const badge = (text, cls) => `<span class="badge badge-${cls}">${text}</span>`;
 const statusBadge = s => badge(s, s==="Active"?"green":s==="Warded"?"red":"orange");
@@ -666,7 +687,7 @@ function openMedicalForm() {
     </div>`);
 }
 function submitMedical() {
-  const entry={id:Date.now(),d4:gv("f-d4"),date:gv("f-date"),type:gv("f-type"),reason:gv("f-reason"),status:gv("f-status"),conductMissed:gv("f-missed")};
+  const entry={id:nextId(),d4:gv("f-d4"),date:gv("f-date"),type:gv("f-type"),reason:gv("f-reason"),status:gv("f-status"),conductMissed:gv("f-missed")};
   STATE.medical.push(entry);
   if(entry.d4&&entry.status){const r=STATE.roster.find(x=>x.id===entry.d4);if(r)r.status=entry.status;}
   saveLocal(); closeModal(); render();
@@ -690,7 +711,7 @@ function openAttendanceForm() {
     </div>`);
 }
 function submitAttendance() {
-  const entry={id:Date.now(),date:gv("f-date"),conduct:gv("f-conduct"),total:+gv("f-total"),participating:+gv("f-part"),px:+gv("f-px"),rsi:+gv("f-rsi"),fallout:+gv("f-fallout"),by:gv("f-by")};
+  const entry={id:nextId(),date:gv("f-date"),conduct:gv("f-conduct"),total:+gv("f-total"),participating:+gv("f-part"),px:+gv("f-px"),rsi:+gv("f-rsi"),fallout:+gv("f-fallout"),by:gv("f-by")};
   STATE.attendance.push(entry);
   saveLocal(); closeModal(); render();
   if(STATE.apiUrl) API.appendRow("Attendance",entry).catch(()=>{});
@@ -712,7 +733,7 @@ function openIPPTForm() {
     </div>`);
 }
 function submitIPPT() {
-  const entry={id:Date.now(),d4:gv("f-d4"),attempt:+gv("f-attempt"),date:gv("f-date"),pushups:+gv("f-pu"),situps:+gv("f-su"),runTime:gv("f-run"),score:+gv("f-score")};
+  const entry={id:nextId(),d4:gv("f-d4"),attempt:+gv("f-attempt"),date:gv("f-date"),pushups:+gv("f-pu"),situps:+gv("f-su"),runTime:gv("f-run"),score:+gv("f-score")};
   STATE.ippt.push(entry);
   saveLocal(); closeModal(); render();
   if(STATE.apiUrl) API.appendRow("IPPT",entry).catch(()=>{});
@@ -734,7 +755,7 @@ function openRMForm() {
     </div>`);
 }
 function submitRM() {
-  const entry={id:Date.now(),d4:gv("f-d4"),rmNum:+gv("f-rm"),date:gv("f-date"),time:gv("f-time"),avgHr:+gv("f-avghr"),maxHr:+gv("f-maxhr"),pass:gv("f-pass")};
+  const entry={id:nextId(),d4:gv("f-d4"),rmNum:+gv("f-rm"),date:gv("f-date"),time:gv("f-time"),avgHr:+gv("f-avghr"),maxHr:+gv("f-maxhr"),pass:gv("f-pass")};
   STATE.rm.push(entry);
   saveLocal(); closeModal(); render();
   if(STATE.apiUrl) API.appendRow("RouteMarch",entry).catch(()=>{});
@@ -753,31 +774,56 @@ function openSOCForm() {
     </div>`);
 }
 function submitSOC() {
-  const entry={id:Date.now(),d4:gv("f-d4"),socNum:+gv("f-soc"),date:gv("f-date"),time:gv("f-time"),avgHr:+gv("f-avghr"),pass:gv("f-pass")};
+  const entry={id:nextId(),d4:gv("f-d4"),socNum:+gv("f-soc"),date:gv("f-date"),time:gv("f-time"),avgHr:+gv("f-avghr"),pass:gv("f-pass")};
   STATE.soc.push(entry);
   saveLocal(); closeModal(); render();
   if(STATE.apiUrl) API.appendRow("SOC",entry).catch(()=>{});
 }
 
 // ═══════════════════════════════════════════════════════
-// CSV IMPORTERS
+// CSV IMPORTERS — smart column matching, validation
 // ═══════════════════════════════════════════════════════
 function importIPPT(input) {
   Papa.parse(input.files[0],{header:true,skipEmptyLines:true,complete:r=>{
-    r.data.forEach((row,i)=>STATE.ippt.push({id:Date.now()+i,d4:row["4D"]||"",attempt:+row["Attempt"]||0,date:row["Date"]||"",pushups:+row["Push-ups"]||0,situps:+row["Sit-ups"]||0,runTime:row["2.4km"]||"",score:+row["Score"]||0}));
-    saveLocal();render();
+    const missing = checkCols(r.meta.fields, ["4D","Score"]);
+    if(missing.length) { alert("CSV missing required columns: "+missing.join(", ")+"\n\nExpected: 4D, Attempt, Date, Push-ups, Sit-ups, 2.4km, Score"); return; }
+    r.data.forEach(row=>STATE.ippt.push({
+      id:nextId(), d4:col(row,"4D","id"), attempt:colNum(row,"Attempt","#","attempt"),
+      date:col(row,"Date","date"), pushups:colNum(row,"Push-ups","Pushups","PU","push-ups"),
+      situps:colNum(row,"Sit-ups","Situps","SU","sit-ups"), runTime:col(row,"2.4km","Run","RunTime","run time","2.4"),
+      score:colNum(row,"Score","Total","Total Score","score")
+    }));
+    saveLocal();render();alert(`Imported ${r.data.length} IPPT rows`);
   }});input.value="";
 }
 function importRM(input) {
   Papa.parse(input.files[0],{header:true,skipEmptyLines:true,complete:r=>{
-    r.data.forEach((row,i)=>STATE.rm.push({id:Date.now()+i,d4:row["4D"]||"",rmNum:+row["RM"]||0,date:row["Date"]||"",time:row["Time"]||"",avgHr:+row["Avg HR"]||0,maxHr:+row["Max HR"]||0,pass:row["Pass"]||"Y"}));
-    saveLocal();render();
+    const missing = checkCols(r.meta.fields, ["4D"]);
+    if(missing.length) { alert("CSV missing required column: 4D\n\nExpected: 4D, RM, Date, Time, Avg HR, Max HR, Pass"); return; }
+    r.data.forEach(row=>STATE.rm.push({
+      id:nextId(), d4:col(row,"4D","id"), rmNum:colNum(row,"RM","RM #","RM#","rmNum","Route March"),
+      date:col(row,"Date","date"), time:col(row,"Time","Completion Time","time","Duration"),
+      avgHr:colNum(row,"Avg HR","AvgHR","avg_hr","Average HR","Heart Rate"),
+      maxHr:colNum(row,"Max HR","MaxHR","max_hr","Maximum HR"),
+      pass:col(row,"Pass","pass","Result","Status")||"Y"
+    }));
+    saveLocal();render();alert(`Imported ${r.data.length} Route March rows`);
   }});input.value="";
 }
 function importPolar(input) {
   Papa.parse(input.files[0],{header:true,skipEmptyLines:true,complete:r=>{
-    r.data.forEach((row,i)=>STATE.polar.push({id:Date.now()+i,d4:row["4D"]||"",conduct:row["Conduct"]||"",date:row["Date"]||"",avgHr:+row["Avg HR"]||0,maxHr:+row["Max HR"]||0,minHr:+row["Min HR"]||0,calories:+row["Calories"]||0,trainingLoad:+row["Training Load"]||0,duration:+row["Duration"]||0,distance:+row["Distance"]||0}));
-    saveLocal();render();
+    const missing = checkCols(r.meta.fields, ["4D"]);
+    if(missing.length) { alert("CSV missing required column: 4D"); return; }
+    r.data.forEach(row=>STATE.polar.push({
+      id:nextId(), d4:col(row,"4D","id"), conduct:col(row,"Conduct","Activity","conduct","Exercise"),
+      date:col(row,"Date","date"), avgHr:colNum(row,"Avg HR","AvgHR","avg_hr","Average HR"),
+      maxHr:colNum(row,"Max HR","MaxHR","max_hr"), minHr:colNum(row,"Min HR","MinHR","min_hr"),
+      calories:colNum(row,"Calories","Cal","calories","Energy"),
+      trainingLoad:colNum(row,"Training Load","TrainingLoad","training_load","Load"),
+      duration:colNum(row,"Duration","duration","Time","Dur"),
+      distance:colNum(row,"Distance","distance","Dist")
+    }));
+    saveLocal();render();alert(`Imported ${r.data.length} Polar rows`);
   }});input.value="";
 }
 function importBackup(input) {
