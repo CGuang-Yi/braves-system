@@ -2,14 +2,20 @@
 // the Google Sheet via API.pullAll() on launch, or from localStorage on
 // subsequent loads.
 
+// The Apps Script web app URL. This is no longer a secret — auth is enforced
+// server-side by per-device tokens issued via the invite flow (see Apps Script).
+// PASTE YOUR DEPLOYMENT URL HERE after redeploying the updated Apps Script:
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzazMTu4y4XjjDXBGWN_aAE51fzP_z23zQUZnuKjWWPJ3fNNjUPbp3DbZW9T66OQysr/exec";
+
 // Storage key is versioned so we can invalidate stale caches in users' browsers.
-// Bump this whenever the cached shape (or its trust assumptions) changes.
 const STORAGE_KEY = "cougar-data-v2";
 const STORAGE_KEY_LEGACY = "cougar-data"; // v1 — contained hardcoded personnel fallback
+const AUTH_KEY = "cougar-auth";
 
 const STATE = {
   nav: "dashboard",
-  apiUrl: localStorage.getItem("cougar-api-url") || "",
+  apiUrl: APPS_SCRIPT_URL,
+  authToken: localStorage.getItem(AUTH_KEY) || "",
   roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [],
   charts: {}
 };
@@ -23,7 +29,6 @@ function saveLocal() {
 }
 
 function loadLocal() {
-  // Drop any pre-v2 cache so old hardcoded personnel data can't linger in users' browsers.
   if (localStorage.getItem(STORAGE_KEY_LEGACY)) {
     localStorage.removeItem(STORAGE_KEY_LEGACY);
   }
@@ -39,4 +44,10 @@ function loadLocal() {
     STATE.soc = d.soc || [];
     STATE.polar = d.polar || [];
   } catch { /* fall through to empty state */ }
+}
+
+function setAuthToken(token) {
+  STATE.authToken = token || "";
+  if (token) localStorage.setItem(AUTH_KEY, token);
+  else localStorage.removeItem(AUTH_KEY);
 }

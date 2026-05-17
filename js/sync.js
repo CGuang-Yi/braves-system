@@ -2,18 +2,26 @@
 // Also owns the sidebar sync indicator and the launch-time auto-sync.
 
 function renderSync(el) {
+  const authed = !!STATE.authToken;
+  const authStatusHtml = authed
+    ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+         <span style="color:var(--green);font-weight:600">✓ Authenticated</span>
+         <span class="mono" style="font-size:10px;color:var(--dim)">${STATE.authToken.slice(0, 8)}…</span>
+         <button class="btn btn-danger" onclick="signOut()" style="margin-left:auto">Sign Out</button>
+       </div>`
+    : `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:10px;margin-bottom:12px;color:var(--red);font-size:12px">
+         <strong>Not authenticated.</strong> Ask your admin for an invite link, then open it on this device.
+       </div>`;
+
   el.innerHTML = `
     <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Sync &amp; Import / Export</h2>
     <div class="sync-panel">
-      <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">🔗 Google Sheets Connection</h3>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Paste your Google Apps Script Web App URL below. See README for setup instructions.</p>
-      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:12px">
-        <div class="form-group" style="flex:1"><label>Apps Script URL</label><input id="api-url-input" value="${STATE.apiUrl}" placeholder="https://script.google.com/macros/s/.../exec" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;width:100%;outline:none"></div>
-        <button class="btn" onclick="saveApiUrl()">Save</button>
-      </div>
+      <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">🔐 Access</h3>
+      ${authStatusHtml}
+      <h3 style="font-size:14px;color:var(--accent);margin:16px 0 12px">🔄 Sheet Sync</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="btn btn-primary" onclick="doPull()" id="pull-btn">⬇ Pull from Sheet</button>
-        <button class="btn btn-success" onclick="doPushAll()" id="push-btn">⬆ Push All to Sheet</button>
+        <button class="btn btn-primary" onclick="doPull()" id="pull-btn" ${authed ? "" : "disabled"}>⬇ Pull from Sheet</button>
+        <button class="btn btn-success" onclick="doPushAll()" id="push-btn" ${authed ? "" : "disabled"}>⬆ Push All to Sheet</button>
         <button class="btn" onclick="doPing()">🏓 Test Connection</button>
       </div>
       <div id="sync-log" class="sync-log card" style="padding:10px"></div>
@@ -53,10 +61,12 @@ function setSyncIndicator(text, color) {
   if (el) { el.textContent = text; el.style.color = color || ""; }
 }
 
-function saveApiUrl() {
-  STATE.apiUrl = document.getElementById("api-url-input").value.trim();
-  localStorage.setItem("cougar-api-url", STATE.apiUrl);
-  syncLog("API URL saved", "var(--green)");
+function signOut() {
+  if (!confirm("Sign out from this device? You'll need a new invite link from your admin to access the sheet again.")) return;
+  setAuthToken("");
+  syncLog("Signed out — auth token cleared", "var(--orange)");
+  setSyncIndicator("● Not authenticated", "var(--red)");
+  render();
 }
 
 async function doPing() {
@@ -76,8 +86,10 @@ async function doPull() {
     syncLog(`Pull complete! Sheet: ${data.sheetName}`, "var(--green)");
     setSyncIndicator(`● Synced ${new Date().toLocaleTimeString()}`, "var(--green)");
     render();
-  } catch (e) { syncLog(`Pull failed: ${e.message}`, "var(--red)"); }
-  finally { const b = document.getElementById("pull-btn"); if (b) b.disabled = false; }
+  } catch (e) {
+    syncLog(`Pull failed: ${e.message}`, "var(--red)");
+    if (e.name === "AuthError") setSyncIndicator("● Not authenticated", "var(--red)");
+  } finally { const b = document.getElementById("pull-btn"); if (b) b.disabled = false; }
 }
 
 async function doPushAll() {
@@ -104,8 +116,8 @@ async function pushTab(tabName, data) {
 }
 
 async function autoSyncOnLaunch() {
-  if (!STATE.apiUrl) {
-    setSyncIndicator("● Not configured", "var(--dim)");
+  if (!STATE.authToken) {
+    setSyncIndicator("● Not authenticated", "var(--red)");
     return;
   }
   setSyncIndicator("● Syncing…", "var(--orange)");
@@ -115,7 +127,12 @@ async function autoSyncOnLaunch() {
     syncLog(`Auto-sync on launch: pulled from ${data.sheetName}`, "var(--green)");
     render();
   } catch (e) {
-    setSyncIndicator("● Sync failed", "var(--red)");
-    syncLog(`Auto-sync failed: ${e.message}`, "var(--red)");
+    if (e.name === "AuthError") {
+      setSyncIndicator("● Not authenticated", "var(--red)");
+      syncLog(`Auth rejected — your invite may have been revoked. Ask admin for a new link.`, "var(--red)");
+    } else {
+      setSyncIndicator("● Sync failed", "var(--red)");
+      syncLog(`Auto-sync failed: ${e.message}`, "var(--red)");
+    }
   }
 }

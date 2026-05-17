@@ -1,18 +1,36 @@
 // Thin wrapper around the Google Apps Script web app.
-// All reads/writes for the sheet go through here.
+// Every data request carries an auth token. The token is obtained by redeeming
+// a single-use invite link via API.redeemInvite() — see js/main.js bootstrap.
+
+const AuthError = class extends Error {
+  constructor(message) { super(message); this.name = "AuthError"; }
+};
+
 const API = {
   async get(action, tab) {
-    if (!STATE.apiUrl) throw new Error("No API URL configured");
-    const url = `${STATE.apiUrl}?action=${action}${tab ? "&tab=" + tab : ""}`;
+    const auth = encodeURIComponent(STATE.authToken || "");
+    const url = `${STATE.apiUrl}?action=${action}${tab ? "&tab=" + tab : ""}&auth=${auth}`;
     const res = await fetch(url);
-    return res.json();
+    const data = await res.json();
+    if (data && data.code === 401) throw new AuthError(data.error);
+    return data;
   },
   async post(body) {
-    if (!STATE.apiUrl) throw new Error("No API URL configured");
     const res = await fetch(STATE.apiUrl, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" }, // Apps Script requires this to avoid preflight
-      body: JSON.stringify(body)
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ ...body, auth: STATE.authToken })
+    });
+    const data = await res.json();
+    if (data && data.code === 401) throw new AuthError(data.error);
+    return data;
+  },
+  // Redeem a single-use invite token. Does not require an existing auth token.
+  async redeemInvite(token) {
+    const res = await fetch(STATE.apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "redeemInvite", token })
     });
     return res.json();
   },

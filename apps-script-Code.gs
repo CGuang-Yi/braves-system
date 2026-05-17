@@ -1,19 +1,36 @@
 /*
  * COUGAR COMPANY DATA SYSTEM — Google Apps Script Backend
  * ═══════════════════════════════════════════════════════
- * 
- * SETUP:
- * 1. Open your Google Sheet
- * 2. Go to Extensions → Apps Script
- * 3. Delete any existing code, paste this entire file
- * 4. Click Deploy → New deployment
- * 5. Type: Web app
- * 6. Execute as: Me
- * 7. Who has access: Anyone
- * 8. Click Deploy → copy the Web App URL
- * 9. Paste that URL into the frontend app's Settings
  *
- * SHEET TABS REQUIRED (create these with headers in Row 1):
+ * AUTH MODEL
+ * ──────────
+ * The script enforces token-based auth for all data operations. Two token types
+ * live in PropertiesService:
+ *
+ *   invite:<token>  →  {used, createdAt, usedAt?, issuedAuthToken?}
+ *     • Single-use. You (the admin) mint these via generateInvite() from the
+ *       editor and send the resulting URL to a user. They click once → the
+ *       token is consumed → the user's device gets an auth token.
+ *
+ *   auth:<token>    →  {issuedAt, fromInvite}
+ *     • Long-lived. Stored in the user's browser localStorage. Sent with every
+ *       data request. Revoke with revokeAuthToken().
+ *
+ * SETUP (first deploy or after pulling these changes)
+ * ───────────────────────────────────────────────────
+ * 1. Open your Google Sheet → Extensions → Apps Script.
+ * 2. Delete any existing code, paste this entire file.
+ * 3. Update FRONTEND_BASE_URL below to match where your frontend is hosted.
+ * 4. Deploy → Manage deployments → edit your existing deployment →
+ *    pick a new Version → Deploy. (Keep the same web-app URL.)
+ *    First time only: Deploy → New deployment → Web app:
+ *      • Execute as: Me
+ *      • Who has access: Anyone
+ *      • Copy the Web App URL; paste it into js/state.js (APPS_SCRIPT_URL).
+ * 5. Run generateInvite() from the editor → check the Execution log →
+ *    open the printed URL on the device that needs access.
+ *
+ * SHEET TABS REQUIRED (create with headers in Row 1):
  *   Roster:     id | name | plt | sect | status | conditions | notes
  *   Medical:    id | d4 | date | type | reason | status | duration | excuses | conductMissed
  *   Attendance: id | date | conduct | category | total | participating | px | rsi | fallout | cmdTotal | cmdParticipating | by
@@ -23,30 +40,34 @@
  *   PolarFlow:  id | d4 | conduct | date | avgHr | maxHr | minHr | z1 | z2 | z3 | z4 | z5 | calories | trainingLoad | recovery | duration | distance
  */
 
-// ─── CORS + ROUTING ────────────────────────────────────
+var FRONTEND_BASE_URL = "https://coon-hound.github.io/cougar-system/";
+
+// ─── ROUTING ───────────────────────────────────────────
 
 function doGet(e) {
   var output;
   try {
     var action = e.parameter.action || "readAll";
     var tab = e.parameter.tab || "";
-    
-    if (action === "readAll") {
+    var auth = e.parameter.auth || "";
+
+    // Public action: ping (used by the frontend to verify the URL is reachable).
+    if (action === "ping") {
+      output = { ok: true, sheets: getTabNames(), timestamp: new Date().toISOString() };
+    } else if (!isValidAuth(auth)) {
+      output = { error: "Unauthorized — invite required", code: 401 };
+    } else if (action === "readAll") {
       output = readAllTabs();
     } else if (action === "read" && tab) {
       output = readTab(tab);
-    } else if (action === "ping") {
-      output = { ok: true, sheets: getTabNames(), timestamp: new Date().toISOString() };
     } else {
       output = { error: "Unknown action. Use: readAll, read&tab=TabName, or ping" };
     }
   } catch (err) {
     output = { error: err.message };
   }
-  
-  return ContentService
-    .createTextOutput(JSON.stringify(output))
-    .setMimeType(ContentService.MimeType.JSON);
+
+  return jsonResponse(output);
 }
 
 function doPost(e) {
@@ -55,8 +76,14 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     var action = body.action || "write";
     var tab = body.tab || "";
-    
-    if (action === "write" && tab && body.data) {
+    var auth = body.auth || "";
+
+    // Public action: redeem a single-use invite token in exchange for an auth token.
+    if (action === "redeemInvite") {
+      output = redeemInvite(body.token);
+    } else if (!isValidAuth(auth)) {
+      output = { error: "Unauthorized — invite required", code: 401 };
+    } else if (action === "write" && tab && body.data) {
       output = writeTab(tab, body.data);
     } else if (action === "append" && tab && body.row) {
       output = appendRow(tab, body.row);
@@ -67,42 +94,124 @@ function doPost(e) {
     } else if (action === "updateRow" && tab && body.rowIndex !== undefined && body.row) {
       output = updateRow(tab, body.rowIndex, body.row);
     } else {
-      output = { error: "Invalid request. Need action + tab + data/row/rows" };
+      output = { error: "Invalid request" };
     }
   } catch (err) {
     output = { error: err.message };
   }
-  
+
+  return jsonResponse(output);
+}
+
+function jsonResponse(obj) {
   return ContentService
-    .createTextOutput(JSON.stringify(output))
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ─── AUTH / INVITE FLOW ────────────────────────────────
+
+function isValidAuth(token) {
+  if (!token) return false;
+  return PropertiesService.getScriptProperties().getProperty("auth:" + token) !== null;
+}
+
+function redeemInvite(inviteToken) {
+  if (!inviteToken) return { error: "Missing invite token" };
+  var props = PropertiesService.getScriptProperties();
+  var key = "invite:" + inviteToken;
+  var raw = props.getProperty(key);
+  if (!raw) return { error: "Invalid invite link" };
+
+  var invite = JSON.parse(raw);
+  if (invite.used) return { error: "This invite has already been used" };
+
+  var authToken = Utilities.getUuid();
+  var now = new Date().toISOString();
+
+  invite.used = true;
+  invite.usedAt = now;
+  invite.issuedAuthToken = authToken;
+  props.setProperty(key, JSON.stringify(invite));
+  props.setProperty("auth:" + authToken, JSON.stringify({ issuedAt: now, fromInvite: inviteToken }));
+
+  return { ok: true, authToken: authToken };
+}
+
+// ─── ADMIN FUNCTIONS — run from the Apps Script editor ─
+
+function generateInvite() {
+  var token = Utilities.getUuid();
+  PropertiesService.getScriptProperties().setProperty(
+    "invite:" + token,
+    JSON.stringify({ used: false, createdAt: new Date().toISOString() })
+  );
+  var link = FRONTEND_BASE_URL + "?token=" + token;
+  Logger.log("───────────────────────────────────────────");
+  Logger.log("NEW INVITE LINK (single-use):");
+  Logger.log(link);
+  Logger.log("───────────────────────────────────────────");
+  return link;
+}
+
+function listInvites() {
+  var props = PropertiesService.getScriptProperties().getProperties();
+  var rows = [];
+  for (var key in props) {
+    if (key.indexOf("invite:") === 0) {
+      rows.push(key + " → " + props[key]);
+    }
+  }
+  Logger.log("Invites (" + rows.length + "):");
+  rows.forEach(function (r) { Logger.log(r); });
+}
+
+function listAuthTokens() {
+  var props = PropertiesService.getScriptProperties().getProperties();
+  var rows = [];
+  for (var key in props) {
+    if (key.indexOf("auth:") === 0) {
+      rows.push(key + " → " + props[key]);
+    }
+  }
+  Logger.log("Auth tokens (" + rows.length + "):");
+  rows.forEach(function (r) { Logger.log(r); });
+}
+
+function revokeAuthToken(token) {
+  PropertiesService.getScriptProperties().deleteProperty("auth:" + token);
+  Logger.log("Revoked auth token: " + token);
+}
+
+function revokeInvite(token) {
+  PropertiesService.getScriptProperties().deleteProperty("invite:" + token);
+  Logger.log("Revoked invite: " + token);
 }
 
 // ─── READ OPERATIONS ───────────────────────────────────
 
 function getTabNames() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  return ss.getSheets().map(function(s) { return s.getName(); });
+  return ss.getSheets().map(function (s) { return s.getName(); });
 }
 
 function readTab(tabName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found", available: getTabNames() };
-  
+
   var data = sheet.getDataRange().getValues();
-  if (data.length < 2) return []; // Only headers or empty
-  
-  var headers = data[0].map(function(h) { return String(h).trim(); });
+  if (data.length < 2) return [];
+
+  var headers = data[0].map(function (h) { return String(h).trim(); });
   var rows = [];
-  
+
   for (var i = 1; i < data.length; i++) {
     var row = {};
     var hasData = false;
     for (var j = 0; j < headers.length; j++) {
       if (headers[j]) {
         var val = data[i][j];
-        // Convert dates to strings
         if (val instanceof Date) {
           val = Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
         }
@@ -112,7 +221,7 @@ function readTab(tabName) {
     }
     if (hasData) rows.push(row);
   }
-  
+
   return rows;
 }
 
@@ -126,10 +235,10 @@ function readAllTabs() {
     "SOC": "soc",
     "PolarFlow": "polar"
   };
-  
+
   var result = {};
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  
+
   for (var tabName in tabMap) {
     var sheet = ss.getSheetByName(tabName);
     if (sheet) {
@@ -138,7 +247,7 @@ function readAllTabs() {
       result[tabMap[tabName]] = [];
     }
   }
-  
+
   result.timestamp = new Date().toISOString();
   result.sheetName = ss.getName();
   return result;
@@ -150,43 +259,35 @@ function writeTab(tabName, data) {
   if (!Array.isArray(data) || data.length === 0) {
     return { error: "Data must be a non-empty array of objects" };
   }
-  
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
-  
-  // Create tab if it doesn't exist
+
   if (!sheet) {
     sheet = ss.insertSheet(tabName);
   }
-  
-  // Get headers from the first data object
+
   var headers = Object.keys(data[0]);
-  
-  // Clear existing content
+
   sheet.clear();
-  
-  // Write headers
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  
-  // Bold + freeze headers
   sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
   sheet.setFrozenRows(1);
-  
-  // Write data rows
-  var rows = data.map(function(obj) {
-    return headers.map(function(h) {
+
+  var rows = data.map(function (obj) {
+    return headers.map(function (h) {
       var val = obj[h];
       return val !== undefined && val !== null ? val : "";
     });
   });
-  
+
   if (rows.length > 0) {
     sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   }
-  
-  return { 
-    ok: true, 
-    tab: tabName, 
+
+  return {
+    ok: true,
+    tab: tabName,
     rowsWritten: rows.length,
     timestamp: new Date().toISOString()
   };
@@ -196,18 +297,18 @@ function appendRow(tabName, rowData) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found" };
-  
+
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var newRow = headers.map(function(h) {
+  var newRow = headers.map(function (h) {
     var val = rowData[String(h).trim()];
     return val !== undefined && val !== null ? val : "";
   });
-  
+
   sheet.appendRow(newRow);
-  
-  return { 
-    ok: true, 
-    tab: tabName, 
+
+  return {
+    ok: true,
+    tab: tabName,
     newRowIndex: sheet.getLastRow() - 1,
     timestamp: new Date().toISOString()
   };
@@ -217,22 +318,22 @@ function appendMany(tabName, rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return { error: "Rows must be a non-empty array" };
   }
-  
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found" };
-  
+
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var newRows = rows.map(function(rowData) {
-    return headers.map(function(h) {
+  var newRows = rows.map(function (rowData) {
+    return headers.map(function (h) {
       var val = rowData[String(h).trim()];
       return val !== undefined && val !== null ? val : "";
     });
   });
-  
+
   var startRow = sheet.getLastRow() + 1;
   sheet.getRange(startRow, 1, newRows.length, headers.length).setValues(newRows);
-  
+
   return {
     ok: true,
     tab: tabName,
@@ -245,21 +346,21 @@ function updateRow(tabName, rowIndex, rowData) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found" };
-  
+
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var sheetRow = rowIndex + 2; // +1 for header, +1 for 1-indexed
-  
+  var sheetRow = rowIndex + 2;
+
   if (sheetRow > sheet.getLastRow()) {
     return { error: "Row index " + rowIndex + " out of range" };
   }
-  
-  var updatedRow = headers.map(function(h) {
+
+  var updatedRow = headers.map(function (h) {
     var val = rowData[String(h).trim()];
     return val !== undefined && val !== null ? val : "";
   });
-  
+
   sheet.getRange(sheetRow, 1, 1, headers.length).setValues([updatedRow]);
-  
+
   return {
     ok: true,
     tab: tabName,
@@ -272,29 +373,18 @@ function deleteRow(tabName, rowIndex) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found" };
-  
+
   var sheetRow = rowIndex + 2;
   if (sheetRow > sheet.getLastRow()) {
     return { error: "Row index " + rowIndex + " out of range" };
   }
-  
+
   sheet.deleteRow(sheetRow);
-  
+
   return {
     ok: true,
     tab: tabName,
     rowDeleted: rowIndex,
     timestamp: new Date().toISOString()
   };
-}
-
-// ─── UTILITY: Test from the script editor ──────────────
-
-function testReadAll() {
-  var result = readAllTabs();
-  Logger.log(JSON.stringify(result, null, 2));
-}
-
-function testPing() {
-  Logger.log(JSON.stringify({ tabs: getTabNames() }));
 }
