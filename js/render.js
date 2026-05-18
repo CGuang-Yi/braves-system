@@ -54,8 +54,8 @@ function renderDashboard(el) {
       <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
     </div>
     <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel</h3>
-    <div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Plt</th><th>Status</th><th>Conditions</th><th>Notes</th></tr></thead><tbody>
-    ${STATE.roster.filter(r => r.status !== "Active").map(r => `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${r.plt}</td><td>${statusBadge(r.status)}</td><td style="text-align:left">${r.conditions || ""}</td><td style="text-align:left">${r.notes || ""}</td></tr>`).join("")}
+    <div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Status</th><th>Conditions</th><th>Notes</th></tr></thead><tbody>
+    ${STATE.roster.filter(r => r.status !== "Active").map(r => `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${statusBadge(r.status)}</td><td style="text-align:left">${r.conditions || ""}</td><td style="text-align:left">${r.notes || ""}</td></tr>`).join("")}
     </tbody></table></div>`;
 
   const statusCounts = {};

@@ -39,7 +39,7 @@ function openPerson(d4) {
   });
   const latest = computed[computed.length - 1];
 
-  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.id} — P${p.plt}S${p.sect} — ${statusBadge(p.status)}</div>`;
+  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.id} — ${statusBadge(p.status)}</div>`;
   if (p.conditions) html += `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--red)">Pre-existing: ${p.conditions}</div>`;
 
   html += `<div class="stats-row"><div class="stat"><label>RSIs</label><div class="val" style="color:${med.length > 1 ? 'var(--red)' : 'var(--muted)'}">${med.length}</div></div>`;
@@ -49,7 +49,7 @@ function openPerson(d4) {
 
   if (ippts.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">IPPT Progression</h4>`;
-    html += `<canvas id="person-ippt-chart" height="140"></canvas>`;
+    html += `<div class="chart-box"><canvas id="person-ippt-chart"></canvas></div>`;
     html += ippts.map(i => `<span class="badge badge-accent" style="margin:2px">#${i.attempt}: ${i.score} ${awardBadge(i.score)}</span>`).join("");
   }
   if (rms.length) {
@@ -93,11 +93,11 @@ function openPerson(d4) {
     </div>`;
 
     html += `<div class="grid-2" style="gap:10px">
-      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Heart Rate (avg vs max)</div><canvas id="pm-hr" height="110"></canvas></div>
-      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Calories (kcal)</div><canvas id="pm-cal" height="110"></canvas></div>
-      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Efficiency (kcal / avg HR)</div><canvas id="pm-eff" height="110"></canvas></div>
-      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Intensity (avg / max %)</div><canvas id="pm-int" height="110"></canvas></div>
-      <div class="card" style="padding:10px;margin:0;grid-column:span 2"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Workload (avg HR × min)</div><canvas id="pm-wl" height="90"></canvas></div>
+      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Heart Rate (avg vs max)</div><div class="chart-box"><canvas id="pm-hr"></canvas></div></div>
+      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Calories (kcal)</div><div class="chart-box"><canvas id="pm-cal"></canvas></div></div>
+      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Efficiency (kcal / avg HR)</div><div class="chart-box"><canvas id="pm-eff"></canvas></div></div>
+      <div class="card" style="padding:10px;margin:0"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Intensity (avg / max %)</div><div class="chart-box"><canvas id="pm-int"></canvas></div></div>
+      <div class="card" style="padding:10px;margin:0;grid-column:span 2"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">Workload (avg HR × min)</div><div class="chart-box tall"><canvas id="pm-wl"></canvas></div></div>
     </div>`;
   }
 
@@ -113,7 +113,7 @@ function openPerson(d4) {
       new Chart(ipptCanvas, {
         type: "line",
         data: { labels: ippts.map(i => "#" + i.attempt), datasets: [{ data: ippts.map(i => +i.score), borderColor: "#D29922", backgroundColor: "#D2992233", fill: true, tension: .3, pointRadius: 5 }] },
-        options: { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, grid: { color: "#30363D" } }, x: { grid: { color: "#30363D" } } } }
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100, grid: { color: "#30363D" } }, x: { grid: { color: "#30363D" } } } }
       });
     }
 
@@ -123,7 +123,11 @@ function openPerson(d4) {
         const parts = (c.date || "").split(" ");
         return parts.length >= 2 ? parts.slice(0, 2).join(" ") : (c.date || "");
       });
+      // maintainAspectRatio: false → fill the .chart-box wrapper's fixed height
+      // instead of growing the canvas indefinitely with container width.
       const axisBase = {
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: { callbacks: { title: (items) => computed[items[0].dataIndex]?.conduct || labels[items[0].dataIndex] } } },
         scales: {
           y: { grid: { color: "#30363D" }, ticks: { color: "#8B949E", font: { size: 9 } } },
