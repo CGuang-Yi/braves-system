@@ -8,13 +8,28 @@ const getName = d4 => STATE.roster.find(r => r.id === d4)?.name || d4;
 // Polar, Dashboard counts). Attendance is per-conduct (no recruit linkage in
 // the entry shape), so it stays company-wide.
 
+// Plt/sect can come either as explicit roster fields OR be derived from the
+// 4D code (e.g. "C1114" → plt=1, sect=1, bed=14). The sheet column may not
+// always exist, so we fall back to parsing the 4D so the scope filter works
+// regardless of sheet schema.
+function getPlt(r) {
+  if (r.plt !== "" && r.plt != null) return String(r.plt);
+  const m = String(r.id || "").match(/(\d)/);
+  return m ? m[1] : "";
+}
+function getSect(r) {
+  if (r.sect !== "" && r.sect != null) return String(r.sect);
+  const m = String(r.id || "").match(/\d(\d)/);
+  return m ? m[1] : "";
+}
+
 const isFilterActive = () => !!(STATE.filterPlt || STATE.filterSect);
 
 function filteredRoster() {
   if (!isFilterActive()) return STATE.roster;
   return STATE.roster.filter(r => {
-    if (STATE.filterPlt && String(r.plt) !== String(STATE.filterPlt)) return false;
-    if (STATE.filterSect && String(r.sect) !== String(STATE.filterSect)) return false;
+    if (STATE.filterPlt && getPlt(r) !== String(STATE.filterPlt)) return false;
+    if (STATE.filterSect && getSect(r) !== String(STATE.filterSect)) return false;
     return true;
   });
 }
