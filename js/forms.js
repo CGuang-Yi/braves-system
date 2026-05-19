@@ -76,6 +76,28 @@ function openPerson(d4) {
   html += `<div class="stat"><label>RMs</label><div class="val" style="color:var(--teal)">${rms.length}</div></div>`;
   html += `<div class="stat"><label>SOCs</label><div class="val" style="color:var(--purple)">${socs.length}</div></div></div>`;
 
+  // Conduct Participation History — sits above IPPT/RM/SOC so a PC checking
+  // "why has this recruit been missing conducts" sees the answer first thing.
+  const cd = STATE.conductDetail.filter(d => d.d4 === d4).slice().sort((a, b) => {
+    const ai = displayDateToISO(a.date) || a.date || "";
+    const bi = displayDateToISO(b.date) || b.date || "";
+    if (ai !== bi) return ai < bi ? 1 : -1;
+    return (a.time || "") < (b.time || "") ? 1 : -1;
+  });
+  if (cd.length) {
+    const cdTypeColor = t => t === "PX" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
+    const cdCount = t => cd.filter(d => d.type === t).length;
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${cd.length} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("PX")} PX · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick)</span></h4>`;
+    html += `<div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
+        <tbody>
+          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + d.time + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${d.conduct || ''}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
   if (ippts.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">IPPT Progression</h4>`;
     html += `<div class="chart-box"><canvas id="person-ippt-chart"></canvas></div>`;
@@ -92,8 +114,26 @@ function openPerson(d4) {
     html += `</div>`;
   }
   if (med.length) {
-    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Medical History</h4>`;
-    html += med.map(m => `<div style="background:var(--surface2);border-radius:6px;padding:6px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px"><span style="color:var(--muted)">${m.date}</span> ${typeBadge(m.type)} ${m.reason} ${m.status ? `<span style="color:var(--muted)">— ${m.status}</span>` : ""}</div>`).join("");
+    const today = todayISO();
+    // Sort newest-first by startDate (falling back to date logged) so the
+    // most recent / currently-relevant entries are at the top.
+    const medSorted = med.slice().sort((a, b) => {
+      const ai = displayDateToISO(a.startDate || a.date) || "";
+      const bi = displayDateToISO(b.startDate || b.date) || "";
+      return ai < bi ? 1 : ai > bi ? -1 : 0;
+    });
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Medical History <span style="color:var(--dim);font-weight:400">(${med.length})</span></h4>`;
+    html += medSorted.map(m => {
+      const tagInfo = medStatusTag(m, today);
+      const todayLabel = tagInfo ? `<span style="margin-left:6px">${medTagBadge(tagInfo.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
+      return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${m.reason || ""}</span>
+          ${todayLabel}
+        </div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
+      </div>`;
+    }).join("");
   }
 
   // ── Polar metrics section ────────────────────────────
@@ -218,31 +258,53 @@ const editHint = `<div style="font-size:11px;color:var(--muted);background:var(-
 function openMedicalForm(id) {
   const e = id ? STATE.medical.find(x => x.id === id) : null;
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
-  openModal(e ? "Edit Medical/RSI" : "Report Medical/RSI", `
+  const startVal = e ? displayDateToISO(e.startDate) || dateVal : todayISO();
+  const endVal = e ? displayDateToISO(e.endDate) || "" : "";
+  const selectedStatus = e?.status || "";
+  // Status is an enum drawn from the official parade-state vocabulary. Grouped
+  // with optgroups so the form makes the severity tiers visually obvious.
+  const statusOptions = MED_STATUS_GROUPS.map(g =>
+    `<optgroup label="${g.label}">${g.options.map(o => `<option value="${o}" ${o === selectedStatus ? "selected" : ""}>${o}</option>`).join("")}</optgroup>`
+  ).join("");
+  openModal(e ? "Edit Medical Status" : "Log Medical Status", `
     <form onsubmit="event.preventDefault(); submitMedical(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
         ${e ? editHint : ""}
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
-        ${formSelect("f-type", "Type", ["RSI", "Injury", "Fallout", "MC", "LD"], true, e?.type || "")}
+        ${formField("f-date", "Date Logged", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
         ${formField("f-reason", "Reason", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
-        ${formSelect("f-status", "Status", ["", "RSI", "MC", "LD", "RMJ", "Warded", "Pending", "Active"], false, e?.status || "")}
-        ${formField("f-missed", "Conducts Missed", "text", "Oregon Circuit...", `maxlength="200" value="${escapeAttr(e?.conductMissed)}"`)}
+        <div class="form-group">
+          <label>Status</label>
+          <select id="f-status" required>
+            <option value="">Select status...</option>
+            ${statusOptions}
+          </select>
+        </div>
+        <div class="form-row">
+          ${formField("f-start", "Start (inclusive)", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31"`)}
+          ${formField("f-end", "End (inclusive)", "date", "", `value="${endVal}" min="2020-01-01" max="2099-12-31"`)}
+        </div>
+        <div style="font-size:10px;color:var(--muted)">End date can be left blank only for <strong>Pending</strong>. For everything else it's required.</div>
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
     </form>`);
 }
 function submitMedical() {
   const editId = +gv("f-entry-id");
+  const status = gv("f-status");
+  const startIso = gv("f-start");
+  const endIso = gv("f-end");
+  if (status !== "Pending" && !endIso) { alert("End date is required for all statuses except Pending."); return; }
+  if (endIso && startIso && endIso < startIso) { alert("End date cannot be before start date."); return; }
   const entry = {
     id: editId || nextId(),
     d4: gv("f-d4"),
     date: isoToDisplayDate(gv("f-date")),
-    type: gv("f-type"),
     reason: gv("f-reason"),
-    status: gv("f-status"),
-    conductMissed: gv("f-missed")
+    status,
+    startDate: isoToDisplayDate(startIso),
+    endDate: endIso ? isoToDisplayDate(endIso) : ""
   };
   if (editId) {
     const idx = STATE.medical.findIndex(m => m.id === editId);
@@ -273,7 +335,6 @@ function openAttendanceForm(id) {
           ${formField("f-px", "PX", "number", "", `required min="0" max="999" step="1" value="${e?.px ?? 0}"`)}
           ${formField("f-rsi", "RSI", "number", "", `required min="0" max="999" step="1" value="${e?.rsi ?? 0}"`)}
           ${formField("f-fallout", "Fallout", "number", "", `required min="0" max="999" step="1" value="${e?.fallout ?? 0}"`)}
-          ${formField("f-by", "Submitted By", "text", "", `required maxlength="50" value="${escapeAttr(e?.by)}"`)}
         </div>
         <div class="form-group"><label>Remarks (data inconsistencies, recruit flags)</label><textarea id="f-remarks" maxlength="500" rows="2" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical" placeholder="e.g. JOHN: HR drop sus; 2 Polar rows missing">${escapeAttr(e?.remarks)}</textarea></div>
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
@@ -291,8 +352,7 @@ function submitAttendance() {
     date: isoToDisplayDate(gv("f-date")),
     conduct: gv("f-conduct"),
     total, participating: part, lms, px, rsi, fallout,
-    remarks: gv("f-remarks"),
-    by: gv("f-by")
+    remarks: gv("f-remarks")
   };
   if (editId) {
     const idx = STATE.attendance.findIndex(a => a.id === editId);
@@ -484,6 +544,23 @@ function importPolar(input) {
     saveLocal(); render(); alert(`Imported ${r.data.length} Polar rows`);
   } }); input.value = "";
 }
+function importConductDetail(input) {
+  Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => {
+    const missing = checkCols(r.meta.fields, ["4D", "Date", "Conduct", "Type", "Reason"]);
+    if (missing.length) { alert("CSV missing required columns: " + missing.join(", ") + "\n\nExpected: 4D, Date, Time, Conduct, Type, Reason"); return; }
+    r.data.forEach(row => STATE.conductDetail.push({
+      id: nextId(),
+      date: col(row, "Date", "date"),
+      time: col(row, "Time", "time"),
+      conduct: col(row, "Conduct", "conduct", "Activity"),
+      d4: col(row, "4D", "id", "d4"),
+      type: col(row, "Type", "type"),
+      reason: col(row, "Reason", "reason")
+    }));
+    saveLocal(); render(); alert(`Imported ${r.data.length} conduct detail rows`);
+  } }); input.value = "";
+}
+
 function importBackup(input) {
   const reader = new FileReader();
   reader.onload = e => { try {
@@ -495,6 +572,7 @@ function importBackup(input) {
     if (d.rm) STATE.rm = d.rm;
     if (d.soc) STATE.soc = d.soc;
     if (d.polar) STATE.polar = d.polar;
+    if (d.conductDetail) STATE.conductDetail = d.conductDetail;
     saveLocal(); render();
   } catch (err) { alert("Import failed: " + err.message); } };
   reader.readAsText(input.files[0]); input.value = "";

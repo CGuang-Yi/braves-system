@@ -38,12 +38,13 @@ const API = {
     const data = await this.get("readAll");
     if (data.error) throw new Error(data.error);
     if (data.roster?.length) STATE.roster = normalizeRoster(data.roster);
-    if (data.medical?.length) STATE.medical = data.medical;
+    if (data.medical?.length) STATE.medical = normalizeMedical(data.medical);
     if (data.attendance?.length) STATE.attendance = data.attendance;
     if (data.ippt?.length) STATE.ippt = data.ippt;
     if (data.rm?.length) STATE.rm = data.rm;
     if (data.soc?.length) STATE.soc = data.soc;
     if (data.polar?.length) STATE.polar = data.polar;
+    if (data.conductDetail?.length) STATE.conductDetail = data.conductDetail;
     saveLocal();
     return data;
   },

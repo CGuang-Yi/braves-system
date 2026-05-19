@@ -2,6 +2,7 @@
 # Loose plain-text (todos, chat exports, snippets) — keep these local.
 *.txt
 *.md.bak
+*.csv
 
 # ── Secrets & local config ─────────────────────────
 # Anything that could carry a real API key or per-machine config.

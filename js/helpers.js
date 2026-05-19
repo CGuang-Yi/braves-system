@@ -73,6 +73,120 @@ function checkCols(headers, required) {
 }
 
 const getAward = s => { if (!s || s === 0) return "N/A"; if (s >= 85) return "Gold"; if (s >= 75) return "Silver"; if (s >= 61) return "Pass"; return "Fail"; };
+
+// ── Medical status enum ──────────────────────────────────
+// Only these are recognized as official statuses (drawn from what actually
+// appears in parade states). "RSI" / "Injury" are event categories, not
+// statuses, and are no longer stored.
+const MED_STATUS_GROUPS = [
+  { label: "Severe (away from camp)", options: ["MC", "Warded"] },
+  { label: "In camp, restricted",     options: ["LD", "RMJ"] },
+  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ"] },
+  { label: "Awaiting MO",             options: ["Pending"] }
+];
+const MED_STATUSES = MED_STATUS_GROUPS.flatMap(g => g.options);
+
+// Days between two ISO date strings (both inclusive of the date — date math
+// only, no time of day). Returns isoB − isoA in whole days.
+function daysBetween(isoA, isoB) {
+  if (!isoA || !isoB) return null;
+  const a = new Date(isoA + "T00:00:00");
+  const b = new Date(isoB + "T00:00:00");
+  if (isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+// Is this medical record's status active on the given ISO date?
+// Active = today ∈ [startDate, endDate] inclusive on both ends. Pending is
+// treated as active only on its startDate (one-day visibility).
+function medStatusActive(record, todayIso) {
+  todayIso = todayIso || todayISO();
+  const start = displayDateToISO(record.startDate || "");
+  if (!start) return false;
+  if (record.status === "Pending") return todayIso === start;
+  const end = displayDateToISO(record.endDate || "");
+  if (!end) return false;
+  return todayIso >= start && todayIso <= end;
+}
+
+// Returns { tag, ghostDay } for the record on the given date, or null if the
+// record doesn't apply at all. ghostDay is 0 for active, 1 or 2 for the post-
+// expiry tag period. Only MC and LD get ghost-tagged; everything else just
+// expires cleanly.
+function medStatusTag(record, todayIso) {
+  todayIso = todayIso || todayISO();
+  if (medStatusActive(record, todayIso)) {
+    return { tag: record.status, ghostDay: 0 };
+  }
+  if (record.status !== "MC" && record.status !== "LD") return null;
+  const end = displayDateToISO(record.endDate || "");
+  if (!end) return null;
+  const offset = daysBetween(end, todayIso);
+  if (offset === 1 || offset === 2) return { tag: `${record.status}+${offset}`, ghostDay: offset };
+  return null;
+}
+
+// Severity rank used to pick the most-restrictive tag when a recruit has
+// multiple records hitting the same day. Higher = more severe.
+function medSeverityRank(tag) {
+  if (tag === "MC" || tag === "Warded") return 100;
+  if (tag === "LD") return 80;
+  if (tag === "RMJ") return 70;
+  if (typeof tag === "string" && tag.startsWith("Excuse")) return 60;
+  if (tag === "MC+1") return 50;
+  if (tag === "MC+2") return 40;
+  if (tag === "LD+1") return 30;
+  if (tag === "LD+2") return 20;
+  if (tag === "Pending") return 10;
+  return 0;
+}
+
+// Walk the medical layer and return the most-severe effective tag per recruit
+// for the given date. Output: array of { d4, record, tag, ghostDay }.
+function currentMedicalEffective(todayIso) {
+  todayIso = todayIso || todayISO();
+  const byD4 = {};
+  STATE.medical.forEach(m => {
+    const t = medStatusTag(m, todayIso);
+    if (!t) return;
+    const existing = byD4[m.d4];
+    if (!existing || medSeverityRank(t.tag) > medSeverityRank(existing.tag)) {
+      byD4[m.d4] = { d4: m.d4, record: m, tag: t.tag, ghostDay: t.ghostDay };
+    }
+  });
+  return Object.values(byD4);
+}
+
+// Inline-styled badge HTML for a medical tag. Uses theme tokens but adds
+// custom shades for MC+2 / LD+2 since the existing badge classes don't cover
+// the gradient between severity tiers.
+function medTagBadge(tag) {
+  const palettes = {
+    "MC":               { bg: "#F8514922", bd: "#F8514944", fg: "var(--red)" },
+    "Warded":           { bg: "#F8514922", bd: "#F8514944", fg: "var(--red)" },
+    "MC+1":             { bg: "#D2992233", bd: "#D2992266", fg: "var(--orange)" },
+    "MC+2":             { bg: "#E3B34122", bd: "#E3B34144", fg: "var(--yellow)" },
+    "LD":               { bg: "#D2992222", bd: "#D2992244", fg: "var(--orange)" },
+    "LD+1":             { bg: "#E3B34122", bd: "#E3B34144", fg: "var(--yellow)" },
+    "LD+2":             { bg: "#E3B34111", bd: "#E3B34133", fg: "#8B7521" },
+    "RMJ":              { bg: "#58A6FF22", bd: "#58A6FF44", fg: "var(--accent)" },
+    "Pending":          { bg: "#8B949E22", bd: "#8B949E44", fg: "var(--muted)" }
+  };
+  const p = palettes[tag] || (typeof tag === "string" && tag.startsWith("Excuse")
+    ? { bg: "#BC8CFF22", bd: "#BC8CFF44", fg: "var(--purple)" }
+    : palettes.Pending);
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:${p.bg};color:${p.fg};border:1px solid ${p.bd}">${tag}</span>`;
+}
+
+// Format a record's date range as "16 May – 20 May (5D)" for display.
+function medDurationLabel(record) {
+  if (record.status === "Pending") return `${record.startDate || ""} · awaiting MO`;
+  if (!record.startDate || !record.endDate) return record.startDate || "";
+  const start = displayDateToISO(record.startDate);
+  const end = displayDateToISO(record.endDate);
+  const days = start && end ? daysBetween(start, end) + 1 : null;
+  return `${record.startDate} – ${record.endDate}${days ? ` (${days}D)` : ""}`;
+}
 const badge = (text, cls) => `<span class="badge badge-${cls}">${text}</span>`;
 const statusBadge = s => badge(s, s === "Active" ? "green" : s === "Warded" ? "red" : "orange");
 const typeBadge = t => badge(t, t === "RSI" ? "orange" : t === "Injury" ? "red" : "yellow");

@@ -21,6 +21,7 @@ function render() {
     case "dashboard": renderDashboard(el); break;
     case "roster": renderRoster(el); break;
     case "attendance": renderAttendance(el); break;
+    case "detail": renderConductDetail(el); break;
     case "medical": renderMedical(el); break;
     case "ippt": renderIPPT(el); break;
     case "rm": renderRM(el); break;
@@ -46,10 +47,22 @@ function renderDashboard(el) {
 
   const scoped = filteredRoster();
   const visible = visibleD4Set();
-  const active = scoped.filter(r => r.status === "Active").length;
-  const scopedMedical = STATE.medical.filter(m => passesFilter(m.d4, visible));
-  // Attendance is a per-conduct aggregate (no recruit linkage), so Avg Part.
-  // stays company-wide even when scoped.
+  const today = todayISO();
+  // Derive non-active personnel from today's effective medical layer. Split
+  // into two groups: currently-out (live status) and recovering (ghost-tagged
+  // +1/+2). The +1/+2 folks ARE functional today, just monitored — they
+  // shouldn't inflate the Non-Active count or sit in the main red table.
+  const effectiveMed = currentMedicalEffective(today).filter(e => passesFilter(e.d4, visible));
+  const effByD4 = Object.fromEntries(effectiveMed.map(e => [e.d4, e]));
+  const liveRows = scoped.filter(r => effByD4[r.id] && effByD4[r.id].ghostDay === 0)
+    .sort((a, b) => medSeverityRank(effByD4[b.id].tag) - medSeverityRank(effByD4[a.id].tag));
+  const recoveringRows = scoped.filter(r => effByD4[r.id] && effByD4[r.id].ghostDay > 0)
+    .sort((a, b) => effByD4[a.id].ghostDay - effByD4[b.id].ghostDay);
+  const active = scoped.length - liveRows.length;
+  // In Camp = Total Str − ATTC. ATTC means physically away (MC or Warded);
+  // LD/RMJ/Excuse/Pending recruits are still in camp, just restricted.
+  const awayFromCamp = liveRows.filter(r => { const t = effByD4[r.id].tag; return t === "MC" || t === "Warded"; }).length;
+  const inCamp = scoped.length - awayFromCamp;
   const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a, c) => a + (c.participating / c.total * 100), 0) / STATE.attendance.length) : 0;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — Attendance figures remain company-wide.</div>` : "";
 
@@ -58,26 +71,39 @@ function renderDashboard(el) {
     ${scopeBanner}
     <div class="stats-row" style="margin-top:12px">
       <div class="stat"><label>Total Str</label><div class="val">${scoped.length}</div></div>
-      <div class="stat"><label>Active</label><div class="val" style="color:var(--green)">${active}</div></div>
-      <div class="stat"><label>MC/LD/RSI</label><div class="val" style="color:var(--red)">${scoped.length - active}</div></div>
-      <div class="stat"><label>Med Events</label><div class="val" style="color:var(--orange)">${scopedMedical.length}</div></div>
+      <div class="stat"><label>Active today</label><div class="val" style="color:var(--green)">${active}</div></div>
+      <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}</div></div>
+      <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}</div></div>
       <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
     </div>
     <div class="grid-2">
-      <div class="card"><h3>Status Breakdown</h3><canvas id="chart-status" height="200"></canvas></div>
+      <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
       <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
     </div>
     ${renderDashProfileCards(scoped)}
-    <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel</h3>
-    <div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Status</th><th>Conditions</th><th>Notes</th></tr></thead><tbody>
-    ${scoped.filter(r => r.status !== "Active").map(r => `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${statusBadge(r.status)}</td><td style="text-align:left">${r.conditions || ""}</td><td style="text-align:left">${r.notes || ""}</td></tr>`).join("")}
-    </tbody></table></div>`;
+    <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel <span style="color:var(--dim);font-weight:400">(live medical status on ${today})</span></h3>
+    ${liveRows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Status today</th><th style="text-align:left">Reason</th><th style="text-align:left">Duration</th></tr></thead><tbody>
+    ${liveRows.map(r => { const e = effByD4[r.id]; return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${medTagBadge(e.tag)}</td><td style="text-align:left;font-size:11px">${e.record.reason || ""}</td><td style="text-align:left;font-size:11px;color:var(--muted)">${medDurationLabel(e.record)}</td></tr>`; }).join("")}
+    </tbody></table></div>` : `<div class="empty-state" style="padding:16px;font-size:12px">All scoped personnel are Active today.</div>`}
+    ${recoveringRows.length ? `<h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">Recovering <span style="color:var(--dim);font-weight:400">(post-MC/LD ghost tag — back to training but monitor)</span></h3>
+    <div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Tag</th><th style="text-align:left">Original</th><th style="text-align:left">Cleared</th></tr></thead><tbody>
+    ${recoveringRows.map(r => { const e = effByD4[r.id]; return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${medTagBadge(e.tag)}</td><td style="text-align:left;font-size:11px;color:var(--muted)">${e.record.status} · ${e.record.reason || ""}</td><td style="text-align:left;font-size:11px;color:var(--muted)">${e.record.endDate || ""}</td></tr>`; }).join("")}
+    </tbody></table></div>` : ""}`;
 
-  const statusCounts = {};
-  scoped.forEach(r => { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
+  // Status Breakdown chart: count by effective tag today, plus Active.
+  const statusCounts = { Active: active };
+  effectiveMed.forEach(e => { statusCounts[e.tag] = (statusCounts[e.tag] || 0) + 1; });
+  const chartColor = label => {
+    if (label === "Active") return "#3FB950";
+    if (label === "MC" || label === "Warded") return "#F85149";
+    if (label === "LD" || label === "MC+1") return "#D29922";
+    if (label === "LD+1" || label === "MC+2") return "#E3B341";
+    if (label === "RMJ" || (typeof label === "string" && label.startsWith("Excuse"))) return "#58A6FF";
+    return "#8B949E";
+  };
   STATE.charts.status = new Chart(document.getElementById("chart-status"), {
     type: "doughnut",
-    data: { labels: Object.keys(statusCounts), datasets: [{ data: Object.values(statusCounts), backgroundColor: Object.keys(statusCounts).map(s => s === "Active" ? "#3FB950" : s === "Warded" ? "#F85149" : s === "RMJ" ? "#E3B341" : "#D29922") }] },
+    data: { labels: Object.keys(statusCounts), datasets: [{ data: Object.values(statusCounts), backgroundColor: Object.keys(statusCounts).map(chartColor) }] },
     options: { plugins: { legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } } } }
   });
 
@@ -160,7 +186,7 @@ function renderAttendance(el) {
         <button class="btn btn-primary" onclick="openAttendanceForm()">+ Log</button>
       </div>
     </div>
-    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>PX</th><th>RSI</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th>By</th><th></th></tr></thead><tbody>
+    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>PX</th><th>RSI</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
     ${STATE.attendance.map(a => {
       const r = pct(a.participating, a.total);
       const lms = +a.lms || 0;
@@ -170,30 +196,172 @@ function renderAttendance(el) {
       // Color thresholds: green ≥95% (excellent), orange 70-94% (watch), red <70% (concern).
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
-      return `<tr><td>${a.date}</td><td style="text-align:left">${a.conduct}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.rsi > 0 ? 'var(--red)' : 'var(--muted)'}">${a.rsi}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td>${a.by || ""}</td><td><button class="btn btn-icon" onclick="openAttendanceForm(${a.id})" title="Edit">✎</button></td></tr>`;
+      return `<tr><td>${a.date}</td><td style="text-align:left">${a.conduct}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.rsi > 0 ? 'var(--red)' : 'var(--muted)'}">${a.rsi}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td><button class="btn btn-icon" onclick="openAttendanceForm(${a.id})" title="Edit">✎</button></td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">No attendance records yet.</div>`}`;
+}
+
+// ── Conduct Detail tab ────────────────────────────────────
+// Filters are module-scope rather than persisted — they reset on reload so a
+// returning user sees the whole picture instead of yesterday's filter state.
+let _detailFilterConduct = "";
+let _detailFilterType = "";
+let _showParticipants = false;
+function setDetailFilterConduct(v) { _detailFilterConduct = v; _showParticipants = false; render(); }
+function setDetailFilterType(v) { _detailFilterType = v; render(); }
+function clearDetailFilters() { _detailFilterConduct = ""; _detailFilterType = ""; _showParticipants = false; render(); }
+function toggleParticipants() { _showParticipants = !_showParticipants; render(); }
+
+// When a single conduct is selected, derive who participated from
+// `roster - absent` (the user's insight: detail rows enumerate absentees, so
+// the inverse gives us the participants for free, no extra data needed).
+function renderDetailParticipantsSummary(scopedAll) {
+  if (!_detailFilterConduct) return "";
+  const conductRecords = scopedAll.filter(d => `${d.date}|${d.time || ""}|${d.conduct}` === _detailFilterConduct);
+  const absentSet = new Set(conductRecords.map(d => d.d4));
+  const inScope = filteredRoster();
+  const participants = inScope.filter(r => !absentSet.has(r.id));
+  const ct = t => conductRecords.filter(d => d.type === t).length;
+  return `
+    <div class="card" style="padding:10px 14px;margin-bottom:12px;background:var(--surface2)">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <span style="color:var(--muted)">This conduct →</span>
+          <strong style="color:var(--green)">Participated: ${participants.length}</strong>
+          <span style="color:var(--muted)"> · </span>
+          <strong style="color:var(--red)">Absent: ${conductRecords.length}</strong>
+          <span style="color:var(--muted)"> (PX ${ct("PX")} · RSI ${ct("RSI")} · Fallout ${ct("Fallout")} · ReportSick ${ct("ReportSick")})</span>
+        </div>
+        <button class="btn" onclick="toggleParticipants()">${_showParticipants ? "▾ Hide" : "▸ Show"} participants (${participants.length})</button>
+      </div>
+      ${_showParticipants ? `<div style="margin-top:10px;display:flex;gap:4px;flex-wrap:wrap">
+        ${participants.length ? participants.map(r => `<button onclick="openPerson('${r.id}')" style="cursor:pointer;font-size:10px;padding:3px 7px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--accent);font-family:'JetBrains Mono',monospace;font-weight:700" title="${escapeAttr(r.name)}">${r.id}</button>`).join("") : `<span style="color:var(--muted);font-size:11px">No participants in current scope</span>`}
+      </div>` : ""}
+    </div>`;
+}
+
+function renderConductDetail(el) {
+  const visible = visibleD4Set();
+  const scopedAll = STATE.conductDetail.filter(d => passesFilter(d.d4, visible));
+  let scoped = scopedAll;
+  if (_detailFilterConduct) scoped = scoped.filter(d => `${d.date}|${d.time || ""}|${d.conduct}` === _detailFilterConduct);
+  if (_detailFilterType) scoped = scoped.filter(d => d.type === _detailFilterType);
+
+  // Unique conduct keys for the dropdown — newest first by parsed date.
+  const conductKeys = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conduct}`))]
+    .filter(Boolean)
+    .sort((a, b) => {
+      const [ad, at] = a.split("|"), [bd, bt] = b.split("|");
+      const ai = displayDateToISO(ad) || ad;
+      const bi = displayDateToISO(bd) || bd;
+      if (ai !== bi) return ai < bi ? 1 : -1;
+      return (at || "") < (bt || "") ? 1 : -1;
+    });
+
+  // Sort the visible records the same way — newest-first feels right when
+  // scanning for "what happened today / yesterday."
+  const rows = [...scoped].sort((a, b) => {
+    const ai = displayDateToISO(a.date) || a.date || "";
+    const bi = displayDateToISO(b.date) || b.date || "";
+    if (ai !== bi) return ai < bi ? 1 : -1;
+    return (a.time || "") < (b.time || "") ? 1 : -1;
+  });
+
+  const cnt = t => scoped.filter(d => d.type === t).length;
+
+  // "Most conducts missed" ignores the conduct/type sub-filter so the ranking
+  // remains a stable view of overall absence within the platoon scope.
+  const missed = {};
+  scopedAll.forEach(d => {
+    const k = `${d.date}|${d.time || ""}|${d.conduct}`;
+    (missed[d.d4] = missed[d.d4] || new Set()).add(k);
+  });
+  const topMissed = Object.entries(missed)
+    .map(([d4, set]) => ({ d4, count: set.size }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const typeBadgeColor = t => t === "PX" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
+  const totalConducts = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conduct}`))].length;
+  const titleSuffix = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scopedAll.length}/${STATE.conductDetail.length}]</span>` : ` (${STATE.conductDetail.length})`;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="font-size:18px;font-weight:700">Conduct Detail${titleSuffix}</h2>
+      <div style="display:flex;gap:8px">
+        <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importConductDetail(this)" style="display:none"></label>
+        <button class="btn btn-success" onclick="pushTab('ConductDetail',STATE.conductDetail)">Push to Sheet</button>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat"><label>PX (pre-existing)</label><div class="val" style="color:var(--orange)">${cnt("PX")}</div></div>
+      <div class="stat"><label>RSI (1st parade)</label><div class="val" style="color:var(--red)">${cnt("RSI")}</div></div>
+      <div class="stat"><label>Fallout (mid-conduct)</label><div class="val" style="color:var(--purple)">${cnt("Fallout")}</div></div>
+      <div class="stat"><label>Reported Sick (mid-day)</label><div class="val" style="color:var(--yellow)">${cnt("ReportSick")}</div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Filter:</span>
+      <select onchange="setDetailFilterConduct(this.value)" class="topbar-select" style="min-width:260px">
+        <option value="">All conducts (${totalConducts})</option>
+        ${conductKeys.map(k => { const [dt, tm, cn] = k.split("|"); return `<option value="${escapeAttr(k)}" ${k === _detailFilterConduct ? "selected" : ""}>${dt}${tm ? " " + tm : ""} — ${cn}</option>`; }).join("")}
+      </select>
+      <select onchange="setDetailFilterType(this.value)" class="topbar-select">
+        <option value="">All types</option>
+        ${["PX","RSI","Fallout","ReportSick"].map(t => `<option value="${t}" ${t === _detailFilterType ? "selected" : ""}>${t}</option>`).join("")}
+      </select>
+      ${(_detailFilterConduct || _detailFilterType) ? `<button class="btn" onclick="clearDetailFilters()">Reset</button>` : ""}
+    </div>
+    ${renderDetailParticipantsSummary(scopedAll)}
+    <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
+      <div>
+        ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th style="text-align:left">Conduct</th><th>4D</th><th style="text-align:left">Name</th><th>Type</th><th style="text-align:left">Reason</th></tr></thead><tbody>
+        ${rows.map(d => `<tr onclick="openPerson('${d.d4}')" style="cursor:pointer"><td>${d.date || ""}</td><td class="mono">${d.time || "—"}</td><td style="text-align:left">${d.conduct || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${d.d4}</td><td style="text-align:left">${getName(d.d4)}</td><td>${badge(d.type, typeBadgeColor(d.type))}</td><td style="text-align:left;max-width:280px;white-space:normal;font-size:11px">${d.reason || ""}</td></tr>`).join("")}
+        </tbody></table></div>` : `<div class="empty-state">${STATE.conductDetail.length ? "No records match current filter." : "No conduct detail records yet. Import sample_conduct_detail.csv via the Import CSV button above."}</div>`}
+      </div>
+      <div class="card">
+        <h3>Most Conducts Missed${isFilterActive() ? ` <span style="color:var(--accent);font-weight:400;font-size:10px">in ${filterLabel()}</span>` : ""}</h3>
+        ${topMissed.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
+          ${topMissed.map(m => `<div onclick="openPerson('${m.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px">
+            <span><span class="mono" style="color:var(--accent);font-weight:700">${m.d4}</span> ${getName(m.d4)}</span>
+            <span class="mono" style="font-weight:700;color:${m.count >= 5 ? "var(--red)" : m.count >= 3 ? "var(--orange)" : "var(--muted)"}">${m.count}</span>
+          </div>`).join("")}
+        </div>` : `<div style="color:var(--muted);font-size:12px">No data yet</div>`}
+      </div>
+    </div>`;
 }
 
 function renderMedical(el) {
   const visible = visibleD4Set();
   const scoped = STATE.medical.filter(m => passesFilter(m.d4, visible));
+  const today = todayISO();
+  // Per-row "tag today" reflects whether the status is currently active, in
+  // its +1/+2 ghost window, or fully cleared.
+  const rowsWithTag = scoped.map(m => ({ m, tagInfo: medStatusTag(m, today) }));
+  // Sort newest first by startDate (fallback to date logged).
+  rowsWithTag.sort((a, b) => {
+    const ai = displayDateToISO(a.m.startDate || a.m.date) || "";
+    const bi = displayDateToISO(b.m.startDate || b.m.date) || "";
+    return ai < bi ? 1 : ai > bi ? -1 : 0;
+  });
+  const activeCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0).length;
+  const ghostCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0).length;
+  const pendingCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.tag === "Pending").length;
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-size:18px;font-weight:700">Medical &amp; Injury Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
+      <h2 style="font-size:18px;font-weight:700">Medical Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
         <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)">Push to Sheet</button>
-        <button class="btn btn-primary" onclick="openMedicalForm()">+ Report</button>
+        <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Status</button>
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat"><label>Total</label><div class="val" style="color:var(--red)">${scoped.length}</div></div>
-      <div class="stat"><label>RSI</label><div class="val" style="color:var(--orange)">${scoped.filter(m => m.type === "RSI").length}</div></div>
-      <div class="stat"><label>Injury</label><div class="val" style="color:var(--red)">${scoped.filter(m => m.type === "Injury").length}</div></div>
-      <div class="stat"><label>Pending</label><div class="val" style="color:var(--purple)">${scoped.filter(m => m.status === "Pending").length}</div></div>
+      <div class="stat"><label>Total records</label><div class="val">${scoped.length}</div></div>
+      <div class="stat"><label>Active today</label><div class="val" style="color:var(--red)">${activeCount}</div></div>
+      <div class="stat"><label>Ghost-tagged</label><div class="val" style="color:var(--orange)">${ghostCount}</div></div>
+      <div class="stat"><label>Pending (awaiting MO)</label><div class="val" style="color:var(--muted)">${pendingCount}</div></div>
     </div>
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>4D</th><th>Name</th><th>Type</th><th>Reason</th><th>Status</th><th>Missed</th><th></th></tr></thead><tbody>
-    ${scoped.map(m => `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date}</td><td class="mono" style="font-weight:700;color:var(--accent)">${m.d4}</td><td style="text-align:left">${getName(m.d4)}</td><td>${typeBadge(m.type)}</td><td style="text-align:left">${m.reason}</td><td>${badge(m.status || "-", m.status === "Pending" ? "purple" : "orange")}</td><td style="text-align:left">${m.conductMissed || ""}</td><td><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button></td></tr>`).join("")}
+    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Logged</th><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Status</th><th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
+    ${rowsWithTag.map(({ m, tagInfo }) => `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${m.d4}</td><td style="text-align:left">${getName(m.d4)}</td><td style="text-align:left">${m.reason || ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || ""}</td><td>${m.endDate || (m.status === "Pending" ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.medical.length ? `No medical records in ${filterLabel()}.` : "No medical records yet."}</div>`}`;
 }
 

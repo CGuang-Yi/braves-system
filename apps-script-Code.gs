@@ -37,7 +37,14 @@
  *               (the column may be named "4d" or "id" — the frontend mirrors
  *                whichever is present into r.id at pull time. height in cm,
  *                weight in kg — BMI is computed client-side.)
- *   Medical:    id | d4 | date | type | reason | status | duration | excuses | conductMissed
+ *   Medical:    id | d4 | date | reason | status | startDate | endDate
+ *               (status ∈ {MC, Warded, LD, RMJ, Excuse Heavy Load,
+ *                Excuse Kneeling, Excuse Squatting, Excuse Uniform,
+ *                Excuse RMJ, Pending}. startDate/endDate are display-format
+ *                dates ("16 May 2026") and BOTH ENDS ARE INCLUSIVE.
+ *                Pending may have no endDate.
+ *                After endDate, MC and LD get a 2-day "ghost" tag (MC+1,
+ *                MC+2, LD+1, LD+2) computed client-side — not stored.)
  *   Attendance: id | date | conduct | total | participating | lms | px | rsi | fallout | remarks | by
  *               (lms = how many of the participating recruits attended LMS for this conduct;
  *                LMS participation rate = lms / participating, computed client-side)
@@ -46,6 +53,15 @@
  *   RouteMarch: id | d4 | rmNum | date | time | avgHr | maxHr | pass
  *   SOC:        id | d4 | socNum | date | time | avgHr | pass
  *   PolarFlow:  id | d4 | conduct | date | avgHr | maxHr | minHr | z1 | z2 | z3 | z4 | z5 | calories | trainingLoad | recovery | duration | distance
+ *   ConductDetail: id | date | time | conduct | d4 | type | reason
+ *               (one row per non-participating recruit per conduct.
+ *                type ∈ {PX, RSI, Fallout, ReportSick}:
+ *                  PX         = pre-existing status before the conduct (MC/LD/RMJ);
+ *                  RSI        = reporting sick at first parade that morning;
+ *                  Fallout    = dropped out during the conduct itself;
+ *                  ReportSick = sent to MO mid-day after the conduct.
+ *                Aggregates in the Attendance sheet should match the
+ *                per-conduct totals of these rows.)
  */
 
 var FRONTEND_BASE_URL = "https://coon-hound.github.io/cougar-system/";
@@ -257,7 +273,8 @@ function readAllTabs() {
     "IPPT": "ippt",
     "RouteMarch": "rm",
     "SOC": "soc",
-    "PolarFlow": "polar"
+    "PolarFlow": "polar",
+    "ConductDetail": "conductDetail"
   };
 
   var result = {};
