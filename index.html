@@ -33,10 +33,14 @@
   </div>
 </div>
 
+<!-- Mobile backdrop: shown when sidebar is open on phone screens; tap to close. -->
+<div id="sidebar-backdrop" class="hidden"></div>
+
 <!-- MAIN -->
 <div id="main">
   <div id="topbar">
-    <span>🔍</span>
+    <button id="mobile-nav-toggle" aria-label="Open menu">☰</button>
+    <span class="topbar-search-icon">🔍</span>
     <input id="search-input" placeholder="Search 4D or Name...">
     <div id="search-results" style="display:flex;gap:4px;flex-wrap:wrap"></div>
     <div id="topbar-filters">

@@ -7,8 +7,23 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     btn.classList.add("active");
     STATE.nav = btn.dataset.nav;
     render();
+    // On mobile, navigating to a new tab should auto-close the slide-out menu
+    // so the user isn't left staring at the sidebar overlay.
+    closeMobileSidebar();
   });
 });
+
+// ── Mobile sidebar toggle ────────────────────────────────
+function openMobileSidebar() {
+  document.getElementById("sidebar")?.classList.add("open");
+  document.getElementById("sidebar-backdrop")?.classList.remove("hidden");
+}
+function closeMobileSidebar() {
+  document.getElementById("sidebar")?.classList.remove("open");
+  document.getElementById("sidebar-backdrop")?.classList.add("hidden");
+}
+document.getElementById("mobile-nav-toggle")?.addEventListener("click", openMobileSidebar);
+document.getElementById("sidebar-backdrop")?.addEventListener("click", closeMobileSidebar);
 
 document.getElementById("search-input").addEventListener("input", e => {
   const q = e.target.value.toLowerCase();

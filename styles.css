@@ -80,15 +80,79 @@ tr:hover{background:var(--surface2)}
 .sync-log{max-height:160px;overflow-y:auto;font-size:11px;font-family:'JetBrains Mono',monospace}
 .sync-log div{padding:2px 0;border-bottom:1px solid var(--border)}
 
-@media(max-width:768px){
-  #sidebar{width:60px}
-  .nav-btn span:last-child{display:none}
-  .grid-2{grid-template-columns:1fr}
-  .form-row{grid-template-columns:1fr}
-}
+/* Hamburger button — only shown on mobile via the media query below. */
+#mobile-nav-toggle{display:none;background:none;border:none;color:var(--text);font-size:22px;cursor:pointer;padding:4px 10px;line-height:1}
+#sidebar-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:150}
 
 /* Empty state */
 .empty-state{padding:40px;text-align:center;color:var(--muted)}
 
 /* Inline edit button on table rows */
 .btn-icon{padding:2px 8px;font-size:14px;line-height:1.2;min-width:0}
+
+/* ── Mobile (≤768px) ───────────────────────────────────────
+   Sidebar slides in from the left over the content, triggered by the
+   hamburger. Backdrop catches taps outside the menu to close. Topbar
+   reflows so search + scope selectors stack instead of overflowing. Tables,
+   modals, and stat cards all scale down for phone use. */
+@media(max-width:768px){
+  body{font-size:14px}
+
+  /* Sidebar: hidden by default, slides in when .open is added */
+  #sidebar{position:fixed;top:0;left:-260px;width:240px;height:100vh;z-index:200;transition:left .22s ease-out;box-shadow:2px 0 16px rgba(0,0,0,.6)}
+  #sidebar.open{left:0}
+  .nav-btn{font-size:14px;padding:14px 16px}  /* bigger tap target */
+  .nav-btn span:last-child{display:inline}    /* show labels on mobile menu */
+  #sidebar-footer{font-size:11px;padding:14px}
+
+  /* Hamburger visible, backdrop ready to be revealed */
+  #mobile-nav-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px}
+
+  /* Topbar reflows into two rows: search row + filters row */
+  #topbar{flex-wrap:wrap;padding:8px 12px;gap:8px}
+  #topbar .topbar-search-icon{display:none}  /* save space; the input has its own placeholder */
+  #topbar input{flex:1 1 100%;max-width:none;font-size:14px;padding:10px 12px}
+  #search-results{order:3;flex-basis:100%}
+  #topbar-filters{margin-left:0;width:100%;order:2}
+  #topbar-filters .filter-label{display:none}  /* implicit from context */
+  .topbar-select{flex:1;min-width:0;padding:10px 8px;font-size:14px}
+
+  /* Content area */
+  #content{padding:12px}
+
+  /* Stat cards: 2-up on mobile, larger touch */
+  .stats-row{gap:8px;margin-bottom:14px}
+  .stat{flex:1 1 calc(50% - 4px);min-width:0;padding:10px 12px}
+  .stat .val{font-size:18px}
+
+  /* Card spacing */
+  .card{padding:12px;margin-bottom:12px}
+
+  /* Tables: horizontal scroll already enabled; tighten cell padding */
+  th,td{padding:6px 8px;font-size:11px}
+  .table-wrap{max-height:none}
+
+  /* Buttons: minimum 36px height for thumb targets */
+  .btn{padding:10px 14px;font-size:13px;min-height:36px}
+  .btn-icon{min-width:36px;min-height:36px;padding:6px 10px}
+
+  /* Forms */
+  .form-group input,.form-group select,.form-group textarea{padding:10px 12px;font-size:14px}
+  .form-row{grid-template-columns:1fr}
+
+  /* Modal: full-screen on phones */
+  .modal-overlay{padding:0;align-items:stretch;justify-content:stretch}
+  .modal,.modal.wide{max-width:100%;width:100%;max-height:100vh;height:100vh;border-radius:0;padding:16px;border-left:none;border-right:none;border-bottom:none}
+
+  /* Two-col grids collapse */
+  .grid-2{grid-template-columns:1fr;gap:12px}
+
+  /* Status doughnut + participation bar charts a little shorter on mobile */
+  #chart-status,#chart-participation{max-height:180px}
+
+  /* Sync panel padding */
+  .sync-panel{padding:14px}
+
+  /* iOS Safari select arrow override — make sure selects look tappable */
+  select.topbar-select,.form-group select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:28px}
+}
