@@ -354,24 +354,49 @@ function renderMedical(el) {
   });
   const activeCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0).length;
   const ghostCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0).length;
-  const pendingCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.tag === "Pending").length;
+  const pendingCount = scoped.filter(m => m.status === "Pending").length;
+  const nilCount = scoped.filter(m => m.status === "NIL").length;
+
+  // Leaderboard: count report-sick events per recruit within the scope.
+  // Each medical row IS a report-sick event, so this is a straight tally.
+  const rsCounts = {};
+  scoped.forEach(m => { rsCounts[m.d4] = (rsCounts[m.d4] || 0) + 1; });
+  const topReporters = Object.entries(rsCounts)
+    .map(([d4, count]) => ({ d4, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-size:18px;font-weight:700">Medical Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
+      <h2 style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
         <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)">Push to Sheet</button>
-        <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Status</button>
+        <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Report Sick</button>
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat"><label>Total records</label><div class="val">${scoped.length}</div></div>
+      <div class="stat"><label>Total report sicks</label><div class="val">${scoped.length}</div></div>
       <div class="stat"><label>Active today</label><div class="val" style="color:var(--red)">${activeCount}</div></div>
-      <div class="stat"><label>Ghost-tagged</label><div class="val" style="color:var(--orange)">${ghostCount}</div></div>
-      <div class="stat"><label>Pending (awaiting MO)</label><div class="val" style="color:var(--muted)">${pendingCount}</div></div>
+      <div class="stat"><label>Recovering</label><div class="val" style="color:var(--orange)">${ghostCount}</div></div>
+      <div class="stat"><label>Pending</label><div class="val" style="color:var(--muted)">${pendingCount}</div></div>
+      <div class="stat"><label>NIL (cleared)</label><div class="val" style="color:var(--green)">${nilCount}</div></div>
     </div>
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Logged</th><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Status</th><th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-    ${rowsWithTag.map(({ m, tagInfo }) => `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${m.d4}</td><td style="text-align:left">${getName(m.d4)}</td><td style="text-align:left">${m.reason || ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || ""}</td><td>${m.endDate || (m.status === "Pending" ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.medical.length ? `No medical records in ${filterLabel()}.` : "No medical records yet."}</div>`}`;
+    <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
+      <div>
+        ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Reported</th><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Status</th><th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
+        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${m.d4}</td><td style="text-align:left">${getName(m.d4)}</td><td style="text-align:left">${m.reason || ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        </tbody></table></div>` : `<div class="empty-state">${STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet."}</div>`}
+      </div>
+      <div class="card">
+        <h3>Most Reports Sick${isFilterActive() ? ` <span style="color:var(--accent);font-weight:400;font-size:10px">in ${filterLabel()}</span>` : ""}</h3>
+        ${topReporters.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
+          ${topReporters.map(r => `<div onclick="openPerson('${r.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px">
+            <span><span class="mono" style="color:var(--accent);font-weight:700">${r.d4}</span> ${getName(r.d4)}</span>
+            <span class="mono" style="font-weight:700;color:${r.count >= 5 ? "var(--red)" : r.count >= 3 ? "var(--orange)" : "var(--muted)"}">${r.count}</span>
+          </div>`).join("")}
+        </div>` : `<div style="color:var(--muted);font-size:12px">No data yet</div>`}
+      </div>
+    </div>`;
 }
 
 function renderIPPT(el) {

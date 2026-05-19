@@ -97,14 +97,19 @@ function deleteEntry(arrayName, id, label) {
 }
 
 // ── Medical status enum ──────────────────────────────────
-// Only these are recognized as official statuses (drawn from what actually
-// appears in parade states). "RSI" / "Injury" are event categories, not
-// statuses, and are no longer stored.
+// Every medical record represents a "report sick" event. `date` captures
+// when the recruit reported sick. `status` is the outcome from the MO.
+// Only these statuses are official:
+//   • MC / Warded — away from camp
+//   • LD / RMJ / Excuse X — in camp, restricted
+//   • Pending — reported sick, MO outcome not yet known
+//   • NIL — MO seen, no status issued (recruit back to active)
 const MED_STATUS_GROUPS = [
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
   { label: "In camp, restricted",     options: ["LD", "RMJ"] },
   { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ"] },
-  { label: "Awaiting MO",             options: ["Pending"] }
+  { label: "Awaiting MO",             options: ["Pending"] },
+  { label: "Cleared by MO",           options: ["NIL"] }
 ];
 const MED_STATUSES = MED_STATUS_GROUPS.flatMap(g => g.options);
 
@@ -120,10 +125,12 @@ function daysBetween(isoA, isoB) {
 
 // Is this medical record's status active on the given ISO date?
 // Active = today ∈ [startDate, endDate] inclusive on both ends. Pending is
-// treated as active only on its startDate (one-day visibility).
+// treated as active only on its startDate (one-day visibility). NIL is
+// never active — MO cleared the recruit, they're back to normal.
 function medStatusActive(record, todayIso) {
   todayIso = todayIso || todayISO();
-  const start = displayDateToISO(record.startDate || "");
+  if (record.status === "NIL") return false;
+  const start = displayDateToISO(record.startDate || record.date || "");
   if (!start) return false;
   if (record.status === "Pending") return todayIso === start;
   const end = displayDateToISO(record.endDate || "");
@@ -192,7 +199,8 @@ function medTagBadge(tag) {
     "LD+1":             { bg: "#E3B34122", bd: "#E3B34144", fg: "var(--yellow)" },
     "LD+2":             { bg: "#E3B34111", bd: "#E3B34133", fg: "#8B7521" },
     "RMJ":              { bg: "#58A6FF22", bd: "#58A6FF44", fg: "var(--accent)" },
-    "Pending":          { bg: "#8B949E22", bd: "#8B949E44", fg: "var(--muted)" }
+    "Pending":          { bg: "#8B949E22", bd: "#8B949E44", fg: "var(--muted)" },
+    "NIL":              { bg: "#3FB95022", bd: "#3FB95044", fg: "var(--green)" }
   };
   const p = palettes[tag] || (typeof tag === "string" && tag.startsWith("Excuse")
     ? { bg: "#BC8CFF22", bd: "#BC8CFF44", fg: "var(--purple)" }
@@ -202,7 +210,8 @@ function medTagBadge(tag) {
 
 // Format a record's date range as "16 May – 20 May (5D)" for display.
 function medDurationLabel(record) {
-  if (record.status === "Pending") return `${record.startDate || ""} · awaiting MO`;
+  if (record.status === "Pending") return `${record.startDate || record.date || ""} · awaiting MO`;
+  if (record.status === "NIL") return `${record.date || record.startDate || ""} · MO cleared, no status`;
   if (!record.startDate || !record.endDate) return record.startDate || "";
   const start = displayDateToISO(record.startDate);
   const end = displayDateToISO(record.endDate);

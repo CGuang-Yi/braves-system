@@ -38,13 +38,16 @@
  *                whichever is present into r.id at pull time. height in cm,
  *                weight in kg — BMI is computed client-side.)
  *   Medical:    id | d4 | date | reason | status | startDate | endDate
- *               (status ∈ {MC, Warded, LD, RMJ, Excuse Heavy Load,
- *                Excuse Kneeling, Excuse Squatting, Excuse Uniform,
- *                Excuse RMJ, Pending}. startDate/endDate are display-format
- *                dates ("16 May 2026") and BOTH ENDS ARE INCLUSIVE.
- *                Pending may have no endDate.
- *                After endDate, MC and LD get a 2-day "ghost" tag (MC+1,
- *                MC+2, LD+1, LD+2) computed client-side — not stored.)
+ *               (Each row represents a "report sick" event — `date` is the
+ *                date the recruit reported sick. status ∈ {MC, Warded, LD,
+ *                RMJ, Excuse Heavy Load, Excuse Kneeling, Excuse Squatting,
+ *                Excuse Uniform, Excuse RMJ, Pending, NIL}.
+ *                NIL = MO saw the recruit and cleared them with no status.
+ *                startDate/endDate are display-format dates ("16 May 2026")
+ *                and BOTH ENDS ARE INCLUSIVE. Pending and NIL may have no
+ *                startDate/endDate. After endDate, MC and LD get a 2-day
+ *                "ghost" tag (MC+1, MC+2, LD+1, LD+2) computed client-side
+ *                — not stored.)
  *   Attendance: id | date | conduct | total | participating | lms | px | rsi | fallout | remarks | by
  *               (lms = how many of the participating recruits attended LMS for this conduct;
  *                LMS participation rate = lms / participating, computed client-side)

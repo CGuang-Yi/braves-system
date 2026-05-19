@@ -265,13 +265,13 @@ function openMedicalForm(id) {
   const statusOptions = MED_STATUS_GROUPS.map(g =>
     `<optgroup label="${g.label}">${g.options.map(o => `<option value="${o}" ${o === selectedStatus ? "selected" : ""}>${o}</option>`).join("")}</optgroup>`
   ).join("");
-  openModal(e ? "Edit Medical Status" : "Log Medical Status", `
+  openModal(e ? "Edit Report Sick Entry" : "Log Report Sick", `
     <form onsubmit="event.preventDefault(); submitMedical(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
         ${e ? editHint : ""}
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formField("f-date", "Date Logged", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
+        ${formField("f-date", "Date Reported Sick", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
         ${formField("f-reason", "Reason", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
         <div class="form-group">
           <label>Status</label>
@@ -281,10 +281,10 @@ function openMedicalForm(id) {
           </select>
         </div>
         <div class="form-row">
-          ${formField("f-start", "Start (inclusive)", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31"`)}
+          ${formField("f-start", "Start (inclusive)", "date", "", `value="${startVal}" min="2020-01-01" max="2099-12-31"`)}
           ${formField("f-end", "End (inclusive)", "date", "", `value="${endVal}" min="2020-01-01" max="2099-12-31"`)}
         </div>
-        <div style="font-size:10px;color:var(--muted)">End date can be left blank only for <strong>Pending</strong>. For everything else it's required.</div>
+        <div style="font-size:10px;color:var(--muted)">Start and end dates can be left blank for <strong>Pending</strong> (MO outcome unknown) and <strong>NIL</strong> (MO cleared, no status). Required for everything else.</div>
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
     </form>`);
@@ -294,7 +294,8 @@ function submitMedical() {
   const status = gv("f-status");
   const startIso = gv("f-start");
   const endIso = gv("f-end");
-  if (status !== "Pending" && !endIso) { alert("End date is required for all statuses except Pending."); return; }
+  const noDurationStatuses = ["Pending", "NIL"];
+  if (!noDurationStatuses.includes(status) && !endIso) { alert("End date is required for all statuses except Pending and NIL."); return; }
   if (endIso && startIso && endIso < startIso) { alert("End date cannot be before start date."); return; }
   const entry = {
     id: editId || nextId(),
