@@ -19,7 +19,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 
 /* Main */
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-#topbar{padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;gap:10px;align-items:center}
+#topbar{padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;gap:10px;align-items:center;position:sticky;top:0;z-index:50;flex-shrink:0}
 #topbar input{flex:1;max-width:350px;padding:7px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit;font-size:12px;outline:none}
 #topbar-filters{margin-left:auto;display:flex;gap:6px;align-items:center}
 #topbar-filters .filter-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600}
@@ -75,8 +75,12 @@ tr:hover{background:var(--surface2)}
    recompute is what was breaking the modal's overflow:auto scroll. */
 .chart-box{position:relative;height:140px}
 .chart-box.tall{height:160px}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-.modal-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
+/* Modal header is sticky inside the modal's scrollable area so the title
+   and ✕ close button stay reachable no matter how far you've scrolled.
+   Surface background makes it opaque so content scrolling underneath
+   doesn't bleed through. */
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;position:sticky;top:0;background:var(--surface);z-index:10;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.modal-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;min-width:36px;min-height:36px;line-height:1}
 .hidden{display:none!important}
 
 /* Sync */
@@ -144,12 +148,23 @@ tr:hover{background:var(--surface2)}
   .form-group input,.form-group select,.form-group textarea{padding:10px 12px;font-size:14px}
   .form-row{grid-template-columns:1fr}
 
-  /* Modal: full-screen on phones */
+  /* Modal: full-screen on phones. Use 100dvh so it sizes to the visible
+     viewport (not behind iOS's toolbar). Bottom padding ensures the last
+     bit of content is reachable when iOS's bottom toolbar appears. Top
+     padding pulls the sticky header up to the very edge. */
   .modal-overlay{padding:0;align-items:stretch;justify-content:stretch}
-  .modal,.modal.wide{max-width:100%;width:100%;max-height:100vh;height:100vh;border-radius:0;padding:16px;border-left:none;border-right:none;border-bottom:none}
+  .modal,.modal.wide{max-width:100%;width:100%;max-height:100vh;max-height:100dvh;height:100vh;height:100dvh;border-radius:0;padding:16px 16px 80px;border-left:none;border-right:none;border-bottom:none}
+  /* On mobile the sticky header should hug the modal top edge, so pull its
+     background out to cover the full width. */
+  .modal-header{margin:-16px -16px 12px;padding:16px 16px 10px}
 
-  /* Two-col grids collapse */
-  .grid-2{grid-template-columns:1fr;gap:12px}
+  /* Two-col grids collapse — !important defeats any inline style override
+     coming from openPerson's chart grid, and min-width:0 on children lets
+     grid items actually shrink instead of refusing to narrow past their
+     intrinsic content size. */
+  .grid-2{grid-template-columns:1fr!important;gap:12px}
+  .grid-2 > *{min-width:0}
+  .grid-2 > *[style*="grid-column"]{grid-column:auto!important}  /* span 2 etc → just full width on mobile */
 
   /* Status doughnut + participation bar charts a little shorter on mobile */
   #chart-status,#chart-participation{max-height:180px}
