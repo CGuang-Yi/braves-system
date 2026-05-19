@@ -355,7 +355,6 @@ function renderMedical(el) {
   const activeCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0).length;
   const ghostCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0).length;
   const pendingCount = scoped.filter(m => m.status === "Pending").length;
-  const nilCount = scoped.filter(m => m.status === "NIL").length;
 
   // Leaderboard: count report-sick events per recruit within the scope.
   // Each medical row IS a report-sick event, so this is a straight tally.
@@ -379,7 +378,6 @@ function renderMedical(el) {
       <div class="stat"><label>Active today</label><div class="val" style="color:var(--red)">${activeCount}</div></div>
       <div class="stat"><label>Recovering</label><div class="val" style="color:var(--orange)">${ghostCount}</div></div>
       <div class="stat"><label>Pending</label><div class="val" style="color:var(--muted)">${pendingCount}</div></div>
-      <div class="stat"><label>NIL (cleared)</label><div class="val" style="color:var(--green)">${nilCount}</div></div>
     </div>
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
