@@ -74,6 +74,28 @@ function checkCols(headers, required) {
 
 const getAward = s => { if (!s || s === 0) return "N/A"; if (s >= 85) return "Gold"; if (s >= 75) return "Silver"; if (s >= 61) return "Pass"; return "Fail"; };
 
+// Unique, sorted list of every conduct name the system has ever seen —
+// pulled from both Attendance and ConductDetail so the two tabs share a
+// single autocomplete list. Used to populate <datalist> in the entry forms,
+// which means "the conduct name will be saved as a conduct in the list"
+// happens implicitly: log a new conduct once, it shows up in future picks.
+function getAllConducts() {
+  const set = new Set();
+  STATE.attendance.forEach(a => { if (a.conduct) set.add(a.conduct); });
+  STATE.conductDetail.forEach(d => { if (d.conduct) set.add(d.conduct); });
+  return [...set].sort();
+}
+
+// Generic delete: removes a row from STATE[arrayName] by id with a confirm
+// prompt. Local-only — propagating the delete to the Google Sheet requires
+// a Push to Sheet (writeTab rewrites the sheet from STATE).
+function deleteEntry(arrayName, id, label) {
+  if (!confirm(`Delete this ${label || "entry"}?\n\nThis change is local. Hit Push to Sheet on the tab to sync the deletion to the Google Sheet.`)) return;
+  STATE[arrayName] = STATE[arrayName].filter(x => x.id !== id);
+  saveLocal();
+  render();
+}
+
 // ── Medical status enum ──────────────────────────────────
 // Only these are recognized as official statuses (drawn from what actually
 // appears in parade states). "RSI" / "Injury" are event categories, not

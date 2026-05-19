@@ -31,7 +31,7 @@
  *    open the printed URL on the device that needs access.
  *
  * SHEET TABS REQUIRED (create with headers in Row 1):
- *   Roster:     4d | name | age | status | conditions | notes | phone | email |
+ *   Roster:     4d | name | age | status | notes | phone | email |
  *               ration | allergies | msk | highest education level |
  *               motorcycle license | height | weight
  *               (the column may be named "4d" or "id" — the frontend mirrors

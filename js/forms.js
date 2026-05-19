@@ -40,7 +40,6 @@ function openPerson(d4) {
   const latest = computed[computed.length - 1];
 
   let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.id} — ${statusBadge(p.status)}</div>`;
-  if (p.conditions) html += `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--red)">Pre-existing: ${p.conditions}</div>`;
 
   // ── Profile section ──────────────────────────────────
   const bmi = calcBMI(p);
@@ -327,7 +326,11 @@ function openAttendanceForm(id) {
       <div style="display:flex;flex-direction:column;gap:10px">
         ${e ? editHint : ""}
         ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
-        ${formField("f-conduct", "Conduct", "text", "Metabolic Circuit 2", `required maxlength="100" value="${escapeAttr(e?.conduct)}"`)}
+        <div class="form-group">
+          <label>Conduct</label>
+          <input id="f-conduct" type="text" list="conduct-options" placeholder="Metabolic Circuit 2" required maxlength="100" value="${escapeAttr(e?.conduct)}">
+          <datalist id="conduct-options">${getAllConducts().map(c => `<option value="${escapeAttr(c)}">`).join("")}</datalist>
+        </div>
         <div class="form-row">
           ${formField("f-total", "Total Str", "number", "", `required min="0" max="999" step="1"${numVal(e?.total)}`)}
           ${formField("f-part", "Participating", "number", "", `required min="0" max="999" step="1"${numVal(e?.participating)}`)}
@@ -544,21 +547,47 @@ function importPolar(input) {
     saveLocal(); render(); alert(`Imported ${r.data.length} Polar rows`);
   } }); input.value = "";
 }
-function importConductDetail(input) {
-  Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => {
-    const missing = checkCols(r.meta.fields, ["4D", "Date", "Conduct", "Type", "Reason"]);
-    if (missing.length) { alert("CSV missing required columns: " + missing.join(", ") + "\n\nExpected: 4D, Date, Time, Conduct, Type, Reason"); return; }
-    r.data.forEach(row => STATE.conductDetail.push({
-      id: nextId(),
-      date: col(row, "Date", "date"),
-      time: col(row, "Time", "time"),
-      conduct: col(row, "Conduct", "conduct", "Activity"),
-      d4: col(row, "4D", "id", "d4"),
-      type: col(row, "Type", "type"),
-      reason: col(row, "Reason", "reason")
-    }));
-    saveLocal(); render(); alert(`Imported ${r.data.length} conduct detail rows`);
-  } }); input.value = "";
+function openConductDetailForm(id) {
+  const e = id ? STATE.conductDetail.find(x => x.id === id) : null;
+  const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
+  openModal(e ? "Edit Conduct Detail" : "Log Conduct Detail", `
+    <form onsubmit="event.preventDefault(); submitConductDetail(); return false">
+      <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${e ? editHint : ""}
+        ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
+        ${formField("f-time", "Time (optional)", "text", "0730", `maxlength="10" value="${escapeAttr(e?.time)}"`)}
+        <div class="form-group">
+          <label>Conduct</label>
+          <input id="f-conduct" type="text" list="conduct-options" placeholder="Oregon Circuit" required maxlength="100" value="${escapeAttr(e?.conduct)}">
+          <datalist id="conduct-options">${getAllConducts().map(c => `<option value="${escapeAttr(c)}">`).join("")}</datalist>
+        </div>
+        <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
+        ${formSelect("f-type", "Type", [["PX", "PX (pre-existing)"], ["RSI", "RSI (1st parade)"], ["Fallout", "Fallout (mid-conduct)"], ["ReportSick", "Reported Sick (mid-day)"]], true, e?.type || "")}
+        ${formField("f-reason", "Reason", "text", "Sprained ankle / Fever / Shin splint...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
+        <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
+      </div>
+    </form>`);
+}
+function submitConductDetail() {
+  const editId = +gv("f-entry-id");
+  const entry = {
+    id: editId || nextId(),
+    date: isoToDisplayDate(gv("f-date")),
+    time: gv("f-time"),
+    conduct: gv("f-conduct"),
+    d4: gv("f-d4"),
+    type: gv("f-type"),
+    reason: gv("f-reason")
+  };
+  if (editId) {
+    const idx = STATE.conductDetail.findIndex(d => d.id === editId);
+    if (idx >= 0) STATE.conductDetail[idx] = entry;
+  } else {
+    STATE.conductDetail.push(entry);
+  }
+  saveLocal(); closeModal(); render();
+  if (!editId && STATE.apiUrl) API.appendRow("ConductDetail", entry).catch(() => {});
 }
 
 function importBackup(input) {

@@ -27,9 +27,13 @@ const STATE = {
 
 // Sheet column is "4d" (preserved verbatim by Apps Script readTab), but the
 // rest of the codebase has always used r.id. Mirror the value into r.id at
-// every entry point so callers don't have to think about it. Idempotent.
+// every entry point so callers don't have to think about it. Also strip
+// legacy `conditions` field so it never round-trips back to the sheet.
 function normalizeRoster(roster) {
-  return (roster || []).map(r => ({ ...r, id: r.id || r["4d"] || r["4D"] || "" }));
+  return (roster || []).map(r => {
+    const { conditions, ...rest } = r;
+    return { ...rest, id: rest.id || rest["4d"] || rest["4D"] || "" };
+  });
 }
 
 // Coerce every Medical record to the full current schema. Two reasons:
