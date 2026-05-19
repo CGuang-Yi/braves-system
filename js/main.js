@@ -26,8 +26,13 @@ document.getElementById("mobile-nav-toggle")?.addEventListener("click", openMobi
 document.getElementById("sidebar-backdrop")?.addEventListener("click", closeMobileSidebar);
 
 // ── Auto-hide topbar on scroll-down, restore on scroll-up ────────────
-// Pure transform — no layout shift, no jumping when iOS rubber-bands at
-// the bottom. requestAnimationFrame keeps the scroll handler cheap.
+// Uses negative margin-top so the topbar's space actually collapses and
+// #content reclaims it — vs transform which only hides the topbar
+// visually and leaves a useless dark bar at top. A tiny 5px dead-zone at
+// the very end of scroll prevents the layout collapse from firing during
+// iOS rubber-band, which is what caused the earlier "erratic jumping"
+// bug. .1s linear transition keeps the motion tight and proportional to
+// the finger scroll instead of feeling like a delayed animation.
 (function setupTopbarAutoHide() {
   const content = document.getElementById("content");
   const topbar = document.getElementById("topbar");
@@ -36,18 +41,23 @@ document.getElementById("sidebar-backdrop")?.addEventListener("click", closeMobi
   let ticking = false;
   const SCROLL_THRESHOLD = 6;    // ignore micro-scrolls
   const SHOW_BELOW_PX   = 60;    // always show topbar near the very top
+  const BOTTOM_DEAD_ZONE = 5;    // skip toggle in the rubber-band area
 
   content.addEventListener("scroll", () => {
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(() => {
       const y = content.scrollTop;
+      const maxY = content.scrollHeight - content.clientHeight;
+      const atBottom = y >= maxY - BOTTOM_DEAD_ZONE;
       const delta = y - lastY;
       if (Math.abs(delta) > SCROLL_THRESHOLD) {
-        if (delta > 0 && y > SHOW_BELOW_PX) {
-          topbar.classList.add("topbar-hidden");
-        } else if (delta < 0) {
-          topbar.classList.remove("topbar-hidden");
+        if (!atBottom) {
+          if (delta > 0 && y > SHOW_BELOW_PX) {
+            topbar.style.marginTop = "-" + topbar.offsetHeight + "px";
+          } else if (delta < 0) {
+            topbar.style.marginTop = "0px";
+          }
         }
         lastY = y;
       }
