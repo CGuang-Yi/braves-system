@@ -45,6 +45,7 @@ const API = {
     if (data.soc?.length) STATE.soc = data.soc;
     if (data.polar?.length) STATE.polar = data.polar;
     if (data.conductDetail?.length) STATE.conductDetail = data.conductDetail;
+    if (data.appointments?.length) STATE.appointments = data.appointments;
     saveLocal();
     return data;
   },

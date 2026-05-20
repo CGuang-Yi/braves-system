@@ -72,6 +72,12 @@
  *                  ReportSick = sent to MO mid-day after the conduct.
  *                Aggregates in the Attendance sheet should match the
  *                per-conduct totals of these rows.)
+ *
+ *   Appointments: id | d4 | reason | date | time | location
+ *               (Booked future events — medical specialist visits, IPPT
+ *                retakes, board appearances, etc. Sheet keeps full history;
+ *                dashboard only shows entries where date >= today. date is
+ *                display-format ("16 May 2026"); time is free text ("0930").)
  */
 
 var FRONTEND_BASE_URL = "https://coon-hound.github.io/cougar-system/";
@@ -357,7 +363,8 @@ function readAllTabs() {
     "RouteMarch": "rm",
     "SOC": "soc",
     "PolarFlow": "polar",
-    "ConductDetail": "conductDetail"
+    "ConductDetail": "conductDetail",
+    "Appointments": "appointments"
   };
 
   var result = {};

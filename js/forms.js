@@ -745,6 +745,45 @@ function submitConductDetail() {
   if (!editId && STATE.apiUrl) API.appendRow("ConductDetail", entry).catch(() => {});
 }
 
+function openAppointmentForm(id) {
+  const e = id ? STATE.appointments.find(x => x.id === id) : null;
+  const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
+  openModal(e ? "Edit Appointment" : "Book Appointment", `
+    <form onsubmit="event.preventDefault(); submitAppointment(); return false">
+      <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${e ? editHint : ""}
+        <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
+        ${formField("f-reason", "Reason", "text", "Knee specialist review / IPPT retake / Board…", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
+        <div class="form-row">
+          ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
+          ${formField("f-time", "Time", "text", "0930", `required maxlength="10" value="${escapeAttr(e?.time)}"`)}
+        </div>
+        ${formField("f-location", "Location", "text", "MO Office / SAFTI MC / Camp HQ…", `required maxlength="100" value="${escapeAttr(e?.location)}"`)}
+        <button type="submit" class="btn btn-primary">${e ? "Save" : "Book"}</button>
+      </div>
+    </form>`);
+}
+function submitAppointment() {
+  const editId = +gv("f-entry-id");
+  const entry = {
+    id: editId || nextId(),
+    d4: gv("f-d4"),
+    reason: gv("f-reason"),
+    date: isoToDisplayDate(gv("f-date")),
+    time: gv("f-time"),
+    location: gv("f-location")
+  };
+  if (editId) {
+    const idx = STATE.appointments.findIndex(a => a.id === editId);
+    if (idx >= 0) STATE.appointments[idx] = entry;
+  } else {
+    STATE.appointments.push(entry);
+  }
+  saveLocal(); closeModal(); render();
+  if (!editId && STATE.apiUrl) API.appendRow("Appointments", entry).catch(() => {});
+}
+
 function importBackup(input) {
   const reader = new FileReader();
   reader.onload = e => { try {
@@ -757,6 +796,7 @@ function importBackup(input) {
     if (d.soc) STATE.soc = d.soc;
     if (d.polar) STATE.polar = d.polar;
     if (d.conductDetail) STATE.conductDetail = d.conductDetail;
+    if (d.appointments) STATE.appointments = d.appointments;
     saveLocal(); render();
   } catch (err) { alert("Import failed: " + err.message); } };
   reader.readAsText(input.files[0]); input.value = "";

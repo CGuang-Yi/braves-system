@@ -17,7 +17,7 @@ const STATE = {
   nav: "dashboard",
   apiUrl: APPS_SCRIPT_URL,
   authToken: localStorage.getItem(AUTH_KEY) || "",
-  roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [], conductDetail: [],
+  roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [], conductDetail: [], appointments: [],
   // Global view scope: "" = all. Persisted across reloads so leaving the app
   // mid-task and coming back doesn't blow away the section you were focused on.
   filterPlt: "",
@@ -58,7 +58,7 @@ function saveLocal() {
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
-    conductDetail: STATE.conductDetail
+    conductDetail: STATE.conductDetail, appointments: STATE.appointments
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
 }
@@ -79,6 +79,7 @@ function loadLocal() {
     STATE.soc = d.soc || [];
     STATE.polar = d.polar || [];
     STATE.conductDetail = d.conductDetail || [];
+    STATE.appointments = d.appointments || [];
   } catch { /* fall through to empty state */ }
 }
 

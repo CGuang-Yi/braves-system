@@ -89,6 +89,7 @@ function renderDashboard(el) {
       <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}</div></div>
       <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
     </div>
+    ${renderDashAppointments(visible, today)}
     <div class="grid-2">
       <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
       <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
@@ -148,6 +149,52 @@ function renderDashboard(el) {
 // Dashboard sub-widgets — kept separate from renderDashboard to keep the main
 // function readable. Both respect the active scope filter via the `scoped`
 // roster passed in.
+// Upcoming appointments — anything dated today or later. Sheet retains the
+// full history (past entries are not deleted, just filtered out of view here)
+// so an admin can audit "did we make this appointment?" later. Sorted by
+// date+time ascending so the next one is always at the top.
+function renderDashAppointments(visible, todayIso) {
+  const upcoming = STATE.appointments
+    .filter(a => passesFilter(a.d4, visible))
+    .filter(a => {
+      const iso = displayDateToISO(a.date);
+      return iso && iso >= todayIso;
+    })
+    .sort((a, b) => {
+      const ai = displayDateToISO(a.date) || "";
+      const bi = displayDateToISO(b.date) || "";
+      if (ai !== bi) return ai < bi ? -1 : 1;
+      return (a.time || "") < (b.time || "") ? -1 : 1;
+    });
+
+  const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
+    <h3 style="font-size:13px;color:var(--muted);margin:0">📅 Upcoming Appointments <span style="color:var(--dim);font-weight:400">(${upcoming.length})</span></h3>
+    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openAppointmentForm()">+ Book</button>
+  </div>`;
+
+  if (!upcoming.length) {
+    return header + `<div class="empty-state" style="padding:12px;font-size:11px;margin-bottom:12px">No upcoming appointments.</div>`;
+  }
+
+  // Highlight today's appointments so they don't get lost in a long list.
+  const rows = upcoming.map(a => {
+    const iso = displayDateToISO(a.date);
+    const isToday = iso === todayIso;
+    const dayLabel = isToday ? `<span class="badge badge-red" style="font-size:9px">TODAY</span>` : "";
+    return `<tr onclick="openPerson('${a.d4}')" style="cursor:pointer${isToday ? ';background:#F8514911' : ''}">
+      <td class="mono" style="font-weight:700;color:var(--accent)">${a.d4}</td>
+      <td style="text-align:left">${getName(a.d4)}</td>
+      <td style="text-align:left">${a.reason || ""}</td>
+      <td style="white-space:nowrap">${a.date || ""} ${dayLabel}</td>
+      <td class="mono" style="white-space:nowrap">${a.time || ""}</td>
+      <td style="text-align:left;font-size:11px;color:var(--muted)">${a.location || ""}</td>
+      <td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button></td>
+    </tr>`;
+  }).join("");
+
+  return header + `<div class="table-wrap" style="margin-bottom:12px"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Date</th><th>Time</th><th style="text-align:left">Location</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 function renderDashProfileCards(scoped) {
   // Ration: count distinct values. Unknowns get grouped under "Unspecified"
   // so they show up but don't disappear silently.
