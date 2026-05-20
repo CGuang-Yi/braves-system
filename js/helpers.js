@@ -186,6 +186,22 @@ function currentMedicalEffective(todayIso) {
   return Object.values(byD4);
 }
 
+// Like currentMedicalEffective but keeps every active status per recruit
+// (sorted severity-desc) so the UI can show stacked tags. A recruit on
+// MC + Excuse Heavy Load shows up here with both statuses, not just MC.
+// Output: array of { d4, statuses: [{ record, tag, ghostDay }, ...] }.
+function currentMedicalEffectiveAll(todayIso) {
+  todayIso = todayIso || todayISO();
+  const byD4 = {};
+  STATE.medical.forEach(m => {
+    const t = medStatusTag(m, todayIso);
+    if (!t) return;
+    (byD4[m.d4] = byD4[m.d4] || { d4: m.d4, statuses: [] }).statuses.push({ record: m, tag: t.tag, ghostDay: t.ghostDay });
+  });
+  Object.values(byD4).forEach(b => b.statuses.sort((x, y) => medSeverityRank(y.tag) - medSeverityRank(x.tag)));
+  return Object.values(byD4);
+}
+
 // Inline-styled badge HTML for a medical tag. Uses theme tokens but adds
 // custom shades for MC+2 / LD+2 since the existing badge classes don't cover
 // the gradient between severity tiers.

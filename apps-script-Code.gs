@@ -52,7 +52,10 @@
  *                startDate/endDate. After endDate, MC and LD get a 2-day
  *                "ghost" tag (MC+1, MC+2, LD+1, LD+2) computed client-side
  *                — not stored.)
- *   Attendance: id | date | conduct | total | participating | lms | px | rsi | fallout | remarks | by
+ *   Attendance: id | date | conduct | total | participating | lms | px | fallout | remarks
+ *               (RSI removed from summary — morning report-sicks belong in
+ *                the Medical log, not duplicated per-conduct. Legacy `rsi`
+ *                column may still exist on older sheets; safe to delete.)
  *               (lms = how many of the participating recruits attended LMS for this conduct;
  *                LMS participation rate = lms / participating, computed client-side)
  *               (remarks = free-text flags on data inconsistencies / per-recruit notes)

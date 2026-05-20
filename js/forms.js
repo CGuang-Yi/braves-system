@@ -406,6 +406,7 @@ function toggleReportSickPatterns(d4) {
 // Small banner shown in edit mode to remind users that edits don't auto-sync.
 const editHint = `<div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:4px">Edits save locally. Use the tab's <strong>Push to Sheet</strong> button to sync.</div>`;
 
+
 function openMedicalForm(id) {
   const e = id ? STATE.medical.find(x => x.id === id) : null;
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
@@ -488,8 +489,9 @@ function openAttendanceForm(id) {
           ${formField("f-total", "Total Str", "number", "", `required min="0" max="999" step="1"${numVal(e?.total)}`)}
           ${formField("f-part", "Participating", "number", "", `required min="0" max="999" step="1"${numVal(e?.participating)}`)}
           ${formField("f-lms", "LMS Participation", "number", "", `min="0" max="999" step="1" value="${e?.lms ?? 0}"`)}
-          ${formField("f-px", "PX", "number", "", `required min="0" max="999" step="1" value="${e?.px ?? 0}"`)}
-          ${formField("f-rsi", "RSI", "number", "", `required min="0" max="999" step="1" value="${e?.rsi ?? 0}"`)}
+        </div>
+        <div class="form-row">
+          ${formField("f-px", "PX (Status personnel)", "number", "", `required min="0" max="999" step="1" value="${e?.px ?? 0}"`)}
           ${formField("f-fallout", "Fallout", "number", "", `required min="0" max="999" step="1" value="${e?.fallout ?? 0}"`)}
         </div>
         <div class="form-group"><label>Remarks (data inconsistencies, recruit flags)</label><textarea id="f-remarks" maxlength="500" rows="2" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical" placeholder="e.g. JOHN: HR drop sus; 2 Polar rows missing">${escapeAttr(e?.remarks)}</textarea></div>
@@ -499,15 +501,15 @@ function openAttendanceForm(id) {
 }
 function submitAttendance() {
   const editId = +gv("f-entry-id");
-  const total = +gv("f-total"), part = +gv("f-part"), lms = +gv("f-lms"), px = +gv("f-px"), rsi = +gv("f-rsi"), fallout = +gv("f-fallout");
+  const total = +gv("f-total"), part = +gv("f-part"), lms = +gv("f-lms"), px = +gv("f-px"), fallout = +gv("f-fallout");
   if (part > total) { alert("Participating cannot exceed total."); return; }
-  if (px + rsi + fallout > total) { alert("PX + RSI + Fallout cannot exceed total."); return; }
+  if (px + fallout > total) { alert("PX + Fallout cannot exceed total."); return; }
   if (lms > part) { alert("LMS Participation cannot exceed Participating."); return; }
   const entry = {
     id: editId || nextId(),
     date: isoToDisplayDate(gv("f-date")),
     conduct: gv("f-conduct"),
-    total, participating: part, lms, px, rsi, fallout,
+    total, participating: part, lms, px, fallout,
     remarks: gv("f-remarks")
   };
   if (editId) {
@@ -716,7 +718,7 @@ function openConductDetailForm(id) {
           <datalist id="conduct-options">${getAllConducts().map(c => `<option value="${escapeAttr(c)}">`).join("")}</datalist>
         </div>
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["PX", "PX (pre-existing)"], ["RSI", "RSI (1st parade)"], ["Fallout", "Fallout (mid-conduct)"], ["ReportSick", "Reported Sick (mid-day)"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["PX", "PX (Status personnel)"], ["Fallout", "Fallout"], ["RSI", "RSI (fallout → report-sick)"], ["ReportSick", "Reported Sick (mid-day)"]], true, e?.type || "")}
         ${formField("f-reason", "Reason", "text", "Sprained ankle / Fever / Shin splint...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>

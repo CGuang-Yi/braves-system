@@ -57,20 +57,24 @@ function renderDashboard(el) {
   const scoped = filteredRoster();
   const visible = visibleD4Set();
   const today = todayISO();
-  // Derive non-active personnel from today's effective medical layer. Split
-  // into two groups: currently-out (live status) and recovering (ghost-tagged
-  // +1/+2). The +1/+2 folks ARE functional today, just monitored — they
-  // shouldn't inflate the Non-Active count or sit in the main red table.
-  const effectiveMed = currentMedicalEffective(today).filter(e => passesFilter(e.d4, visible));
-  const effByD4 = Object.fromEntries(effectiveMed.map(e => [e.d4, e]));
-  const liveRows = scoped.filter(r => effByD4[r.id] && effByD4[r.id].ghostDay === 0)
-    .sort((a, b) => medSeverityRank(effByD4[b.id].tag) - medSeverityRank(effByD4[a.id].tag));
-  const recoveringRows = scoped.filter(r => effByD4[r.id] && effByD4[r.id].ghostDay > 0)
-    .sort((a, b) => effByD4[a.id].ghostDay - effByD4[b.id].ghostDay);
+  // Derive non-active personnel from today's effective medical layer. A
+  // recruit can have multiple simultaneous statuses (e.g. MC + Excuse Heavy
+  // Load), all of which we want to surface on the dashboard. The "all"
+  // variant returns every active status; we partition into live vs recovering
+  // based on the recruit's *most-severe* tag (statuses[0]) so a recruit with
+  // an active MC plus a ghost-tagged LD still sits in the live (red) table.
+  const effectiveAll = currentMedicalEffectiveAll(today).filter(e => passesFilter(e.d4, visible));
+  const allByD4 = Object.fromEntries(effectiveAll.map(e => [e.d4, e]));
+  const topTag = r => allByD4[r.id]?.statuses[0];
+  const liveRows = scoped.filter(r => topTag(r) && topTag(r).ghostDay === 0)
+    .sort((a, b) => medSeverityRank(topTag(b).tag) - medSeverityRank(topTag(a).tag));
+  const recoveringRows = scoped.filter(r => topTag(r) && topTag(r).ghostDay > 0)
+    .sort((a, b) => topTag(a).ghostDay - topTag(b).ghostDay);
   const active = scoped.length - liveRows.length;
   // In Camp = Total Str − ATTC. ATTC means physically away (MC or Warded);
-  // LD/RMJ/Excuse/Pending recruits are still in camp, just restricted.
-  const awayFromCamp = liveRows.filter(r => { const t = effByD4[r.id].tag; return t === "MC" || t === "Warded"; }).length;
+  // LD/RMJ/Excuse/Pending recruits are still in camp, just restricted. A
+  // recruit counts as away if *any* of their active statuses is MC/Warded.
+  const awayFromCamp = liveRows.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
   const inCamp = scoped.length - awayFromCamp;
   const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a, c) => a + (c.participating / c.total * 100), 0) / STATE.attendance.length) : 0;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — Attendance figures remain company-wide.</div>` : "";
@@ -91,17 +95,35 @@ function renderDashboard(el) {
     </div>
     ${renderDashProfileCards(scoped)}
     <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel <span style="color:var(--dim);font-weight:400">(live medical status on ${today})</span></h3>
-    ${liveRows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Status today</th><th style="text-align:left">Reason</th><th style="text-align:left">Duration</th></tr></thead><tbody>
-    ${liveRows.map(r => { const e = effByD4[r.id]; return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${medTagBadge(e.tag)}</td><td style="text-align:left;font-size:11px">${e.record.reason || ""}</td><td style="text-align:left;font-size:11px;color:var(--muted)">${medDurationLabel(e.record)}</td></tr>`; }).join("")}
+    ${liveRows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Status today</th><th style="text-align:left">Reason</th><th style="text-align:left">Duration</th></tr></thead><tbody>
+    ${liveRows.map(r => {
+      const entry = allByD4[r.id];
+      const multi = entry.statuses.length > 1;
+      // Stack badges, reasons, and durations vertically so each cell aligns
+      // row-by-row across the three columns when a recruit has 2+ statuses.
+      const tagsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medTagBadge(s.tag)}</div>`).join("");
+      const reasonsCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.reason || '<span style="color:var(--dim)">—</span>'}</div>`).join("");
+      const durationsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medDurationLabel(s.record)}</div>`).join("");
+      const multiHint = multi ? ` <span style="font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px">×${entry.statuses.length}</span>` : "";
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${r.id}</td><td style="text-align:left;vertical-align:top">${r.name}${multiHint}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;vertical-align:top">${reasonsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${durationsCell}</td></tr>`;
+    }).join("")}
     </tbody></table></div>` : `<div class="empty-state" style="padding:16px;font-size:12px">All scoped personnel are Active today.</div>`}
     ${recoveringRows.length ? `<h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">Recovering <span style="color:var(--dim);font-weight:400">(post-MC/LD ghost tag — back to training but monitor)</span></h3>
-    <div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Tag</th><th style="text-align:left">Original</th><th style="text-align:left">Cleared</th></tr></thead><tbody>
-    ${recoveringRows.map(r => { const e = effByD4[r.id]; return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${medTagBadge(e.tag)}</td><td style="text-align:left;font-size:11px;color:var(--muted)">${e.record.status} · ${e.record.reason || ""}</td><td style="text-align:left;font-size:11px;color:var(--muted)">${e.record.endDate || ""}</td></tr>`; }).join("")}
+    <div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Tag</th><th style="text-align:left">Original</th><th style="text-align:left">Cleared</th></tr></thead><tbody>
+    ${recoveringRows.map(r => {
+      const entry = allByD4[r.id];
+      const tagsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medTagBadge(s.tag)}</div>`).join("");
+      const originalCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.status} · ${s.record.reason || ''}</div>`).join("");
+      const clearedCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.endDate || ''}</div>`).join("");
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${r.id}</td><td style="text-align:left;vertical-align:top">${r.name}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${originalCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${clearedCell}</td></tr>`;
+    }).join("")}
     </tbody></table></div>` : ""}`;
 
-  // Status Breakdown chart: count by effective tag today, plus Active.
+  // Status Breakdown chart: tally every active status (a recruit on MC +
+  // Excuse contributes once to each slice). The "Active" slice is per-recruit
+  // so it adds up to roster size only when nobody has stacked statuses.
   const statusCounts = { Active: active };
-  effectiveMed.forEach(e => { statusCounts[e.tag] = (statusCounts[e.tag] || 0) + 1; });
+  effectiveAll.forEach(e => e.statuses.forEach(s => { statusCounts[s.tag] = (statusCounts[s.tag] || 0) + 1; }));
   const chartColor = label => {
     if (label === "Active") return "#3FB950";
     if (label === "MC" || label === "Warded") return "#F85149";
@@ -195,7 +217,7 @@ function renderAttendance(el) {
         <button class="btn btn-primary" onclick="openAttendanceForm()">+ Log</button>
       </div>
     </div>
-    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>PX</th><th>RSI</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
+    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>PX</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
     ${STATE.attendance.map(a => {
       const r = pct(a.participating, a.total);
       const lms = +a.lms || 0;
@@ -205,7 +227,7 @@ function renderAttendance(el) {
       // Color thresholds: green ≥95% (excellent), orange 70-94% (watch), red <70% (concern).
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
-      return `<tr><td>${a.date}</td><td style="text-align:left">${a.conduct}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.rsi > 0 ? 'var(--red)' : 'var(--muted)'}">${a.rsi}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openAttendanceForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
+      return `<tr><td>${a.date}</td><td style="text-align:left">${a.conduct}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openAttendanceForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">No attendance records yet.</div>`}`;
 }
