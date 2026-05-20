@@ -13,21 +13,26 @@ const getName = d4 => STATE.roster.find(r => r.id === d4)?.name || d4;
 // always exist, so we fall back to parsing the 4D so the scope filter works
 // regardless of sheet schema.
 function getPlt(r) {
+  // Commanders are coy-level — they have no platoon by default. Forcing
+  // empty here ensures the 4D parser doesn't extract "0" from a 00xx id.
+  if (r.role === "Commander") return r.plt != null && r.plt !== "" ? String(r.plt) : "";
   if (r.plt !== "" && r.plt != null) return String(r.plt);
   const m = String(r.id || "").match(/(\d)/);
   return m ? m[1] : "";
 }
 function getSect(r) {
+  if (r.role === "Commander") return r.sect != null && r.sect !== "" ? String(r.sect) : "";
   if (r.sect !== "" && r.sect != null) return String(r.sect);
   const m = String(r.id || "").match(/\d(\d)/);
   return m ? m[1] : "";
 }
 
-const isFilterActive = () => !!(STATE.filterPlt || STATE.filterSect);
+const isFilterActive = () => !!(STATE.filterPlt || STATE.filterSect || STATE.filterRole);
 
 function filteredRoster() {
   if (!isFilterActive()) return STATE.roster;
   return STATE.roster.filter(r => {
+    if (STATE.filterRole && r.role !== STATE.filterRole) return false;
     if (STATE.filterPlt && getPlt(r) !== String(STATE.filterPlt)) return false;
     if (STATE.filterSect && getSect(r) !== String(STATE.filterSect)) return false;
     return true;
@@ -46,9 +51,49 @@ const passesFilter = (d4, visible) => !visible || visible.has(d4);
 function filterLabel() {
   if (!isFilterActive()) return "";
   const parts = [];
+  if (STATE.filterRole === "Commander") parts.push("Cmdrs");
+  else if (STATE.filterRole === "Recruit") parts.push("Recs");
   if (STATE.filterPlt) parts.push("P" + STATE.filterPlt);
   if (STATE.filterSect) parts.push("S" + STATE.filterSect);
-  return parts.join("");
+  return parts.join(" ");
+}
+
+// ── Commander-aware display helpers ───────────────────────
+// 00xx IDs are administrative only — the user never wants to see them in
+// the UI. These wrappers centralize the rule so tables can keep their
+// existing structure while transparently swapping to name-based display
+// for commander rows.
+const isCommander = d4 => STATE.roster.find(r => r.id === d4)?.role === "Commander";
+
+function displayId(d4) {
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r) return d4;
+  return r.role === "Commander" ? "" : d4;
+}
+
+function getRank(d4) {
+  return STATE.roster.find(r => r.id === d4)?.rank || "";
+}
+
+// "3SG NICHOLAS ENG" for commanders, plain name for recruits.
+function displayPersonLabel(d4) {
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r) return d4;
+  if (r.role === "Commander") return [r.rank, r.name].filter(Boolean).join(" ");
+  return r.name || d4;
+}
+
+// Off-in-lieu days used + quota + remaining for a commander. Returns null
+// for recruits and unknown ids so callers can decide whether to render a
+// balance card.
+function commanderLeaveBalance(d4) {
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r || r.role !== "Commander") return null;
+  const quota = +r.leaveQuota || 0;
+  const used = STATE.leave
+    .filter(l => l.d4 === d4 && l.type === "Off-in-Lieu")
+    .reduce((s, l) => s + (+l.days || 0), 0);
+  return { used, quota, remaining: quota - used };
 }
 
 // Short sequential IDs instead of timestamps
@@ -270,8 +315,15 @@ function exportJSON(data, filename) {
   URL.revokeObjectURL(url);
 }
 
-function rosterSelect(id = "form-d4", required = true, selected = "") {
-  return `<select id="${id}" ${required ? "required" : ""} style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px"><option value="">Select...</option>${STATE.roster.map(r => `<option value="${r.id}" ${r.id === selected ? "selected" : ""}>${r.id} ${r.name}</option>`).join("")}</select>`;
+// `roleFilter` is optional — pass "Commander" or "Recruit" to restrict the
+// dropdown (e.g. the Leave form picks commanders only). Commander options
+// render as "rank name" without the administrative 00xx prefix.
+function rosterSelect(id = "form-d4", required = true, selected = "", roleFilter = "") {
+  const rows = roleFilter ? STATE.roster.filter(r => r.role === roleFilter) : STATE.roster;
+  const optLabel = r => r.role === "Commander"
+    ? [r.rank, r.name].filter(Boolean).join(" ")
+    : `${r.id} ${r.name}`;
+  return `<select id="${id}" ${required ? "required" : ""} style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px"><option value="">Select...</option>${rows.map(r => `<option value="${r.id}" ${r.id === selected ? "selected" : ""}>${optLabel(r)}</option>`).join("")}</select>`;
 }
 function formField(id, label, type = "text", placeholder = "", extra = "") {
   const ph = placeholder ? ` placeholder="${placeholder}"` : "";

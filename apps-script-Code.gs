@@ -37,10 +37,16 @@
  * SHEET TABS REQUIRED (create with headers in Row 1):
  *   Roster:     4d | name | age | status | notes | phone | email |
  *               ration | allergies | msk | highest education level |
- *               motorcycle license | height | weight
+ *               motorcycle license | height | weight | role | rank |
+ *               leaveQuota
  *               (the column may be named "4d" or "id" — the frontend mirrors
  *                whichever is present into r.id at pull time. height in cm,
- *                weight in kg — BMI is computed client-side.)
+ *                weight in kg — BMI is computed client-side. role ∈
+ *                {"Recruit", "Commander"} (defaults to Recruit if blank).
+ *                Commanders use 4D 0001–0099, are never displayed in the
+ *                UI by id — their rank+name shows instead. rank is free
+ *                text ("3SG", "2LT", "CPT", "MSG"); leaveQuota is the
+ *                off-in-lieu day cap (numeric, optional for recruits).)
  *   Medical:    id | d4 | date | reason | status | startDate | endDate
  *               (Each row represents a "report sick" event — `date` is the
  *                date the recruit reported sick. status ∈ {MC, Warded, LD,
@@ -78,6 +84,15 @@
  *                retakes, board appearances, etc. Sheet keeps full history;
  *                dashboard only shows entries where date >= today. date is
  *                display-format ("16 May 2026"); time is free text ("0930").)
+ *
+ *   Leave:      id | d4 | type | startDate | endDate | days | reason
+ *               (Personnel absences. type ∈ {Leave, Off-in-Lieu,
+ *                Night's Out, Course, Guard Duty, NDP, Other}. Only
+ *                Off-in-Lieu decrements the per-commander leaveQuota
+ *                (roster field). Night's Out = same-day evening off-camp
+ *                (start = end = same date). startDate/endDate inclusive,
+ *                display-format. `days` is numeric — defaults to
+ *                (endDate − startDate + 1) but is editable for half-days.)
  */
 
 var FRONTEND_BASE_URL = "https://coon-hound.github.io/cougar-system/";
@@ -364,7 +379,8 @@ function readAllTabs() {
     "SOC": "soc",
     "PolarFlow": "polar",
     "ConductDetail": "conductDetail",
-    "Appointments": "appointments"
+    "Appointments": "appointments",
+    "Leave": "leave"
   };
 
   var result = {};

@@ -59,6 +59,13 @@ function refreshFilterUI() {
 
   pltSel.classList.toggle("active", !!STATE.filterPlt);
   sectSel.classList.toggle("active", !!STATE.filterSect);
+
+  // Reflect the active role on the segmented control — restoring it on reload
+  // from STATE.filterRole, which loadFilter() rehydrated.
+  document.querySelectorAll("#filter-role-group .role-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.role === (STATE.filterRole || ""));
+  });
+
   if (clearBtn) clearBtn.style.display = isFilterActive() ? "" : "none";
 
   // Mobile filter toggle button reflects the current scope so the user can
@@ -102,9 +109,21 @@ function initFilterControls() {
   clearBtn.addEventListener("click", () => {
     STATE.filterPlt = "";
     STATE.filterSect = "";
+    STATE.filterRole = "";
     saveFilter();
     render();
     panel?.classList.remove("open");
+  });
+
+  // Role segmented control — All / Cmdrs / Recs. Persists alongside the
+  // platoon/section filter so a user can hop between recruit-only and
+  // commander-only views without losing their platoon scope.
+  document.querySelectorAll("#filter-role-group .role-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      STATE.filterRole = btn.dataset.role || "";
+      saveFilter();
+      render();
+    });
   });
 
   // Mobile: toggle the scope popover. Outside-tap also closes it.
@@ -118,6 +137,26 @@ function initFilterControls() {
     panel.classList.remove("open");
   });
 }
+
+// ── Dashboard "Generate Report" dropdown ─────────────────
+// The menu is re-rendered every dashboard repaint, so we attach the global
+// outside-click listener once at module load. toggle/close fns just flip
+// the `.hidden` class on the menu div.
+function toggleReportMenu(e) {
+  e?.stopPropagation();
+  document.getElementById("report-menu")?.classList.toggle("hidden");
+}
+function closeReportMenu() {
+  document.getElementById("report-menu")?.classList.add("hidden");
+}
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("report-menu");
+  if (!menu || menu.classList.contains("hidden")) return;
+  // Close on outside tap; the wrapper contains both the toggle button and
+  // the menu, so checking the wrapper covers both.
+  const wrapper = menu.closest(".dropdown-wrapper");
+  if (wrapper && !wrapper.contains(e.target)) menu.classList.add("hidden");
+});
 
 // Redeems ?token=… from the URL if present. Returns true if an attempt was
 // made (regardless of success); the URL param is scrubbed either way so a

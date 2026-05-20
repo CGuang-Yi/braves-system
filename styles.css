@@ -27,6 +27,12 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .topbar-select:disabled{opacity:.4;cursor:not-allowed}
 /* Highlight selectors when a filter is active so the global scope is obvious. */
 .topbar-select.active{border-color:var(--accent);color:var(--accent);background:#58A6FF11}
+/* Role segmented control — sits in the same scope row, switches view between
+ * commanders, recruits, or all. Visually pill-grouped to read as one control. */
+.filter-role-group{display:inline-flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.filter-role-group .role-btn{padding:6px 10px;font:inherit;font-size:11px;font-weight:600;background:var(--bg);color:var(--muted);border:none;border-right:1px solid var(--border);cursor:pointer;outline:none}
+.filter-role-group .role-btn:last-child{border-right:none}
+.filter-role-group .role-btn.active{background:#58A6FF22;color:var(--accent)}
 #content{flex:1;padding:20px;overflow-y:auto}
 
 /* Components */
@@ -43,6 +49,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .badge-yellow{background:#E3B34122;color:var(--yellow);border:1px solid #E3B34144}
 .badge-purple{background:#BC8CFF22;color:var(--purple);border:1px solid #BC8CFF44}
 .badge-accent{background:#58A6FF22;color:var(--accent);border:1px solid #58A6FF44}
+.badge-pink{background:#F778BA22;color:var(--pink);border:1px solid #F778BA44}
 
 .btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
 .btn:hover{filter:brightness(1.2)}.btn:disabled{opacity:.5;cursor:not-allowed}
@@ -82,6 +89,12 @@ tr:hover{background:var(--surface2)}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;position:sticky;top:0;background:var(--surface);z-index:10;padding-bottom:10px;border-bottom:1px solid var(--border)}
 .modal-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;min-width:36px;min-height:36px;line-height:1}
 .hidden{display:none!important}
+/* Dashboard "Generate Report" dropdown — anchored to its button, opens
+ * downward toward the right edge so it doesn't get clipped by the topbar. */
+.dropdown-wrapper{position:relative;display:inline-block}
+.dropdown-menu{position:absolute;top:100%;right:0;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:50;min-width:200px;padding:4px;display:flex;flex-direction:column;gap:2px}
+.dropdown-menu button{padding:8px 12px;font-size:12px;font-weight:500;background:transparent;color:var(--text);border:none;border-radius:4px;cursor:pointer;text-align:left;font-family:inherit;outline:none}
+.dropdown-menu button:hover{background:var(--surface2);color:var(--accent)}
 
 /* Sync */
 .sync-panel{background:var(--surface);border:1px solid #58A6FF44;border-radius:8px;padding:20px;margin-bottom:20px}

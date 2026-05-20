@@ -31,6 +31,7 @@ function render() {
     case "rm": renderRM(el); break;
     case "soc": renderSOC(el); break;
     case "polar": renderPolar(el); break;
+    case "leave": renderLeave(el); break;
     case "sync": renderSync(el); break;
     default: el.innerHTML = "";
   }
@@ -79,14 +80,45 @@ function renderDashboard(el) {
   const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a, c) => a + (c.participating / c.total * 100), 0) / STATE.attendance.length) : 0;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — Attendance figures remain company-wide.</div>` : "";
 
+  // R/C breakdown — only shown when scope is "All". Helps reproduce the
+  // parade-state-style "PLATOON x: y/z … COMMANDERS: a/b" split in one
+  // glance without forcing a separate Commanders card.
+  const isAll = !STATE.filterRole;
+  const recRows = scoped.filter(r => r.role !== "Commander");
+  const cmdRows = scoped.filter(r => r.role === "Commander");
+  const recLive = liveRows.filter(r => r.role !== "Commander");
+  const cmdLive = liveRows.filter(r => r.role === "Commander");
+  const recActive = recRows.length - recLive.length;
+  const cmdActive = cmdRows.length - cmdLive.length;
+  const recAway = recLive.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
+  const cmdAway = cmdLive.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
+  const recInCamp = recRows.length - recAway;
+  const cmdInCamp = cmdRows.length - cmdAway;
+  // Inline "total/recruits/commanders" — the /R/C portion renders smaller
+  // and dimmer so the headline number stays pronounced. Hidden when scope
+  // is already narrowed to one role.
+  const inlineBreakdown = (rec, cmd) => isAll
+    ? `<span style="font-size:55%;color:var(--muted);font-weight:400;margin-left:1px">/${rec}/${cmd}</span>`
+    : "";
+
   el.innerHTML = `
-    <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">Company Strength Board</h2>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+      <h2 style="font-size:18px;font-weight:700">Company Strength Board</h2>
+      <div class="dropdown-wrapper">
+        <button class="btn btn-primary" onclick="toggleReportMenu(event)">📋 Generate Report ▾</button>
+        <div id="report-menu" class="dropdown-menu hidden">
+          <button type="button" onclick="openReportModal('FP'); closeReportMenu()">📋 First Parade State</button>
+          <button type="button" onclick="openReportModal('LP'); closeReportMenu()">📋 Last Parade State</button>
+          <button type="button" onclick="openReportModal('MED'); closeReportMenu()">🏥 Medical Status List</button>
+        </div>
+      </div>
+    </div>
     ${scopeBanner}
     <div class="stats-row" style="margin-top:12px">
-      <div class="stat"><label>Total Str</label><div class="val">${scoped.length}</div></div>
-      <div class="stat"><label>Active today</label><div class="val" style="color:var(--green)">${active}</div></div>
-      <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}</div></div>
-      <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}</div></div>
+      <div class="stat"><label>Total Str</label><div class="val">${scoped.length}${inlineBreakdown(recRows.length, cmdRows.length)}</div></div>
+      <div class="stat"><label>Active today</label><div class="val" style="color:var(--green)">${active}${inlineBreakdown(recActive, cmdActive)}</div></div>
+      <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}${inlineBreakdown(recLive.length, cmdLive.length)}</div></div>
+      <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}${inlineBreakdown(recInCamp, cmdInCamp)}</div></div>
       <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
     </div>
     ${renderDashAppointments(visible, today)}
@@ -106,7 +138,7 @@ function renderDashboard(el) {
       const reasonsCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.reason || '<span style="color:var(--dim)">—</span>'}</div>`).join("");
       const durationsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medDurationLabel(s.record)}</div>`).join("");
       const multiHint = multi ? ` <span style="font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px">×${entry.statuses.length}</span>` : "";
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${r.id}</td><td style="text-align:left;vertical-align:top">${r.name}${multiHint}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;vertical-align:top">${reasonsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${durationsCell}</td></tr>`;
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${displayPersonLabel(r.id)}${multiHint}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;vertical-align:top">${reasonsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${durationsCell}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state" style="padding:16px;font-size:12px">All scoped personnel are Active today.</div>`}
     ${recoveringRows.length ? `<h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">Recovering <span style="color:var(--dim);font-weight:400">(post-MC/LD ghost tag — back to training but monitor)</span></h3>
@@ -116,9 +148,10 @@ function renderDashboard(el) {
       const tagsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medTagBadge(s.tag)}</div>`).join("");
       const originalCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.status} · ${s.record.reason || ''}</div>`).join("");
       const clearedCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.endDate || ''}</div>`).join("");
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${r.id}</td><td style="text-align:left;vertical-align:top">${r.name}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${originalCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${clearedCell}</td></tr>`;
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${displayPersonLabel(r.id)}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${originalCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${clearedCell}</td></tr>`;
     }).join("")}
-    </tbody></table></div>` : ""}`;
+    </tbody></table></div>` : ""}
+    ${renderDashLeaveOut(visible, today)}`;
 
   // Status Breakdown chart: tally every active status (a recruit on MC +
   // Excuse contributes once to each slice). The "Active" slice is per-recruit
@@ -153,8 +186,161 @@ function renderDashboard(el) {
 // full history (past entries are not deleted, just filtered out of view here)
 // so an admin can audit "did we make this appointment?" later. Sorted by
 // date+time ascending so the next one is always at the top.
+// Out today / This week widget — the dashboard equivalent of the WhatsApp
+// parade-state OTHERS block. Anyone currently inside a leave/out date range
+// shows up here; near-future entries are grouped under "This week".
+function renderDashLeaveOut(visible, todayIso) {
+  const sevenDaysOut = (() => {
+    const d = new Date(todayIso); d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const scoped = STATE.leave
+    .filter(l => passesFilter(l.d4, visible))
+    .map(l => ({ ...l, startIso: displayDateToISO(l.startDate) || "", endIso: displayDateToISO(l.endDate) || "" }))
+    .filter(l => l.startIso && l.endIso);
+
+  const onToday = scoped.filter(l => l.startIso <= todayIso && todayIso <= l.endIso);
+  const upcoming = scoped.filter(l => l.startIso > todayIso && l.startIso <= sevenDaysOut);
+
+  const typeColor = t => t === "Off-in-Lieu" ? "accent" : t === "Leave" ? "teal" : t === "Night's Out" ? "pink" : t === "Course" ? "purple" : t === "Guard Duty" ? "orange" : t === "NDP" ? "yellow" : "muted";
+
+  const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
+    <h3 style="font-size:13px;color:var(--muted);margin:0">🪖 Out today / This week <span style="color:var(--dim);font-weight:400">(${onToday.length} now · ${upcoming.length} upcoming)</span></h3>
+    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openLeaveForm()">+ Log</button>
+  </div>`;
+
+  if (!onToday.length && !upcoming.length) {
+    return header + `<div class="empty-state" style="padding:12px;font-size:11px;margin-bottom:12px">No commanders out today or in the next 7 days.</div>`;
+  }
+
+  const row = l => `<tr onclick="openPerson('${l.d4}')" style="cursor:pointer">
+    <td style="text-align:left;font-weight:600">${displayPersonLabel(l.d4)}</td>
+    <td>${badge(l.type, typeColor(l.type))}</td>
+    <td style="white-space:nowrap;font-size:11px;color:var(--muted)">${l.startDate}${l.startIso !== l.endIso ? ` → ${l.endDate}` : ""}</td>
+    <td style="text-align:left;font-size:11px;color:var(--muted)">${l.reason || ""}</td>
+    <td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openLeaveForm(${l.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('leave', ${l.id}, 'leave record')" title="Delete">✕</button></td>
+  </tr>`;
+
+  return header + `<div class="table-wrap" style="margin-bottom:12px"><table><thead><tr><th style="text-align:left">Name</th><th>Type</th><th>Dates</th><th style="text-align:left">Reason</th><th></th></tr></thead><tbody>
+    ${onToday.map(row).join("")}
+    ${upcoming.length ? `<tr><td colspan="5" style="padding:6px 8px;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;background:var(--surface2)">Upcoming this week</td></tr>` : ""}
+    ${upcoming.map(row).join("")}
+  </tbody></table></div>`;
+}
+
+function renderLeave(el) {
+  const visible = visibleD4Set();
+  const today = todayISO();
+  const scoped = STATE.leave
+    .filter(l => passesFilter(l.d4, visible))
+    .map(l => ({ ...l, startIso: displayDateToISO(l.startDate) || "", endIso: displayDateToISO(l.endDate) || "" }));
+
+  const rows = [...scoped].sort((a, b) => {
+    if (a.startIso !== b.startIso) return a.startIso < b.startIso ? 1 : -1;
+    return 0;
+  });
+
+  const onTodayCount = scoped.filter(l => l.startIso <= today && today <= l.endIso).length;
+  const titleSuffix = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.leave.length}]</span>` : ` (${STATE.leave.length})`;
+
+  const typeColor = t => t === "Off-in-Lieu" ? "accent" : t === "Leave" ? "teal" : t === "Night's Out" ? "pink" : t === "Course" ? "purple" : t === "Guard Duty" ? "orange" : t === "NDP" ? "yellow" : "muted";
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="font-size:18px;font-weight:700">📅 Leave / Out${titleSuffix}</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-success" onclick="pushTab('Leave',STATE.leave)">Push to Sheet</button>
+        <button class="btn btn-primary" onclick="openLeaveForm()">+ Log</button>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat"><label>Total entries</label><div class="val">${scoped.length}</div></div>
+      <div class="stat"><label>Out today</label><div class="val" style="color:var(--orange)">${onTodayCount}</div></div>
+    </div>
+    ${renderLeaveTimeline(scoped, today)}
+    ${rows.length ? `<h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">All entries</h3><div class="table-wrap"><table><thead><tr><th style="text-align:left">Name</th><th>Type</th><th>Start</th><th>End</th><th>Days</th><th style="text-align:left">Reason</th><th></th></tr></thead><tbody>
+    ${rows.map(l => `<tr onclick="openPerson('${l.d4}')" style="cursor:pointer"><td style="text-align:left;font-weight:600">${displayPersonLabel(l.d4)}</td><td>${badge(l.type, typeColor(l.type))}</td><td>${l.startDate || ""}</td><td>${l.endDate || ""}</td><td class="mono" style="font-weight:700">${l.days || ""}</td><td style="text-align:left;font-size:11px;color:var(--muted);max-width:240px;white-space:normal">${l.reason || ""}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openLeaveForm(${l.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('leave', ${l.id}, 'leave record')" title="Delete">✕</button></td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty-state">${STATE.leave.length ? `No leave records in ${filterLabel()}.` : "No leave records yet. Tap + Log to add one."}</div>`}`;
+}
+
+// Gantt-style 21-day timeline: each row a person with at least one leave
+// overlapping the window, cells filled per-day with the leave type's color.
+// Answers "who is taking off when" at a glance — much more useful than a
+// running total of off-in-lieu days.
+function renderLeaveTimeline(scoped, todayIso) {
+  const TIMELINE_DAYS = 21;
+  const start = new Date(todayIso);
+  const days = Array.from({ length: TIMELINE_DAYS }, (_, i) => {
+    const d = new Date(start); d.setDate(d.getDate() + i);
+    return d;
+  });
+  const dayIso = days.map(d => d.toISOString().slice(0, 10));
+  const windowEnd = dayIso[TIMELINE_DAYS - 1];
+
+  const overlapping = scoped.filter(l => l.startIso && l.endIso && l.endIso >= todayIso && l.startIso <= windowEnd);
+  if (!overlapping.length) {
+    return `<div class="card" style="margin-bottom:12px"><h3>Leave Timeline <span style="color:var(--dim);font-weight:400;font-size:11px">(next ${TIMELINE_DAYS} days)</span></h3><div style="color:var(--muted);font-size:12px;padding:8px 0">No upcoming leave in the next ${TIMELINE_DAYS} days.</div></div>`;
+  }
+
+  // Group by person; sort people by earliest upcoming entry.
+  const byPerson = {};
+  overlapping.forEach(l => { (byPerson[l.d4] = byPerson[l.d4] || []).push(l); });
+  const people = Object.keys(byPerson).sort((a, b) => {
+    const aEarliest = byPerson[a].reduce((m, l) => l.startIso < m ? l.startIso : m, "9999");
+    const bEarliest = byPerson[b].reduce((m, l) => l.startIso < m ? l.startIso : m, "9999");
+    return aEarliest < bEarliest ? -1 : 1;
+  });
+
+  const typeBg = t => ({
+    "Off-in-Lieu": "#58A6FF", "Leave": "#39D2C0", "Night's Out": "#F778BA",
+    "Course": "#BC8CFF", "Guard Duty": "#D29922", "NDP": "#E3B341", "Other": "#8B949E"
+  })[t] || "#8B949E";
+
+  // Header: show the day-of-month for week boundaries + today marker.
+  const headerCells = days.map((d, i) => {
+    const isWeekStart = i === 0 || d.getDay() === 1;  // Monday
+    const isToday = dayIso[i] === todayIso;
+    const label = isWeekStart || i === 0 ? `${d.getDate()}/${d.getMonth() + 1}` : "";
+    return `<th style="padding:2px 0;font-size:9px;color:${isToday ? 'var(--red)' : 'var(--muted)'};font-weight:${isToday ? 700 : 400};width:18px;text-align:center;border-left:${isWeekStart ? '1px solid var(--border)' : 'none'}">${label}</th>`;
+  }).join("");
+
+  const personRows = people.map(d4 => {
+    const personLeave = byPerson[d4];
+    const cells = dayIso.map((iso, i) => {
+      const match = personLeave.find(l => l.startIso <= iso && iso <= l.endIso);
+      const isToday = iso === todayIso;
+      const isWeekStart = i === 0 || days[i].getDay() === 1;
+      const borderLeft = isWeekStart ? '1px solid var(--border)' : 'none';
+      if (match) {
+        const isStart = iso === match.startIso;
+        const isEnd = iso === match.endIso;
+        const radius = `${isStart ? '3px' : '0'} ${isEnd ? '3px' : '0'} ${isEnd ? '3px' : '0'} ${isStart ? '3px' : '0'}`;
+        return `<td style="padding:0;border-left:${borderLeft};height:18px" title="${match.type}${match.reason ? ': ' + match.reason : ''} (${match.startDate} → ${match.endDate})"><div style="background:${typeBg(match.type)};height:14px;margin:2px 0;border-radius:${radius};opacity:.85"></div></td>`;
+      }
+      const todayMark = isToday ? "background:#F8514922;" : "";
+      return `<td style="padding:0;border-left:${borderLeft};${todayMark}height:18px"></td>`;
+    }).join("");
+    return `<tr onclick="openPerson('${d4}')" style="cursor:pointer"><td style="padding:3px 8px;white-space:nowrap;font-size:11px;font-weight:600;background:var(--surface);border-right:2px solid var(--border);position:sticky;left:0;z-index:1">${displayPersonLabel(d4)}</td>${cells}</tr>`;
+  }).join("");
+
+  // Legend mirrors the type-color palette so users can decode the bars.
+  const legend = ["Off-in-Lieu", "Leave", "Night's Out", "Course", "Guard Duty", "NDP", "Other"]
+    .map(t => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)"><span style="width:10px;height:10px;background:${typeBg(t)};border-radius:2px;opacity:.85"></span>${t}</span>`)
+    .join(" ");
+
+  return `<div class="card" style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <h3 style="margin:0">Leave Timeline <span style="color:var(--dim);font-weight:400;font-size:11px">(next ${TIMELINE_DAYS} days · ${people.length} ${people.length === 1 ? 'person' : 'people'})</span></h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">${legend}</div>
+    </div>
+    <div style="overflow-x:auto"><table style="border-collapse:collapse"><thead><tr><th style="background:var(--surface);position:sticky;left:0;z-index:2"></th>${headerCells}</tr></thead><tbody>${personRows}</tbody></table></div>
+  </div>`;
+}
+
 function renderDashAppointments(visible, todayIso) {
   const upcoming = STATE.appointments
+    .filter(a => !a.resolved)
     .filter(a => passesFilter(a.d4, visible))
     .filter(a => {
       const iso = displayDateToISO(a.date);
@@ -182,13 +368,13 @@ function renderDashAppointments(visible, todayIso) {
     const isToday = iso === todayIso;
     const dayLabel = isToday ? `<span class="badge badge-red" style="font-size:9px">TODAY</span>` : "";
     return `<tr onclick="openPerson('${a.d4}')" style="cursor:pointer${isToday ? ';background:#F8514911' : ''}">
-      <td class="mono" style="font-weight:700;color:var(--accent)">${a.d4}</td>
-      <td style="text-align:left">${getName(a.d4)}</td>
+      <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(a.d4)}</td>
+      <td style="text-align:left">${displayPersonLabel(a.d4)}</td>
       <td style="text-align:left">${a.reason || ""}</td>
       <td style="white-space:nowrap">${a.date || ""} ${dayLabel}</td>
       <td class="mono" style="white-space:nowrap">${a.time || ""}</td>
       <td style="text-align:left;font-size:11px;color:var(--muted)">${a.location || ""}</td>
-      <td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button></td>
+      <td style="white-space:nowrap"><button class="btn btn-icon" style="color:var(--green)" onclick="event.stopPropagation(); toggleAppointmentResolved(${a.id})" title="Mark as resolved (hides from dashboard + parade state)">✓</button> <button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button></td>
     </tr>`;
   }).join("");
 
@@ -250,9 +436,16 @@ function renderRoster(el) {
         <button class="btn btn-success" onclick="pushTab('Roster',STATE.roster)">Push to Sheet</button>
       </div>
     </div>
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
-    ${scoped.map(r => { const bmi = calcBMI(r); return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${r.id}</td><td style="text-align:left">${r.name}</td><td>${statusBadge(r.status)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${bmi ?? '—'}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`; }).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No recruits in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "No invite redeemed on this device yet.")}</div>`}`;
+    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Role</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
+    ${scoped.map(r => {
+      const bmi = calcBMI(r);
+      const isCmd = r.role === "Commander";
+      const nameCell = isCmd ? `${r.rank ? r.rank + " " : ""}${r.name}` : r.name;
+      const idCell = isCmd ? "" : r.id;
+      const roleCell = isCmd ? `<span class="badge badge-purple">Commander</span>` : `<span style="color:var(--muted);font-size:11px">Recruit</span>`;
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td>${roleCell}</td><td>${statusBadge(r.status)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
+    }).join("")}
+    </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No personnel in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "No invite redeemed on this device yet.")}</div>`}`;
 }
 
 function renderAttendance(el) {
@@ -425,6 +618,30 @@ function renderMedical(el) {
   const ghostCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0).length;
   const pendingCount = scoped.filter(m => m.status === "Pending").length;
 
+  // R/C breakdown — same logic as the dashboard: only shown when "All" is
+  // the active role scope, so the stat is double-clickable for "is this a
+  // recruit-side problem or a commander problem?"
+  const isAll = !STATE.filterRole;
+  const splitC = pred => ({
+    rec: scoped.filter(m => pred(m) && !isCommander(m.d4)).length,
+    cmd: scoped.filter(m => pred(m) && isCommander(m.d4)).length
+  });
+  const totalSplit = splitC(() => true);
+  const activeSplit = (() => {
+    const rec = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0 && !isCommander(r.m.d4)).length;
+    const cmd = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0 && isCommander(r.m.d4)).length;
+    return { rec, cmd };
+  })();
+  const recoveringSplit = (() => {
+    const rec = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0 && !isCommander(r.m.d4)).length;
+    const cmd = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0 && isCommander(r.m.d4)).length;
+    return { rec, cmd };
+  })();
+  const pendingSplit = splitC(m => m.status === "Pending");
+  const inlineBreakdown = ({ rec, cmd }) => isAll
+    ? `<span style="font-size:55%;color:var(--muted);font-weight:400;margin-left:1px">/${rec}/${cmd}</span>`
+    : "";
+
   // Leaderboard: count report-sick events per recruit within the scope.
   // Each medical row IS a report-sick event, so this is a straight tally.
   const rsCounts = {};
@@ -443,22 +660,22 @@ function renderMedical(el) {
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat"><label>Total report sicks</label><div class="val">${scoped.length}</div></div>
-      <div class="stat"><label>Active today</label><div class="val" style="color:var(--red)">${activeCount}</div></div>
-      <div class="stat"><label>Recovering</label><div class="val" style="color:var(--orange)">${ghostCount}</div></div>
-      <div class="stat"><label>Pending</label><div class="val" style="color:var(--muted)">${pendingCount}</div></div>
+      <div class="stat"><label>Total report sicks</label><div class="val">${scoped.length}${inlineBreakdown(totalSplit)}</div></div>
+      <div class="stat"><label>Active today</label><div class="val" style="color:var(--red)">${activeCount}${inlineBreakdown(activeSplit)}</div></div>
+      <div class="stat"><label>Recovering</label><div class="val" style="color:var(--orange)">${ghostCount}${inlineBreakdown(recoveringSplit)}</div></div>
+      <div class="stat"><label>Pending</label><div class="val" style="color:var(--muted)">${pendingCount}${inlineBreakdown(pendingSplit)}</div></div>
     </div>
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Reported</th><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Status</th><th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${m.d4}</td><td style="text-align:left">${getName(m.d4)}</td><td style="text-align:left">${m.reason || ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.reason || ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
         </tbody></table></div>` : `<div class="empty-state">${STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet."}</div>`}
       </div>
       <div class="card">
         <h3>Most Reports Sick${isFilterActive() ? ` <span style="color:var(--accent);font-weight:400;font-size:10px">in ${filterLabel()}</span>` : ""}</h3>
         ${topReporters.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
           ${topReporters.map(r => `<div onclick="openPerson('${r.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px">
-            <span><span class="mono" style="color:var(--accent);font-weight:700">${r.d4}</span> ${getName(r.d4)}</span>
+            <span>${displayId(r.d4) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.d4)}</span> ` : ""}${displayPersonLabel(r.d4)}</span>
             <span class="mono" style="font-weight:700;color:${r.count >= 5 ? "var(--red)" : r.count >= 3 ? "var(--orange)" : "var(--muted)"}">${r.count}</span>
           </div>`).join("")}
         </div>` : `<div style="color:var(--muted);font-size:12px">No data yet</div>`}
@@ -479,7 +696,7 @@ function renderIPPT(el) {
       </div>
     </div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>#</th><th>Date</th><th>PU</th><th>SU</th><th>2.4km</th><th>Score</th><th>Award</th><th></th></tr></thead><tbody>
-    ${scoped.map(i => `<tr><td class="mono" style="font-weight:700">${i.d4}</td><td style="text-align:left">${getName(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${i.score}</td><td>${awardBadge(i.score)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
+    ${scoped.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${displayPersonLabel(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${i.score}</td><td>${awardBadge(i.score)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries in ${filterLabel()}.` : "No IPPT data yet. Add results or import CSV."}</div>`}`;
 }
 
@@ -532,6 +749,6 @@ function renderPolar(el) {
     </div>
     <div class="card"><h3>Expected CSV Columns</h3><code class="mono" style="font-size:11px;color:var(--accent)">4D, Conduct, Date, Avg HR, Max HR, Min HR, Calories, Training Load, Recovery, Duration, Distance</code></div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Conduct</th><th>Date</th><th>Avg HR</th><th>Max HR</th><th>Cal</th><th>Load</th><th>Dur</th></tr></thead><tbody>
-    ${scoped.map(p => `<tr><td class="mono">${p.d4}</td><td style="text-align:left">${getName(p.d4)}</td><td style="text-align:left">${p.conduct}</td><td>${p.date}</td><td style="color:${+p.avgHr > 160 ? 'var(--red)' : +p.avgHr > 140 ? 'var(--orange)' : 'var(--green)'}">${p.avgHr}</td><td>${p.maxHr}</td><td>${p.calories}</td><td>${p.trainingLoad}</td><td>${p.duration}m</td></tr>`).join("")}
+    ${scoped.map(p => `<tr><td class="mono">${displayId(p.d4)}</td><td style="text-align:left">${displayPersonLabel(p.d4)}</td><td style="text-align:left">${p.conduct}</td><td>${p.date}</td><td style="color:${+p.avgHr > 160 ? 'var(--red)' : +p.avgHr > 140 ? 'var(--orange)' : 'var(--green)'}">${p.avgHr}</td><td>${p.maxHr}</td><td>${p.calories}</td><td>${p.trainingLoad}</td><td>${p.duration}m</td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.polar.length ? `No Polar sessions in ${filterLabel()}.` : "No Polar data. Import a CSV."}</div>`}`;
 }
