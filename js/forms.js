@@ -99,7 +99,7 @@ function openPerson(d4) {
       <table style="width:100%;border-collapse:collapse">
         <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
         <tbody>
-          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + d.time + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${d.conduct || ''}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
+          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + pad4Time(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${d.conduct || ''}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
         </tbody>
       </table>
     </div>`;
@@ -733,7 +733,7 @@ function submitConductDetail() {
   const entry = {
     id: editId || nextId(),
     date: isoToDisplayDate(gv("f-date")),
-    time: gv("f-time"),
+    time: pad4Time(gv("f-time")),
     conduct: gv("f-conduct"),
     d4: gv("f-d4"),
     type: gv("f-type"),
@@ -783,6 +783,7 @@ function submitAppointment() {
     location: gv("f-location"),
     resolved: document.getElementById("f-resolved")?.checked || false
   };
+  entry.time = pad4Time(entry.time);
   if (editId) {
     const idx = STATE.appointments.findIndex(a => a.id === editId);
     if (idx >= 0) STATE.appointments[idx] = entry;
@@ -1034,7 +1035,7 @@ function buildAppointmentSection(dateIso, paradeTime) {
   if (!todays.length) return `MEDICAL APPT:\n\nS/N:\nR/N:\nReason:\nLocation:\nDate:\nTime:`;
   const blocks = todays.map((a, idx) => {
     const sn = String(idx + 1).padStart(2, "0");
-    return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${a.time || ""}`;
+    return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${pad4Time(a.time) || ""}`;
   });
   return `MEDICAL APPT: ${String(todays.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
 }

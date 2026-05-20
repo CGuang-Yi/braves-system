@@ -370,3 +370,20 @@ function displayDateToISO(s) {
   const year = m[3] || String(new Date().getFullYear());
   return `${year}-${mon}-${day}`;
 }
+
+// Normalize a time-of-day string to 4-digit HHMM. "930" → "0930", "7" →
+// "0700", "0830" stays. Time ranges ("0700-2100") are normalized on both
+// sides. Non-numeric / mixed strings are returned unchanged so we don't
+// mangle anything unexpected (e.g. "TBC", "after lunch"). Safe to call
+// on already-padded values — idempotent.
+function pad4Time(t) {
+  const s = String(t ?? "").trim();
+  if (!s) return s;
+  const range = s.match(/^(\d{1,4})\s*[-–]\s*(\d{1,4})$/);
+  if (range) return pad4Time(range[1]) + "-" + pad4Time(range[2]);
+  if (!/^\d{1,4}$/.test(s)) return s;
+  if (s.length === 4) return s;
+  if (s.length === 3) return "0" + s;          // "930" → "0930"
+  if (s.length === 2) return s + "00";          // "07"  → "0700"
+  return "0" + s + "00";                        // "7"   → "0700"
+}
