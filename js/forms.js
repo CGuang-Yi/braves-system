@@ -1024,10 +1024,44 @@ function paradeStatusLabel(record) {
 // Group medical entries by d4 so a person with multiple active statuses
 // appears under one S/N with stacked sub-entries (matches the BENJAMIN
 // C4110 sample in the chat).
+// ── Borderline MC returnees ──────────────────────────────
+// When an MC ends on day N, on day N+1 the system says the recruit is back
+// (medStatusActive returns false), but they might not have booked back in
+// before parade time. The PDS opts each one in/out via checkboxes in the
+// FP/LP report modal. Map of d4 → true means "still ATTC despite the
+// medical record having ended". Cleared on modal open and on date change.
+let _paradeOverrides = {};
+
+function findBorderlineReturnees(dateIso) {
+  if (!dateIso) return [];
+  const y = new Date(dateIso); y.setDate(y.getDate() - 1);
+  const yIso = y.toISOString().slice(0, 10);
+  return STATE.medical.filter(m =>
+    (m.status === "MC" || m.status === "Warded") &&
+    displayDateToISO(m.endDate || "") === yIso
+  );
+}
+
+function toggleBorderline(d4, checked, type) {
+  if (checked) _paradeOverrides[d4] = true;
+  else delete _paradeOverrides[d4];
+  regenerateReport(type);
+}
+
 function buildMedicalSection(label, dateIso, statusList) {
-  const matches = STATE.medical.filter(m =>
+  let matches = STATE.medical.filter(m =>
     medStatusActive(m, dateIso) && statusList.includes(m.status)
   );
+
+  // ATTC gets the PDS-confirmed borderline returnees folded in so they
+  // render with the same Reason/Status/Duration block as everyone else.
+  // Other sections aren't affected by overrides.
+  if (label === "ATTC") {
+    const existingD4s = new Set(matches.map(m => m.d4));
+    findBorderlineReturnees(dateIso)
+      .filter(m => _paradeOverrides[m.d4] && !existingD4s.has(m.d4))
+      .forEach(m => matches.push(m));
+  }
   const byD4 = {};
   matches.forEach(m => { (byD4[m.d4] = byD4[m.d4] || []).push(m); });
   const peopleIds = Object.keys(byD4);
@@ -1123,10 +1157,15 @@ function buildStrengthBlock(dateIso) {
   const recruits = all.filter(r => r.role !== "Commander");
   const commanders = all.filter(r => r.role === "Commander");
 
-  // Anyone away from camp today — physically not present.
+  // Anyone away from camp today — physically not present. Union in any
+  // borderline returnees the PDS confirmed still-out so CURRENT STRENGTH
+  // matches what the ATTC section shows.
   const attcD4s = new Set(STATE.medical
     .filter(m => medStatusActive(m, dateIso) && (m.status === "MC" || m.status === "Warded"))
     .map(m => m.d4));
+  findBorderlineReturnees(dateIso)
+    .filter(m => _paradeOverrides[m.d4])
+    .forEach(m => attcD4s.add(m.d4));
   const othersD4s = new Set(STATE.leave
     .filter(l => {
       const s = displayDateToISO(l.startDate);
@@ -1237,6 +1276,17 @@ function openReportModal(type) {
     : type === "MSK" ? "MSK Report"
     : "Medical Status List";
 
+  // Borderline overrides are scoped to a single modal session — clearing
+  // here avoids stale ticks leaking from a previous open.
+  _paradeOverrides = {};
+
+  // The borderline checklist is only meaningful for FP/LP. MED/MSK reports
+  // skip the section + date onchange wiring entirely.
+  const isParade = type === "FP" || type === "LP";
+  const dateExtra = isParade
+    ? `value="${defaultDate}" required onchange="onParadeDateChange('${type}')"`
+    : `value="${defaultDate}" required`;
+
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -1244,9 +1294,10 @@ function openReportModal(type) {
           Adjust date/time → tap <strong>Regenerate</strong>. The textarea is editable for last-minute tweaks (e.g. "latest version as of…", manual corrections). Tap <strong>Copy to Clipboard</strong> when ready and paste into WhatsApp.
         </div>
         <div class="form-row">
-          ${formField("rep-date", "Date", "date", "", `value="${defaultDate}" required`)}
+          ${formField("rep-date", "Date", "date", "", dateExtra)}
           ${formField("rep-time", "Time (HHMM)", "text", "0700", `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required`)}
         </div>
+        ${isParade ? `<div id="borderline-section"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
         <textarea id="rep-text" rows="20" spellcheck="false" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre"></textarea>
         <button type="button" id="rep-copy-btn" class="btn btn-success" onclick="copyReportToClipboard()">📋 Copy to Clipboard</button>
@@ -1256,7 +1307,38 @@ function openReportModal(type) {
   // Stash the report type so regenerate from the date/time onchange knows
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
+  if (isParade) renderBorderlineSection(defaultDate, type);
   regenerateReport(type);
+}
+
+// Wipes overrides when the date input changes, re-renders the checklist
+// for the new date, then regenerates the textarea.
+function onParadeDateChange(type) {
+  _paradeOverrides = {};
+  renderBorderlineSection(gv("rep-date"), type);
+  regenerateReport(type);
+}
+
+// Renders the borderline checklist for the given date. Empty section when
+// no recently-ended MCs exist (no noise on normal days).
+function renderBorderlineSection(dateIso, type) {
+  const section = document.getElementById("borderline-section");
+  if (!section) return;
+  const candidates = findBorderlineReturnees(dateIso);
+  if (!candidates.length) { section.innerHTML = ""; return; }
+  const rows = candidates.map(m => {
+    const checked = _paradeOverrides[m.d4] ? "checked" : "";
+    const endShort = toDDMMYY(displayDateToISO(m.endDate || "")) || m.endDate || "";
+    return `<label style="display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <input type="checkbox" ${checked} onchange="toggleBorderline('${m.d4}', this.checked, '${type}')" style="width:14px;height:14px;cursor:pointer">
+      <span>${paradeRN(m.d4)} — ${m.status} ended ${endShort}</span>
+    </label>`;
+  }).join("");
+  section.innerHTML = `<div style="font-size:11px;background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:8px 10px">
+    <div style="color:var(--orange);font-weight:600;margin-bottom:4px">⚠ Borderline returnees (${candidates.length}) — MC/Warded ended yesterday</div>
+    <div style="color:var(--muted);margin-bottom:6px">Tick anyone who hasn't actually booked back in yet. They'll be added to ATTC.</div>
+    ${rows}
+  </div>`;
 }
 
 function regenerateReport(type) {
