@@ -1180,6 +1180,52 @@ function generateMedicalStatusText(dateIso, time) {
   return `${heading}\n\n${body}`;
 }
 
+// MSK snapshot — one entry per active (non-cleared) case. Reason is the
+// latest injury description; Last visit is the most recent physio log
+// date for that recruit (or N/A if no exercises logged yet).
+// 4D rendered without the "C" prefix per the user's preferred format.
+function generateMSKReportText(dateIso, time) {
+  const byD4 = {};
+  STATE.msk.forEach(m => { (byD4[m.d4] = byD4[m.d4] || []).push(m); });
+
+  const tsOf = r => String(r.timestamp || "");
+  const cases = Object.entries(byD4)
+    .map(([d4, rows]) => ({ d4, rows, allCleared: rows.every(r => r.cleared) }))
+    .filter(c => !c.allCleared);
+
+  const dateStr = toDDMMYY(dateIso);
+  const heading = `MSK: ${String(cases.length).padStart(2, "0")} (as of ${dateStr} @${time})`;
+
+  if (!cases.length) return `${heading}\n\nNo active MSK cases.`;
+
+  const rnNoC = d4 => {
+    const r = STATE.roster.find(x => x.id === d4);
+    if (!r) return d4;
+    const name = (r.name || "").toUpperCase();
+    if (r.role === "Commander") return [r.rank, name].filter(Boolean).join(" ");
+    const bareId = String(r.id).replace(/^C/i, "");
+    return `REC ${name} ${bareId}`;
+  };
+
+  const blocks = cases.map((c, idx) => {
+    const sn = String(idx + 1).padStart(2, "0");
+    const injuries = c.rows.filter(r => (r.type || "").toLowerCase().includes("report"));
+    const exercises = c.rows.filter(r => (r.type || "").toLowerCase().includes("log") || (r.type || "").toLowerCase().includes("exercise"));
+    const latestInjury = [...injuries].sort((a, b) => tsOf(a) < tsOf(b) ? 1 : -1)[0];
+    const reason = latestInjury?.description || "";
+    const latestExercise = [...exercises].sort((a, b) => tsOf(a) < tsOf(b) ? 1 : -1)[0];
+    let lastVisit = "N/A";
+    if (latestExercise) {
+      const d = latestExercise.physioDate || latestExercise.timestamp || "";
+      const iso = displayDateToISO(d);
+      lastVisit = iso ? toDDMMYY(iso) : d;
+    }
+    return `S/N: ${sn}\nR/N: ${rnNoC(c.d4)}\nReason: ${reason}\nLast visit: ${lastVisit}`;
+  });
+
+  return `${heading}\n\n${blocks.join("\n\n")}`;
+}
+
 function openReportModal(type) {
   const now = new Date();
   const pad = n => String(n).padStart(2, "0");
@@ -1187,6 +1233,7 @@ function openReportModal(type) {
   const defaultTime = `${pad(now.getHours())}${pad(now.getMinutes())}`;
   const titleLabel = type === "FP" ? "First Parade State"
     : type === "LP" ? "Last Parade State"
+    : type === "MSK" ? "MSK Report"
     : "Medical Status List";
 
   openModal("Generate " + titleLabel, `
@@ -1214,8 +1261,8 @@ function openReportModal(type) {
 function regenerateReport(type) {
   const dateIso = gv("rep-date");
   const time = gv("rep-time") || "0700";
-  const text = type === "MED"
-    ? generateMedicalStatusText(dateIso, time)
+  const text = type === "MED" ? generateMedicalStatusText(dateIso, time)
+    : type === "MSK" ? generateMSKReportText(dateIso, time)
     : generateParadeStateText(type, dateIso, time);
   document.getElementById("rep-text").value = text;
 }

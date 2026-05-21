@@ -110,6 +110,7 @@ function renderDashboard(el) {
           <button type="button" onclick="openReportModal('FP'); closeReportMenu()">📋 First Parade State</button>
           <button type="button" onclick="openReportModal('LP'); closeReportMenu()">📋 Last Parade State</button>
           <button type="button" onclick="openReportModal('MED'); closeReportMenu()">🏥 Medical Status List</button>
+          <button type="button" onclick="openReportModal('MSK'); closeReportMenu()">🦵 MSK Report</button>
         </div>
       </div>
     </div>
