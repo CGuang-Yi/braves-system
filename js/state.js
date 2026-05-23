@@ -71,15 +71,21 @@ function normalizeRoster(roster) {
 //      a stale first row missing the new keys would silently strip them
 //      from the entire pushed sheet.
 function normalizeMedical(records) {
-  return (records || []).map(r => ({
-    id: r.id,
-    d4: padD4(r.d4 || ""),
-    date: r.date || "",
-    reason: r.reason || "",
-    status: r.status || "",
-    startDate: r.startDate || "",
-    endDate: r.endDate || ""
-  }));
+  return (records || []).map(r => {
+    // Auto-migrate any legacy "Excused X" entries to the canonical "Excuse X"
+    // spelling so badge colors / parade-state filters match consistently.
+    let status = r.status || "";
+    if (/^Excused /.test(status)) status = status.replace(/^Excused /, "Excuse ");
+    return {
+      id: r.id,
+      d4: padD4(r.d4 || ""),
+      date: r.date || "",
+      reason: r.reason || "",
+      status,
+      startDate: r.startDate || "",
+      endDate: r.endDate || ""
+    };
+  });
 }
 
 // Generic d4-padding pass for layers that don't have their own normalizer.

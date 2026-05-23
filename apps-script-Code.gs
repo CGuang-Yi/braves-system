@@ -51,7 +51,9 @@
  *               (Each row represents a "report sick" event — `date` is the
  *                date the recruit reported sick. status ∈ {MC, Warded, LD,
  *                RMJ, Excuse Heavy Load, Excuse Kneeling, Excuse Squatting,
- *                Excuse Uniform, Excuse RMJ, Pending, NIL}.
+ *                Excuse Uniform, Excuse RMJ, Excuse Swimming,
+ *                Excuse Prolonged Standing, Excuse Upper Limb,
+ *                Excuse Lower Limb, Pending, NIL}.
  *                NIL = MO saw the recruit and cleared them with no status.
  *                startDate/endDate are display-format dates ("16 May 2026")
  *                and BOTH ENDS ARE INCLUSIVE. Pending and NIL may have no
@@ -86,7 +88,7 @@
  *                display-format ("16 May 2026"); time is free text ("0930").)
  *
  *   Leave:      id | d4 | type | startDate | endDate | days | reason
- *               (Personnel absences. type ∈ {Leave, Off-in-Lieu,
+ *               (Personnel absences. type ∈ {Leave, Off-in-Lieu, Weekend,
  *                Night's Out, Course, Guard Duty, NDP, Other}. Only
  *                Off-in-Lieu decrements the per-commander leaveQuota
  *                (roster field). Night's Out = same-day evening off-camp

@@ -308,7 +308,7 @@ function toggleReportSickPatterns(d4) {
   // Status mix — reveals "always NIL" (malingering signal) vs real MC/LD pattern.
   const statusCounts = {};
   med.forEach(m => { const k = m.status || "—"; statusCounts[k] = (statusCounts[k] || 0) + 1; });
-  const statusOrder = ["MC", "Warded", "LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Pending", "NIL"];
+  const statusOrder = ["MC", "Warded", "LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Pending", "NIL"];
   const statusRows = statusOrder.filter(s => statusCounts[s]).map(s => [s, statusCounts[s]]);
   const nilPct = med.length ? Math.round((statusCounts["NIL"] || 0) / med.length * 100) : 0;
 
@@ -340,7 +340,7 @@ function toggleReportSickPatterns(d4) {
   const statusColor = {
     "MC": "#F85149", "Warded": "#F85149",
     "LD": "#D29922", "RMJ": "#D29922",
-    "Excuse Heavy Load": "#E3B341", "Excuse Kneeling": "#E3B341", "Excuse Squatting": "#E3B341", "Excuse Uniform": "#E3B341", "Excuse RMJ": "#E3B341",
+    "Excuse Heavy Load": "#E3B341", "Excuse Kneeling": "#E3B341", "Excuse Squatting": "#E3B341", "Excuse Uniform": "#E3B341", "Excuse RMJ": "#E3B341", "Excuse Swimming": "#E3B341", "Excuse Prolonged Standing": "#E3B341", "Excuse Upper Limb": "#E3B341", "Excuse Lower Limb": "#E3B341",
     "Pending": "#8B949E", "NIL": "#39D353", "—": "#6E7681"
   };
 
@@ -927,7 +927,7 @@ function openLeaveForm(id) {
           <div><strong>Leave / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
         <div class="form-group"><label>Person</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Leave", "Leave"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Leave", "Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
         <div class="form-row">
           ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
           ${formField("f-end", "End date", "date", "", `required value="${endVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
@@ -1206,7 +1206,7 @@ function generateParadeStateText(type, dateIso, time) {
     buildStrengthBlock(dateIso),
     buildMedicalSection("ATTC", dateIso, ["MC", "Warded"]),
     buildMedicalSection("REPORT SICK", dateIso, ["Pending"]),
-    buildMedicalSection("MEDICAL STATUS", dateIso, ["LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ"]),
+    buildMedicalSection("MEDICAL STATUS", dateIso, ["LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"]),
     buildAppointmentSection(dateIso, time),
     buildOthersSection(dateIso)
   ];
@@ -1216,7 +1216,7 @@ function generateParadeStateText(type, dateIso, time) {
 function generateMedicalStatusText(dateIso, time) {
   const dateStr = toDDMMYY(dateIso);
   const heading = `${dateStr}(latest version as of ${dateStr} @${time})`;
-  const body = buildMedicalSection("MEDICAL STATUS", dateIso, ["LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ"]);
+  const body = buildMedicalSection("MEDICAL STATUS", dateIso, ["LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"]);
   return `${heading}\n\n${body}`;
 }
 

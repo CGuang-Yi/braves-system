@@ -152,7 +152,7 @@ function deleteEntry(arrayName, id, label) {
 const MED_STATUS_GROUPS = [
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
   { label: "In camp, restricted",     options: ["LD", "RMJ"] },
-  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ"] },
+  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"] },
   { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Cleared by MO",           options: ["NIL"] }
 ];
