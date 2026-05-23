@@ -47,6 +47,13 @@ function renderSync(el) {
           <button class="btn" onclick="exportCSV(STATE.conductDetail,'conduct_detail.csv')" style="font-size:10px">Detail</button>
         </div>
       </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3 style="color:var(--pink)">📊 Email Fitness Reports</h3>
+      <p style="font-size:12px;color:var(--muted);margin:6px 0 12px;line-height:1.55">
+        Send each recruit a personalized HTML email with their Polar fitness trends, conduct attendance, and an encouragement note tailored to their data. Respects the topbar scope filter. Recruits never see anyone else's data.
+      </p>
+      <button class="btn btn-primary" onclick="openFitnessReportModal()" ${authed ? "" : "disabled"}>📨 Open Report Sender →</button>
     </div>`;
 }
 

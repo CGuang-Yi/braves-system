@@ -1368,6 +1368,483 @@ async function copyReportToClipboard() {
   }
 }
 
+// ─── FITNESS REPORTS (email to recruits) ────────────────
+// Builds a personalized HTML report per recruit with their Polar trends,
+// conduct attendance, and an auto-picked encouragement line. Charts are
+// rendered to off-screen canvases and base64-embedded so the email is
+// fully self-contained (no external image hosting needed).
+
+// Renders a Chart.js config to a base64 JPEG synchronously by disabling
+// animation. JPEG (not PNG) because MailApp.sendEmail caps the htmlBody
+// at 200KB and base64-encoded PNGs of these charts blow past that with
+// 3+ charts. JPEG at 0.85 quality is ~5× smaller with no visible loss
+// on line/bar charts.
+//
+// Trick: paint the white background AFTER Chart.js renders, using
+// destination-over so the fill sits UNDER the existing chart pixels.
+// Painting before doesn't work — Chart.js clears the canvas on draw.
+function renderChartPNG(chartConfig, width = 500, height = 230) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const chart = new Chart(canvas, {
+    ...chartConfig,
+    options: {
+      ...(chartConfig.options || {}),
+      animation: false,
+      responsive: false,
+      maintainAspectRatio: false
+    }
+  });
+  const ctx = canvas.getContext("2d");
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-over";
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+  const jpeg = canvas.toDataURL("image/jpeg", 0.85);
+  chart.destroy();
+  return jpeg;
+}
+
+// Compute polar-derived metrics (efficiency, workload) for a list of
+// raw STATE.polar rows. Returns rows enriched + sorted ascending by date.
+function computeFitnessMetrics(rows) {
+  return rows.map(p => {
+    const avg = +p.avgHr || 0, max = +p.maxHr || 0, cal = +p.calories || 0, dur = +p.duration || 0;
+    return {
+      date: p.date, conduct: p.conduct,
+      iso: displayDateToISO(p.date) || "",
+      avgHr: avg, maxHr: max, calories: cal, duration: dur,
+      efficiency: avg ? +(cal / avg).toFixed(2) : 0,
+      workload: avg * dur
+    };
+  }).filter(p => p.iso).sort((a, b) => a.iso < b.iso ? -1 : 1);
+}
+
+// Counts how many distinct company conducts (date+conduct tuples) fell
+// inside [startIso, endIso]. Used for the attendance-rate denominator so
+// "attended X / Y" reflects the actual training calendar.
+function countCompanyConductsInWindow(startIso, endIso) {
+  const tuples = new Set();
+  STATE.attendance.forEach(a => {
+    const iso = displayDateToISO(a.date);
+    if (iso && iso >= startIso && iso <= endIso) tuples.add(`${iso}|${a.conduct}`);
+  });
+  return tuples.size;
+}
+
+// MC-days overlapping window — sum of (end - start + 1) clamped to window.
+function countMCDaysInWindow(d4, startIso, endIso) {
+  let days = 0;
+  STATE.medical
+    .filter(m => m.d4 === d4 && (m.status === "MC" || m.status === "Warded"))
+    .forEach(m => {
+      const s = displayDateToISO(m.startDate || "");
+      const e = displayDateToISO(m.endDate || "");
+      if (!s || !e) return;
+      const lo = s < startIso ? startIso : s;
+      const hi = e > endIso ? endIso : e;
+      if (lo > hi) return;
+      days += Math.round((new Date(hi) - new Date(lo)) / 86400000) + 1;
+    });
+  return days;
+}
+
+// Composes the full HTML email body for one recruit. Returns:
+//   { htmlForEmail, htmlForPreview, inlineImages }
+// htmlForEmail uses <img src="cid:..."> refs paired with `inlineImages`
+// (Gmail blocks data: URIs in img src — cid: works fine).
+// htmlForPreview uses inline data: URIs so it can render in an <iframe>.
+// inlineImages is { cid_name: base64_string_without_prefix } passed to
+// API.sendEmail along with htmlForEmail.
+function buildFitnessReportHTML(d4, startIso, endIso) {
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r) return `<p>Recruit ${d4} not found.</p>`;
+
+  // Pull every per-recruit data slice inside the window.
+  const polar = computeFitnessMetrics(
+    STATE.polar.filter(p => p.d4 === d4).filter(p => {
+      const iso = displayDateToISO(p.date);
+      return iso && iso >= startIso && iso <= endIso;
+    })
+  );
+  const totalCoyConducts = countCompanyConductsInWindow(startIso, endIso);
+
+  // Conducts in this window where this recruit was logged as not
+  // participating. ReportSick is excluded — it happens mid-day, after the
+  // conduct, so the recruit was present for the actual PT itself.
+  const conductDetailRows = STATE.conductDetail.filter(c => {
+    if (c.d4 !== d4) return false;
+    const iso = displayDateToISO(c.date);
+    return iso && iso >= startIso && iso <= endIso;
+  });
+  const skippedRows = conductDetailRows.filter(c => c.type === "PX" || c.type === "RSI" || c.type === "Fallout");
+  const missedCount = skippedRows.length;
+  const missedBreakdown = ["PX", "RSI", "Fallout"]
+    .map(t => ({ t, n: skippedRows.filter(m => m.type === t).length }))
+    .filter(x => x.n > 0)
+    .map(x => `${x.n} ${x.t}`).join(" · ") || "none";
+
+  // Conducts attended = total minus those they were absent from.
+  // Polar classes joined = how many of those conducts they wore the watch for.
+  const conductsAttended = Math.max(0, totalCoyConducts - missedCount);
+  const attendanceRate = totalCoyConducts ? Math.round((conductsAttended / totalCoyConducts) * 100) : 0;
+  const polarJoined = polar.length;
+  const polarRate = totalCoyConducts ? Math.round((polarJoined / totalCoyConducts) * 100) : 0;
+  const mcDays = countMCDaysInWindow(d4, startIso, endIso);
+  const ippts = STATE.ippt.filter(i => i.d4 === d4 && (displayDateToISO(i.date) || "") >= startIso && (displayDateToISO(i.date) || "") <= endIso)
+    .sort((a, b) => a.attempt - b.attempt);
+
+  // Auto-encouragement: pick strongest positive trend.
+  let encouragement;
+  if (polar.length >= 2) {
+    const first = polar[0], last = polar[polar.length - 1];
+    const avgHrDelta = first.avgHr ? ((last.avgHr - first.avgHr) / first.avgHr) : 0;
+    const effDelta = first.efficiency ? ((last.efficiency - first.efficiency) / first.efficiency) : 0;
+    if (avgHrDelta < -0.05) {
+      const drop = first.avgHr - last.avgHr;
+      encouragement = `Your average HR has dropped <strong>${drop} bpm</strong> since ${first.date} — that's your heart working smarter, not harder. Real fitness gains.`;
+    } else if (effDelta > 0.1) {
+      encouragement = `Your cardio efficiency improved by <strong>${Math.round(effDelta * 100)}%</strong> in this window — every session is paying off.`;
+    } else if (attendanceRate >= 90) {
+      encouragement = `You showed up to <strong>${attendanceRate}%</strong> of conducts in this window. Consistency is the #1 driver of fitness — keep it going.`;
+    }
+  }
+  if (!encouragement) {
+    encouragement = `Every session counts. Small daily gains add up — keep showing up.`;
+  }
+
+  // Charts — each gets a unique cid so the email can use <img src="cid:..">
+  // while the preview iframe uses the equivalent data: URI inline.
+  const labels = polar.map(p => p.date.split(" ").slice(0, 2).join(" "));
+  const charts = [];
+  const inlineImages = {};
+  let cidCounter = 0;
+  const addChart = (entry, config) => {
+    const cid = `chart_${cidCounter++}`;
+    const dataUrl = renderChartPNG(config);
+    inlineImages[cid] = dataUrl.split("base64,")[1] || "";
+    charts.push({ ...entry, cid, dataUrl });
+  };
+
+  if (polar.length) {
+    addChart({
+      emoji: "❤", title: "Heart Rate Trend",
+      caption: "Your average and peak heart rate across each session. As you get fitter, your average HR for the same workload drops — your heart pumps more blood per beat, so it doesn't have to work as hard. A steady downward trend in the blue line over weeks is the clearest signal of improving cardio fitness."
+    }, {
+      type: "line",
+      data: { labels, datasets: [
+        { label: "Avg HR", data: polar.map(p => p.avgHr), borderColor: "#58A6FF", backgroundColor: "#58A6FF22", tension: 0.3, pointRadius: 3 },
+        { label: "Max HR", data: polar.map(p => p.maxHr), borderColor: "#F85149", backgroundColor: "#F8514922", tension: 0.3, pointRadius: 3 }
+      ] },
+      options: { plugins: { legend: { position: "bottom" } }, scales: { y: { title: { display: true, text: "bpm" } } } }
+    });
+    addChart({
+      emoji: "⚡", title: "Cardio Efficiency",
+      caption: "Calories burned per heartbeat (kcal ÷ avg HR). The higher this number, the more useful work your body produces per beat. When this line trends upward, your cardiovascular system is becoming more efficient — that's the kind of fitness gain that translates directly to faster runs, longer endurance, and lower 2.4 km times."
+    }, {
+      type: "line",
+      data: { labels, datasets: [{ label: "Efficiency", data: polar.map(p => p.efficiency), borderColor: "#39D2C0", backgroundColor: "#39D2C033", tension: 0.3, fill: true, pointRadius: 3 }] },
+      options: { plugins: { legend: { display: false } } }
+    });
+    addChart({
+      emoji: "💪", title: "Cardiac Workload per Session",
+      caption: "Total stress on your heart per session (avg HR × duration in minutes). This is the volume of training you're putting in. The shape of the bars matters more than the height — consistent, regular bars build aerobic base. Big spikes followed by long gaps don't. Showing up matters more than going hard."
+    }, {
+      type: "bar",
+      data: { labels, datasets: [{ data: polar.map(p => p.workload), backgroundColor: "#BC8CFF44", borderColor: "#BC8CFF", borderWidth: 1 }] },
+      options: { plugins: { legend: { display: false } } }
+    });
+  }
+  if (ippts.length >= 2) {
+    addChart({
+      emoji: "🏃", title: "IPPT Progression",
+      caption: "Your IPPT score across attempts in this window. The work you put in at PT — the polar sessions, the consistency — shows up here as raw points on your scorecard."
+    }, {
+      type: "line",
+      data: { labels: ippts.map(i => "#" + i.attempt), datasets: [{ data: ippts.map(i => +i.score), borderColor: "#D29922", backgroundColor: "#D2992233", fill: true, tension: 0.3, pointRadius: 5 }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
+    });
+  }
+
+  const startNice = isoToDisplayDate(startIso);
+  const endNice = isoToDisplayDate(endIso);
+  const bareId = String(r.id).replace(/^C/i, "");
+  const recHeader = `REC ${(r.name || "").toUpperCase()} ${bareId}`;
+
+  // Two parallel chart blocks — same layout/captions, different image src.
+  const noChartsBlock = `<p style="background:#FFF8E1;border:1px solid #FFE082;padding:12px;border-radius:6px;color:#5D4037;font-size:13px">No Polar sessions logged in this window — we'd love to see you in the next one.</p>`;
+  const chartsBlockForEmail = charts.length
+    ? charts.map(c => `
+        <h2 style="font-size:16px;color:#161B22;margin:24px 0 4px">${c.emoji} ${c.title}</h2>
+        <img src="cid:${c.cid}" alt="${c.title}" style="display:block;max-width:100%;height:auto;border-radius:6px;border:1px solid #E1E4E8" />
+        <p style="font-size:13px;color:#6E7681;margin:6px 0 0;line-height:1.5">${c.caption}</p>
+      `).join("")
+    : noChartsBlock;
+  const chartsBlockForPreview = charts.length
+    ? charts.map(c => `
+        <h2 style="font-size:16px;color:#161B22;margin:24px 0 4px">${c.emoji} ${c.title}</h2>
+        <img src="${c.dataUrl}" alt="${c.title}" style="display:block;max-width:100%;height:auto;border-radius:6px;border:1px solid #E1E4E8" />
+        <p style="font-size:13px;color:#6E7681;margin:6px 0 0;line-height:1.5">${c.caption}</p>
+      `).join("")
+    : noChartsBlock;
+
+  const wrapper = (chartsBlock) => `<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F6F8FA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#161B22">
+  <div style="max-width:640px;margin:0 auto;padding:24px;background:#FFFFFF">
+
+    <div style="background:linear-gradient(135deg,#1F6FEB,#58A6FF);color:#fff;padding:20px;border-radius:10px;margin-bottom:20px">
+      <div style="font-size:12px;letter-spacing:2px;opacity:.85">🐆 COUGAR COY</div>
+      <div style="font-size:22px;font-weight:700;margin-top:2px">Fitness Report</div>
+      <div style="font-size:13px;opacity:.9;margin-top:8px">${recHeader}</div>
+      <div style="font-size:12px;opacity:.8">${startNice} → ${endNice}</div>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:8px;margin-bottom:8px">
+      <tr>
+        <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
+          <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">Conducts attended</div>
+          <div style="font-size:24px;font-weight:700;color:#1A7F37;margin-top:4px">${conductsAttended}/${totalCoyConducts}</div>
+          <div style="font-size:11px;color:#6E7681">${attendanceRate}% present</div>
+        </td>
+        <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
+          <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">Polar classes joined</div>
+          <div style="font-size:24px;font-weight:700;color:#1F6FEB;margin-top:4px">${polarJoined}/${totalCoyConducts}</div>
+          <div style="font-size:11px;color:#6E7681">${polarRate}% with HR data</div>
+        </td>
+        <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
+          <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">Conducts missed</div>
+          <div style="font-size:24px;font-weight:700;color:#F85149;margin-top:4px">${missedCount}</div>
+          <div style="font-size:10px;color:#6E7681;line-height:1.4">${missedBreakdown}</div>
+        </td>
+        <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
+          <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">MC days</div>
+          <div style="font-size:24px;font-weight:700;color:#D29922;margin-top:4px">${mcDays}</div>
+          <div style="font-size:11px;color:#6E7681">in window</div>
+        </td>
+      </tr>
+    </table>
+
+    ${chartsBlock}
+
+    <div style="background:linear-gradient(135deg,#3FB95011,#39D2C022);border:1px solid #3FB95044;border-radius:10px;padding:18px;margin-top:24px">
+      <div style="font-size:13px;font-weight:700;color:#1A7F37;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🎯 Keep it up</div>
+      <div style="font-size:14px;color:#161B22;line-height:1.55">${encouragement}</div>
+      <div style="font-size:13px;color:#6E7681;margin-top:14px;font-style:italic">Stay strong. Stay healthy.<br>— Cougar Coy</div>
+    </div>
+
+    <div style="font-size:10px;color:#8B949E;text-align:center;margin-top:20px;padding-top:14px;border-top:1px solid #E1E4E8">
+      This is an automated fitness report generated from your Polar HR data and conduct attendance records.
+    </div>
+  </div>
+</body></html>`;
+
+  return {
+    htmlForEmail: wrapper(chartsBlockForEmail),
+    htmlForPreview: wrapper(chartsBlockForPreview),
+    inlineImages
+  };
+}
+
+// Opens the report modal with date pickers, recruit picker, preview,
+// test send, and bulk send. Fetches sender identity + quota on open so
+// the user knows exactly which Gmail account emails will come from.
+function openFitnessReportModal() {
+  const today = todayISO();
+  const monthAgo = new Date(today); monthAgo.setMonth(monthAgo.getMonth() - 1);
+  const monthAgoIso = monthAgo.toISOString().slice(0, 10);
+  const recipients = filteredRoster().filter(r => r.role !== "Commander" && r.email);
+  const skipped = filteredRoster().filter(r => r.role !== "Commander" && !r.email).length;
+  const scopeNote = isFilterActive() ? ` in ${filterLabel()}` : "";
+
+  // Recruit options for the preview/test dropdown — include any recruit
+  // with non-empty email in the current scope.
+  const recruitOptions = recipients.length
+    ? recipients.map(r => `<option value="${r.id}">${displayPersonLabel(r.id)} — ${r.email}</option>`).join("")
+    : `<option value="">(no recruits with email in scope)</option>`;
+
+  openModal("📊 Email Fitness Reports", `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;line-height:1.55">
+        Sends one personalized report per recruit. Each contains their Polar trends, conduct attendance, and an auto-picked encouragement line. Recruits never see anyone else's data.
+      </div>
+
+      <div id="sender-info" style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+        🔍 Checking sender identity…
+      </div>
+
+      <div class="form-row">
+        ${formField("rep-start", "Start date", "date", "", `value="${monthAgoIso}" required`)}
+        ${formField("rep-end", "End date", "date", "", `value="${today}" required`)}
+      </div>
+
+      <div class="form-group">
+        <label>Preview / Test recipient</label>
+        <select id="rep-preview-d4" class="topbar-select" style="width:100%">${recruitOptions}</select>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="previewFitnessReport()" ${recipients.length ? "" : "disabled"}>👁 Preview</button>
+        <input id="rep-test-email" type="email" placeholder="your@email.com" style="flex:1;min-width:160px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px">
+        <button class="btn" onclick="sendTestReport()" ${recipients.length ? "" : "disabled"}>📨 Send test</button>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:-4px">"Send test" sends the selected recruit's report to YOUR address (above) — no recruit gets emailed. Use this to verify the full pipeline.</div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+
+      <div style="font-size:12px;color:var(--muted)">
+        Bulk send to <strong style="color:var(--accent)">${recipients.length}</strong> recruit${recipients.length === 1 ? '' : 's'}${scopeNote}${skipped ? ` <span style="color:var(--dim)">(${skipped} skipped — no email on file)</span>` : ""}.
+      </div>
+      <button class="btn btn-success" onclick="sendAllReports()" ${recipients.length ? "" : "disabled"}>📨 Send to All Recipients →</button>
+
+      <div id="fitness-report-progress" style="display:none;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px"></div>
+    </div>`);
+
+  // Async: fetch sender identity + quota. Three possible outcomes:
+  //  1. Both succeed → show sender + quota
+  //  2. Sender blank (no userinfo scope) → show generic "from your owner
+  //     account" line + quota
+  //  3. Quota errors (no send_mail scope yet) → show clear setup steps
+  //     so the user knows how to grant the email permission
+  API.getEmailInfo().then(info => {
+    const el = document.getElementById("sender-info");
+    if (!el) return;
+    if (info.error) {
+      el.innerHTML = `⚠ Could not reach Apps Script (${info.error})`;
+      el.style.color = "var(--red)";
+      return;
+    }
+    if (info.quotaError) {
+      el.style.background = "#F8514922";
+      el.style.borderColor = "#F8514944";
+      el.style.color = "var(--text)";
+      el.innerHTML = `⚠ <strong style="color:var(--red)">Email permission not granted yet</strong> — Apps Script can't access Gmail.<br><br>
+        <strong>One-time setup (1 min):</strong><br>
+        1. Open the Apps Script editor (Extensions → Apps Script from your sheet)<br>
+        2. In the function dropdown, pick <code>sendEmailHelper</code><br>
+        3. Click <strong>Run</strong> (the play button) — it'll fail because no recipient, but Google will prompt you to <strong>Authorize</strong> Gmail send permission<br>
+        4. Grant the permission → close the editor → reopen this modal<br><br>
+        Alternative: add <code>"oauthScopes": ["https://www.googleapis.com/auth/script.send_mail"]</code> to <code>appsscript.json</code> and redeploy.`;
+      return;
+    }
+    const fromLine = info.senderEmail
+      ? `from <strong style="color:var(--accent)">${info.senderEmail}</strong>`
+      : `from your Apps Script owner account (check the Apps Script editor — top right)`;
+    el.innerHTML = `📧 Emails sent ${fromLine} · Display name: "Cougar Coy Training" · Daily quota: <strong>${info.remainingQuota}</strong>`;
+  }).catch(e => {
+    const el = document.getElementById("sender-info");
+    if (el) el.innerHTML = `⚠ Sender check failed: ${e.message}`;
+  });
+}
+
+// Renders the selected recruit's report in a secondary modal so the user
+// can sanity-check the layout + numbers before sending. Writes HTML
+// directly into the iframe document because our email HTML contains
+// single quotes that can't be safely embedded in a srcdoc attribute.
+function previewFitnessReport() {
+  const startIso = gv("rep-start");
+  const endIso = gv("rep-end");
+  if (!startIso || !endIso) { alert("Pick a start and end date first."); return; }
+  const d4 = gv("rep-preview-d4");
+  if (!d4) { alert("Pick a recruit to preview."); return; }
+  const recruit = STATE.roster.find(r => r.id === d4);
+  if (!recruit) { alert("Recruit not found."); return; }
+  const { htmlForPreview } = buildFitnessReportHTML(d4, startIso, endIso);
+
+  openModal("Preview — " + displayPersonLabel(d4), `
+    <iframe id="preview-iframe" style="width:100%;height:600px;border:1px solid var(--border);border-radius:6px;background:#fff"></iframe>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Sample for ${displayPersonLabel(d4)}${recruit.email ? ` (${recruit.email})` : ""}. Close this to go back.</div>
+  `);
+  document.querySelector(".modal")?.classList.add("wide");
+
+  setTimeout(() => {
+    const iframe = document.getElementById("preview-iframe");
+    if (!iframe) return;
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlForPreview);
+    doc.close();
+  }, 50);
+}
+
+// Sends the SELECTED recruit's report to a custom email address — typically
+// the sergeant's own inbox. No recruit actually receives anything. Use
+// this to verify the rendering + email deliverability before bulk-sending.
+async function sendTestReport() {
+  const startIso = gv("rep-start");
+  const endIso = gv("rep-end");
+  if (!startIso || !endIso) { alert("Pick a start and end date first."); return; }
+  const d4 = gv("rep-preview-d4");
+  if (!d4) { alert("Pick a recruit to use as the sample report."); return; }
+  const testEmail = (gv("rep-test-email") || "").trim();
+  if (!testEmail || !/.+@.+\..+/.test(testEmail)) { alert("Enter a valid test email address."); return; }
+
+  const subject = `[TEST] Cougar Fitness Report — ${displayPersonLabel(d4)}`;
+  const { htmlForEmail, inlineImages } = buildFitnessReportHTML(d4, startIso, endIso);
+
+  const progress = document.getElementById("fitness-report-progress");
+  progress.style.display = "block";
+  progress.innerHTML = `Sending test to <strong>${testEmail}</strong>…`;
+
+  try {
+    const res = await API.sendEmail(testEmail, subject, htmlForEmail, inlineImages);
+    if (res.error) {
+      progress.innerHTML = `<span style="color:var(--red)">⚠ Test failed: ${res.error}</span>`;
+    } else {
+      progress.innerHTML = `<span style="color:var(--green)">✓ Test sent to ${testEmail}.</span> Check your inbox (and spam folder). Quota left: ${res.remainingQuota}`;
+    }
+  } catch (e) {
+    progress.innerHTML = `<span style="color:var(--red)">⚠ Test failed: ${e.message}</span>`;
+  }
+}
+
+// Sequential send loop — fires one email at a time so we can read the
+// remaining quota after each call and abort cleanly when it hits 0.
+async function sendAllReports() {
+  const startIso = gv("rep-start");
+  const endIso = gv("rep-end");
+  if (!startIso || !endIso) { alert("Pick a start and end date first."); return; }
+  const recipients = filteredRoster().filter(r => r.role !== "Commander" && r.email);
+  if (!recipients.length) { alert("No recruits with email in current scope."); return; }
+  if (!confirm(`Send fitness reports to ${recipients.length} recruits? This cannot be undone.`)) return;
+
+  const progress = document.getElementById("fitness-report-progress");
+  progress.style.display = "block";
+  let sent = 0, failed = 0, skippedQuota = 0, lastQuota = "?";
+
+  const startNice = isoToDisplayDate(startIso);
+  const endNice = isoToDisplayDate(endIso);
+  const subject = `Your Cougar Fitness Report — ${startNice} → ${endNice}`;
+
+  for (let i = 0; i < recipients.length; i++) {
+    const r = recipients[i];
+    progress.innerHTML = `Sending ${i + 1}/${recipients.length} — currently <strong>${displayPersonLabel(r.id)}</strong><br><span style="color:var(--muted)">✓ ${sent} sent · ⚠ ${failed} failed · quota left: ${lastQuota}</span>`;
+    try {
+      const { htmlForEmail, inlineImages } = buildFitnessReportHTML(r.id, startIso, endIso);
+      const res = await API.sendEmail(r.email, subject, htmlForEmail, inlineImages);
+      if (res.error) {
+        failed++;
+        if (res.remainingQuota === 0) {
+          skippedQuota = recipients.length - i - 1;
+          break;
+        }
+      } else {
+        sent++;
+        lastQuota = res.remainingQuota ?? "?";
+        if (res.remainingQuota === 0 && i < recipients.length - 1) {
+          skippedQuota = recipients.length - i - 1;
+          break;
+        }
+      }
+    } catch (e) {
+      failed++;
+    }
+  }
+
+  progress.innerHTML = `<strong style="color:var(--green)">✓ Done.</strong> ${sent} sent · ${failed} failed${skippedQuota ? ` · ${skippedQuota} not sent (daily quota hit — retry tomorrow)` : ""} · quota left: ${lastQuota}`;
+}
+
 function importBackup(input) {
   const reader = new FileReader();
   reader.onload = e => { try {

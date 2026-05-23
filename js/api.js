@@ -56,5 +56,18 @@ const API = {
   },
   async appendRow(tabName, row) {
     return this.post({ action: "append", tab: tabName, row });
+  },
+  // Sends one HTML email through the Apps Script owner's Gmail. Returns
+  // { ok, remainingQuota } on success or { error, remainingQuota? } on
+  // failure (quota exhaustion, bad recipient, transient send error).
+  // inlineImages: optional { "cid_name": "base64_str_without_data_prefix" }
+  // map — referenced from the htmlBody as <img src="cid:cid_name">.
+  async sendEmail(to, subject, htmlBody, inlineImages) {
+    return this.post({ action: "sendEmail", to, subject, htmlBody, inlineImages });
+  },
+  // Returns sender identity + current quota without sending anything.
+  // Used by the report modal to surface "who emails will come from".
+  async getEmailInfo() {
+    return this.post({ action: "getEmailInfo" });
   }
 };

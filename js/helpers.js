@@ -387,3 +387,93 @@ function pad4Time(t) {
   if (s.length === 2) return s + "00";          // "07"  → "0700"
   return "0" + s + "00";                        // "7"   → "0700"
 }
+
+// ── MSK INJURY CLASSIFICATION ────────────────────────────
+// Maps free-text injury descriptions ("sprained ankle", "TFCC right wrist",
+// "shin splints") to body regions for analytics aggregation. Order matters
+// for overlapping keywords — more specific terms (achilles, TFCC) win over
+// generic (foot, wrist). Each row's `keys` are matched as substrings,
+// case-insensitive, against the full text.
+const MSK_REGION_MAP = [
+  { keys: ["achilles", "calf", "shin", "lower leg"], region: "Shin / Lower Leg" },
+  { keys: ["tfcc", "wrist"],                          region: "Hand / Wrist" },
+  { keys: ["hand", "finger"],                         region: "Hand / Wrist" },
+  { keys: ["ankle"],                                  region: "Ankle" },
+  { keys: ["knee"],                                   region: "Knee" },
+  { keys: ["tailbone", "coccyx"],                     region: "Back / Spine" },
+  { keys: ["back", "spine", "lumbar"],                region: "Back / Spine" },
+  { keys: ["shoulder", "rotator"],                    region: "Shoulder" },
+  { keys: ["toe", "blister", "foot", "abrasion"],     region: "Foot" },
+  { keys: ["thigh", "hamstring", "quad", "hip"],      region: "Upper Leg / Hip" },
+  { keys: ["neck"],                                   region: "Neck" }
+];
+
+// Strong non-MSK signals — if these appear in a conductDetail.reason we
+// exclude the row from MSK analytics regardless of other words. Catches
+// the common "fever / cough / stomach / eczema" stuff that the CO doesn't
+// want polluting injury charts.
+const NON_MSK_KEYWORDS = [
+  "fever", "flu", "cough", "sore throat", "stomach", "diarrh", "vomit",
+  "nausea", "eczema", "rash", "skin", "lightheaded", "giddy", "headache",
+  "blocked nose", "runny nose", "drowsy meds", "took meds"
+];
+
+// All known regions in display order — used by the manual-override picker
+// menu and for "ensure all regions appear in the legend" type passes.
+const MSK_REGION_LIST = [
+  "Ankle", "Knee", "Back / Spine", "Shin / Lower Leg", "Shoulder",
+  "Hand / Wrist", "Foot", "Upper Leg / Hip", "Neck", "Other"
+];
+
+const MSK_REGION_COLORS = {
+  "Ankle":             "#E8573A",
+  "Knee":              "#F2A93B",
+  "Back / Spine":      "#5B8DEF",
+  "Shin / Lower Leg":  "#43C59E",
+  "Shoulder":          "#A87BDB",
+  "Hand / Wrist":      "#E97BC2",
+  "Foot":              "#6EC8DB",
+  "Upper Leg / Hip":   "#FFD93D",
+  "Neck":              "#FF6B9D",
+  "Other":             "#8E99A4"
+};
+
+function classifyInjuryRegions(text) {
+  const t = String(text || "").toLowerCase();
+  const hits = new Set();
+  MSK_REGION_MAP.forEach(({ keys, region }) => {
+    if (keys.some(k => t.includes(k))) hits.add(region);
+  });
+  return hits.size ? [...hits] : ["Other"];
+}
+
+// Returns true if a conductDetail.reason or similar text looks like an
+// MSK case (mentions a region OR uses an injury verb). Non-MSK keywords
+// veto it outright.
+function isMSKReason(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t) return false;
+  if (NON_MSK_KEYWORDS.some(k => t.includes(k))) return false;
+  if (MSK_REGION_MAP.some(({ keys }) => keys.some(k => t.includes(k)))) return true;
+  return /sprain|strain|injury|pain|sore|fell\b|hurt|swollen|inflam|fracture|tear/i.test(t);
+}
+
+// Resolves the regions for a recruit's MSK case. Manual override (set via
+// the dashboard MSK card chips) takes precedence over the auto-classifier.
+// Returns [] when the recruit has no Report Injury rows at all.
+function getMSKRegionsForRecruit(d4) {
+  const reports = STATE.msk.filter(m =>
+    m.d4 === d4 && (m.type || "").toLowerCase().includes("report")
+  );
+  if (!reports.length) return [];
+  // Manual override wins — first non-empty manualRegions on any of this
+  // recruit's report rows.
+  const manual = reports.map(r => r.manualRegions).find(v => v && String(v).trim());
+  if (manual) {
+    return String(manual).split(",").map(s => s.trim()).filter(Boolean);
+  }
+  // Else union of auto-classified regions across all this recruit's reports.
+  const regions = new Set();
+  reports.forEach(r => classifyInjuryRegions(r.description).forEach(reg => regions.add(reg)));
+  return [...regions];
+}
