@@ -30,7 +30,7 @@ function openPerson(d4) {
   const computed = pol.map(x => {
     const avg = +x.avgHr || 0, max = +x.maxHr || 0, cal = +x.calories || 0, dur = +x.duration || 0;
     return {
-      date: x.date, conduct: x.conduct,
+      date: x.date, conduct: conductName(x.conductId),
       avgHr: avg, maxHr: max, calories: cal, duration: dur,
       efficiency: avg ? +(cal / avg).toFixed(2) : 0,
       intensity:  max ? +((avg / max) * 100).toFixed(1) : 0,
@@ -99,7 +99,7 @@ function openPerson(d4) {
       <table style="width:100%;border-collapse:collapse">
         <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
         <tbody>
-          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + pad4Time(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${d.conduct || ''}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
+          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + pad4Time(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${conductName(d.conductId)}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
         </tbody>
       </table>
     </div>`;
@@ -521,8 +521,7 @@ function openAttendanceForm(id) {
         ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
         <div class="form-group">
           <label>Conduct</label>
-          <input id="f-conduct" type="text" list="conduct-options" placeholder="Metabolic Circuit 2" required maxlength="100" value="${escapeAttr(e?.conduct)}">
-          <datalist id="conduct-options">${getAllConducts().map(c => `<option value="${escapeAttr(c)}">`).join("")}</datalist>
+          ${conductPicker({ inputId: "f-conductId", selectedId: e?.conductId || "" })}
         </div>
         <div class="form-row">
           ${formField("f-total", "Total Str", "number", "", `required min="0" max="999" step="1"${numVal(e?.total)}`)}
@@ -541,13 +540,15 @@ function openAttendanceForm(id) {
 function submitAttendance() {
   const editId = +gv("f-entry-id");
   const total = +gv("f-total"), part = +gv("f-part"), lms = +gv("f-lms"), px = +gv("f-px"), fallout = +gv("f-fallout");
+  const conductId = gv("f-conductId");
+  if (!conductId) { alert("Pick a conduct (or create a new one from the dropdown)."); return; }
   if (part > total) { alert("Participating cannot exceed total."); return; }
   if (px + fallout > total) { alert("PX + Fallout cannot exceed total."); return; }
   if (lms > part) { alert("LMS Participation cannot exceed Participating."); return; }
   const entry = {
     id: editId || nextId(),
     date: isoToDisplayDate(gv("f-date")),
-    conduct: gv("f-conduct"),
+    conductId,
     total, participating: part, lms, px, fallout,
     remarks: gv("f-remarks")
   };
@@ -725,21 +726,142 @@ function importRM(input) {
     saveLocal(); render(); alert(`Imported ${r.data.length} Route March rows`);
   } }); input.value = "";
 }
+// Normalize a free-text date string to the app's display format ("17 May 2026")
+// so CSV-imported rows match form-entered rows on the date half of any
+// (date, conductId) join. Round-trips through displayDateToISO + isoToDisplayDate
+// — if the input is unparseable, falls back to the raw string.
+function normalizeDateToDisplay(raw) {
+  if (!raw) return "";
+  const iso = displayDateToISO(raw);
+  if (iso) return isoToDisplayDate(iso);
+  // Try direct Date parsing (e.g. ISO "2026-05-17" not caught by displayDateToISO).
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const displayed = isoToDisplayDate(`${yyyy}-${mm}-${dd}`);
+    if (displayed) return displayed;
+  }
+  return raw;
+}
+
+// Holds an in-flight CSV polar import while the user resolves any unknown
+// conduct names. Each entry: { rawRows: [parsed CSV rows], unknownConducts:
+// [{name, count}], rawConductByRowIdx: [conductName per row] }.
+let _polarImportPending = null;
+
 function importPolar(input) {
   Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => {
     const missing = checkCols(r.meta.fields, ["4D"]);
     if (missing.length) { alert("CSV missing required column: 4D"); return; }
-    r.data.forEach(row => STATE.polar.push({
-      id: nextId(), d4: col(row, "4D", "id"), conduct: col(row, "Conduct", "Activity", "conduct", "Exercise"),
-      date: col(row, "Date", "date"), avgHr: colNum(row, "Avg HR", "AvgHR", "avg_hr", "Average HR"),
-      maxHr: colNum(row, "Max HR", "MaxHR", "max_hr"), minHr: colNum(row, "Min HR", "MinHR", "min_hr"),
+    // Pre-resolve each row's conduct against the registry. Group unknowns by
+    // normalized key so the modal only asks the user once per distinct name.
+    const rawRows = r.data;
+    const rawConductByRowIdx = rawRows.map(row => col(row, "Conduct", "Activity", "conduct", "Exercise") || "");
+    const unknownsByKey = new Map(); // key -> {name (canonical raw), count}
+    rawConductByRowIdx.forEach(name => {
+      if (!name) return;
+      if (conductIdByName(name)) return;
+      const key = normalizeConductKey(name);
+      if (!unknownsByKey.has(key)) unknownsByKey.set(key, { name, count: 0 });
+      unknownsByKey.get(key).count++;
+    });
+    const unknownConducts = [...unknownsByKey.values()].sort((a, b) => b.count - a.count);
+
+    _polarImportPending = { rawRows, rawConductByRowIdx, unknownConducts };
+    if (unknownConducts.length > 0) {
+      openUnknownPolarConductsModal();
+    } else {
+      finalizePolarImport({});
+    }
+  } }); input.value = "";
+}
+
+// Modal: for each conduct name in the CSV that doesn't match the registry,
+// ask the user to either (a) merge into an existing conduct, or (b) create
+// a new conduct with this name. Maps are keyed by normalized name so the
+// finalize step can look up every row's resolution in one pass.
+function openUnknownPolarConductsModal() {
+  const { unknownConducts } = _polarImportPending;
+  const opts = getAllConducts();
+  openModal(`Resolve ${unknownConducts.length} new conduct${unknownConducts.length === 1 ? "" : "s"} from CSV`, `
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      The CSV uses conduct names that aren't in your registry yet. For each one, pick an
+      existing conduct to merge it into, or create a new conduct with this name.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto">
+      ${unknownConducts.map((u, i) => `
+        <div class="card" style="padding:8px 12px;background:var(--surface2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">
+            <code style="font-family:var(--mono);font-size:12px;color:var(--text)">"${escapeAttr(u.name)}"</code>
+            <span style="font-size:11px;color:var(--muted)">${u.count} row${u.count === 1 ? "" : "s"}</span>
+          </div>
+          <select id="polar-resolve-${i}" data-key="${escapeAttr(normalizeConductKey(u.name))}" style="width:100%;padding:5px 8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
+            <option value="__new__" selected>+ Create new conduct: "${escapeAttr(u.name)}"</option>
+            ${opts.map(c => `<option value="${c.id}">→ Merge into "${escapeAttr(c.name)}"</option>`).join("")}
+          </select>
+        </div>
+      `).join("")}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <button class="btn" onclick="cancelPolarImport()">Cancel import</button>
+      <button class="btn btn-success" onclick="confirmPolarConductResolutions()">Continue import</button>
+    </div>
+  `);
+}
+
+function cancelPolarImport() {
+  _polarImportPending = null;
+  closeModal();
+}
+
+function confirmPolarConductResolutions() {
+  const { unknownConducts } = _polarImportPending;
+  // Build keyResolutions: normalizeConductKey(unknown) → conductId
+  const keyResolutions = {};
+  unknownConducts.forEach((u, i) => {
+    const sel = document.getElementById(`polar-resolve-${i}`);
+    if (!sel) return;
+    const key = sel.dataset.key;
+    if (sel.value === "__new__") {
+      keyResolutions[key] = createConduct(u.name);
+    } else {
+      keyResolutions[key] = sel.value;
+    }
+  });
+  closeModal();
+  finalizePolarImport(keyResolutions);
+}
+
+// Walks the staged rows and pushes them onto STATE.polar with resolved
+// conductIds + normalized dates. keyResolutions covers the unknowns;
+// the rest resolve directly via the registry.
+function finalizePolarImport(keyResolutions) {
+  const { rawRows, rawConductByRowIdx } = _polarImportPending;
+  let inserted = 0;
+  rawRows.forEach((row, idx) => {
+    const rawConduct = rawConductByRowIdx[idx];
+    const conductId = conductIdByName(rawConduct) || keyResolutions[normalizeConductKey(rawConduct)] || "";
+    STATE.polar.push({
+      id: nextId(),
+      d4: col(row, "4D", "id"),
+      conductId,
+      date: normalizeDateToDisplay(col(row, "Date", "date")),
+      avgHr: colNum(row, "Avg HR", "AvgHR", "avg_hr", "Average HR"),
+      maxHr: colNum(row, "Max HR", "MaxHR", "max_hr"),
+      minHr: colNum(row, "Min HR", "MinHR", "min_hr"),
       calories: colNum(row, "Calories", "Cal", "calories", "Energy"),
       trainingLoad: colNum(row, "Training Load", "TrainingLoad", "training_load", "Load"),
       duration: colNum(row, "Duration", "duration", "Time", "Dur"),
       distance: colNum(row, "Distance", "distance", "Dist")
-    }));
-    saveLocal(); render(); alert(`Imported ${r.data.length} Polar rows`);
-  } }); input.value = "";
+    });
+    inserted++;
+  });
+  _polarImportPending = null;
+  const lmsChanged = recomputeAttendanceLmsFromPolar();
+  saveLocal(); render();
+  alert(`Imported ${inserted} Polar rows${lmsChanged ? `\nUpdated LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"}.` : ""}`);
 }
 function openConductDetailForm(id) {
   const e = id ? STATE.conductDetail.find(x => x.id === id) : null;
@@ -753,8 +875,7 @@ function openConductDetailForm(id) {
         ${formField("f-time", "Time (optional)", "text", "0730", `maxlength="10" value="${escapeAttr(e?.time)}"`)}
         <div class="form-group">
           <label>Conduct</label>
-          <input id="f-conduct" type="text" list="conduct-options" placeholder="Oregon Circuit" required maxlength="100" value="${escapeAttr(e?.conduct)}">
-          <datalist id="conduct-options">${getAllConducts().map(c => `<option value="${escapeAttr(c)}">`).join("")}</datalist>
+          ${conductPicker({ inputId: "f-conductId", selectedId: e?.conductId || "" })}
         </div>
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
         ${formSelect("f-type", "Type", [["PX", "PX (Status personnel)"], ["Fallout", "Fallout"], ["RSI", "RSI (fallout → report-sick)"], ["ReportSick", "Reported Sick (mid-day)"]], true, e?.type || "")}
@@ -765,11 +886,13 @@ function openConductDetailForm(id) {
 }
 function submitConductDetail() {
   const editId = +gv("f-entry-id");
+  const conductId = gv("f-conductId");
+  if (!conductId) { alert("Pick a conduct (or create a new one from the dropdown)."); return; }
   const entry = {
     id: editId || nextId(),
     date: isoToDisplayDate(gv("f-date")),
     time: pad4Time(gv("f-time")),
-    conduct: gv("f-conduct"),
+    conductId,
     d4: gv("f-d4"),
     type: gv("f-type"),
     reason: gv("f-reason")
@@ -1464,7 +1587,7 @@ function computeFitnessMetrics(rows) {
   return rows.map(p => {
     const avg = +p.avgHr || 0, max = +p.maxHr || 0, cal = +p.calories || 0, dur = +p.duration || 0;
     return {
-      date: p.date, conduct: p.conduct,
+      date: p.date, conduct: conductName(p.conductId),
       iso: displayDateToISO(p.date) || "",
       avgHr: avg, maxHr: max, calories: cal, duration: dur,
       efficiency: avg ? +(cal / avg).toFixed(2) : 0,
@@ -1480,7 +1603,7 @@ function countCompanyConductsInWindow(startIso, endIso) {
   const tuples = new Set();
   STATE.attendance.forEach(a => {
     const iso = displayDateToISO(a.date);
-    if (iso && iso >= startIso && iso <= endIso) tuples.add(`${iso}|${a.conduct}`);
+    if (iso && iso >= startIso && iso <= endIso && a.conductId) tuples.add(`${iso}|${a.conductId}`);
   });
   return tuples.size;
 }
@@ -1894,6 +2017,692 @@ async function sendAllReports() {
   }
 
   progress.innerHTML = `<strong style="color:var(--green)">✓ Done.</strong> ${sent} sent · ${failed} failed${skippedQuota ? ` · ${skippedQuota} not sent (daily quota hit — retry tomorrow)` : ""} · quota left: ${lastQuota}`;
+}
+
+// ─── CONDUCT REGISTRY MIGRATION ──────────────────────────
+// Promotes legacy free-text `conduct` strings on attendance/polar/conductDetail
+// records into a stable `conductId` referencing STATE.conducts. Runs once on
+// the first launch after the refactor ships (detected by an empty registry
+// alongside any record that still carries a string `conduct` field).
+
+// True if there's legacy data that hasn't been migrated yet.
+function needsConductMigration() {
+  if ((STATE.conducts || []).length > 0) return false;
+  const hasLegacy = (arr) => (arr || []).some(r => typeof r?.conduct === "string" && r.conduct.trim());
+  return hasLegacy(STATE.attendance) || hasLegacy(STATE.polar) || hasLegacy(STATE.conductDetail);
+}
+
+// In-memory working state for the review modal. Each group:
+//   { gid: "g0", canonical: "Orientation Run", variants: [{name, count}, …], count, key }
+// gid is a temporary id used only by modal event handlers — the real
+// conductId is assigned at commit time.
+let _conductMigrationGroups = null;
+
+// Group every unique conduct string across attendance / polar / conductDetail
+// by normalizeConductKey. For each bucket, pick the most-frequent variant
+// as the proposed canonical name (ties broken by longest, since the longer
+// variant usually has the full punctuation/capitalization). Sorted by
+// total usage descending so heavy-traffic conducts surface first in the modal.
+function buildConductRegistryProposal() {
+  const buckets = new Map();
+  const accumulate = (arr) => (arr || []).forEach(r => {
+    const raw = r?.conduct;
+    if (typeof raw !== "string" || !raw.trim()) return;
+    const key = normalizeConductKey(raw);
+    if (!buckets.has(key)) buckets.set(key, new Map());
+    const variants = buckets.get(key);
+    variants.set(raw, (variants.get(raw) || 0) + 1);
+  });
+  accumulate(STATE.attendance);
+  accumulate(STATE.polar);
+  accumulate(STATE.conductDetail);
+
+  const out = [];
+  for (const [key, variants] of buckets) {
+    const sorted = [...variants.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
+    const canonical = sorted[0][0];
+    const total = sorted.reduce((s, [, n]) => s + n, 0);
+    out.push({
+      key,
+      canonical,
+      variants: sorted.map(([name, count]) => ({ name, count })),
+      count: total
+    });
+  }
+  out.sort((a, b) => b.count - a.count);
+  return out;
+}
+
+// Called from bootstrap on launch and as a manual fallback from the Conducts
+// admin tab. Opens the review modal only if there's actually legacy data to
+// migrate; otherwise no-op.
+function maybeRunConductMigration() {
+  if (!needsConductMigration()) return;
+  openConductReviewModal();
+}
+
+function openConductReviewModal() {
+  const proposal = buildConductRegistryProposal();
+  if (proposal.length === 0) {
+    alert("No legacy conducts to migrate.");
+    return;
+  }
+  _conductMigrationGroups = proposal.map((p, i) => ({ ...p, gid: "g" + i }));
+  renderConductReviewModal();
+}
+
+function renderConductReviewModal() {
+  const groups = _conductMigrationGroups;
+  const body = `
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">
+      Each entry below becomes one conduct in the registry with a stable ID. Records
+      using any variant beneath get repointed to that ID. Spaces are shown as · so
+      hidden whitespace differences are visible.
+    </p>
+    <div id="conduct-review-list" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto">
+      ${groups.map(g => `
+        <div class="card" style="padding:10px 12px;background:var(--surface2)" data-gid="${g.gid}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="text" value="${escapeAttr(g.canonical)}" oninput="updateConductGroupName('${g.gid}', this.value)" style="flex:1;font-weight:600;font-size:13px;padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+            <span style="font-size:11px;color:var(--muted);white-space:nowrap">${g.count} rec${g.count === 1 ? "" : "s"}</span>
+            <button class="btn btn-icon btn-danger" title="Drop this conduct (records using it will have an empty conductId)" onclick="dropConductGroup('${g.gid}')">✕</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;font-size:11px">
+            ${g.variants.map(v => {
+              const visible = escapeAttr(v.name).replace(/ /g, '·');
+              const enc = encodeURIComponent(v.name);
+              return `
+                <div style="display:flex;align-items:center;gap:6px;padding:3px 6px;background:var(--surface);border-radius:3px">
+                  <code style="flex:1;font-family:var(--mono);color:var(--text);font-size:11px">"${visible}"</code>
+                  <span style="color:var(--muted);min-width:28px;text-align:right">${v.count}×</span>
+                  <button class="btn btn-icon" title="Split this variant into its own new conduct" onclick="splitConductVariant('${g.gid}', decodeURIComponent('${enc}'))">⤴</button>
+                  <select onchange="if (this.value) { moveConductVariant('${g.gid}', decodeURIComponent('${enc}'), this.value); this.value=''; }" style="font-size:10px;padding:2px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px">
+                    <option value="">Merge →</option>
+                    ${groups.filter(o => o.gid !== g.gid).map(o => `<option value="${o.gid}">${escapeAttr(o.canonical).slice(0, 40)}</option>`).join("")}
+                  </select>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--muted)">${groups.length} conduct${groups.length === 1 ? "" : "s"} · ${groups.reduce((s, g) => s + g.count, 0)} records</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="closeModal()">Review later</button>
+        <button class="btn btn-success" onclick="commitConductMigration()">Commit migration</button>
+      </div>
+    </div>
+  `;
+  openModal(`Review conducts (${groups.length})`, body);
+}
+
+function updateConductGroupName(gid, name) {
+  const g = _conductMigrationGroups.find(x => x.gid === gid);
+  if (g) g.canonical = name;
+}
+
+function dropConductGroup(gid) {
+  if (!confirm("Drop this conduct? Records using its variants will have an empty conductId after migration.")) return;
+  _conductMigrationGroups = _conductMigrationGroups.filter(g => g.gid !== gid);
+  renderConductReviewModal();
+}
+
+function splitConductVariant(gid, variantName) {
+  const g = _conductMigrationGroups.find(x => x.gid === gid);
+  if (!g) return;
+  const idx = g.variants.findIndex(v => v.name === variantName);
+  if (idx === -1) return;
+  const v = g.variants.splice(idx, 1)[0];
+  g.count -= v.count;
+  const maxN = _conductMigrationGroups.reduce((m, x) => Math.max(m, parseInt(x.gid.slice(1), 10) || 0), -1);
+  _conductMigrationGroups.push({ gid: "g" + (maxN + 1), canonical: v.name, variants: [v], count: v.count, key: normalizeConductKey(v.name) });
+  if (g.variants.length === 0) _conductMigrationGroups = _conductMigrationGroups.filter(x => x.gid !== gid);
+  renderConductReviewModal();
+}
+
+function moveConductVariant(fromGid, variantName, toGid) {
+  const from = _conductMigrationGroups.find(x => x.gid === fromGid);
+  const to = _conductMigrationGroups.find(x => x.gid === toGid);
+  if (!from || !to) return;
+  const idx = from.variants.findIndex(v => v.name === variantName);
+  if (idx === -1) return;
+  const v = from.variants.splice(idx, 1)[0];
+  from.count -= v.count;
+  const dup = to.variants.find(x => x.name === v.name);
+  if (dup) dup.count += v.count;
+  else to.variants.push(v);
+  to.count += v.count;
+  if (from.variants.length === 0) _conductMigrationGroups = _conductMigrationGroups.filter(x => x.gid !== fromGid);
+  renderConductReviewModal();
+}
+
+async function commitConductMigration() {
+  const groups = _conductMigrationGroups;
+  if (!groups || groups.length === 0) { closeModal(); return; }
+
+  // Validate: every group needs a non-empty canonical name.
+  const blank = groups.find(g => !g.canonical || !g.canonical.trim());
+  if (blank) { alert("One or more conducts have an empty name. Fill them in or drop them, then commit again."); return; }
+
+  // Assign final ids; build name→id and key→id maps for rewriting records.
+  const registry = groups.map((g, i) => ({ id: "c" + String(i + 1).padStart(3, "0"), name: g.canonical.trim() }));
+  const nameToId = new Map();
+  const keyToId = new Map();
+  groups.forEach((g, i) => {
+    g.variants.forEach(v => nameToId.set(v.name, registry[i].id));
+    keyToId.set(g.key, registry[i].id);
+  });
+
+  // Repoint every record: lookup by exact variant name first (preserves any
+  // user-driven re-grouping done in the modal), then fall back to normalized
+  // key (covers records that share a key with a known variant but had a
+  // string we didn't see — defensive).
+  const rewrite = (arr) => (arr || []).forEach(r => {
+    if (typeof r.conduct !== "string") return;
+    const id = nameToId.get(r.conduct) || keyToId.get(normalizeConductKey(r.conduct)) || "";
+    r.conductId = id;
+    delete r.conduct;
+  });
+  rewrite(STATE.attendance);
+  rewrite(STATE.polar);
+  rewrite(STATE.conductDetail);
+
+  STATE.conducts = registry;
+  // Backfill LMS counts now that polar/attendance can finally join on
+  // conductId. Before this migration the LMS column was likely stale on rows
+  // where the conduct string had any drift between the two layers.
+  const lmsChanged = recomputeAttendanceLmsFromPolar();
+  saveLocal();
+  closeModal();
+  render();
+
+  // The sheet push is part of the atomic migration — not optional. If we
+  // skipped it, future appendRow/appendMany on PolarFlow / Attendance /
+  // ConductDetail would write into the OLD schema (which still has a
+  // `conduct` column, not `conductId`), silently dropping the conductId
+  // values. So we push all four tabs immediately and surface any failure.
+  try {
+    await API.pushTab("Conducts", STATE.conducts);
+    await API.pushTab("Attendance", STATE.attendance);
+    await API.pushTab("PolarFlow", STATE.polar);
+    await API.pushTab("ConductDetail", STATE.conductDetail);
+    alert(`Migrated ${registry.length} conduct${registry.length === 1 ? "" : "s"} and synced to the Google Sheet.\n${lmsChanged ? `Backfilled LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"} from Polar data.\n` : ""}\nConducts tab created; Attendance / PolarFlow / ConductDetail now use the conductId column.`);
+  } catch (e) {
+    alert(`Migrated ${registry.length} conduct${registry.length === 1 ? "" : "s"} locally, BUT the sheet push failed:\n\n${e.message}\n\n⚠️ Until you manually push all four tabs (Conducts, Attendance, PolarFlow, ConductDetail) from each tab header, any new rows appended to the sheet will lose their conductId values. Go to each tab and click Push to Sheet now.`);
+  }
+}
+
+// ─── CONDUCT REGISTRY CRUD ───────────────────────────────
+// Create a new conduct from any UI that has access to a name string. If a
+// conduct with the same normalized name already exists, returns its id
+// (idempotent) so the calling form can just select the existing entry.
+function createConduct(name) {
+  const clean = String(name || "").trim();
+  if (!clean) return "";
+  const existing = conductIdByName(clean);
+  if (existing) return existing;
+  const id = nextConductId();
+  STATE.conducts.push({ id, name: clean });
+  saveLocal();
+  return id;
+}
+
+function renameConduct(id, newName) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const clean = String(newName || "").trim();
+  if (!clean) { alert("Conduct name cannot be empty."); return; }
+  const conflict = STATE.conducts.find(x => x.id !== id && normalizeConductKey(x.name) === normalizeConductKey(clean));
+  if (conflict) { alert(`"${clean}" already exists (${conflict.id}). Use Merge instead.`); return; }
+  c.name = clean;
+  saveLocal();
+  render();
+}
+
+// Merges one conduct into another: every record pointing to fromId is
+// repointed to toId, then fromId is removed from the registry. Used both
+// from the admin tab and indirectly from migration edits.
+function mergeConductInto(fromId, toId) {
+  if (fromId === toId) return;
+  const from = STATE.conducts.find(x => x.id === fromId);
+  const to = STATE.conducts.find(x => x.id === toId);
+  if (!from || !to) return;
+  if (!confirm(`Merge "${from.name}" → "${to.name}"?\n\nAll records currently using "${from.name}" will be repointed to "${to.name}", and "${from.name}" will be removed from the registry.`)) return;
+  const repoint = (arr) => (arr || []).forEach(r => { if (r.conductId === fromId) r.conductId = toId; });
+  repoint(STATE.attendance);
+  repoint(STATE.polar);
+  repoint(STATE.conductDetail);
+  STATE.conducts = STATE.conducts.filter(x => x.id !== fromId);
+  saveLocal();
+  render();
+}
+
+function deleteConduct(id) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const usage = countConductUsage(id);
+  if (usage.total > 0) {
+    alert(`"${c.name}" is still used by ${usage.total} record${usage.total === 1 ? "" : "s"} (${usage.attendance} attendance, ${usage.polar} polar, ${usage.detail} detail). Merge it into another conduct first, or delete the records.`);
+    return;
+  }
+  if (!confirm(`Delete "${c.name}"? It has no records using it.`)) return;
+  STATE.conducts = STATE.conducts.filter(x => x.id !== id);
+  saveLocal();
+  render();
+}
+
+function countConductUsage(id) {
+  const attendance = STATE.attendance.filter(r => r.conductId === id).length;
+  const polar = STATE.polar.filter(r => r.conductId === id).length;
+  const detail = STATE.conductDetail.filter(r => r.conductId === id).length;
+  return { attendance, polar, detail, total: attendance + polar + detail };
+}
+
+// ─── CONDUCT PICKER (form widget) ────────────────────────
+// Renders the conduct <select> used by attendance / conductDetail / polar
+// staging forms. Selecting "+ New conduct" prompts for a name inline, creates
+// the registry entry, and selects its id. The hidden input mirrors the
+// current id so form submit handlers can read it via gv(inputId).
+//
+//   conductPicker({ inputId, selectedId, onChange })
+//     inputId:    DOM id of the hidden input that stores the conductId
+//     selectedId: pre-selected conductId (e.g. when editing an existing row)
+//     onChange:   optional JS expression run after selection changes
+//                 (use to update derived form fields like inferred time)
+function conductPicker({ inputId, selectedId = "", onChange = "" }) {
+  const opts = getAllConducts();
+  const onChangeJS = `handleConductPickerChange('${inputId}', this); ${onChange}`;
+  return `
+    <input type="hidden" id="${inputId}" value="${escapeAttr(selectedId)}">
+    <select onchange="${onChangeJS}" style="width:100%;padding:7px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
+      <option value="" ${selectedId ? "" : "selected"}>— pick a conduct —</option>
+      ${opts.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${escapeAttr(c.name)}</option>`).join("")}
+      <option value="__new__">+ New conduct…</option>
+    </select>
+  `;
+}
+
+// Companion to conductPicker(). When the user picks "+ New conduct…" we
+// prompt for a name, create the registry entry, and select it inline. We
+// avoid a full render() here so any modal currently open (e.g. attendance
+// form) doesn't get torn down mid-edit.
+function handleConductPickerChange(inputId, selectEl) {
+  const hidden = document.getElementById(inputId);
+  if (!hidden) return;
+  if (selectEl.value === "__new__") {
+    const name = (prompt("New conduct name:") || "").trim();
+    if (!name) {
+      selectEl.value = hidden.value || "";
+      return;
+    }
+    const id = createConduct(name);
+    hidden.value = id;
+    // Patch this select inline so the new option appears + is selected.
+    // Other pickers on the page will refresh next time the user opens them.
+    const existingOpt = [...selectEl.options].find(o => o.value === id);
+    if (!existingOpt) {
+      const newOpt = document.createElement("option");
+      newOpt.value = id;
+      newOpt.textContent = name;
+      const newConductOpt = [...selectEl.options].find(o => o.value === "__new__");
+      if (newConductOpt) selectEl.insertBefore(newOpt, newConductOpt);
+      else selectEl.appendChild(newOpt);
+    }
+    selectEl.value = id;
+  } else {
+    hidden.value = selectEl.value;
+  }
+}
+
+// Normalize any date string to ISO ("2026-05-17") so the polar↔attendance
+// join works regardless of which format each side was stored in. The two
+// sides accumulate different formats over time:
+//   - Form-entered attendance:    "17 May 2026" (display, via isoToDisplayDate)
+//   - CSV-imported polar:         "2026-05-17" (raw from CSV, untouched)
+//   - Photo-extracted polar:      "17 May 2026" (display, via isoToDisplayDate)
+//   - Sheet-pulled rows:          either, depending on how the cell was stored
+// Returning ISO from every path means joins compare apples to apples.
+function dateJoinKey(d) {
+  const s = String(d || "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const iso = displayDateToISO(s);
+  if (iso) return iso;
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) {
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  }
+  return s;
+}
+
+// Builds the conduct-matching key for a record. Prefers conductId (post-
+// migration source of truth); falls back to a normalized conduct-name key
+// for records that still carry a legacy `conduct` string. Returns "" when
+// neither is present so the caller can skip those rows.
+function conductJoinKey(rec) {
+  if (rec.conductId) return "id:" + rec.conductId;
+  if (typeof rec.conduct === "string" && rec.conduct.trim()) return "name:" + normalizeConductKey(rec.conduct);
+  return "";
+}
+
+// Writes the unique-d4 count from STATE.polar into STATE.attendance[].lms
+// for every matching (date, conduct) pair. The Polar class summary photo
+// IS the LMS roster for that conduct — same screen, same count — so we
+// treat Polar entries as the source of truth for LMS participation. The
+// joiner is tolerant of (a) different date formats on each side, and (b)
+// records that haven't migrated to conductId yet (falls back to normalized
+// conduct-string matching). Returns the number of attendance rows whose
+// lms value actually changed.
+function recomputeAttendanceLmsFromPolar() {
+  const polarByConduct = {};
+  STATE.polar.forEach(p => {
+    const ck = conductJoinKey(p);
+    if (!ck) return;
+    const k = `${dateJoinKey(p.date)}|${ck}`;
+    (polarByConduct[k] = polarByConduct[k] || new Set()).add(padD4(p.d4));
+  });
+  let changed = 0;
+  STATE.attendance.forEach(a => {
+    if ("polar" in a) delete a.polar;
+    const ck = conductJoinKey(a);
+    if (!ck) return;
+    const count = polarByConduct[`${dateJoinKey(a.date)}|${ck}`]?.size;
+    if (count == null) return;
+    if ((+a.lms || 0) !== count) {
+      a.lms = count;
+      changed++;
+    }
+  });
+  if (changed) saveLocal();
+  return changed;
+}
+
+// Human label for a polar/attendance key — used in the diagnostic alert
+// so the user can read mismatched entries without decoding "id:c003".
+function describeJoinKey(k) {
+  const [d, ck] = k.split("|");
+  if (ck?.startsWith("id:")) {
+    const id = ck.slice(3);
+    return `${d} — ${conductName(id) || `(unknown id ${id})`}`;
+  }
+  if (ck?.startsWith("name:")) {
+    return `${d} — "${ck.slice(5)}" (unmigrated legacy string)`;
+  }
+  return `${d} — ?`;
+}
+
+// Manual trigger from the Attendance tab header. Surfaces matched/unmatched
+// counts so the user can diagnose why a recompute didn't move some rows.
+function refreshLmsFromPolar() {
+  const polarKeys = new Set();
+  let polarSkipped = 0;
+  STATE.polar.forEach(p => {
+    const ck = conductJoinKey(p);
+    if (!ck) { polarSkipped++; return; }
+    polarKeys.add(`${dateJoinKey(p.date)}|${ck}`);
+  });
+  const attendanceKeys = new Set();
+  let attendanceSkipped = 0;
+  STATE.attendance.forEach(a => {
+    const ck = conductJoinKey(a);
+    if (!ck) { attendanceSkipped++; return; }
+    attendanceKeys.add(`${dateJoinKey(a.date)}|${ck}`);
+  });
+  const unmatched = [...polarKeys].filter(k => !attendanceKeys.has(k));
+  const matched = [...polarKeys].filter(k => attendanceKeys.has(k));
+  const changed = recomputeAttendanceLmsFromPolar();
+  render();
+
+  let msg = changed
+    ? `✓ Updated LMS on ${changed} attendance row${changed === 1 ? "" : "s"} from Polar data.`
+    : `No LMS values changed.`;
+  msg += `\n\nDiagnostic:`;
+  msg += `\n  • Polar (date, conduct) pairs: ${polarKeys.size} unique${polarSkipped ? ` (+ ${polarSkipped} polar rows skipped: no conductId or conduct name)` : ""}`;
+  msg += `\n  • Attendance (date, conduct) pairs: ${attendanceKeys.size} unique${attendanceSkipped ? ` (+ ${attendanceSkipped} attendance rows skipped: no conductId or conduct name)` : ""}`;
+  msg += `\n  • Matched: ${matched.length} · Unmatched (polar with no attendance row): ${unmatched.length}`;
+  if (unmatched.length) {
+    const preview = unmatched.slice(0, 8).map(describeJoinKey).join("\n  • ");
+    msg += `\n\nUnmatched Polar entries:\n  • ${preview}${unmatched.length > 8 ? `\n  • …and ${unmatched.length - 8} more` : ""}`;
+  }
+  if (polarSkipped > 0 || attendanceSkipped > 0) {
+    msg += `\n\n⚠️ Skipped rows mean the conduct registry migration hasn't completed for them. Run it from the Conducts tab if needed.`;
+  }
+  if (changed) msg += `\n\n→ Click "Push to Sheet" on the Attendance tab to sync the updated LMS counts back to the Google Sheet.`;
+  alert(msg);
+}
+
+// ─── POLAR PHOTO IMPORT (AI extract) ───────────────────
+// Drop / pick photos of Polar class summary screens — group them by
+// conduct so the conduct + date + time are entered once per conduct,
+// not per photo. Batch-analyze via Claude (proxied through Apps Script).
+// Each photo → many recruit rows appended to STATE.polar + pushed to the
+// sheet via appendMany. No inline review (per user choice).
+
+let _polarStagedGroups = [];  // [{id, conduct, date, time, photos: [{id, dataUrl, base64, mediaType, status, added?, notes?}]}]
+let _polarGroupCounter = 0;
+let _polarPhotoCounter = 0;
+
+// Down-sample an image File to <500KB JPEG via canvas. Anthropic accepts
+// up to 5MB/image but smaller payloads = faster round-trips + cheaper.
+function resizeImageForUpload(file, maxWidth = 1600, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = img.width > maxWidth ? maxWidth / img.width : 1;
+        const w = Math.round(img.width * ratio);
+        const h = Math.round(img.height * ratio);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        // Return both the full data URL (for preview) and the bare base64
+        // (for API payload — backend strips the data: prefix anyway).
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve({ dataUrl, base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Add an empty conduct group. Date defaults to today; time auto-fills
+// when the user types/picks a conduct name (via inferTimeForConduct).
+function addPolarGroup() {
+  _polarStagedGroups.push({
+    id: ++_polarGroupCounter,
+    conductId: "",
+    date: todayISO(),
+    time: "",
+    photos: []
+  });
+  render();
+}
+
+function removePolarGroup(id) {
+  _polarStagedGroups = _polarStagedGroups.filter(g => g.id !== id);
+  render();
+}
+
+// Inline edit handler from the group card. When conductId changes, auto-fill
+// both date and time from historical data so the user doesn't have to
+// re-enter them. Date prefers the most-recent attendance/detail entry for
+// the conduct that doesn't yet have polar coverage (i.e. the session the
+// user is probably importing photos for); time uses the most-frequently-
+// logged time across conductDetail + polar. The user can still override
+// either field manually after.
+function updatePolarGroup(id, field, value) {
+  const g = _polarStagedGroups.find(g => g.id === id);
+  if (!g) return;
+  g[field] = value;
+  if (field === "conductId" && value) {
+    let touched = false;
+    const inferredDate = inferDateForConduct(value);
+    if (inferredDate) { g.date = inferredDate; touched = true; }
+    if (!g.time) {
+      const inferredTime = inferTimeForConduct(value);
+      if (inferredTime) { g.time = inferredTime; touched = true; }
+    }
+    if (touched) render();
+  }
+}
+
+// Add photos to a specific group. Resizes each to <500KB JPEG for upload.
+async function addPolarPhotosToGroup(groupId, files) {
+  const g = _polarStagedGroups.find(x => x.id === groupId);
+  if (!g || !files || !files.length) return;
+  for (const file of files) {
+    if (!file.type.startsWith("image/")) continue;
+    try {
+      const { dataUrl, base64, mediaType } = await resizeImageForUpload(file);
+      g.photos.push({
+        id: ++_polarPhotoCounter,
+        dataUrl, base64, mediaType,
+        status: "ready"
+      });
+    } catch (e) {
+      alert("Couldn't read " + file.name + ": " + e.message);
+    }
+  }
+  render();
+}
+
+function removePolarPhotoFromGroup(groupId, photoId) {
+  const g = _polarStagedGroups.find(x => x.id === groupId);
+  if (!g) return;
+  g.photos = g.photos.filter(p => p.id !== photoId);
+  render();
+}
+
+async function analyzeAndPushPolarPhotos() {
+  // Flatten groups into a queue while validating each group has the
+  // required conduct + date set. Empty groups (no photos yet) are silently
+  // skipped — user might be staging an upcoming conduct.
+  const queue = [];
+  _polarStagedGroups.forEach(g => {
+    if (!g.photos.length) return;
+    g.photos.forEach(p => queue.push({ group: g, photo: p }));
+  });
+  if (!queue.length) {
+    alert("Add at least one photo to a conduct group before analyzing.");
+    return;
+  }
+  const missingConduct = _polarStagedGroups.filter(g => g.photos.length && !g.conductId);
+  if (missingConduct.length) {
+    alert(`Pick a conduct on ${missingConduct.length} group(s) before analyzing.`);
+    return;
+  }
+
+  // Pre-build the valid-d4 list once (recruits only — commanders don't
+  // appear in Polar class summary screens).
+  const validD4s = STATE.roster
+    .filter(r => r.role !== "Commander")
+    .map(r => String(r.id).replace(/^C/i, ""));
+
+  const progress = document.getElementById("polar-analyze-progress");
+  if (progress) progress.style.display = "block";
+
+  const newRows = [];
+  const errors = [];
+  let added = 0;
+  const totalPhotos = queue.length;
+
+  for (let i = 0; i < queue.length; i++) {
+    const { group, photo } = queue[i];
+    const groupName = conductName(group.conductId);
+    if (progress) progress.innerHTML = `Analyzing ${i + 1}/${totalPhotos} — <strong>${escapeAttr(groupName)}</strong><br><span style="color:var(--muted)">${added} rows added · ${errors.length} errors</span>`;
+    photo.status = "analyzing";
+    try {
+      const res = await API.analyzePhoto(photo.base64, photo.mediaType, validD4s);
+      if (res.error) {
+        errors.push({ photo: `${groupName} (photo ${i + 1})`, error: res.error });
+        photo.status = "error";
+        continue;
+      }
+      const dateDisplay = isoToDisplayDate(group.date);
+      const time = pad4Time(group.time || "0730");
+      let photoAdded = 0;
+      (res.recruits || []).forEach(r => {
+        const d4 = padD4(String(r.d4 || "").replace(/^C/i, ""));
+        if (!d4) return;
+        const entry = {
+          id: nextId(),
+          d4,
+          conductId: group.conductId,
+          date: dateDisplay,
+          time,
+          avgHr: r.avgHR ?? "",
+          maxHr: r.maxHR ?? "",
+          minHr: "",
+          calories: r.calories ?? "",
+          trainingLoad: "",
+          recovery: "",
+          duration: r.duration ?? "",
+          distance: ""
+        };
+        STATE.polar.push(entry);
+        newRows.push(entry);
+        added++;
+        photoAdded++;
+      });
+      photo.status = "done";
+      photo.added = photoAdded;
+      if (res.notes) photo.notes = res.notes;
+    } catch (e) {
+      errors.push({ photo: `${groupName} (photo ${i + 1})`, error: e.message });
+      photo.status = "error";
+    }
+  }
+
+  recomputeAttendanceLmsFromPolar();
+  saveLocal();
+
+  // Push to sheet in one batch. appendMany only sends new rows — much
+  // cheaper than the full pushTab(PolarFlow, STATE.polar) round-trip.
+  let sheetPushed = false;
+  if (newRows.length && STATE.apiUrl) {
+    try {
+      await API.post({ action: "appendMany", tab: "PolarFlow", rows: newRows });
+      sheetPushed = true;
+    } catch (e) {
+      errors.push({ photo: "(sheet push)", error: e.message });
+    }
+  }
+
+  // Summary modal — shows what happened, plus any per-photo errors.
+  const errorList = errors.length
+    ? `<div style="margin-top:12px"><div style="font-size:11px;color:var(--red);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Errors (${errors.length})</div>${errors.map(e => `<div style="font-size:11px;padding:4px 8px;background:#F8514922;border-left:2px solid var(--red);border-radius:3px;margin-bottom:3px"><strong>${escapeAttr(e.photo)}:</strong> ${escapeAttr(e.error)}</div>`).join("")}</div>`
+    : "";
+  openModal("📸 Photo analysis complete", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="stats-row">
+        <div class="stat"><label>Photos processed</label><div class="val">${totalPhotos}</div></div>
+        <div class="stat"><label>Rows added</label><div class="val" style="color:var(--green)">${added}</div></div>
+        <div class="stat"><label>Errors</label><div class="val" style="color:${errors.length ? 'var(--red)' : 'var(--muted)'}">${errors.length}</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">
+        ${sheetPushed ? "✓ New rows pushed to the <strong>PolarFlow</strong> sheet." : (newRows.length ? "⚠ Rows added locally but sheet push failed — use <strong>Push All to Sheet</strong> to retry." : "Nothing pushed.")}
+      </div>
+      ${errorList}
+      <button class="btn btn-primary" onclick="closePolarAnalysisModal()">Done</button>
+    </div>
+  `);
+}
+
+// Closes the modal AND clears the staging list (the photos have been
+// processed; user gets a clean drop zone).
+function closePolarAnalysisModal() {
+  _polarStagedGroups = [];
+  closeModal();
+  render();
 }
 
 function importBackup(input) {

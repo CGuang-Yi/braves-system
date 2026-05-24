@@ -119,16 +119,114 @@ function checkCols(headers, required) {
 
 const getAward = s => { if (!s || s === 0) return "N/A"; if (s >= 85) return "Gold"; if (s >= 75) return "Silver"; if (s >= 61) return "Pass"; return "Fail"; };
 
-// Unique, sorted list of every conduct name the system has ever seen —
-// pulled from both Attendance and ConductDetail so the two tabs share a
-// single autocomplete list. Used to populate <datalist> in the entry forms,
-// which means "the conduct name will be saved as a conduct in the list"
-// happens implicitly: log a new conduct once, it shows up in future picks.
+// Canonical conducts registry, sorted by name. Source of truth for the
+// conduct picker dropdowns across attendance / conductDetail / polar forms.
+// Returns objects {id, name} — callers render the name but persist the id
+// onto records, so a later rename in the Conducts admin tab updates every
+// display site without rewriting any records.
 function getAllConducts() {
-  const set = new Set();
-  STATE.attendance.forEach(a => { if (a.conduct) set.add(a.conduct); });
-  STATE.conductDetail.forEach(d => { if (d.conduct) set.add(d.conduct); });
-  return [...set].sort();
+  return [...(STATE.conducts || [])].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+
+// Normalized comparison key for conduct names. Collapses everything that
+// makes two visually-identical strings compare unequal in vanilla JS:
+//   - Unicode NFKC (so "ﬁ" and "fi" match)
+//   - trim outer whitespace
+//   - lowercase
+//   - replace all whitespace runs (incl. NBSP  ) with one space
+//   - normalize smart quotes / typographic apostrophes to ASCII
+//   - strip zero-width chars (ZWSP / ZWNJ / ZWJ / BOM)
+// Used both at lookup (conductIdByName) and at migration (variant grouping).
+function normalizeConductKey(s) {
+  return String(s || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[​‌‍﻿]/g, "");
+}
+
+// Resolve a conductId → display name. Returns the name when found. For
+// missing ids — usually a stale frontend cache or an Apps Script that
+// wasn't redeployed with the new Conducts tab — falls back to the raw id
+// in brackets (e.g. "[c003?]") so the user can see SOMETHING is wrong
+// without the UI silently going blank everywhere.
+function conductName(id) {
+  if (!id) return "";
+  const hit = STATE.conducts.find(c => c.id === id);
+  if (hit && hit.name) return hit.name;
+  return `[${id}?]`;
+}
+
+// Resolve a free-text conduct name → conductId via normalized lookup.
+// Returns "" if no entry matches. Used by CSV import, the photo-extract
+// flow, and the legacy-data migration to convert names → ids.
+function conductIdByName(name) {
+  const key = normalizeConductKey(name);
+  if (!key) return "";
+  const hit = STATE.conducts.find(c => normalizeConductKey(c.name) === key);
+  return hit ? hit.id : "";
+}
+
+// Next available conduct id, formatted as "c" + 3-digit counter. Counter is
+// max-of-existing + 1 so deleting an id doesn't recycle it (avoids accidental
+// re-attachment of stale references on import).
+function nextConductId() {
+  const max = (STATE.conducts || []).reduce((m, c) => {
+    const n = parseInt(String(c.id || "").replace(/^c/i, ""), 10);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return "c" + String(max + 1).padStart(3, "0");
+}
+
+// Best-guess time for a conduct based on existing data. Returns the most
+// frequently-logged time (across conductDetail + polar) for matches of
+// the given conductId. Empty string if no match — caller can fall back
+// to a default like "0730".
+function inferTimeForConduct(conductId) {
+  if (!conductId) return "";
+  const counts = {};
+  const tally = (t) => { const k = pad4Time(t); if (k) counts[k] = (counts[k] || 0) + 1; };
+  STATE.conductDetail.forEach(c => { if (c.conductId === conductId && c.time) tally(c.time); });
+  STATE.polar.forEach(p => { if (p.conductId === conductId && p.time) tally(p.time); });
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  return sorted.length ? sorted[0][0] : "";
+}
+
+// Best-guess ISO date for a conduct. Looks at attendance first (the canonical
+// "when did this conduct happen" log), falling back to conductDetail. Prefers
+// the most recent date that DOESN'T already have polar data — that's the
+// session the user is most likely about to import photos for. If every
+// attendance date for the conduct already has polar coverage, returns the
+// single most-recent date so the user can still overwrite manually. Empty
+// string when nothing's known (caller can fall back to today).
+function inferDateForConduct(conductId) {
+  if (!conductId) return "";
+  const polarDates = new Set(
+    STATE.polar.filter(p => p.conductId === conductId).map(p => {
+      const iso = displayDateToISO(p.date);
+      return iso || p.date || "";
+    }).filter(Boolean)
+  );
+  const candidateDates = [];
+  STATE.attendance.forEach(a => {
+    if (a.conductId !== conductId) return;
+    const iso = displayDateToISO(a.date) || a.date;
+    if (iso) candidateDates.push(iso);
+  });
+  STATE.conductDetail.forEach(c => {
+    if (c.conductId !== conductId) return;
+    const iso = displayDateToISO(c.date) || c.date;
+    if (iso && !candidateDates.includes(iso)) candidateDates.push(iso);
+  });
+  if (!candidateDates.length) return "";
+  candidateDates.sort();  // ascending ISO sort
+  // Prefer most-recent date that doesn't yet have polar coverage.
+  const uncovered = candidateDates.filter(d => !polarDates.has(d));
+  const pick = uncovered.length ? uncovered[uncovered.length - 1] : candidateDates[candidateDates.length - 1];
+  return pick;
 }
 
 // Generic delete: removes a row from STATE[arrayName] by id with a confirm

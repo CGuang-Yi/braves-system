@@ -209,8 +209,10 @@ async function tryRedeemInviteFromURL() {
       }
     }
     render();
+    maybeRunConductMigration();
   } else {
     render();
     autoSyncOnLaunch();
+    maybeRunConductMigration();
   }
 })();

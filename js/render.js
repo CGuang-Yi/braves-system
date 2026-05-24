@@ -33,6 +33,7 @@ function render() {
     case "polar": renderPolar(el); break;
     case "leave": renderLeave(el); break;
     case "mskAnalytics": renderMSKAnalytics(el); break;
+    case "conducts": renderConducts(el); break;
     case "sync": renderSync(el); break;
     default: el.innerHTML = "";
   }
@@ -177,7 +178,7 @@ function renderDashboard(el) {
 
   STATE.charts.participation = new Chart(document.getElementById("chart-participation"), {
     type: "bar",
-    data: { labels: STATE.attendance.map(a => a.conduct?.slice(0, 12)), datasets: [{ data: STATE.attendance.map(a => pct(a.participating, a.total)), backgroundColor: "#58A6FF44", borderColor: "#58A6FF", borderWidth: 1 }] },
+    data: { labels: STATE.attendance.map(a => conductName(a.conductId).slice(0, 12)), datasets: [{ data: STATE.attendance.map(a => pct(a.participating, a.total)), backgroundColor: "#58A6FF44", borderColor: "#58A6FF", borderWidth: 1 }] },
     options: { plugins: { legend: { display: false } }, scales: { y: { min: 80, max: 100, grid: { color: "#30363D" }, ticks: { color: "#8B949E" } }, x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 9 } } } } }
   });
 }
@@ -915,9 +916,10 @@ function renderRoster(el) {
 
 function renderAttendance(el) {
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <h2 style="font-size:18px;font-weight:700">Conduct Attendance</h2>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="refreshLmsFromPolar()" title="Recount LMS participants for every conduct from STATE.polar (the Polar class summary photo is the LMS roster) and write into the attendance rows">🔄 Recompute LMS</button>
         <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)">Push to Sheet</button>
         <button class="btn btn-primary" onclick="openAttendanceForm()">+ Log</button>
       </div>
@@ -926,13 +928,10 @@ function renderAttendance(el) {
     ${STATE.attendance.map(a => {
       const r = pct(a.participating, a.total);
       const lms = +a.lms || 0;
-      // LMS rate = LMS participation / total participating (per user spec).
-      // Falls back to 0 when no one participated to avoid div-by-zero.
       const lmsRate = pct(lms, a.participating);
-      // Color thresholds: green ≥95% (excellent), orange 70-94% (watch), red <70% (concern).
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
-      return `<tr><td>${a.date}</td><td style="text-align:left">${a.conduct}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openAttendanceForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
+      return `<tr><td>${a.date}</td><td style="text-align:left">${conductName(a.conductId)}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openAttendanceForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">No attendance records yet.</div>`}`;
 }
@@ -953,7 +952,7 @@ function toggleParticipants() { _showParticipants = !_showParticipants; render()
 // the inverse gives us the participants for free, no extra data needed).
 function renderDetailParticipantsSummary(scopedAll) {
   if (!_detailFilterConduct) return "";
-  const conductRecords = scopedAll.filter(d => `${d.date}|${d.time || ""}|${d.conduct}` === _detailFilterConduct);
+  const conductRecords = scopedAll.filter(d => `${d.date}|${d.time || ""}|${d.conductId || ""}` === _detailFilterConduct);
   const absentSet = new Set(conductRecords.map(d => d.d4));
   const inScope = filteredRoster();
   const participants = inScope.filter(r => !absentSet.has(r.id));
@@ -980,11 +979,11 @@ function renderConductDetail(el) {
   const visible = visibleD4Set();
   const scopedAll = STATE.conductDetail.filter(d => passesFilter(d.d4, visible));
   let scoped = scopedAll;
-  if (_detailFilterConduct) scoped = scoped.filter(d => `${d.date}|${d.time || ""}|${d.conduct}` === _detailFilterConduct);
+  if (_detailFilterConduct) scoped = scoped.filter(d => `${d.date}|${d.time || ""}|${d.conductId || ""}` === _detailFilterConduct);
   if (_detailFilterType) scoped = scoped.filter(d => d.type === _detailFilterType);
 
   // Unique conduct keys for the dropdown — newest first by parsed date.
-  const conductKeys = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conduct}`))]
+  const conductKeys = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conductId || ""}`))]
     .filter(Boolean)
     .sort((a, b) => {
       const [ad, at] = a.split("|"), [bd, bt] = b.split("|");
@@ -1009,7 +1008,7 @@ function renderConductDetail(el) {
   // remains a stable view of overall absence within the platoon scope.
   const missed = {};
   scopedAll.forEach(d => {
-    const k = `${d.date}|${d.time || ""}|${d.conduct}`;
+    const k = `${d.date}|${d.time || ""}|${d.conductId || ""}`;
     (missed[d.d4] = missed[d.d4] || new Set()).add(k);
   });
   const topMissed = Object.entries(missed)
@@ -1018,7 +1017,7 @@ function renderConductDetail(el) {
     .slice(0, 10);
 
   const typeBadgeColor = t => t === "PX" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
-  const totalConducts = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conduct}`))].length;
+  const totalConducts = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conductId || ""}`))].length;
   const titleSuffix = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scopedAll.length}/${STATE.conductDetail.length}]</span>` : ` (${STATE.conductDetail.length})`;
 
   el.innerHTML = `
@@ -1039,7 +1038,7 @@ function renderConductDetail(el) {
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Filter:</span>
       <select onchange="setDetailFilterConduct(this.value)" class="topbar-select" style="min-width:260px">
         <option value="">All conducts (${totalConducts})</option>
-        ${conductKeys.map(k => { const [dt, tm, cn] = k.split("|"); return `<option value="${escapeAttr(k)}" ${k === _detailFilterConduct ? "selected" : ""}>${dt}${tm ? " " + pad4Time(tm) : ""} — ${cn}</option>`; }).join("")}
+        ${conductKeys.map(k => { const [dt, tm, cid] = k.split("|"); return `<option value="${escapeAttr(k)}" ${k === _detailFilterConduct ? "selected" : ""}>${dt}${tm ? " " + pad4Time(tm) : ""} — ${conductName(cid) || "(unknown)"}</option>`; }).join("")}
       </select>
       <select onchange="setDetailFilterType(this.value)" class="topbar-select">
         <option value="">All types</option>
@@ -1051,7 +1050,7 @@ function renderConductDetail(el) {
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th style="text-align:left">Conduct</th><th>4D</th><th style="text-align:left">Name</th><th>Type</th><th style="text-align:left">Reason</th><th></th></tr></thead><tbody>
-        ${rows.map(d => `<tr onclick="openPerson('${d.d4}')" style="cursor:pointer"><td>${d.date || ""}</td><td class="mono">${pad4Time(d.time) || "—"}</td><td style="text-align:left">${d.conduct || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${d.d4}</td><td style="text-align:left">${getName(d.d4)}</td><td>${badge(d.type, typeBadgeColor(d.type))}</td><td style="text-align:left;max-width:280px;white-space:normal;font-size:11px">${d.reason || ""}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openConductDetailForm(${d.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('conductDetail', ${d.id}, 'conduct detail record')" title="Delete">✕</button></td></tr>`).join("")}
+        ${rows.map(d => `<tr onclick="openPerson('${d.d4}')" style="cursor:pointer"><td>${d.date || ""}</td><td class="mono">${pad4Time(d.time) || "—"}</td><td style="text-align:left">${conductName(d.conductId)}</td><td class="mono" style="font-weight:700;color:var(--accent)">${d.d4}</td><td style="text-align:left">${getName(d.d4)}</td><td>${badge(d.type, typeBadgeColor(d.type))}</td><td style="text-align:left;max-width:280px;white-space:normal;font-size:11px">${d.reason || ""}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openConductDetailForm(${d.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('conductDetail', ${d.id}, 'conduct detail record')" title="Delete">✕</button></td></tr>`).join("")}
         </tbody></table></div>` : `<div class="empty-state">${STATE.conductDetail.length ? "No records match current filter." : "No conduct detail records yet. Tap + Log to add one."}</div>`}
       </div>
       <div class="card">
@@ -1204,16 +1203,180 @@ function renderSOC(el) {
 function renderPolar(el) {
   const visible = visibleD4Set();
   const scoped = STATE.polar.filter(p => passesFilter(p.d4, visible));
+  const totalStagedPhotos = _polarStagedGroups.reduce((s, g) => s + g.photos.length, 0);
+
+  // Group cards — one per conduct, conduct/date/time entered ONCE, then
+  // many photos dropped into the same group.
+  const groupCards = _polarStagedGroups.map(g => {
+    const photos = g.photos.map(p => `
+      <div style="position:relative;width:100px;height:60px;border-radius:4px;overflow:hidden;border:1px solid var(--border)">
+        <img src="${p.dataUrl}" style="width:100%;height:100%;object-fit:cover">
+        <div style="position:absolute;top:2px;left:2px;font-size:9px;color:${p.status === 'done' ? 'var(--green)' : p.status === 'error' ? 'var(--red)' : p.status === 'analyzing' ? 'var(--orange)' : 'var(--muted)'};background:rgba(13,17,23,.85);padding:1px 4px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px">${p.status === 'done' ? `✓ ${p.added || 0}` : p.status === 'error' ? '✕' : p.status === 'analyzing' ? '…' : 'ready'}</div>
+        <button class="btn btn-icon btn-danger" onclick="removePolarPhotoFromGroup(${g.id}, ${p.id})" title="Remove" style="position:absolute;top:2px;right:2px;font-size:9px;padding:1px 5px;line-height:1">✕</button>
+      </div>
+    `).join("");
+
+    const pickerInputId = `polar-group-cid-${g.id}`;
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Conduct group · ${g.photos.length} photo${g.photos.length === 1 ? '' : 's'}</div>
+        <button class="btn btn-icon btn-danger" onclick="removePolarGroup(${g.id})" title="Remove this group">✕ group</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 130px 90px;gap:6px;margin-bottom:8px">
+        <div>${conductPicker({ inputId: pickerInputId, selectedId: g.conductId, onChange: `updatePolarGroup(${g.id}, 'conductId', document.getElementById('${pickerInputId}').value)` })}</div>
+        <input type="date" value="${g.date}" onchange="updatePolarGroup(${g.id}, 'date', this.value)" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px">
+        <input type="text" maxlength="4" placeholder="0730" value="${escapeAttr(g.time)}" oninput="updatePolarGroup(${g.id}, 'time', this.value)" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px" title="Auto-fills from past conducts">
+      </div>
+      ${g.photos.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${photos}</div>` : ""}
+      <label class="btn" style="cursor:pointer;font-size:11px;padding:6px 10px;display:inline-block">+ Add photos to this group<input type="file" accept="image/*" multiple onchange="addPolarPhotosToGroup(${g.id}, this.files); this.value=''" style="display:none"></label>
+      <div ondragover="event.preventDefault(); this.style.borderColor='var(--accent)'; this.style.background='#58A6FF11'" ondragleave="this.style.borderColor='var(--border)'; this.style.background='transparent'" ondrop="event.preventDefault(); this.style.borderColor='var(--border)'; this.style.background='transparent'; addPolarPhotosToGroup(${g.id}, event.dataTransfer.files)" style="display:inline-block;margin-left:6px;padding:6px 10px;font-size:11px;color:var(--muted);border:1px dashed var(--border);border-radius:6px">…or drop here</div>
+    </div>`;
+  }).join("");
+
+  // Per-conduct "Polar attendance gaps" — for each conduct that has any
+  // Polar data, show who actually attended (scoped roster − absent) but
+  // doesn't appear in Polar for THAT conduct. Surfaces "wore the watch"
+  // gaps at the per-class level instead of one global bucket.
+  const conductKeys = [...new Set(STATE.polar.filter(p => p.conductId).map(p => `${p.date}|${p.conductId}|${p.time || ""}`))]
+    .filter(k => k.split("|")[0] && k.split("|")[1]);
+  const scopedRoster = filteredRoster().filter(r => r.role !== "Commander");
+  const scopedRosterIds = new Set(scopedRoster.map(r => r.id));
+  const conductGaps = conductKeys.map(k => {
+    const [date, conductId, time] = k.split("|");
+    const polarSet = new Set(STATE.polar.filter(p => p.date === date && p.conductId === conductId).map(p => p.d4));
+    const absent = new Set(STATE.conductDetail
+      .filter(c => c.date === date && c.conductId === conductId && (c.type === "PX" || c.type === "RSI" || c.type === "Fallout"))
+      .map(c => c.d4));
+    const expectedAttenders = [...scopedRosterIds].filter(id => !absent.has(id));
+    const missing = expectedAttenders.filter(id => !polarSet.has(id));
+    return { date, conductId, time, polarCount: polarSet.size, attended: expectedAttenders.length, missing };
+  }).filter(g => g.missing.length > 0)
+    .sort((a, b) => {
+      const ai = displayDateToISO(a.date) || a.date || "";
+      const bi = displayDateToISO(b.date) || b.date || "";
+      return ai < bi ? 1 : -1;
+    });
+
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <h2 style="font-size:18px;font-weight:700">Polar Flow Data${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.polar.length}]</span>` : ""}</h2>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <label class="btn btn-primary" style="cursor:pointer">Import Polar CSV<input type="file" accept=".csv" onchange="importPolar(this)" style="display:none"></label>
         <button class="btn btn-success" onclick="pushTab('PolarFlow',STATE.polar)">Push to Sheet</button>
       </div>
     </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <div>
+          <h3 style="margin:0">📸 Photo Import <span style="color:var(--dim);font-weight:400;font-size:11px">AI-extract Polar class summary</span></h3>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Add a conduct group, then drop the Polar summary screenshots for THAT conduct into it. One conduct = many photos.</div>
+        </div>
+        <button class="btn btn-primary" style="font-size:12px" onclick="addPolarGroup()">+ New conduct group</button>
+      </div>
+      ${groupCards}
+      ${_polarStagedGroups.length === 0 ? `<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px;border:1.5px dashed var(--border);border-radius:8px">Tap <strong>+ New conduct group</strong> to start. Each group holds one conduct's photos.</div>` : ""}
+      ${totalStagedPhotos > 0 ? `
+        <div id="polar-analyze-progress" style="display:none;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:8px"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-success" style="flex:1;min-width:160px" onclick="analyzeAndPushPolarPhotos()">⚡ Analyze & Push ${totalStagedPhotos} photo${totalStagedPhotos === 1 ? '' : 's'} across ${_polarStagedGroups.filter(g => g.photos.length).length} conduct${_polarStagedGroups.filter(g => g.photos.length).length === 1 ? '' : 's'}</button>
+          <button class="btn" onclick="_polarStagedGroups = []; render()">Clear all</button>
+        </div>` : ""}
+    </div>
+
+    ${conductGaps.length ? `<div class="card" style="margin-bottom:14px">
+      <h3>👻 Polar Attendance Gaps <span style="color:var(--dim);font-weight:400;font-size:11px">per conduct</span></h3>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Per conduct: recruits who attended (not PX/RSI/Fallout) but don't appear in Polar — chase them up to wear the watch.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:520px;overflow-y:auto">
+        ${conductGaps.map(g => `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+            <div style="font-size:12px;font-weight:600">${g.date}${g.time ? ` <span class="mono" style="color:var(--muted);font-size:11px">${pad4Time(g.time)}</span>` : ""} · ${conductName(g.conductId)}</div>
+            <div style="font-size:11px"><span style="color:var(--green)">${g.polarCount} wore polar</span> · <span style="color:var(--red);font-weight:700">${g.missing.length} didn't</span> · ${g.attended} attended</div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">
+            ${g.missing.map(d4 => `<button class="btn" style="font-size:10px;padding:3px 7px" onclick="openPerson('${d4}')" title="${escapeAttr(STATE.roster.find(r => r.id === d4)?.name || '')}"><span class="mono" style="color:var(--accent);font-weight:700">${displayId(d4)}</span> ${STATE.roster.find(r => r.id === d4)?.name || ''}</button>`).join("")}
+          </div>
+        </div>`).join("")}
+      </div>
+    </div>` : ""}
+
     <div class="card"><h3>Expected CSV Columns</h3><code class="mono" style="font-size:11px;color:var(--accent)">4D, Conduct, Date, Avg HR, Max HR, Min HR, Calories, Training Load, Recovery, Duration, Distance</code></div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Conduct</th><th>Date</th><th>Avg HR</th><th>Max HR</th><th>Cal</th><th>Load</th><th>Dur</th></tr></thead><tbody>
-    ${scoped.map(p => `<tr><td class="mono">${displayId(p.d4)}</td><td style="text-align:left">${displayPersonLabel(p.d4)}</td><td style="text-align:left">${p.conduct}</td><td>${p.date}</td><td style="color:${+p.avgHr > 160 ? 'var(--red)' : +p.avgHr > 140 ? 'var(--orange)' : 'var(--green)'}">${p.avgHr}</td><td>${p.maxHr}</td><td>${p.calories}</td><td>${p.trainingLoad}</td><td>${p.duration}m</td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.polar.length ? `No Polar sessions in ${filterLabel()}.` : "No Polar data. Import a CSV."}</div>`}`;
+    ${scoped.map(p => `<tr><td class="mono">${displayId(p.d4)}</td><td style="text-align:left">${displayPersonLabel(p.d4)}</td><td style="text-align:left">${conductName(p.conductId)}</td><td>${p.date}</td><td style="color:${+p.avgHr > 160 ? 'var(--red)' : +p.avgHr > 140 ? 'var(--orange)' : 'var(--green)'}">${p.avgHr}</td><td>${p.maxHr}</td><td>${p.calories}</td><td>${p.trainingLoad}</td><td>${p.duration}m</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty-state">${STATE.polar.length ? `No Polar sessions in ${filterLabel()}.` : "No Polar data. Import a CSV or upload photos."}</div>`}`;
+}
+
+// Conducts registry admin tab. Lists every entry in STATE.conducts with usage
+// counts across attendance / polar / conductDetail, and offers rename / merge
+// / delete actions. New conducts created here become available immediately
+// in every form's conduct picker (the picker reads from STATE.conducts).
+function renderConducts(el) {
+  const rows = [...STATE.conducts].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  const totalUsage = rows.reduce((s, c) => s + countConductUsage(c.id).total, 0);
+  const orphanedCount = (arr) => arr.filter(r => r.conductId !== undefined && !STATE.conducts.find(c => c.id === r.conductId)).length;
+  const orphans = orphanedCount(STATE.attendance) + orphanedCount(STATE.polar) + orphanedCount(STATE.conductDetail);
+  const anyRecordsWithConductId = STATE.attendance.some(r => r.conductId) || STATE.polar.some(r => r.conductId) || STATE.conductDetail.some(r => r.conductId);
+  const emptyRegistryWithUsage = rows.length === 0 && anyRecordsWithConductId;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <h2 style="font-size:18px;font-weight:700">Conducts Registry <span style="color:var(--muted);font-weight:400;font-size:13px">${rows.length} entries · ${totalUsage} record${totalUsage === 1 ? "" : "s"}</span></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${needsConductMigration() ? `<button class="btn" onclick="maybeRunConductMigration()" title="Open the legacy-data migration modal">🔧 Migrate legacy data</button>` : ""}
+        <button class="btn btn-success" onclick="pushTab('Conducts',STATE.conducts)">Push to Sheet</button>
+        <button class="btn btn-primary" onclick="promptCreateConduct()">+ New conduct</button>
+      </div>
+    </div>
+    ${emptyRegistryWithUsage ? `<div class="card" style="padding:12px 14px;margin-bottom:12px;background:#F8514922;border:1px solid #F8514944;font-size:12px;color:var(--red);line-height:1.6">
+      <strong>⚠️ Registry is empty but records reference conductIds.</strong> This usually means the Apps Script backend wasn't redeployed with the new <code>Conducts</code> tab in its <code>readAllTabs</code> map. Until that's fixed, conduct names will show as <code>[c001?]</code> placeholders across the app.
+      <div style="margin-top:6px;color:var(--muted)">Fix: open Apps Script editor → confirm <code>"Conducts": "conducts"</code> is in <code>tabMap</code> → Deploy → Manage deployments → New version. Then pull again.</div>
+    </div>` : ""}
+    <div class="card" style="padding:10px 14px;margin-bottom:12px;background:var(--surface2);font-size:11px;color:var(--muted);line-height:1.6">
+      Conduct names are renames-safe — every record references the conduct by ID, so renaming here updates every display site without touching record data.
+      Use <strong>Merge</strong> to fix near-duplicates that slipped through; use <strong>Delete</strong> only when usage is 0.
+      ${orphans > 0 ? `<div style="color:var(--red);margin-top:6px"><strong>Warning:</strong> ${orphans} record${orphans === 1 ? " references" : "s reference"} a conductId not in the registry. Edit those records to repoint them.</div>` : ""}
+    </div>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th style="text-align:left">Name</th><th>Attendance</th><th>Polar</th><th>Detail</th><th>Total</th><th></th></tr></thead><tbody>
+      ${rows.map(c => {
+        const u = countConductUsage(c.id);
+        const mergeOpts = rows.filter(o => o.id !== c.id).map(o => `<option value="${o.id}">→ ${escapeAttr(o.name)}</option>`).join("");
+        return `<tr>
+          <td class="mono" style="color:var(--muted);font-size:11px">${c.id}</td>
+          <td style="text-align:left;font-weight:600">${escapeAttr(c.name)}</td>
+          <td>${u.attendance}</td>
+          <td>${u.polar}</td>
+          <td>${u.detail}</td>
+          <td style="font-weight:700;color:${u.total > 0 ? 'var(--accent)' : 'var(--muted)'}">${u.total}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-icon" onclick="promptRenameConduct('${c.id}')" title="Rename">✎</button>
+            <select onchange="if (this.value) { mergeConductInto('${c.id}', this.value); this.value=''; }" style="font-size:10px;padding:2px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="Merge into another conduct">
+              <option value="">Merge →</option>
+              ${mergeOpts}
+            </select>
+            <button class="btn btn-icon btn-danger" onclick="deleteConduct('${c.id}')" title="${u.total > 0 ? `Cannot delete — used by ${u.total} record(s)` : 'Delete'}" ${u.total > 0 ? "disabled" : ""}>✕</button>
+          </td>
+        </tr>`;
+      }).join("")}
+    </tbody></table></div>` : `<div class="empty-state">No conducts yet. Add one with "+ New conduct" or run the legacy-data migration if you have existing records.</div>`}
+  `;
+}
+
+function promptCreateConduct() {
+  const name = (prompt("New conduct name:") || "").trim();
+  if (!name) return;
+  const existingId = conductIdByName(name);
+  if (existingId) {
+    alert(`"${name}" already exists (id ${existingId}).`);
+    return;
+  }
+  createConduct(name);
+  render();
+}
+
+function promptRenameConduct(id) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const newName = prompt("New name:", c.name);
+  if (newName == null) return;
+  renameConduct(id, newName);
 }

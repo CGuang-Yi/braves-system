@@ -18,6 +18,12 @@ const STATE = {
   apiUrl: APPS_SCRIPT_URL,
   authToken: localStorage.getItem(AUTH_KEY) || "",
   roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [], conductDetail: [], appointments: [], leave: [], msk: [],
+  // Canonical conduct registry: [{id: "c001", name: "Orientation Run"}, ...].
+  // Source of truth for the conduct dimension — records on attendance/polar/
+  // conductDetail reference entries here via `conductId` instead of carrying
+  // free-text conduct names. Empty array on first load triggers the migration
+  // modal that promotes legacy string `conduct` fields to ids.
+  conducts: [],
   // Global view scope: "" = all. Persisted across reloads so leaving the app
   // mid-task and coming back doesn't blow away the section you were focused on.
   // filterRole adds a third dimension on top of platoon/section — toggles
@@ -137,7 +143,7 @@ function saveLocal() {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
     conductDetail: STATE.conductDetail, appointments: STATE.appointments,
-    leave: STATE.leave, msk: STATE.msk
+    leave: STATE.leave, msk: STATE.msk, conducts: STATE.conducts
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
 }
@@ -161,6 +167,7 @@ function loadLocal() {
     STATE.appointments = padD4OnLayer(d.appointments);
     STATE.leave = padD4OnLayer(d.leave);
     STATE.msk = normalizeMSK(d.msk);
+    STATE.conducts = Array.isArray(d.conducts) ? d.conducts : [];
   } catch { /* fall through to empty state */ }
 }
 

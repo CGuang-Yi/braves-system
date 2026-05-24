@@ -182,6 +182,8 @@ function doPost(e) {
         remainingQuota: remainingQuota,
         quotaError: quotaError
       };
+    } else if (action === "analyzePhoto") {
+      output = analyzePhotoHelper(body);
     } else {
       output = { error: "Invalid request" };
     }
@@ -203,6 +205,103 @@ function jsonResponse(obj) {
 function isValidAuth(token) {
   if (!token) return false;
   return PropertiesService.getScriptProperties().getProperty("auth:" + token) !== null;
+}
+
+// One-time admin: store the Anthropic API key in script properties so
+// analyzePhotoHelper can read it without exposing the key to the public
+// web app URL. Run from the editor:  setAnthropicKey("sk-ant-…")
+// (then DELETE the literal from your editor history so it doesn't sit
+// in your git history or screenshare).
+function setAnthropicKey(key) {
+  if (!key || String(key).indexOf("sk-ant-") !== 0) {
+    Logger.log("Refusing to store — key should start with sk-ant-");
+    return;
+  }
+  PropertiesService.getScriptProperties().setProperty("ANTHROPIC_API_KEY", key);
+  Logger.log("Key stored. Length: " + key.length);
+}
+
+// Proxies a Claude vision call to extract Polar class summary data from
+// a photo. Frontend sends:
+//   { imageBase64: "...", mediaType: "image/jpeg", validD4s: ["1101", ...] }
+// Returns:
+//   { recruits: [{d4, avgHR, maxHR, calories, duration}], notes, raw }
+//   { error: "..." } on any failure (missing key, API error, parse error).
+function analyzePhotoHelper(body) {
+  if (!body || !body.imageBase64) return { error: "Missing imageBase64" };
+
+  var key = PropertiesService.getScriptProperties().getProperty("ANTHROPIC_API_KEY");
+  if (!key) {
+    return { error: "Anthropic API key not set. Run setAnthropicKey('sk-ant-…') from the Apps Script editor once." };
+  }
+
+  var validD4s = Array.isArray(body.validD4s) ? body.validD4s : [];
+  var mediaType = body.mediaType || "image/jpeg";
+
+  var systemPrompt = "You analyse photos of Polar Flow class summary screens for a Singapore Army training company (Cougar Coy). " +
+    "Each photo is a screenshot of the Polar Flow app's class summary, showing a table where every row is one recruit's session: " +
+    "their 4D number, average heart rate (bpm), maximum heart rate (bpm), calories burned (kcal), and session duration. " +
+    "Recruit 4D numbers are exactly 4 digits (e.g. 1101, 4213). Valid recruit 4Ds in this company: " + validD4s.join(", ") + ". " +
+    "If you see a 4D that's NOT in this list, ignore it (it's a misread).\n\n" +
+    "Respond ONLY with a JSON object, no markdown fences, no explanation outside the JSON:\n" +
+    "{\n" +
+    "  \"recruits\": [\n" +
+    "    {\"d4\": \"1108\", \"avgHR\": 155, \"maxHR\": 185, \"calories\": 420, \"duration\": 25},\n" +
+    "    ...\n" +
+    "  ],\n" +
+    "  \"notes\": \"optional one-line observation (e.g. 'image blurry on bottom 3 rows', or empty string)\"\n" +
+    "}\n\n" +
+    "Numbers should be integers (no units, no 'bpm' text). If a field isn't visible for a row, omit that key from that row's object. " +
+    "If you can't read any data at all, return { \"recruits\": [], \"notes\": \"no Polar data detected\" }.";
+
+  var payload = {
+    model: "claude-sonnet-4-5",
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: mediaType, data: body.imageBase64 } },
+        { type: "text", text: "Extract every recruit row from this Polar class summary." }
+      ]
+    }]
+  };
+
+  try {
+    var res = UrlFetchApp.fetch("https://api.anthropic.com/v1/messages", {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01"
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var code = res.getResponseCode();
+    var text = res.getContentText();
+    if (code < 200 || code >= 300) {
+      // Try to surface Anthropic's error message.
+      try { var errObj = JSON.parse(text); return { error: "Anthropic " + code + ": " + (errObj.error && errObj.error.message || text) }; }
+      catch (e) { return { error: "Anthropic " + code + ": " + text.slice(0, 200) }; }
+    }
+
+    var resp = JSON.parse(text);
+    var raw = "";
+    (resp.content || []).forEach(function (block) { if (block.type === "text") raw += block.text; });
+    // Strip markdown code fences Claude sometimes emits despite being told not to.
+    var clean = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+
+    var parsed;
+    try { parsed = JSON.parse(clean); }
+    catch (e) { return { error: "Could not parse Claude response as JSON", raw: clean.slice(0, 500) }; }
+
+    if (!parsed.recruits) parsed.recruits = [];
+    return { recruits: parsed.recruits, notes: parsed.notes || "" };
+  } catch (e) {
+    return { error: "Network/UrlFetch error: " + e.message };
+  }
 }
 
 // Sends a single HTML email via the script owner's Gmail. Used by the
@@ -454,7 +553,8 @@ function readAllTabs() {
     "ConductDetail": "conductDetail",
     "Appointments": "appointments",
     "Leave": "leave",
-    "MSK": "msk"
+    "MSK": "msk",
+    "Conducts": "conducts"
   };
 
   var result = {};

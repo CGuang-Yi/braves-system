@@ -48,6 +48,14 @@ const API = {
     if (data.appointments?.length) STATE.appointments = padD4OnLayer(data.appointments);
     if (data.leave?.length) STATE.leave = padD4OnLayer(data.leave);
     if (data.msk?.length) STATE.msk = normalizeMSK(data.msk);
+    if (data.conducts?.length) STATE.conducts = data.conducts;
+    // Re-sync LMS counts from polar after every pull. Polar entries are the
+    // source of truth for "who wore the watch" = LMS participation; this
+    // keeps the attendance LMS column auto-correct without manual button
+    // clicks. Safe to call when conducts/polar are empty — no-ops in that case.
+    if (typeof recomputeAttendanceLmsFromPolar === "function") {
+      recomputeAttendanceLmsFromPolar();
+    }
     saveLocal();
     return data;
   },
@@ -69,5 +77,12 @@ const API = {
   // Used by the report modal to surface "who emails will come from".
   async getEmailInfo() {
     return this.post({ action: "getEmailInfo" });
+  },
+  // Proxies one image to Claude via Apps Script (key lives in script
+  // properties, never on the client). Returns
+  //   { recruits: [{d4, avgHR, maxHR, calories, duration}], notes }
+  // or { error }. validD4s seeds the prompt so Claude can ignore misreads.
+  async analyzePhoto(imageBase64, mediaType, validD4s) {
+    return this.post({ action: "analyzePhoto", imageBase64, mediaType, validD4s });
   }
 };
