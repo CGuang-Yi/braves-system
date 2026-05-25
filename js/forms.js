@@ -569,30 +569,80 @@ function openIPPTForm(id) {
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
   const [runMinPrefill, runSecPrefill] = (e?.runTime || "").split(":");
   const numVal = v => v !== undefined && v !== null && v !== "" ? ` value="${v}"` : "";
+  // Three rep/time inputs all call recomputeIPPTScore() on change so the
+  // score field auto-fills as the user types. Recruit picker too — score
+  // depends on age-group, which depends on the picked recruit's age.
+  const recalcAttr = `oninput="recomputeIPPTScore()" onchange="recomputeIPPTScore()"`;
   openModal(e ? "Edit IPPT Result" : "Add IPPT Result", `
     <form onsubmit="event.preventDefault(); submitIPPT(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
         ${e ? editHint : ""}
-        <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
+        <div class="form-group"><label>Recruit</label><span onchange="recomputeIPPTScore()">${rosterSelect("f-d4", true, e?.d4 || "")}</span></div>
         ${formSelect("f-attempt", "Attempt", ["1", "2", "3", "4"], true, e?.attempt ? String(e.attempt) : "")}
         ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
         <div class="form-row">
-          ${formField("f-pu", "Push-ups", "number", "", `required min="0" max="99" step="1"${numVal(e?.pushups)}`)}
-          ${formField("f-su", "Sit-ups", "number", "", `required min="0" max="99" step="1"${numVal(e?.situps)}`)}
+          <div class="form-group"><label>Push-ups</label><input id="f-pu" type="number" required min="0" max="99" step="1"${numVal(e?.pushups)} ${recalcAttr}></div>
+          <div class="form-group"><label>Sit-ups</label><input id="f-su" type="number" required min="0" max="99" step="1"${numVal(e?.situps)} ${recalcAttr}></div>
           <div class="form-group">
             <label>2.4km Run (min:sec)</label>
             <div style="display:flex;gap:6px;align-items:center">
-              <input id="f-run-min" type="number" required min="8" max="30" step="1" placeholder="min"${runMinPrefill ? ` value="${+runMinPrefill}"` : ""}>
+              <input id="f-run-min" type="number" required min="8" max="30" step="1" placeholder="min"${runMinPrefill ? ` value="${+runMinPrefill}"` : ""} ${recalcAttr}>
               <span style="color:var(--muted)">:</span>
-              <input id="f-run-sec" type="number" required min="0" max="59" step="1" placeholder="sec"${runSecPrefill ? ` value="${+runSecPrefill}"` : ""}>
+              <input id="f-run-sec" type="number" required min="0" max="59" step="1" placeholder="sec"${runSecPrefill ? ` value="${+runSecPrefill}"` : ""} ${recalcAttr}>
             </div>
           </div>
-          ${formField("f-score", "Total Score", "number", "", `required min="0" max="100" step="1"${numVal(e?.score)}`)}
+          <div class="form-group">
+            <label>Total Score <span style="font-size:10px;color:var(--muted);font-weight:400">(auto, editable)</span></label>
+            <input id="f-score" type="number" required min="0" max="100" step="1"${numVal(e?.score)}>
+          </div>
         </div>
+        <div id="ippt-score-breakdown" style="font-size:11px;color:var(--muted);padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;line-height:1.5;display:none"></div>
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
     </form>`);
+  // Wire the recruit picker's change handler (rosterSelect returns a plain
+  // <select>, so the wrapping <span onchange> above bubble-catches it).
+  // Run an initial recompute so the score is pre-filled when editing.
+  setTimeout(recomputeIPPTScore, 0);
+}
+
+// Reads the current form inputs + the picked recruit's age, computes the
+// IPPT score via the scoring tables, pre-fills the Total Score field, and
+// renders a live breakdown below the form. Called on every input/change.
+// Falls back gracefully when age is missing or run time is incomplete.
+function recomputeIPPTScore() {
+  const d4 = gv("f-d4");
+  const r = STATE.roster.find(x => x.id === d4);
+  const age = r?.age;
+  const pu = gv("f-pu");
+  const su = gv("f-su");
+  const min = gv("f-run-min");
+  const sec = gv("f-run-sec");
+  const runTime = (min !== "" && sec !== "") ? `${+min}:${String(+sec).padStart(2, "0")}` : "";
+  const breakdown = document.getElementById("ippt-score-breakdown");
+  if (!breakdown) return;
+
+  if (!age) {
+    breakdown.style.display = "block";
+    breakdown.innerHTML = `<span style="color:var(--orange)">Auto-calc unavailable:</span> recruit's age not on roster — enter score manually.`;
+    return;
+  }
+  const result = calculateIPPTScore(age, pu, su, runTime);
+  if (!result) {
+    breakdown.style.display = "block";
+    breakdown.innerHTML = `Fill in push-ups, sit-ups, and run time to auto-calculate score (age group ${IPPT_AGE_LABELS[ageGroupForIPPT(age) - 1] || "?"}).`;
+    return;
+  }
+  const scoreField = document.getElementById("f-score");
+  if (scoreField) scoreField.value = result.total;
+  const awardColors = { "Gold★": "var(--purple)", Gold: "var(--yellow)", Silver: "var(--accent)", Pass: "var(--green)", Fail: "var(--red)" };
+  const awardColor = awardColors[result.award] || "var(--muted)";
+  breakdown.style.display = "block";
+  breakdown.innerHTML = `
+    <div>Age group <strong>${result.ageLabel}</strong> · <span>PU ${result.pushupScore}/25 + SU ${result.situpScore}/25 + Run ${result.runScore}/50</span> = <strong style="color:var(--text)">${result.total}/100</strong> <span style="color:${awardColor};font-weight:700;margin-left:6px">${result.award}</span></div>
+    <div style="font-size:10px;color:var(--dim);margin-top:2px">Tiers: ≥61 Pass · ≥75 Silver · ≥85 Gold · ≥90 Gold★ (NDU / Commando / Guards)</div>
+  `;
 }
 function submitIPPT() {
   const editId = +gv("f-entry-id");
@@ -1666,9 +1716,23 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
   const attendanceRate = totalCoyConducts ? Math.round((conductsAttended / totalCoyConducts) * 100) : 0;
   const polarJoined = polar.length;
   const polarRate = totalCoyConducts ? Math.round((polarJoined / totalCoyConducts) * 100) : 0;
-  const mcDays = countMCDaysInWindow(d4, startIso, endIso);
-  const ippts = STATE.ippt.filter(i => i.d4 === d4 && (displayDateToISO(i.date) || "") >= startIso && (displayDateToISO(i.date) || "") <= endIso)
-    .sort((a, b) => a.attempt - b.attempt);
+  // Report Sick = times the recruit was sent to MO mid-day after the
+  // conduct (ReportSick conductDetail entries). Discrete countable events;
+  // more meaningful for a fitness report than raw MC days because it
+  // tracks "how often did training have to stop for medical attention."
+  const reportSickCount = conductDetailRows.filter(c => c.type === "ReportSick").length;
+  // IPPT history: ALL attempts for the recruit, not just within the window.
+  // The point of IPPT in a fitness report is to show fitness trajectory —
+  // limiting to the window hides whether the recruit is on an improving
+  // arc or plateauing. Sort by date so the chart reads left-to-right as
+  // time progresses; fall back to attempt# when dates are missing.
+  const ippts = STATE.ippt.filter(i => i.d4 === d4)
+    .sort((a, b) => {
+      const ai = displayDateToISO(a.date) || "";
+      const bi = displayDateToISO(b.date) || "";
+      if (ai !== bi) return ai < bi ? -1 : 1;
+      return (+a.attempt || 0) - (+b.attempt || 0);
+    });
 
   // Auto-encouragement: pick strongest positive trend.
   let encouragement;
@@ -1731,16 +1795,50 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
       options: { plugins: { legend: { display: false } } }
     });
   }
-  if (ippts.length >= 2) {
-    addChart({
-      emoji: "🏃", title: "IPPT Progression",
-      caption: "Your IPPT score across attempts in this window. The work you put in at PT — the polar sessions, the consistency — shows up here as raw points on your scorecard."
-    }, {
-      type: "line",
-      data: { labels: ippts.map(i => "#" + i.attempt), datasets: [{ data: ippts.map(i => +i.score), borderColor: "#D29922", backgroundColor: "#D2992233", fill: true, tension: 0.3, pointRadius: 5 }] },
-      options: { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
-    });
-  }
+  // IPPT history table — one row per attempt with per-station score breakdown.
+  // Inline HTML <table> (not a chart image) so it renders as text in both
+  // email and preview, and so the reader can read the reps/time/points
+  // directly. Per-station points are recomputed from the scoring tables on
+  // the fly using the recruit's current age — keeps historical entries
+  // consistent if scoring tiers ever change.
+  const awardColorMap = { "Gold★": "#BC8CFF", "Gold": "#D29922", "Silver": "#8B949E", "Pass": "#1A7F37", "Fail": "#F85149" };
+  const ipptRows = ippts.map(i => {
+    const calc = calculateIPPTScore(r.age, i.pushups, i.situps, i.runTime);
+    const puPts = calc ? calc.pushupScore : "—";
+    const suPts = calc ? calc.situpScore : "—";
+    const runPts = calc ? calc.runScore : "—";
+    const total = +i.score || (calc ? calc.total : 0);
+    const award = ipptAward(total);
+    const awardColor = awardColorMap[award] || "#6E7681";
+    return `<tr>
+      <td style="padding:8px 10px;border-bottom:1px solid #E1E4E8;font-size:12px;color:#6E7681;white-space:nowrap">${i.date || "—"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E1E4E8;font-size:12px;text-align:center">${i.attempt || "—"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E1E4E8;font-size:12px;text-align:center"><strong>${i.pushups ?? "—"}</strong> <span style="color:#8B949E">·</span> <span style="color:#1F6FEB;font-weight:600">${puPts}</span></td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E1E4E8;font-size:12px;text-align:center"><strong>${i.situps ?? "—"}</strong> <span style="color:#8B949E">·</span> <span style="color:#1F6FEB;font-weight:600">${suPts}</span></td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E1E4E8;font-size:12px;text-align:center"><strong>${i.runTime || "—"}</strong> <span style="color:#8B949E">·</span> <span style="color:#1F6FEB;font-weight:600">${runPts}</span></td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E1E4E8;font-size:14px;text-align:center;font-weight:700;color:#161B22">${total}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #E1E4E8;font-size:11px;text-align:center;font-weight:700;color:${awardColor}">${award}</td>
+    </tr>`;
+  }).join("");
+  const ipptTableHTML = ippts.length ? `
+    <h2 style="font-size:16px;color:#161B22;margin:24px 0 4px">🏃 IPPT History <span style="font-size:11px;color:#6E7681;font-weight:400">(${ippts.length} attempt${ippts.length === 1 ? "" : "s"})</span></h2>
+    <p style="font-size:12px;color:#6E7681;margin:0 0 10px;line-height:1.5">Every IPPT attempt logged. IPPT is the litmus test for overall fitness — the trend across attempts tells you more than any single score. Numbers shown as <strong>reps/time</strong> · <span style="color:#1F6FEB;font-weight:600">points</span>.</p>
+    <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #E1E4E8;border-radius:6px;overflow:hidden;margin-bottom:8px">
+      <thead>
+        <tr style="background:#F6F8FA">
+          <th style="padding:8px 10px;text-align:left;font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #E1E4E8">Date</th>
+          <th style="padding:8px 10px;text-align:center;font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #E1E4E8">#</th>
+          <th style="padding:8px 10px;text-align:center;font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #E1E4E8">Push-ups</th>
+          <th style="padding:8px 10px;text-align:center;font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #E1E4E8">Sit-ups</th>
+          <th style="padding:8px 10px;text-align:center;font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #E1E4E8">2.4km Run</th>
+          <th style="padding:8px 10px;text-align:center;font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #E1E4E8">Total</th>
+          <th style="padding:8px 10px;text-align:center;font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #E1E4E8">Award</th>
+        </tr>
+      </thead>
+      <tbody>${ipptRows}</tbody>
+    </table>
+    <p style="font-size:10px;color:#8B949E;margin:0 0 16px;line-height:1.5">Tiers: ≥61 Pass · ≥75 Silver · ≥85 Gold · ≥90 Gold★ (NDU / Commando / Guards)</p>
+  ` : "";
 
   const startNice = isoToDisplayDate(startIso);
   const endNice = isoToDisplayDate(endIso);
@@ -1793,14 +1891,16 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
           <div style="font-size:10px;color:#6E7681;line-height:1.4">${missedBreakdown}</div>
         </td>
         <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
-          <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">MC days</div>
-          <div style="font-size:24px;font-weight:700;color:#D29922;margin-top:4px">${mcDays}</div>
+          <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">Report Sick</div>
+          <div style="font-size:24px;font-weight:700;color:#D29922;margin-top:4px">${reportSickCount}</div>
           <div style="font-size:11px;color:#6E7681">in window</div>
         </td>
       </tr>
     </table>
 
     ${chartsBlock}
+
+    ${ipptTableHTML}
 
     <div style="background:linear-gradient(135deg,#3FB95011,#39D2C022);border:1px solid #3FB95044;border-radius:10px;padding:18px;margin-top:24px">
       <div style="font-size:13px;font-weight:700;color:#1A7F37;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🎯 Keep it up</div>
@@ -2630,9 +2730,11 @@ async function analyzeAndPushPolarPhotos() {
       const dateDisplay = isoToDisplayDate(group.date);
       const time = pad4Time(group.time || "0730");
       let photoAdded = 0;
+      let unverifiedCount = 0;
       (res.recruits || []).forEach(r => {
         const d4 = padD4(String(r.d4 || "").replace(/^C/i, ""));
         if (!d4) return;
+        if (r.unverified) unverifiedCount++;
         const entry = {
           id: nextId(),
           d4,
@@ -2655,6 +2757,17 @@ async function analyzeAndPushPolarPhotos() {
       });
       photo.status = "done";
       photo.added = photoAdded;
+      photo.unverified = unverifiedCount;
+      // Truncation warning: when Claude's self-reported rowCount exceeds the
+      // actual extracted recruits, the model dropped rows mid-output (usually
+      // long photos). Surface so the user can re-run or accept partial.
+      if (res.rowCount != null && +res.rowCount > photoAdded) {
+        const missing = +res.rowCount - photoAdded;
+        errors.push({
+          photo: `${groupName} (photo ${i + 1})`,
+          error: `⚠️ Truncated extraction — Claude counted ${res.rowCount} rows in the photo but only extracted ${photoAdded}. ${missing} row${missing === 1 ? "" : "s"} likely missing. Re-run the analysis (Claude may extract differently) or check the photo manually.`
+        });
+      }
       if (res.notes) photo.notes = res.notes;
     } catch (e) {
       errors.push({ photo: `${groupName} (photo ${i + 1})`, error: e.message });

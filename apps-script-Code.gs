@@ -241,28 +241,38 @@ function analyzePhotoHelper(body) {
   var systemPrompt = "You analyse photos of Polar Flow class summary screens for a Singapore Army training company (Cougar Coy). " +
     "Each photo is a screenshot of the Polar Flow app's class summary, showing a table where every row is one recruit's session: " +
     "their 4D number, average heart rate (bpm), maximum heart rate (bpm), calories burned (kcal), and session duration. " +
-    "Recruit 4D numbers are exactly 4 digits (e.g. 1101, 4213). Valid recruit 4Ds in this company: " + validD4s.join(", ") + ". " +
-    "If you see a 4D that's NOT in this list, ignore it (it's a misread).\n\n" +
+    "Recruit 4D numbers are exactly 4 digits (e.g. 1101, 4213).\n\n" +
+    "COMPLETENESS IS CRITICAL. Missing rows is the #1 failure mode. Follow this procedure:\n" +
+    "1. First, look at the entire image and COUNT the total number of recruit rows visible (top to bottom). Call this N.\n" +
+    "2. Extract EVERY row, one by one, top to bottom. Do not skip rows. Do not summarise.\n" +
+    "3. Before responding, verify your `recruits` array has exactly N entries. If it doesn't, go back and find the missing rows.\n" +
+    "4. Set `rowCount` in your response to N (your initial count) so the operator can spot truncation.\n\n" +
+    "Valid recruit 4Ds in this company: " + validD4s.join(", ") + ".\n" +
+    "Use this list to RESOLVE AMBIGUITY when a digit is unclear (e.g. you read '1108' but only '1109' is in the list — prefer '1109'). " +
+    "DO NOT drop a row just because its 4D isn't in the list — include it and set `unverified: true` so the operator can review. " +
+    "Dropping rows silently is much worse than including a slightly-wrong 4D.\n\n" +
     "Respond ONLY with a JSON object, no markdown fences, no explanation outside the JSON:\n" +
     "{\n" +
+    "  \"rowCount\": 22,\n" +
     "  \"recruits\": [\n" +
     "    {\"d4\": \"1108\", \"avgHR\": 155, \"maxHR\": 185, \"calories\": 420, \"duration\": 25},\n" +
+    "    {\"d4\": \"1109\", \"avgHR\": 148, \"maxHR\": 178, \"calories\": 380, \"duration\": 25, \"unverified\": true},\n" +
     "    ...\n" +
     "  ],\n" +
-    "  \"notes\": \"optional one-line observation (e.g. 'image blurry on bottom 3 rows', or empty string)\"\n" +
+    "  \"notes\": \"optional one-line observation (e.g. 'rows 18-20 blurry', or empty string)\"\n" +
     "}\n\n" +
-    "Numbers should be integers (no units, no 'bpm' text). If a field isn't visible for a row, omit that key from that row's object. " +
-    "If you can't read any data at all, return { \"recruits\": [], \"notes\": \"no Polar data detected\" }.";
+    "Numbers should be integers (no units, no 'bpm' text). If a single field for a row isn't readable, omit that key from the object but STILL include the row. " +
+    "If you can't read any data at all, return { \"rowCount\": 0, \"recruits\": [], \"notes\": \"no Polar data detected\" }.";
 
   var payload = {
     model: "claude-sonnet-4-5",
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: systemPrompt,
     messages: [{
       role: "user",
       content: [
         { type: "image", source: { type: "base64", media_type: mediaType, data: body.imageBase64 } },
-        { type: "text", text: "Extract every recruit row from this Polar class summary." }
+        { type: "text", text: "Extract every recruit row from this Polar class summary. Count rows first, then extract — do not skip any." }
       ]
     }]
   };
@@ -298,7 +308,13 @@ function analyzePhotoHelper(body) {
     catch (e) { return { error: "Could not parse Claude response as JSON", raw: clean.slice(0, 500) }; }
 
     if (!parsed.recruits) parsed.recruits = [];
-    return { recruits: parsed.recruits, notes: parsed.notes || "" };
+    // Surface rowCount so the frontend can warn the user when the extracted
+    // row count is less than Claude's own count of visible rows (= truncation).
+    return {
+      recruits: parsed.recruits,
+      rowCount: parsed.rowCount != null ? +parsed.rowCount : parsed.recruits.length,
+      notes: parsed.notes || ""
+    };
   } catch (e) {
     return { error: "Network/UrlFetch error: " + e.message };
   }

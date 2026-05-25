@@ -117,7 +117,11 @@ function checkCols(headers, required) {
   return required.filter(r => !lower.some(h => h === r.toLowerCase()));
 }
 
-const getAward = s => { if (!s || s === 0) return "N/A"; if (s >= 85) return "Gold"; if (s >= 75) return "Silver"; if (s >= 61) return "Pass"; return "Fail"; };
+// Award tiers: ≥90 Gold★ (NDU/Commando/Guards), ≥85 Gold, ≥75 Silver,
+// ≥61 Pass, <61 Fail. The "Gold★" tier is the elite-units threshold.
+// Delegates to ipptAward() in ippt-scoring.js so the tier list stays in
+// one place.
+const getAward = s => (typeof ipptAward === "function" ? ipptAward(s) : ((!s || s === 0) ? "N/A" : s >= 85 ? "Gold" : s >= 75 ? "Silver" : s >= 61 ? "Pass" : "Fail"));
 
 // Canonical conducts registry, sorted by name. Source of truth for the
 // conduct picker dropdowns across attendance / conductDetail / polar forms.
@@ -380,7 +384,7 @@ function medDurationLabel(record) {
 const badge = (text, cls) => `<span class="badge badge-${cls}">${text}</span>`;
 const statusBadge = s => badge(s, s === "Active" ? "green" : s === "Warded" ? "red" : "orange");
 const typeBadge = t => badge(t, t === "RSI" ? "orange" : t === "Injury" ? "red" : "yellow");
-const awardBadge = s => { const a = getAward(s); const c = { Gold: "yellow", Silver: "accent", Pass: "green", Fail: "red", "N/A": "accent" }; return badge(a, c[a] || "accent"); };
+const awardBadge = s => { const a = getAward(s); const c = { "Gold★": "purple", Gold: "yellow", Silver: "accent", Pass: "green", Fail: "red", "N/A": "accent" }; return badge(a, c[a] || "accent"); };
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
 
 // BMI = kg / m². Height is stored in cm in the roster sheet.
