@@ -532,7 +532,9 @@ function readTab(tabName) {
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found", available: getTabNames() };
 
-  var data = sheet.getDataRange().getValues();
+  var range = sheet.getDataRange();
+  var data = range.getValues();
+  var display = range.getDisplayValues();
   if (data.length < 2) return [];
 
   var headers = data[0].map(function (h) { return String(h).trim(); });
@@ -544,8 +546,16 @@ function readTab(tabName) {
     for (var j = 0; j < headers.length; j++) {
       if (headers[j]) {
         var val = data[i][j];
+        // For Date-typed cells:
+        //   • Time-only values (cells on the spreadsheet epoch 1899-12-30) →
+        //     use whatever the sheet *displays*, so the user's chosen format
+        //     (mm:ss, hh:mm, etc.) flows through as-is to the app.
+        //   • Real calendar dates → force "dd MMM yyyy" so locale-quirks in
+        //     the sheet don't change what the app shows.
         if (val instanceof Date) {
-          val = Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
+          val = val.getFullYear() < 1900
+            ? display[i][j]
+            : Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
         }
         row[headers[j]] = val;
         if (val !== "" && val !== null && val !== undefined) hasData = true;

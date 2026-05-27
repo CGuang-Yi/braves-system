@@ -387,6 +387,86 @@ const typeBadge = t => badge(t, t === "RSI" ? "orange" : t === "Injury" ? "red" 
 const awardBadge = s => { const a = getAward(s); const c = { "Gold★": "purple", Gold: "yellow", Silver: "accent", Pass: "green", Fail: "red", "N/A": "accent" }; return badge(a, c[a] || "accent"); };
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
 
+// ─── IPPT: YTT detection + aggregation + stats ─────────────
+// True when runTime is empty, zero, or a Sheets-formatted zero duration.
+function isZeroRunTime(rt) {
+  if (!rt) return true;
+  const s = String(rt).trim();
+  return s === "" || s === "0:00" || s === "00:00" || s === "0:00:00" || s === "00:00:00";
+}
+
+// True when the recruit registered no result — typically because they haven't
+// taken IPPT yet. Distinct from "took it and scored 0", though in practice
+// those are nearly identical for our purposes.
+function isYTT(entry) {
+  return (+entry.pushups || 0) === 0
+      && (+entry.situps  || 0) === 0
+      && isZeroRunTime(entry.runTime);
+}
+
+// Wraps awardBadge so the IPPT table can render "YTT" instead of "Fail"/"N/A"
+// when the row is all zeros.
+function ipptAwardBadge(entry) {
+  if (isYTT(entry)) return badge("YTT", "accent");
+  return awardBadge(entry.score);
+}
+
+function parseRunTimeToSeconds(rt) {
+  if (!rt || isZeroRunTime(rt)) return 0;
+  const parts = String(rt).split(":").map(n => +n || 0);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];                   // mm:ss
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]; // hh:mm:ss
+  return 0;
+}
+
+function formatSeconds(s) {
+  if (!s) return "—";
+  const m = Math.floor(s / 60), sec = s % 60;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+// Returns one IPPT entry per recruit, picked by mode:
+//   "latest" → highest attempt number (ties broken by score)
+//   "best"   → highest score (YTT counted as -1 so it loses ties)
+function aggregateIPPT(entries, mode) {
+  const byD4 = new Map();
+  for (const e of entries) {
+    const cur = byD4.get(e.d4);
+    if (!cur) { byD4.set(e.d4, e); continue; }
+    if (mode === "best") {
+      const eScore = isYTT(e)   ? -1 : (+e.score   || 0);
+      const cScore = isYTT(cur) ? -1 : (+cur.score || 0);
+      if (eScore > cScore) byD4.set(e.d4, e);
+    } else { // latest
+      if ((+e.attempt || 0) > (+cur.attempt || 0)) byD4.set(e.d4, e);
+    }
+  }
+  return [...byD4.values()];
+}
+
+// Tallies aggregated entries by award tier. Returns ready-to-render counts
+// plus avg score (excluding YTT) and avg run seconds (excluding YTT).
+function computeIPPTStats(entries) {
+  const stats = { total: entries.length, ytt: 0, fail: 0, pass: 0, silver: 0, gold: 0, goldStar: 0, scoreSum: 0, scoreN: 0, runSecSum: 0, runSecN: 0 };
+  for (const e of entries) {
+    if (isYTT(e)) { stats.ytt++; continue; }
+    const a = getAward(+e.score || 0);
+    if (a === "Gold★") stats.goldStar++;
+    else if (a === "Gold") stats.gold++;
+    else if (a === "Silver") stats.silver++;
+    else if (a === "Pass") stats.pass++;
+    else stats.fail++;
+    stats.scoreSum += (+e.score || 0); stats.scoreN++;
+    const sec = parseRunTimeToSeconds(e.runTime);
+    if (sec > 0) { stats.runSecSum += sec; stats.runSecN++; }
+  }
+  stats.taken    = stats.total - stats.ytt;
+  stats.passed   = stats.pass + stats.silver + stats.gold + stats.goldStar;
+  stats.avgScore = stats.scoreN  ? Math.round(stats.scoreSum  / stats.scoreN ) : 0;
+  stats.avgRunSec = stats.runSecN ? Math.round(stats.runSecSum / stats.runSecN) : 0;
+  return stats;
+}
+
 // BMI = kg / m². Height is stored in cm in the roster sheet.
 // Categories follow the standard WHO bands. Returns null when either field
 // is missing so callers can render an em-dash instead of NaN.

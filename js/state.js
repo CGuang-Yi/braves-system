@@ -12,6 +12,7 @@ const STORAGE_KEY = "cougar-data-v2";
 const STORAGE_KEY_LEGACY = "cougar-data"; // v1 — contained hardcoded personnel fallback
 const AUTH_KEY = "cougar-auth";
 const FILTER_KEY = "cougar-filter";
+const IPPT_AGG_KEY = "cougar-ippt-agg";
 
 const STATE = {
   nav: "dashboard",
@@ -32,8 +33,18 @@ const STATE = {
   filterRole: "",
   filterPlt: "",
   filterSect: "",
+  // IPPT stats aggregation: "latest" (most recent attempt per recruit) or
+  // "best" (highest-scoring attempt). Drives the IPPT tab's stats row, charts,
+  // and leaderboard. Does NOT affect the underlying table — that always
+  // shows every row.
+  ipptAggMode: localStorage.getItem(IPPT_AGG_KEY) === "best" ? "best" : "latest",
   charts: {}
 };
+
+function setIpptAggMode(mode) {
+  STATE.ipptAggMode = mode === "best" ? "best" : "latest";
+  localStorage.setItem(IPPT_AGG_KEY, STATE.ipptAggMode);
+}
 
 // Sheet column is "4d" (preserved verbatim by Apps Script readTab), but the
 // rest of the codebase has always used r.id. Mirror the value into r.id at

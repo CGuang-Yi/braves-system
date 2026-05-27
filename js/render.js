@@ -1150,18 +1150,155 @@ function renderMedical(el) {
 function renderIPPT(el) {
   const visible = visibleD4Set();
   const scoped = STATE.ippt.filter(i => passesFilter(i.d4, visible));
+
+  // Aggregate one entry per recruit (latest or best) for the stats/charts/
+  // leaderboard. The underlying table below still shows every row.
+  const aggMode = STATE.ipptAggMode || "latest";
+  const aggregated = aggregateIPPT(scoped, aggMode);
+  const stats = computeIPPTStats(aggregated);
+
+  // YTT chase: recruits in the filtered scope who either have an all-zero
+  // IPPT row OR have no IPPT row at all — both are "haven't taken yet".
+  const rosterInScope = filteredRoster();
+  const takenD4s = new Set(scoped.filter(e => !isYTT(e)).map(e => e.d4));
+  const yttRecruits = rosterInScope.filter(r => !takenD4s.has(r.id));
+
+  // Top performers: aggregated, sorted by score desc, YTT excluded.
+  const topPerformers = aggregated
+    .filter(e => !isYTT(e))
+    .slice()
+    .sort((a, b) => (+b.score || 0) - (+a.score || 0))
+    .slice(0, 10);
+
+  // Score-distribution buckets aligned to award thresholds:
+  // [YTT, Fail 0–60, Pass 61–74, Silver 75–84, Gold 85–89, Gold★ 90+]
+  const buckets = [0, 0, 0, 0, 0, 0];
+  for (const e of aggregated) {
+    if (isYTT(e)) { buckets[0]++; continue; }
+    const s = +e.score || 0;
+    if (s <= 60) buckets[1]++;
+    else if (s <= 74) buckets[2]++;
+    else if (s <= 84) buckets[3]++;
+    else if (s <= 89) buckets[4]++;
+    else buckets[5]++;
+  }
+
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:18px;font-weight:700">IPPT Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.ippt.length}]</span>` : ""}</h2>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importIPPT(this)" style="display:none"></label>
         <button class="btn btn-success" onclick="pushTab('IPPT',STATE.ippt)">Push to Sheet</button>
         <button class="btn btn-primary" onclick="openIPPTForm()">+ Add</button>
       </div>
     </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Stats use</span>
+      <div class="filter-role-group">
+        <button class="role-btn ${aggMode === "latest" ? "active" : ""}" onclick="setIpptAggMode('latest'); render()">Latest</button>
+        <button class="role-btn ${aggMode === "best" ? "active" : ""}" onclick="setIpptAggMode('best'); render()">Best</button>
+      </div>
+      <span style="font-size:11px;color:var(--muted)">attempt per recruit</span>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat"><label>Taken</label><div class="val">${stats.taken}<span style="font-size:12px;color:var(--muted);font-weight:400">/${stats.total}</span></div><div class="sub">${pct(stats.taken, stats.total)}% recorded</div></div>
+      <div class="stat"><label>Passed (61+)</label><div class="val" style="color:var(--green)">${stats.passed}</div><div class="sub">${pct(stats.passed, stats.taken)}% of taken</div></div>
+      <div class="stat"><label>Failed</label><div class="val" style="color:var(--red)">${stats.fail}</div><div class="sub">${pct(stats.fail, stats.taken)}% of taken</div></div>
+      <div class="stat"><label>YTT</label><div class="val" style="color:var(--accent)">${stats.ytt}</div><div class="sub">yet to take</div></div>
+      <div class="stat"><label>Avg Score</label><div class="val" style="color:var(--accent)">${stats.avgScore || "—"}</div><div class="sub">${stats.scoreN} results</div></div>
+      <div class="stat"><label>Avg 2.4km</label><div class="val" style="color:var(--accent)">${formatSeconds(stats.avgRunSec)}</div><div class="sub">${stats.runSecN} results</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Award Breakdown${isFilterActive() ? ` <span style="color:var(--accent);font-weight:400;font-size:10px">in ${filterLabel()}</span>` : ""}</h3>
+        <div class="chart-box tall"><canvas id="chart-ippt-awards"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Score Distribution</h3>
+        <div class="chart-box tall"><canvas id="chart-ippt-distribution"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>YTT Chase List <span style="color:var(--accent);font-weight:400;font-size:10px">${yttRecruits.length} to chase</span></h3>
+        ${yttRecruits.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
+          ${yttRecruits.map(r => `<div onclick="openPerson('${r.id}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px;align-items:center">
+            <span>${displayId(r.id) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.id)}</span> ` : ""}${displayPersonLabel(r.id)}</span>
+            <span class="badge badge-accent" style="font-size:9px">YTT</span>
+          </div>`).join("")}
+        </div>` : `<div style="color:var(--muted);font-size:12px;padding:8px">Everyone in scope has taken IPPT 🎉</div>`}
+      </div>
+      <div class="card">
+        <h3>Top Performers <span style="color:var(--muted);font-weight:400;font-size:10px">by ${aggMode === "best" ? "best" : "latest"} attempt</span></h3>
+        ${topPerformers.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
+          ${topPerformers.map((e, idx) => `<div onclick="openPerson('${e.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;align-items:center;gap:8px">
+            <span class="mono" style="font-weight:700;color:var(--muted);min-width:18px">#${idx + 1}</span>
+            <span style="flex:1">${displayId(e.d4) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(e.d4)}</span> ` : ""}${displayPersonLabel(e.d4)}</span>
+            <span class="mono" style="font-weight:700">${e.score}</span>
+            ${awardBadge(e.score)}
+          </div>`).join("")}
+        </div>` : `<div style="color:var(--muted);font-size:12px;padding:8px">No taken results yet.</div>`}
+      </div>
+    </div>
+
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>#</th><th>Date</th><th>PU</th><th>SU</th><th>2.4km</th><th>Score</th><th>Award</th><th></th></tr></thead><tbody>
-    ${scoped.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${displayPersonLabel(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${i.score}</td><td>${awardBadge(i.score)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
+    ${scoped.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${displayPersonLabel(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${isYTT(i) ? '<span style="color:var(--muted)">—</span>' : i.score}</td><td>${ipptAwardBadge(i)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries in ${filterLabel()}.` : "No IPPT data yet. Add results or import CSV."}</div>`}`;
+
+  // Charts attached after DOM is in place. Old instances were already wiped
+  // by the destroy loop at the top of render().
+  buildIPPTAwardsChart(stats);
+  buildIPPTDistributionChart(buckets);
+}
+
+function buildIPPTAwardsChart(stats) {
+  const canvas = document.getElementById("chart-ippt-awards");
+  if (!canvas) return;
+  // Order high → low so the legend reads top-to-bottom intuitively.
+  // Only include non-zero slices so the chart isn't cluttered with empty tiers.
+  const labels = [], data = [], colors = [];
+  if (stats.goldStar) { labels.push("Gold★"); data.push(stats.goldStar); colors.push("#BC8CFF"); }
+  if (stats.gold)     { labels.push("Gold");   data.push(stats.gold);     colors.push("#E3B341"); }
+  if (stats.silver)   { labels.push("Silver"); data.push(stats.silver);   colors.push("#58A6FF"); }
+  if (stats.pass)     { labels.push("Pass");   data.push(stats.pass);     colors.push("#3FB950"); }
+  if (stats.fail)     { labels.push("Fail");   data.push(stats.fail);     colors.push("#F85149"); }
+  if (stats.ytt)      { labels.push("YTT");    data.push(stats.ytt);      colors.push("#484F58"); }
+  if (!data.length) return;
+
+  STATE.charts.ipptAwards = new Chart(canvas, {
+    type: "doughnut",
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: "#161B22", borderWidth: 2 }] },
+    options: { plugins: { legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } } } }
+  });
+}
+
+function buildIPPTDistributionChart(buckets) {
+  const canvas = document.getElementById("chart-ippt-distribution");
+  if (!canvas) return;
+  // buckets: [YTT, Fail 0–60, Pass 61–74, Silver 75–84, Gold 85–89, Gold★ 90+]
+  STATE.charts.ipptDistribution = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: ["YTT", "Fail", "Pass", "Silver", "Gold", "Gold★"],
+      datasets: [{
+        data: buckets,
+        backgroundColor: ["#484F58", "#F85149", "#3FB950", "#58A6FF", "#E3B341", "#BC8CFF"],
+        borderWidth: 0,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#30363D" }, ticks: { color: "#8B949E", stepSize: 1 } },
+        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 } } }
+      }
+    }
+  });
 }
 
 function renderRM(el) {

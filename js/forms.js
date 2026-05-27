@@ -636,11 +636,15 @@ function recomputeIPPTScore() {
   }
   const scoreField = document.getElementById("f-score");
   if (scoreField) scoreField.value = result.total;
+  // If every component is 0, surface "YTT" instead of "N/A"/"Fail" so the form
+  // matches the table's YTT tagging convention.
+  const ytt = isYTT({ pushups: pu, situps: su, runTime });
   const awardColors = { "Gold★": "var(--purple)", Gold: "var(--yellow)", Silver: "var(--accent)", Pass: "var(--green)", Fail: "var(--red)" };
-  const awardColor = awardColors[result.award] || "var(--muted)";
+  const displayAward = ytt ? "YTT" : result.award;
+  const awardColor = ytt ? "var(--accent)" : (awardColors[result.award] || "var(--muted)");
   breakdown.style.display = "block";
   breakdown.innerHTML = `
-    <div>Age group <strong>${result.ageLabel}</strong> · <span>PU ${result.pushupScore}/25 + SU ${result.situpScore}/25 + Run ${result.runScore}/50</span> = <strong style="color:var(--text)">${result.total}/100</strong> <span style="color:${awardColor};font-weight:700;margin-left:6px">${result.award}</span></div>
+    <div>Age group <strong>${result.ageLabel}</strong> · <span>PU ${result.pushupScore}/25 + SU ${result.situpScore}/25 + Run ${result.runScore}/50</span> = <strong style="color:var(--text)">${result.total}/100</strong> <span style="color:${awardColor};font-weight:700;margin-left:6px">${displayAward}</span></div>
     <div style="font-size:10px;color:var(--dim);margin-top:2px">Tiers: ≥61 Pass · ≥75 Silver · ≥85 Gold · ≥90 Gold★ (NDU / Commando / Guards)</div>
   `;
 }
