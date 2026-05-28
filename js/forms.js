@@ -1650,14 +1650,31 @@ function computeFitnessMetrics(rows) {
   }).filter(p => p.iso).sort((a, b) => a.iso < b.iso ? -1 : 1);
 }
 
-// Counts how many distinct company conducts (date+conduct tuples) fell
-// inside [startIso, endIso]. Used for the attendance-rate denominator so
-// "attended X / Y" reflects the actual training calendar.
+// Counts how many distinct PT conducts (date+conductId tuples) fell inside
+// [startIso, endIso]. A conduct is considered "PT" when at least one recruit
+// has a Polar/LMS entry for it — the Polar class summary photo is the
+// authoritative signal that the session involved actual PT. Lecture-style
+// or admin "conducts" (e.g. lectures, IPPT registration sessions) get
+// attendance rows but no Polar data, so they're excluded from the denominator.
+// This makes "Conducts attended X / Y" reflect the recruit's PT participation
+// rather than every administrative gathering.
 function countCompanyConductsInWindow(startIso, endIso) {
+  // Set of "iso|conductId" keys that have at least one Polar entry in window.
+  const ptKeys = new Set();
+  STATE.polar.forEach(p => {
+    if (!p.conductId) return;
+    const iso = displayDateToISO(p.date);
+    if (iso && iso >= startIso && iso <= endIso) ptKeys.add(`${iso}|${p.conductId}`);
+  });
+  // Intersect with the attendance log so we count only conducts the company
+  // actually logged (avoids counting one-off polar entries that lack a real
+  // attendance row).
   const tuples = new Set();
   STATE.attendance.forEach(a => {
     const iso = displayDateToISO(a.date);
-    if (iso && iso >= startIso && iso <= endIso && a.conductId) tuples.add(`${iso}|${a.conductId}`);
+    if (!iso || iso < startIso || iso > endIso || !a.conductId) return;
+    const key = `${iso}|${a.conductId}`;
+    if (ptKeys.has(key)) tuples.add(key);
   });
   return tuples.size;
 }
@@ -1971,13 +1988,32 @@ function openFitnessReportModal() {
 
       <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
 
-      <div style="font-size:12px;color:var(--muted)">
-        Bulk send to <strong style="color:var(--accent)">${recipients.length}</strong> recruit${recipients.length === 1 ? '' : 's'}${scopeNote}${skipped ? ` <span style="color:var(--dim)">(${skipped} skipped — no email on file)</span>` : ""}.
-      </div>
-      <button class="btn btn-success" onclick="sendAllReports()" ${recipients.length ? "" : "disabled"}>📨 Send to All Recipients →</button>
+      <div style="font-size:12px;color:var(--muted)" id="bulk-send-summary"></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+        <input id="rep-include-sent" type="checkbox" onchange="updateBulkSendSummary()" style="margin:0">
+        Include recruits who already received a report on this device (re-send)
+      </label>
+      <button class="btn btn-success" onclick="sendAllReports()" ${recipients.length ? "" : "disabled"}>📨 Send to filtered recipients →</button>
 
       <div id="fitness-report-progress" style="display:none;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+
+      <details style="font-size:11px;color:var(--muted)">
+        <summary style="cursor:pointer;font-weight:600;color:var(--text);padding:4px 0">📋 Sent log — ${Object.keys(STATE.fitnessSent).length} recruit${Object.keys(STATE.fitnessSent).length === 1 ? "" : "s"} marked as sent (per-device)</summary>
+        <div style="margin-top:8px;line-height:1.6">
+          The bulk send remembers who's already been emailed in this browser's localStorage. On a new device, paste the JSON from your old device below to seed it — otherwise the bulk send won't know to skip them.
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn" onclick="exportFitnessSentToClipboard()">📋 Copy sent log JSON</button>
+          <button class="btn" onclick="openImportFitnessSentModal()">📥 Import sent log</button>
+          <button class="btn btn-danger" onclick="if(confirm('Clear the sent log on THIS device? Future bulk sends won\\'t skip anyone.')) { clearFitnessSent(); openFitnessReportModal(); }">🗑 Clear sent log</button>
+        </div>
+      </details>
     </div>`);
+
+  // Initial summary fill — needs STATE.fitnessSent to be loaded, which it is.
+  updateBulkSendSummary();
 
   // Async: fetch sender identity + quota. Three possible outcomes:
   //  1. Both succeed → show sender + quota
@@ -2077,15 +2113,49 @@ async function sendTestReport() {
   }
 }
 
+// Computes the actual send queue given current scope + the "include already
+// sent" checkbox. Shared between the live summary line and the send loop so
+// the count under the button always matches what the loop will do.
+function computeFitnessSendQueue() {
+  const includeSent = document.getElementById("rep-include-sent")?.checked;
+  const all = filteredRoster().filter(r => r.role !== "Commander" && r.email);
+  const sentMap = STATE.fitnessSent || {};
+  const skipNoEmail = filteredRoster().filter(r => r.role !== "Commander" && !r.email).length;
+  if (includeSent) return { queue: all, skipAlreadySent: 0, skipNoEmail, total: all.length };
+  const queue = all.filter(r => !sentMap[r.id]);
+  return { queue, skipAlreadySent: all.length - queue.length, skipNoEmail, total: all.length };
+}
+
+// Renders the "X recruits will be emailed (Y skipped...)" line under the
+// bulk button. Called on open + whenever the include-sent checkbox changes.
+function updateBulkSendSummary() {
+  const el = document.getElementById("bulk-send-summary");
+  if (!el) return;
+  const { queue, skipAlreadySent, skipNoEmail, total } = computeFitnessSendQueue();
+  const scopeNote = isFilterActive() ? ` in ${filterLabel()}` : "";
+  let msg = `Bulk send to <strong style="color:var(--accent)">${queue.length}</strong> recruit${queue.length === 1 ? '' : 's'}${scopeNote}`;
+  const notes = [];
+  if (skipAlreadySent) notes.push(`${skipAlreadySent} skipped (already sent on this device)`);
+  if (skipNoEmail) notes.push(`${skipNoEmail} skipped (no email on file)`);
+  if (notes.length) msg += ` <span style="color:var(--dim)">(${notes.join(" · ")})</span>`;
+  el.innerHTML = msg + ".";
+}
+
 // Sequential send loop — fires one email at a time so we can read the
-// remaining quota after each call and abort cleanly when it hits 0.
+// remaining quota after each call and abort cleanly when it hits 0. Records
+// each successful send in STATE.fitnessSent so a future run skips them.
 async function sendAllReports() {
   const startIso = gv("rep-start");
   const endIso = gv("rep-end");
   if (!startIso || !endIso) { alert("Pick a start and end date first."); return; }
-  const recipients = filteredRoster().filter(r => r.role !== "Commander" && r.email);
-  if (!recipients.length) { alert("No recruits with email in current scope."); return; }
-  if (!confirm(`Send fitness reports to ${recipients.length} recruits? This cannot be undone.`)) return;
+  const { queue, skipAlreadySent } = computeFitnessSendQueue();
+  if (!queue.length) {
+    alert(skipAlreadySent
+      ? `All ${skipAlreadySent} eligible recruits already received a report on this device. Tick "Include recruits who already received a report" to re-send.`
+      : "No recruits with email in current scope.");
+    return;
+  }
+  if (!confirm(`Send fitness reports to ${queue.length} recruit${queue.length === 1 ? "" : "s"}? This cannot be undone.${skipAlreadySent ? `\n\n(${skipAlreadySent} already-sent recruits will be skipped.)` : ""}`)) return;
 
   const progress = document.getElementById("fitness-report-progress");
   progress.style.display = "block";
@@ -2095,23 +2165,24 @@ async function sendAllReports() {
   const endNice = isoToDisplayDate(endIso);
   const subject = `Your Cougar Fitness Report — ${startNice} → ${endNice}`;
 
-  for (let i = 0; i < recipients.length; i++) {
-    const r = recipients[i];
-    progress.innerHTML = `Sending ${i + 1}/${recipients.length} — currently <strong>${displayPersonLabel(r.id)}</strong><br><span style="color:var(--muted)">✓ ${sent} sent · ⚠ ${failed} failed · quota left: ${lastQuota}</span>`;
+  for (let i = 0; i < queue.length; i++) {
+    const r = queue[i];
+    progress.innerHTML = `Sending ${i + 1}/${queue.length} — currently <strong>${displayPersonLabel(r.id)}</strong><br><span style="color:var(--muted)">✓ ${sent} sent · ⚠ ${failed} failed · quota left: ${lastQuota}</span>`;
     try {
       const { htmlForEmail, inlineImages } = buildFitnessReportHTML(r.id, startIso, endIso);
       const res = await API.sendEmail(r.email, subject, htmlForEmail, inlineImages);
       if (res.error) {
         failed++;
         if (res.remainingQuota === 0) {
-          skippedQuota = recipients.length - i - 1;
+          skippedQuota = queue.length - i - 1;
           break;
         }
       } else {
         sent++;
+        markFitnessSent(r.id);  // Persist so future runs skip this recruit.
         lastQuota = res.remainingQuota ?? "?";
-        if (res.remainingQuota === 0 && i < recipients.length - 1) {
-          skippedQuota = recipients.length - i - 1;
+        if (res.remainingQuota === 0 && i < queue.length - 1) {
+          skippedQuota = queue.length - i - 1;
           break;
         }
       }
@@ -2120,7 +2191,47 @@ async function sendAllReports() {
     }
   }
 
+  updateBulkSendSummary();
   progress.innerHTML = `<strong style="color:var(--green)">✓ Done.</strong> ${sent} sent · ${failed} failed${skippedQuota ? ` · ${skippedQuota} not sent (daily quota hit — retry tomorrow)` : ""} · quota left: ${lastQuota}`;
+}
+
+// Copies the per-device sent map to the clipboard as pretty JSON so it can
+// be pasted into another device's import modal. Used when the user switches
+// laptops mid-cohort or when seeding a fresh browser cache.
+async function exportFitnessSentToClipboard() {
+  const json = JSON.stringify(STATE.fitnessSent, null, 2);
+  try {
+    await navigator.clipboard.writeText(json);
+    alert(`Copied ${Object.keys(STATE.fitnessSent).length} sent-log entries to clipboard. Paste into the import modal on the other device.`);
+  } catch (e) {
+    // Fallback: show in a textarea so the user can copy manually.
+    openModal("Sent log JSON (copy manually)", `
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Clipboard access denied. Copy this JSON manually and paste into the import modal on the other device.</p>
+      <textarea readonly style="width:100%;height:320px;font-family:var(--mono);font-size:11px;padding:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px" onclick="this.select()">${escapeAttr(json)}</textarea>
+    `);
+  }
+}
+
+function openImportFitnessSentModal() {
+  openModal("Import sent log", `
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">
+      Paste the JSON exported from your other device. Entries are merged into this device's existing log (more-recent timestamp wins per d4), so importing is non-destructive.
+    </p>
+    <textarea id="fitness-import-textarea" placeholder='{ "1101": "2026-05-27T14:40:25.296Z", ... }' style="width:100%;height:280px;font-family:var(--mono);font-size:11px;padding:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px"></textarea>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-success" onclick="confirmImportFitnessSent()">Merge into sent log</button>
+    </div>
+  `);
+}
+
+function confirmImportFitnessSent() {
+  const raw = document.getElementById("fitness-import-textarea")?.value || "";
+  const result = importFitnessSent(raw);
+  if (!result.ok) { alert("Import failed: " + result.error); return; }
+  closeModal();
+  alert(`Imported. ${result.added} new entries added, ${result.updated} updated. Total now: ${result.total}.`);
+  openFitnessReportModal();
 }
 
 // ─── CONDUCT REGISTRY MIGRATION ──────────────────────────

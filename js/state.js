@@ -13,6 +13,54 @@ const STORAGE_KEY_LEGACY = "cougar-data"; // v1 — contained hardcoded personne
 const AUTH_KEY = "cougar-auth";
 const FILTER_KEY = "cougar-filter";
 const IPPT_AGG_KEY = "cougar-ippt-agg";
+const FITNESS_SENT_KEY = "cougar-fitness-sent";
+
+// Reads the persisted "who got a fitness report and when" map.
+// Shape: { "1101": "2026-05-27T14:40:25.296Z", ... }.
+// Lives in localStorage so it doesn't get touched by saveLocal / pullAll,
+// which means it survives `localStorage.removeItem(STORAGE_KEY)` resets.
+function loadFitnessSent() {
+  try {
+    const raw = localStorage.getItem(FITNESS_SENT_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === "object" ? obj : {};
+  } catch { return {}; }
+}
+function saveFitnessSent(map) {
+  localStorage.setItem(FITNESS_SENT_KEY, JSON.stringify(map || {}));
+}
+function markFitnessSent(d4, when) {
+  if (!d4) return;
+  STATE.fitnessSent[String(d4)] = when || new Date().toISOString();
+  saveFitnessSent(STATE.fitnessSent);
+}
+function clearFitnessSent() {
+  STATE.fitnessSent = {};
+  saveFitnessSent(STATE.fitnessSent);
+}
+// Merge an external map (e.g. exported from another device) into the
+// existing one. Keeps the most-recent timestamp per d4 when both sides have
+// the same id, so you never accidentally "un-mark" a more-recent send by
+// importing an older record.
+function importFitnessSent(json) {
+  let incoming;
+  try { incoming = typeof json === "string" ? JSON.parse(json) : json; }
+  catch (e) { return { ok: false, error: "Not valid JSON: " + e.message }; }
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+    return { ok: false, error: "Expected an object like { \"1101\": \"2026-05-27T…\", ... }" };
+  }
+  let added = 0, updated = 0;
+  for (const k of Object.keys(incoming)) {
+    const key = padD4(k);
+    const t = String(incoming[k] || "");
+    if (!t) continue;
+    if (!STATE.fitnessSent[key]) { STATE.fitnessSent[key] = t; added++; }
+    else if (t > STATE.fitnessSent[key]) { STATE.fitnessSent[key] = t; updated++; }
+  }
+  saveFitnessSent(STATE.fitnessSent);
+  return { ok: true, added, updated, total: Object.keys(STATE.fitnessSent).length };
+}
 
 const STATE = {
   nav: "dashboard",
@@ -38,6 +86,11 @@ const STATE = {
   // and leaderboard. Does NOT affect the underlying table — that always
   // shows every row.
   ipptAggMode: localStorage.getItem(IPPT_AGG_KEY) === "best" ? "best" : "latest",
+  // Per-device record of which recruits have already had a fitness report
+  // emailed to them. Drives the "skip already sent" default on bulk send so
+  // a session interrupted mid-batch (or a fresh device) can resume without
+  // double-sending. Map of d4 → ISO timestamp of last successful send.
+  fitnessSent: loadFitnessSent(),
   charts: {}
 };
 
