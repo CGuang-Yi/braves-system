@@ -76,8 +76,12 @@ function openPerson(d4) {
 
   // RSIs stat is clickable when there are records — opens an inline patterns
   // panel below the stats strip with day-of-week, status mix, timeline, reasons.
+  // Count is deduped per date so a recruit with multiple medical entries on
+  // the same day (e.g. wizard auto-Pending + manual MC + manual Excuse) only
+  // shows as one report-sick event.
   const rsClickable = med.length > 0;
-  html += `<div class="stats-row"><div class="stat" ${rsClickable ? `onclick="toggleReportSickPatterns('${d4}')" style="cursor:pointer" title="Click to see patterns"` : ""}><label>RSIs ${rsClickable ? '<span style="color:var(--dim);font-size:9px">▾ patterns</span>' : ''}</label><div class="val" style="color:${med.length > 1 ? 'var(--red)' : 'var(--muted)'}">${med.length}</div></div>`;
+  const medDays = new Set(med.map(m => m.date)).size;
+  html += `<div class="stats-row"><div class="stat" ${rsClickable ? `onclick="toggleReportSickPatterns('${d4}')" style="cursor:pointer" title="Click to see patterns (unique days — multiple medical rows on the same day count as 1)"` : ""}><label>RSIs ${rsClickable ? '<span style="color:var(--dim);font-size:9px">▾ patterns</span>' : ''}</label><div class="val" style="color:${medDays > 1 ? 'var(--red)' : 'var(--muted)'}">${medDays}</div></div>`;
   html += `<div class="stat"><label>IPPT Best</label><div class="val" style="color:var(--orange)">${ippts.length ? Math.max(...ippts.map(i => +i.score)) : "—"}</div></div>`;
   html += `<div class="stat"><label>RMs</label><div class="val" style="color:var(--teal)">${rms.length}</div></div>`;
   html += `<div class="stat"><label>SOCs</label><div class="val" style="color:var(--purple)">${socs.length}</div></div></div>`;
@@ -93,7 +97,14 @@ function openPerson(d4) {
   });
   if (cd.length) {
     const cdTypeColor = t => t === "PX" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
-    const cdCount = t => cd.filter(d => d.type === t).length;
+    // ReportSick is deduped by date — a recruit who falls out of three
+    // conducts on the same day only went to MO once. Other types count rows
+    // directly since each row is a distinct conduct miss.
+    const cdCount = t => {
+      const rows = cd.filter(d => d.type === t);
+      if (t === "ReportSick") return new Set(rows.map(d => d.date)).size;
+      return rows.length;
+    };
     html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${cd.length} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("PX")} PX · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick)</span></h4>`;
     html += `<div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
       <table style="width:100%;border-collapse:collapse">
@@ -1782,11 +1793,14 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
   const attendanceRate = totalCoyConducts ? Math.round((conductsAttended / totalCoyConducts) * 100) : 0;
   const polarJoined = polar.length;
   const polarRate = totalCoyConducts ? Math.round((polarJoined / totalCoyConducts) * 100) : 0;
-  // Report Sick = times the recruit was sent to MO mid-day after the
-  // conduct (ReportSick conductDetail entries). Discrete countable events;
-  // more meaningful for a fitness report than raw MC days because it
-  // tracks "how often did training have to stop for medical attention."
-  const reportSickCount = conductDetailRows.filter(c => c.type === "ReportSick").length;
+  // Report Sick = days the recruit was sent to MO mid-day after a conduct
+  // (ReportSick conductDetail entries). Deduped by date because a single
+  // recruit can fall out of multiple conducts on the same day (e.g. MC2,
+  // gym ori, SC3) and get logged in each conduct's Report Sick list — but
+  // they only went to MO once that day, so it's one event.
+  const reportSickCount = new Set(
+    conductDetailRows.filter(c => c.type === "ReportSick").map(c => c.date)
+  ).size;
   // IPPT history: ALL attempts for the recruit, not just within the window.
   // The point of IPPT in a fitness report is to show fitness trajectory —
   // limiting to the window hides whether the recruit is on an improving
@@ -2841,33 +2855,33 @@ function renderLogConductWizard() {
     : "";
 
   const statusRows = w.status.length ? w.status.map(s => `
-    <div class="lc-wiz-status-row" style="display:grid;grid-template-columns:18px 48px minmax(0,1.4fr) minmax(60px,auto) minmax(0,1fr);gap:8px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
+    <div class="lc-wiz-status-row" style="display:grid;grid-template-columns:18px 48px minmax(0,1.4fr) minmax(80px,auto) minmax(0,1fr);gap:8px;align-items:center;padding:6px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
       <input type="checkbox" ${s.notParticipating ? "checked" : ""} onchange="wizToggleStatusNP('${s.d4}', this.checked)" style="width:16px;height:16px;cursor:pointer" title="Tick = not participating">
-      <span class="mono" style="font-weight:700;color:var(--accent)">${displayId(s.d4)}</span>
-      <span style="font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(getName(s.d4))}">${escapeAttr(getName(s.d4))}</span>
-      <span style="font-size:10px;color:var(--orange);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(s.statusTag)}">${escapeAttr(s.statusTag)}</span>
-      <input type="text" value="${escapeAttr(s.reason)}" placeholder="reason (optional)" oninput="wizUpdateStatusReason('${s.d4}', this.value)" style="min-width:0;width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
+      <span class="mono" style="font-weight:700;color:var(--accent);font-size:12px">${displayId(s.d4)}</span>
+      <span style="font-size:12px;min-width:0;line-height:1.3" title="${escapeAttr(getName(s.d4))}">${escapeAttr(getName(s.d4))}</span>
+      <span style="font-size:10px;color:var(--orange);font-weight:600;line-height:1.4;background:#D2992222;border:1px solid #D2992244;border-radius:10px;padding:3px 9px;white-space:normal;justify-self:start" title="${escapeAttr(s.statusTag)}">${escapeAttr(s.statusTag)}</span>
+      <input type="text" value="${escapeAttr(s.reason)}" placeholder="reason (optional)" oninput="wizUpdateStatusReason('${s.d4}', this.value)" style="min-width:0;width:100%;padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
     </div>
-  `).join("") : `<div style="color:var(--muted);font-size:11px;padding:6px 8px">No recruits on medical status for this date.</div>`;
+  `).join("") : `<div style="color:var(--muted);font-size:11px;padding:8px 10px;background:var(--surface);border:1px dashed var(--border);border-radius:6px;text-align:center">No recruits on medical status for this date.</div>`;
 
   const sectionList = (key, label, helpText, color) => {
     const rows = (w[key] || []).map((row, i) => `
-      <div class="lc-wiz-bulk-row" style="display:grid;grid-template-columns:24px minmax(0,1fr) minmax(0,1fr) 28px;gap:6px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
-        <span class="mono" style="color:var(--muted);font-size:11px">${String(i + 1).padStart(2, "0")}</span>
+      <div class="lc-wiz-bulk-row" style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 32px;gap:8px;align-items:center;padding:8px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
+        <span class="mono" style="color:var(--muted);font-size:12px;font-weight:700">${String(i + 1).padStart(2, "0")}</span>
         <div style="min-width:0">${rosterSelect(`wiz-${key}-d4-${i}`, true, row.d4, { onchange: `wizUpdateRowD4('${key}', ${i}, this.value)` })}</div>
-        <input type="text" value="${escapeAttr(row.reason)}" placeholder="reason" oninput="wizUpdateRowReason('${key}', ${i}, this.value)" style="min-width:0;width:100%;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
-        <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveRow('${key}', ${i})" title="Remove" style="padding:2px 6px">✕</button>
+        <input type="text" value="${escapeAttr(row.reason)}" placeholder="reason" oninput="wizUpdateRowReason('${key}', ${i}, this.value)" style="min-width:0;width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
+        <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveRow('${key}', ${i})" title="Remove" style="padding:4px 8px">✕</button>
       </div>
     `).join("");
-    return `<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--surface2)">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-        <div>
+    return `<div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
           <strong style="color:${color};font-size:13px">${label}</strong> <span style="color:var(--muted);font-size:11px">(${w[key].length})</span>
-          <div style="font-size:10px;color:var(--dim);margin-top:1px">${helpText}</div>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">${helpText}</div>
         </div>
-        <button type="button" class="btn" style="font-size:11px;padding:4px 10px" onclick="wizAddRow('${key}')">+ Add</button>
+        <button type="button" class="btn" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="wizAddRow('${key}')">+ Add</button>
       </div>
-      ${rows ? `<div style="display:flex;flex-direction:column;gap:4px">${rows}</div>` : ""}
+      ${rows ? `<div style="display:flex;flex-direction:column;gap:6px">${rows}</div>` : ""}
     </div>`;
   };
 
@@ -2892,12 +2906,12 @@ function renderLogConductWizard() {
         </div>
       </div>
 
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <strong style="font-size:13px">Status Personnel <span style="color:var(--muted);font-weight:400;font-size:11px">(${w.status.length} on status today)</span></strong>
-          <span style="font-size:10px;color:var(--dim)">Tick to mark as not participating. Untick if they're participating despite their status.</span>
+      <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
+        <div style="margin-bottom:8px">
+          <strong style="color:var(--accent);font-size:13px">⚕️ Status Personnel</strong> <span style="color:var(--muted);font-size:11px">(${w.status.length} on status today)</span>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">Tick to mark as not participating. Untick if a status-personnel is actually participating in this conduct.</div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:3px">${statusRows}</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${statusRows}</div>
       </div>
 
       ${sectionList("reportSick", "📋 Report Sick", "Dropped out mid-conduct AND went to MO afterward. Auto-creates a Pending Medical row — update with MC/LD/etc. once MO clears.", "var(--orange)")}
@@ -2905,23 +2919,23 @@ function renderLogConductWizard() {
 
       <div id="wiz-overlap-warning"></div>
 
-      <div class="card" style="padding:10px 12px;background:var(--surface2)">
+      <div class="card" style="padding:12px 14px;background:var(--surface2);border-radius:8px">
         <div class="lc-wiz-stats-top" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end">
-          <div class="form-group" style="grid-column:span 2">
-            <label style="font-size:10px">Total Str</label>
-            <input type="number" id="wiz-total" min="0" max="999" step="1" value="${totals.total}" oninput="wizSetTotalOverride(this.value)" style="padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-weight:700">
+          <div class="form-group" style="grid-column:span 2;margin:0">
+            <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total Str</label>
+            <input type="number" id="wiz-total" min="0" max="999" step="1" value="${totals.total}" oninput="wizSetTotalOverride(this.value)" style="width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px;font-weight:700;box-sizing:border-box">
           </div>
-          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Status</label><div id="wiz-stat-status" class="val" style="font-size:18px;color:var(--accent)">${totals.statusCount}</div></div>
-          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Rpt Sick</label><div id="wiz-stat-reportSick" class="val" style="font-size:18px;color:var(--orange)">${totals.reportSickCount}</div></div>
-          <div class="stat" style="grid-column:span 2;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Fallout</label><div id="wiz-stat-fallout" class="val" style="font-size:18px;color:var(--purple)">${totals.falloutCount}</div></div>
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Status</label><div id="wiz-stat-status" class="val" style="font-size:20px;font-weight:700;color:var(--accent);margin-top:2px">${totals.statusCount}</div></div>
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Rpt Sick</label><div id="wiz-stat-reportSick" class="val" style="font-size:20px;font-weight:700;color:var(--orange);margin-top:2px">${totals.reportSickCount}</div></div>
+          <div class="stat" style="grid-column:span 2;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Fallout</label><div id="wiz-stat-fallout" class="val" style="font-size:20px;font-weight:700;color:var(--purple);margin-top:2px">${totals.falloutCount}</div></div>
         </div>
         <div class="lc-wiz-stats-bot" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px">
-          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px"><label style="font-size:10px">Participating (auto)</label><div id="wiz-stat-participating" class="val" style="font-size:22px;color:var(--green)">${totals.participating}</div></div>
-          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px"><label style="font-size:10px">LMS (auto on save)</label><div class="val" style="font-size:22px;color:var(--muted)">—</div></div>
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--green);border-radius:6px;padding:10px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Participating <span style="color:var(--dim);text-transform:none">(auto)</span></label><div id="wiz-stat-participating" class="val" style="font-size:26px;font-weight:700;color:var(--green);margin-top:2px">${totals.participating}</div></div>
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">LMS <span style="color:var(--dim);text-transform:none">(after save)</span></label><div class="val" style="font-size:26px;font-weight:700;color:var(--muted);margin-top:2px">—</div></div>
         </div>
-        <div class="form-group" style="margin-top:10px">
-          <label>Remarks (optional)</label>
-          <textarea id="wiz-remarks" rows="2" maxlength="500" placeholder="Any data inconsistencies, recruit flags…" oninput="_logConduct.remarks = this.value" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%">${escapeAttr(w.remarks)}</textarea>
+        <div class="form-group" style="margin-top:12px">
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Remarks <span style="color:var(--dim);text-transform:none">(optional)</span></label>
+          <textarea id="wiz-remarks" rows="2" maxlength="500" placeholder="Any data inconsistencies, recruit flags…" oninput="_logConduct.remarks = this.value" style="padding:8px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%;box-sizing:border-box">${escapeAttr(w.remarks)}</textarea>
         </div>
       </div>
 

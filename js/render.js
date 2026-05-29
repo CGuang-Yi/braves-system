@@ -1004,7 +1004,14 @@ function renderConductDetail(el) {
     return (a.time || "") < (b.time || "") ? 1 : -1;
   });
 
-  const cnt = t => scoped.filter(d => d.type === t).length;
+  // ReportSick dedupes per (d4, date) — a single recruit who fell out of
+  // multiple conducts on the same day only went to MO once. The other
+  // types remain as row counts (each row = a distinct conduct event).
+  const cnt = t => {
+    const rows = scoped.filter(d => d.type === t);
+    if (t === "ReportSick") return new Set(rows.map(d => `${d.d4}|${d.date}`)).size;
+    return rows.length;
+  };
 
   // "Most conducts missed" ignores the conduct/type sub-filter so the ranking
   // remains a stable view of overall absence within the platoon scope.
@@ -1108,14 +1115,25 @@ function renderMedical(el) {
     ? `<span style="font-size:55%;color:var(--muted);font-weight:400;margin-left:1px">/${rec}/${cmd}</span>`
     : "";
 
-  // Leaderboard: count report-sick events per recruit within the scope.
-  // Each medical row IS a report-sick event, so this is a straight tally.
-  const rsCounts = {};
-  scoped.forEach(m => { rsCounts[m.d4] = (rsCounts[m.d4] || 0) + 1; });
-  const topReporters = Object.entries(rsCounts)
-    .map(([d4, count]) => ({ d4, count }))
+  // Leaderboard: count UNIQUE report-sick days per recruit within the scope.
+  // A recruit can have several medical rows on the same date (one auto-created
+  // by the wizard's Report Sick, another manually entered for the same illness,
+  // or multiple statuses received for the same incident — e.g. "1D MC + 2D LD").
+  // The leaderboard cares about "how often does this person go to MO", so
+  // collapse those to one event per (d4, date).
+  const rsDaySets = {};
+  scoped.forEach(m => { (rsDaySets[m.d4] = rsDaySets[m.d4] || new Set()).add(m.date); });
+  const topReporters = Object.entries(rsDaySets)
+    .map(([d4, days]) => ({ d4, count: days.size }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
+  // Total unique (d4, date) pairs across the whole scope — drives the
+  // "Total report sicks" tile so it matches the leaderboard semantics.
+  const totalReportSickDays = new Set(scoped.map(m => `${m.d4}|${m.date}`)).size;
+  const totalReportSickDaysSplit = {
+    rec: new Set(scoped.filter(m => !isCommander(m.d4)).map(m => `${m.d4}|${m.date}`)).size,
+    cmd: new Set(scoped.filter(m => isCommander(m.d4)).map(m => `${m.d4}|${m.date}`)).size
+  };
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -1126,7 +1144,7 @@ function renderMedical(el) {
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat"><label>Total report sicks</label><div class="val">${scoped.length}${inlineBreakdown(totalSplit)}</div></div>
+      <div class="stat"><label>Total report sicks</label><div class="val" title="Unique (recruit, date) — multiple medical rows on the same day count as one event">${totalReportSickDays}${inlineBreakdown(totalReportSickDaysSplit)}</div></div>
       <div class="stat"><label>Active today</label><div class="val" style="color:var(--red)">${activeCount}${inlineBreakdown(activeSplit)}</div></div>
       <div class="stat"><label>Recovering</label><div class="val" style="color:var(--orange)">${ghostCount}${inlineBreakdown(recoveringSplit)}</div></div>
       <div class="stat"><label>Pending</label><div class="val" style="color:var(--muted)">${pendingCount}${inlineBreakdown(pendingSplit)}</div></div>

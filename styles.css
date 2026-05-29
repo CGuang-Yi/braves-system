@@ -214,19 +214,76 @@ tr:hover{background:var(--surface2)}
   .topbar-select,select,input{max-width:100%;min-width:0!important}
 
   /* ── Log Conduct wizard mobile layout ─────────────────────
-     Desktop uses 3/5/6-column grids per row — way too tight on a phone.
-     On mobile, header stacks vertically; status-personnel and bulk-add
-     rows reflow with the reason field wrapping to its own line; the
-     6-up stats strip collapses to 3 cols. !important on grid-template-
-     columns defeats the inline `style="grid-template-columns:..."`. */
-  .lc-wiz-header{grid-template-columns:1fr!important}
-  .lc-wiz-status-row{grid-template-columns:18px 48px 1fr 1fr!important}
-  .lc-wiz-status-row > input[type="text"]{grid-column:1 / -1}
-  .lc-wiz-bulk-row{grid-template-columns:24px 1fr 28px!important}
-  .lc-wiz-bulk-row > input[type="text"]{grid-column:1 / -1}
-  .lc-wiz-stats-top{grid-template-columns:repeat(3,1fr)!important}
+     Desktop's tight 3-/5-/6-column rows are unreadable on a phone. On
+     mobile each row reflows into a stacked layout via grid-template-areas:
+     compact identity strip on top + chip-style status tag (wrap-friendly
+     for multi-status recruits like "MC + Excuse Heavy Load + RMJ") +
+     full-width reason input. The pill styling on the status tag also
+     gives the multi-status case clear visual separation. */
+
+  /* Header: Date + Time pair on row 1, Conduct full-width on row 2. */
+  .lc-wiz-header{
+    grid-template-columns:1fr 1fr!important;
+    grid-template-areas:"date time" "conduct conduct"!important;
+  }
+  .lc-wiz-header > .form-group:nth-child(1){grid-area:date}
+  .lc-wiz-header > .form-group:nth-child(2){grid-area:time}
+  .lc-wiz-header > .form-group:nth-child(3){grid-area:conduct}
+
+  /* Status personnel rows: tighter ID strip on top, chip-style status tag
+     that wraps if a recruit has multiple statuses, reason field below. */
+  .lc-wiz-status-row{
+    grid-template-columns:18px 50px 1fr!important;
+    grid-template-areas:
+      "check d4 name"
+      "tag tag tag"
+      "reason reason reason"!important;
+    gap:6px 8px!important;
+    padding:10px 12px!important;
+  }
+  .lc-wiz-status-row > input[type="checkbox"]{grid-area:check;justify-self:start;align-self:center;width:18px!important;height:18px!important}
+  .lc-wiz-status-row > span:nth-child(2){grid-area:d4;font-size:13px}
+  .lc-wiz-status-row > span:nth-child(3){grid-area:name;font-size:13px!important;overflow:visible!important;text-overflow:clip!important;white-space:normal!important;line-height:1.3}
+  .lc-wiz-status-row > span:nth-child(4){
+    grid-area:tag;
+    background:#D2992222;
+    border:1px solid #D2992244;
+    color:var(--orange);
+    border-radius:10px;
+    padding:3px 9px;
+    font-size:10px!important;
+    line-height:1.4!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    justify-self:start;
+  }
+  .lc-wiz-status-row > input[type="text"]{grid-area:reason;padding:8px 10px!important;font-size:12px!important;height:auto}
+
+  /* Bulk-add rows (Report Sick / Fallout): SN + recruit dropdown + ✕ on
+     top row; reason field on its own row below for full-width typing. */
+  .lc-wiz-bulk-row{
+    grid-template-columns:28px 1fr 32px!important;
+    grid-template-areas:
+      "sn select remove"
+      "reason reason reason"!important;
+    gap:6px 6px!important;
+    padding:10px 12px!important;
+  }
+  .lc-wiz-bulk-row > span:first-child{grid-area:sn;font-size:12px!important;align-self:center}
+  .lc-wiz-bulk-row > div{grid-area:select}
+  .lc-wiz-bulk-row > input[type="text"]{grid-area:reason;padding:8px 10px!important;font-size:12px!important;height:auto}
+  .lc-wiz-bulk-row > button{grid-area:remove;padding:4px 8px!important;align-self:center}
+
+  /* Stats strip: Total Str takes its own full-width row, then Status /
+     Report Sick / Fallout sit in a 3-up grid below. Bottom strip (Participating
+     + LMS) keeps 2 cols so the Participating count stays prominent. */
+  .lc-wiz-stats-top{grid-template-columns:repeat(3,1fr)!important;gap:6px!important}
   .lc-wiz-stats-top > div:first-child{grid-column:1 / -1}
-  .lc-wiz-stats-bot{grid-template-columns:1fr!important}
+  .lc-wiz-stats-top > div:first-child input{padding:8px 10px!important;font-size:15px!important}
+  .lc-wiz-stats-top .stat .val{font-size:20px!important}
+  .lc-wiz-stats-bot{grid-template-columns:1fr 1fr!important}
+  .lc-wiz-stats-bot .stat .val{font-size:22px!important}
 
   /* Charts must not overflow their grid cell. Chart.js sizes the canvas
      based on container width — explicitly clamp it. Also give them a
