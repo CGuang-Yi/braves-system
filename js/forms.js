@@ -2841,7 +2841,7 @@ function renderLogConductWizard() {
     : "";
 
   const statusRows = w.status.length ? w.status.map(s => `
-    <div style="display:grid;grid-template-columns:18px 48px minmax(0,1.4fr) minmax(60px,auto) minmax(0,1fr);gap:8px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
+    <div class="lc-wiz-status-row" style="display:grid;grid-template-columns:18px 48px minmax(0,1.4fr) minmax(60px,auto) minmax(0,1fr);gap:8px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
       <input type="checkbox" ${s.notParticipating ? "checked" : ""} onchange="wizToggleStatusNP('${s.d4}', this.checked)" style="width:16px;height:16px;cursor:pointer" title="Tick = not participating">
       <span class="mono" style="font-weight:700;color:var(--accent)">${displayId(s.d4)}</span>
       <span style="font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(getName(s.d4))}">${escapeAttr(getName(s.d4))}</span>
@@ -2852,7 +2852,7 @@ function renderLogConductWizard() {
 
   const sectionList = (key, label, helpText, color) => {
     const rows = (w[key] || []).map((row, i) => `
-      <div style="display:grid;grid-template-columns:24px minmax(0,1fr) minmax(0,1fr) 28px;gap:6px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
+      <div class="lc-wiz-bulk-row" style="display:grid;grid-template-columns:24px minmax(0,1fr) minmax(0,1fr) 28px;gap:6px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
         <span class="mono" style="color:var(--muted);font-size:11px">${String(i + 1).padStart(2, "0")}</span>
         <div style="min-width:0">${rosterSelect(`wiz-${key}-d4-${i}`, true, row.d4, { onchange: `wizUpdateRowD4('${key}', ${i}, this.value)` })}</div>
         <input type="text" value="${escapeAttr(row.reason)}" placeholder="reason" oninput="wizUpdateRowReason('${key}', ${i}, this.value)" style="min-width:0;width:100%;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
@@ -2876,7 +2876,7 @@ function renderLogConductWizard() {
       ${editNotice}
 
       <div class="card" style="padding:10px 12px;background:var(--surface2)">
-        <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px">
+        <div class="lc-wiz-header" style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px">
           <div class="form-group">
             <label>Date</label>
             <input type="date" id="wiz-date" value="${dateVal}" min="2020-01-01" max="2099-12-31" required onchange="wizSetDate(this.value)" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
@@ -2906,7 +2906,7 @@ function renderLogConductWizard() {
       <div id="wiz-overlap-warning"></div>
 
       <div class="card" style="padding:10px 12px;background:var(--surface2)">
-        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end">
+        <div class="lc-wiz-stats-top" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end">
           <div class="form-group" style="grid-column:span 2">
             <label style="font-size:10px">Total Str</label>
             <input type="number" id="wiz-total" min="0" max="999" step="1" value="${totals.total}" oninput="wizSetTotalOverride(this.value)" style="padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-weight:700">
@@ -2915,7 +2915,7 @@ function renderLogConductWizard() {
           <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Rpt Sick</label><div id="wiz-stat-reportSick" class="val" style="font-size:18px;color:var(--orange)">${totals.reportSickCount}</div></div>
           <div class="stat" style="grid-column:span 2;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Fallout</label><div id="wiz-stat-fallout" class="val" style="font-size:18px;color:var(--purple)">${totals.falloutCount}</div></div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px">
+        <div class="lc-wiz-stats-bot" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px">
           <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px"><label style="font-size:10px">Participating (auto)</label><div id="wiz-stat-participating" class="val" style="font-size:22px;color:var(--green)">${totals.participating}</div></div>
           <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px"><label style="font-size:10px">LMS (auto on save)</label><div class="val" style="font-size:22px;color:var(--muted)">—</div></div>
         </div>

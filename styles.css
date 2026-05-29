@@ -213,6 +213,21 @@ tr:hover{background:var(--surface2)}
      than the viewport on phones. */
   .topbar-select,select,input{max-width:100%;min-width:0!important}
 
+  /* ── Log Conduct wizard mobile layout ─────────────────────
+     Desktop uses 3/5/6-column grids per row — way too tight on a phone.
+     On mobile, header stacks vertically; status-personnel and bulk-add
+     rows reflow with the reason field wrapping to its own line; the
+     6-up stats strip collapses to 3 cols. !important on grid-template-
+     columns defeats the inline `style="grid-template-columns:..."`. */
+  .lc-wiz-header{grid-template-columns:1fr!important}
+  .lc-wiz-status-row{grid-template-columns:18px 48px 1fr 1fr!important}
+  .lc-wiz-status-row > input[type="text"]{grid-column:1 / -1}
+  .lc-wiz-bulk-row{grid-template-columns:24px 1fr 28px!important}
+  .lc-wiz-bulk-row > input[type="text"]{grid-column:1 / -1}
+  .lc-wiz-stats-top{grid-template-columns:repeat(3,1fr)!important}
+  .lc-wiz-stats-top > div:first-child{grid-column:1 / -1}
+  .lc-wiz-stats-bot{grid-template-columns:1fr!important}
+
   /* Charts must not overflow their grid cell. Chart.js sizes the canvas
      based on container width — explicitly clamp it. Also give them a
      bit more height on mobile so axes/legends don't get cramped. */
