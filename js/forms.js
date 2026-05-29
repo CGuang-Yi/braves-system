@@ -529,7 +529,7 @@ function openAttendanceForm(id) {
           ${formField("f-lms", "LMS Participation", "number", "", `min="0" max="999" step="1" value="${e?.lms ?? 0}"`)}
         </div>
         <div class="form-row">
-          ${formField("f-px", "PX (Status personnel)", "number", "", `required min="0" max="999" step="1" value="${e?.px ?? 0}"`)}
+          ${formField("f-px", "Status (pre-existing medical status)", "number", "", `required min="0" max="999" step="1" value="${e?.px ?? 0}"`)}
           ${formField("f-fallout", "Fallout", "number", "", `required min="0" max="999" step="1" value="${e?.fallout ?? 0}"`)}
         </div>
         <div class="form-group"><label>Remarks (data inconsistencies, recruit flags)</label><textarea id="f-remarks" maxlength="500" rows="2" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical" placeholder="e.g. JOHN: HR drop sus; 2 Polar rows missing">${escapeAttr(e?.remarks)}</textarea></div>
@@ -543,7 +543,7 @@ function submitAttendance() {
   const conductId = gv("f-conductId");
   if (!conductId) { alert("Pick a conduct (or create a new one from the dropdown)."); return; }
   if (part > total) { alert("Participating cannot exceed total."); return; }
-  if (px + fallout > total) { alert("PX + Fallout cannot exceed total."); return; }
+  if (px + fallout > total) { alert("Status + Fallout cannot exceed total."); return; }
   if (lms > part) { alert("LMS Participation cannot exceed Participating."); return; }
   const entry = {
     id: editId || nextId(),
@@ -932,7 +932,7 @@ function openConductDetailForm(id) {
           ${conductPicker({ inputId: "f-conductId", selectedId: e?.conductId || "" })}
         </div>
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["PX", "PX (Status personnel)"], ["Fallout", "Fallout"], ["RSI", "RSI (fallout → report-sick)"], ["ReportSick", "Reported Sick (mid-day)"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["PX", "Status (pre-existing medical status)"], ["Fallout", "Fallout (dropped out, no MO visit)"], ["RSI", "RSI (reported sick at first parade)"], ["ReportSick", "Report Sick (fallout → went to MO)"]], true, e?.type || "")}
         ${formField("f-reason", "Reason", "text", "Sprained ankle / Fever / Shin splint...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
@@ -1502,30 +1502,40 @@ function openReportModal(type) {
   const titleLabel = type === "FP" ? "First Parade State"
     : type === "LP" ? "Last Parade State"
     : type === "MSK" ? "MSK Report"
+    : type === "CONDUCT" ? "Per-Conduct Chat Format"
     : "Medical Status List";
 
   // Borderline overrides are scoped to a single modal session — clearing
   // here avoids stale ticks leaking from a previous open.
   _paradeOverrides = {};
 
-  // The borderline checklist is only meaningful for FP/LP. MED/MSK reports
-  // skip the section + date onchange wiring entirely.
+  // The borderline checklist is only meaningful for FP/LP. MED/MSK/CONDUCT
+  // reports skip the section + date onchange wiring entirely.
   const isParade = type === "FP" || type === "LP";
+  const isConduct = type === "CONDUCT";
   const dateExtra = isParade
     ? `value="${defaultDate}" required onchange="onParadeDateChange('${type}')"`
-    : `value="${defaultDate}" required`;
+    : isConduct
+      ? `value="${defaultDate}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
+      : `value="${defaultDate}" required`;
+  const timeExtra = isConduct
+    ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
+    : `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required`;
 
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
       <div style="display:flex;flex-direction:column;gap:10px">
         <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px">
-          Adjust date/time → tap <strong>Regenerate</strong>. The textarea is editable for last-minute tweaks (e.g. "latest version as of…", manual corrections). Tap <strong>Copy to Clipboard</strong> when ready and paste into WhatsApp.
+          ${isConduct
+            ? `Pick a logged conduct (filtered by date/time) → message generates from the saved attendance + conductDetail rows. Tap <strong>Copy to Clipboard</strong> when ready and paste into WhatsApp.`
+            : `Adjust date/time → tap <strong>Regenerate</strong>. The textarea is editable for last-minute tweaks (e.g. "latest version as of…", manual corrections). Tap <strong>Copy to Clipboard</strong> when ready and paste into WhatsApp.`}
         </div>
         <div class="form-row">
           ${formField("rep-date", "Date", "date", "", dateExtra)}
-          ${formField("rep-time", "Time (HHMM)", "text", "0700", `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required`)}
+          ${formField("rep-time", "Time (HHMM)", "text", "0700", timeExtra)}
         </div>
         ${isParade ? `<div id="borderline-section"></div>` : ""}
+        ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
         <textarea id="rep-text" rows="20" spellcheck="false" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre"></textarea>
         <button type="button" id="rep-copy-btn" class="btn btn-success" onclick="copyReportToClipboard()">📋 Copy to Clipboard</button>
@@ -1536,7 +1546,38 @@ function openReportModal(type) {
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
   if (isParade) renderBorderlineSection(defaultDate, type);
+  if (isConduct) renderConductPicker();
   regenerateReport(type);
+}
+
+// Renders the Conduct picker dropdown inside the CONDUCT report modal.
+// Lists every attendance row whose date matches (time is best-effort filter).
+// Picking a conduct triggers regenerateReport('CONDUCT') so the textarea
+// updates in place.
+function renderConductPicker() {
+  const host = document.getElementById("rep-conduct-picker");
+  if (!host) return;
+  const dateIso = gv("rep-date");
+  const time = gv("rep-time") || "";
+  const date = isoToDisplayDate(dateIso);
+  // Filter by date; if time is set, prefer matches but include all on the date.
+  const matches = STATE.attendance
+    .filter(a => a.date === date)
+    .sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  const exactMatch = matches.find(a => (a.time || "") === time);
+  const selectedId = exactMatch ? exactMatch.id : (matches[0]?.id || "");
+  if (!matches.length) {
+    host.innerHTML = `<div style="font-size:11px;color:var(--orange);background:#D2992222;border:1px solid #D2992244;border-radius:6px;padding:6px 10px">No conducts logged on ${date || dateIso}. Log one first via the Attendance tab.</div>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="form-group">
+      <label>Conduct</label>
+      <select id="rep-conduct-id" onchange="regenerateReport('CONDUCT')" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:100%">
+        ${matches.map(a => `<option value="${a.id}" ${a.id === selectedId ? "selected" : ""}>${a.time || "----"} · ${escapeAttr(conductName(a.conductId) || "(unknown)")} (${a.participating}/${a.total})</option>`).join("")}
+      </select>
+    </div>
+  `;
 }
 
 // Wipes overrides when the date input changes, re-renders the checklist
@@ -1572,9 +1613,13 @@ function renderBorderlineSection(dateIso, type) {
 function regenerateReport(type) {
   const dateIso = gv("rep-date");
   const time = gv("rep-time") || "0700";
-  const text = type === "MED" ? generateMedicalStatusText(dateIso, time)
-    : type === "MSK" ? generateMSKReportText(dateIso, time)
-    : generateParadeStateText(type, dateIso, time);
+  let text;
+  if (type === "MED") text = generateMedicalStatusText(dateIso, time);
+  else if (type === "MSK") text = generateMSKReportText(dateIso, time);
+  else if (type === "CONDUCT") {
+    const id = +gv("rep-conduct-id") || null;
+    text = id ? buildConductChatFormat(id) : "Pick a conduct from the dropdown above.";
+  } else text = generateParadeStateText(type, dateIso, time);
   document.getElementById("rep-text").value = text;
 }
 
@@ -2686,6 +2731,495 @@ function refreshLmsFromPolar() {
   }
   if (changed) msg += `\n\n→ Click "Push to Sheet" on the Attendance tab to sync the updated LMS counts back to the Google Sheet.`;
   alert(msg);
+}
+
+// ─── LOG CONDUCT WIZARD ───────────────────────────────
+// Single-modal wizard that captures one conduct's full attendance + every
+// non-participating row in one shot. Replaces the two-form input flow
+// (openAttendanceForm + openConductDetailForm) as the primary entry point —
+// the legacy forms still open for single-row edits via the table actions.
+//
+// State shape:
+//   _logConduct = {
+//     attendanceId,            // null for new, attendance row id for edit
+//     date,                    // ISO "2026-05-29"
+//     time,                    // "0730" — empty until conduct picked
+//     conductId,               // c001 etc.
+//     totalOverride,           // null = derive from roster, else explicit number
+//     remarks,                 // free text
+//     status: [                // pre-existing-status checklist
+//       { d4, statusTag, reason, notParticipating }
+//     ],
+//     rsi:        [{ d4, reason }],   // reported sick at FP (no participation)
+//     fallout:    [{ d4, reason }],   // dropped out mid-conduct, didn't go to MO
+//     reportSick: [{ d4, reason }]    // dropped out mid-conduct AND went to MO
+//   }
+let _logConduct = null;
+
+// Open the wizard. Pass an attendance row id to load it in edit mode.
+function openLogConductWizard(attendanceId) {
+  const a = attendanceId ? STATE.attendance.find(x => x.id === attendanceId) : null;
+  _logConduct = {
+    attendanceId: a?.id || null,
+    date: a ? displayDateToISO(a.date) || todayISO() : todayISO(),
+    time: a?.time || "",
+    conductId: a?.conductId || "",
+    totalOverride: a ? a.total : null,
+    remarks: a?.remarks || "",
+    status: [],
+    rsi: [],
+    fallout: [],
+    reportSick: []
+  };
+  // Edit mode: pre-load every conductDetail row matching this attendance's
+  // (date, time, conductId). Status personnel auto-rebuild already handles
+  // marking PX rows correctly via the existing-PX lookup.
+  if (a) {
+    const matchDetails = STATE.conductDetail.filter(d =>
+      d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId
+    );
+    matchDetails.forEach(d => {
+      // RSI is intentionally skipped — the wizard doesn't manage RSI anymore.
+      // Legacy RSI rows pass through untouched on save (see saveLogConductWizard).
+      if (d.type === "Fallout") _logConduct.fallout.push({ d4: d.d4, reason: d.reason || "" });
+      else if (d.type === "ReportSick") _logConduct.reportSick.push({ d4: d.d4, reason: d.reason || "" });
+    });
+  }
+  rebuildLogConductStatus();
+  renderLogConductWizard();
+}
+
+// Rebuilds the Status Personnel checklist from STATE.medical for the current
+// date. Preserves any user edits (notParticipating + reason) when possible:
+// if a d4 was already in the previous state list, carry over the flags.
+function rebuildLogConductStatus() {
+  if (!_logConduct) return;
+  const prevByD4 = {};
+  (_logConduct.status || []).forEach(s => { prevByD4[s.d4] = s; });
+  // For edit mode, also seed "notParticipating" from existing PX conductDetail
+  // rows matching this attendance — so re-opening shows the correct ticks.
+  let existingPxByD4 = {};
+  if (_logConduct.attendanceId) {
+    const a = STATE.attendance.find(x => x.id === _logConduct.attendanceId);
+    if (a) {
+      STATE.conductDetail
+        .filter(d => d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId && d.type === "PX")
+        .forEach(d => { existingPxByD4[d.d4] = d.reason || ""; });
+    }
+  }
+  const dateIso = _logConduct.date;
+  const effective = currentMedicalEffectiveAll(dateIso);
+  _logConduct.status = effective.map(({ d4, statuses }) => {
+    // Pick the most-severe active status as the canonical tag/reason.
+    const top = statuses[0];
+    const prev = prevByD4[d4];
+    return {
+      d4,
+      // Concatenate every active status so the user sees "MC + Excuse Heavy Load"
+      statusTag: statuses.map(s => s.tag).join(" + "),
+      reason: prev ? prev.reason : (existingPxByD4[d4] ?? top.record.reason ?? ""),
+      // First-time defaults to "not participating" (chat convention). Edit-mode
+      // honors whether there's an existing PX row.
+      notParticipating: prev ? prev.notParticipating
+        : (_logConduct.attendanceId ? (d4 in existingPxByD4) : true)
+    };
+  }).sort((a, b) => a.d4.localeCompare(b.d4));
+}
+
+// Builds the modal HTML and opens it. Re-rendering is full-replace; row-level
+// mutations that wouldn't change focus or scroll position update DOM directly
+// (e.g. count totals) instead of re-rendering.
+function renderLogConductWizard() {
+  if (!_logConduct) return;
+  const w = _logConduct;
+  const title = w.attendanceId ? "Edit Conduct" : "Log Conduct";
+  const dateVal = w.date || todayISO();
+  const totals = computeLogConductTotals();
+
+  const editNotice = w.attendanceId
+    ? `<div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:4px">Editing existing conduct. Saving replaces all child rows for this (date, time, conduct) tuple.</div>`
+    : "";
+
+  const statusRows = w.status.length ? w.status.map(s => `
+    <div style="display:grid;grid-template-columns:18px 48px minmax(0,1.4fr) minmax(60px,auto) minmax(0,1fr);gap:8px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
+      <input type="checkbox" ${s.notParticipating ? "checked" : ""} onchange="wizToggleStatusNP('${s.d4}', this.checked)" style="width:16px;height:16px;cursor:pointer" title="Tick = not participating">
+      <span class="mono" style="font-weight:700;color:var(--accent)">${displayId(s.d4)}</span>
+      <span style="font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(getName(s.d4))}">${escapeAttr(getName(s.d4))}</span>
+      <span style="font-size:10px;color:var(--orange);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(s.statusTag)}">${escapeAttr(s.statusTag)}</span>
+      <input type="text" value="${escapeAttr(s.reason)}" placeholder="reason (optional)" oninput="wizUpdateStatusReason('${s.d4}', this.value)" style="min-width:0;width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
+    </div>
+  `).join("") : `<div style="color:var(--muted);font-size:11px;padding:6px 8px">No recruits on medical status for this date.</div>`;
+
+  const sectionList = (key, label, helpText, color) => {
+    const rows = (w[key] || []).map((row, i) => `
+      <div style="display:grid;grid-template-columns:24px minmax(0,1fr) minmax(0,1fr) 28px;gap:6px;align-items:center;padding:5px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
+        <span class="mono" style="color:var(--muted);font-size:11px">${String(i + 1).padStart(2, "0")}</span>
+        <div style="min-width:0">${rosterSelect(`wiz-${key}-d4-${i}`, true, row.d4, { onchange: `wizUpdateRowD4('${key}', ${i}, this.value)` })}</div>
+        <input type="text" value="${escapeAttr(row.reason)}" placeholder="reason" oninput="wizUpdateRowReason('${key}', ${i}, this.value)" style="min-width:0;width:100%;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
+        <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveRow('${key}', ${i})" title="Remove" style="padding:2px 6px">✕</button>
+      </div>
+    `).join("");
+    return `<div class="card" style="padding:10px 12px;margin-bottom:8px;background:var(--surface2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <div>
+          <strong style="color:${color};font-size:13px">${label}</strong> <span style="color:var(--muted);font-size:11px">(${w[key].length})</span>
+          <div style="font-size:10px;color:var(--dim);margin-top:1px">${helpText}</div>
+        </div>
+        <button type="button" class="btn" style="font-size:11px;padding:4px 10px" onclick="wizAddRow('${key}')">+ Add</button>
+      </div>
+      ${rows ? `<div style="display:flex;flex-direction:column;gap:4px">${rows}</div>` : ""}
+    </div>`;
+  };
+
+  const html = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      ${editNotice}
+
+      <div class="card" style="padding:10px 12px;background:var(--surface2)">
+        <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="wiz-date" value="${dateVal}" min="2020-01-01" max="2099-12-31" required onchange="wizSetDate(this.value)" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+          </div>
+          <div class="form-group">
+            <label>Time (HHMM)</label>
+            <input type="text" id="wiz-time" value="${escapeAttr(w.time)}" placeholder="0730" maxlength="4" pattern="[0-9]{4}" oninput="wizSetTime(this.value)" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+          </div>
+          <div class="form-group">
+            <label>Conduct</label>
+            ${conductPicker({ inputId: "wiz-conductId", selectedId: w.conductId, onChange: `wizSetConductId(document.getElementById('wiz-conductId').value)` })}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <strong style="font-size:13px">Status Personnel <span style="color:var(--muted);font-weight:400;font-size:11px">(${w.status.length} on status today)</span></strong>
+          <span style="font-size:10px;color:var(--dim)">Tick to mark as not participating. Untick if they're participating despite their status.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">${statusRows}</div>
+      </div>
+
+      ${sectionList("reportSick", "📋 Report Sick", "Dropped out mid-conduct AND went to MO afterward. Auto-creates a Pending Medical row — update with MC/LD/etc. once MO clears.", "var(--orange)")}
+      ${sectionList("fallout", "💤 Fallout", "Dropped out mid-conduct, did NOT go to MO.", "var(--purple)")}
+
+      <div id="wiz-overlap-warning"></div>
+
+      <div class="card" style="padding:10px 12px;background:var(--surface2)">
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end">
+          <div class="form-group" style="grid-column:span 2">
+            <label style="font-size:10px">Total Str</label>
+            <input type="number" id="wiz-total" min="0" max="999" step="1" value="${totals.total}" oninput="wizSetTotalOverride(this.value)" style="padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-weight:700">
+          </div>
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Status</label><div id="wiz-stat-status" class="val" style="font-size:18px;color:var(--accent)">${totals.statusCount}</div></div>
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Rpt Sick</label><div id="wiz-stat-reportSick" class="val" style="font-size:18px;color:var(--orange)">${totals.reportSickCount}</div></div>
+          <div class="stat" style="grid-column:span 2;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px"><label style="font-size:9px">Fallout</label><div id="wiz-stat-fallout" class="val" style="font-size:18px;color:var(--purple)">${totals.falloutCount}</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px">
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px"><label style="font-size:10px">Participating (auto)</label><div id="wiz-stat-participating" class="val" style="font-size:22px;color:var(--green)">${totals.participating}</div></div>
+          <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px"><label style="font-size:10px">LMS (auto on save)</label><div class="val" style="font-size:22px;color:var(--muted)">—</div></div>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label>Remarks (optional)</label>
+          <textarea id="wiz-remarks" rows="2" maxlength="500" placeholder="Any data inconsistencies, recruit flags…" oninput="_logConduct.remarks = this.value" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%">${escapeAttr(w.remarks)}</textarea>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn btn-success" onclick="saveLogConductWizard()">💾 Save${w.attendanceId ? "" : " + Copy chat"}</button>
+      </div>
+    </div>
+  `;
+  openModal(title, html);
+  // Wider modal — five-column status rows + bulk-add sections need the room.
+  document.querySelector(".modal")?.classList.add("wide");
+  updateLogConductOverlapWarning();
+}
+
+// === Wizard mutation handlers ===========================================
+
+function wizSetDate(v) {
+  _logConduct.date = v;
+  rebuildLogConductStatus();
+  renderLogConductWizard();
+}
+function wizSetTime(v) {
+  _logConduct.time = v;
+}
+function wizSetConductId(v) {
+  _logConduct.conductId = v;
+  if (v && !_logConduct.time) {
+    const inferred = inferTimeForConduct(v);
+    if (inferred) _logConduct.time = inferred;
+  }
+  renderLogConductWizard();
+}
+function wizSetTotalOverride(v) {
+  const n = +v;
+  _logConduct.totalOverride = Number.isFinite(n) && n >= 0 ? n : null;
+  recomputeLogConductFooter();
+}
+function wizToggleStatusNP(d4, checked) {
+  const row = _logConduct.status.find(s => s.d4 === d4);
+  if (row) row.notParticipating = !!checked;
+  recomputeLogConductFooter();
+}
+function wizUpdateStatusReason(d4, v) {
+  const row = _logConduct.status.find(s => s.d4 === d4);
+  if (row) row.reason = v;
+}
+function wizAddRow(section) {
+  _logConduct[section].push({ d4: "", reason: "" });
+  renderLogConductWizard();
+}
+function wizRemoveRow(section, idx) {
+  _logConduct[section].splice(idx, 1);
+  renderLogConductWizard();
+}
+function wizUpdateRowD4(section, idx, v) {
+  if (!_logConduct[section][idx]) return;
+  _logConduct[section][idx].d4 = v;
+  updateLogConductOverlapWarning();
+}
+function wizUpdateRowReason(section, idx, v) {
+  if (!_logConduct[section][idx]) return;
+  _logConduct[section][idx].reason = v;
+}
+
+// === Totals / overlap helpers ===========================================
+
+function computeLogConductTotals() {
+  const w = _logConduct;
+  const statusCount = w.status.filter(s => s.notParticipating).length;
+  const rsiCount = w.rsi.length;
+  const falloutCount = w.fallout.length;
+  const reportSickCount = w.reportSick.length;
+  // Default total: count of recruits in roster (commanders excluded — they
+  // don't typically appear in conduct attendance numbers).
+  const defaultTotal = STATE.roster.filter(r => r.role !== "Commander").length;
+  const total = w.totalOverride != null ? w.totalOverride : defaultTotal;
+  const participating = Math.max(0, total - statusCount - rsiCount - falloutCount - reportSickCount);
+  return { total, statusCount, rsiCount, falloutCount, reportSickCount, participating };
+}
+
+// Updates just the totals strip without re-rendering the entire modal —
+// avoids losing focus on text inputs during typing.
+function recomputeLogConductFooter() {
+  const t = computeLogConductTotals();
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set("wiz-stat-status", t.statusCount);
+  set("wiz-stat-fallout", t.falloutCount);
+  set("wiz-stat-reportSick", t.reportSickCount);
+  set("wiz-stat-participating", t.participating);
+  const totalInput = document.getElementById("wiz-total");
+  if (totalInput && _logConduct.totalOverride == null) totalInput.value = t.total;
+}
+
+function updateLogConductOverlapWarning() {
+  const el = document.getElementById("wiz-overlap-warning");
+  if (!el) return;
+  const w = _logConduct;
+  const falloutSet = new Set(w.fallout.map(r => r.d4).filter(Boolean));
+  const overlap = w.reportSick.map(r => r.d4).filter(d => d && falloutSet.has(d));
+  if (!overlap.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <div style="background:#D2992222;border:1px solid #D2992266;border-radius:6px;padding:10px 12px;font-size:11px;color:var(--orange);line-height:1.55">
+      <strong>⚠ Overlap detected:</strong> the following recruit${overlap.length === 1 ? " is" : "s are"} in BOTH Fallout AND Report Sick:
+      <div style="margin-top:4px;color:var(--text);font-weight:600">${overlap.map(d => `${displayId(d)} ${getName(d)}`).join(" · ")}</div>
+      <div style="margin-top:4px;color:var(--muted);font-weight:400">Per convention: Report Sick = Fallout → went to MO. They shouldn't both contain the same recruit. You can save anyway — this is just a heads-up.</div>
+    </div>
+  `;
+}
+
+// === Save logic =========================================================
+
+async function saveLogConductWizard() {
+  const w = _logConduct;
+  if (!w.conductId) { alert("Pick a conduct first."); return; }
+  if (!w.date) { alert("Pick a date first."); return; }
+  // Validate every list row has a recruit selected.
+  const bad = ["fallout", "reportSick"].flatMap(k =>
+    w[k].map((r, i) => r.d4 ? null : `${k} row ${i + 1}`).filter(Boolean)
+  );
+  if (bad.length) {
+    alert(`Some rows have no recruit picked:\n  • ${bad.join("\n  • ")}\nPick a recruit or remove the row.`);
+    return;
+  }
+
+  const totals = computeLogConductTotals();
+  const displayDate = isoToDisplayDate(w.date);
+  const time = pad4Time(w.time || "");
+
+  // Build the attendance row.
+  const attendanceEntry = {
+    id: w.attendanceId || nextId(),
+    date: displayDate,
+    time,
+    conductId: w.conductId,
+    total: totals.total,
+    participating: totals.participating,
+    lms: 0,  // recomputed from polar below
+    px: totals.statusCount,
+    fallout: totals.falloutCount,
+    remarks: w.remarks || ""
+  };
+
+  // Build conductDetail rows. PX rows = only status entries marked
+  // "notParticipating" (the rest are participating despite their status).
+  const detailRows = [];
+  w.status.filter(s => s.notParticipating).forEach(s => {
+    detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: s.d4, type: "PX", reason: s.reason || "" });
+  });
+  w.fallout.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "Fallout", reason: r.reason || "" }));
+  w.reportSick.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "ReportSick", reason: r.reason || "" }));
+
+  // Auto-create a "Pending" Medical row for each Report Sick that doesn't
+  // already have a medical entry on this date. Pending = waiting for MO
+  // outcome; sergeants update the status later when MO issues MC/LD/etc.
+  // We skip when a row already exists for (d4, date) so re-saves don't
+  // duplicate, and so a sergeant who already manually fixed the status
+  // (e.g. "Pending" → "2D LD") isn't reverted back to Pending.
+  const newMedicalRows = [];
+  w.reportSick.forEach(r => {
+    if (!r.d4) return;
+    const existing = STATE.medical.find(m => m.d4 === r.d4 && m.date === displayDate);
+    if (existing) return;
+    newMedicalRows.push({
+      id: nextId(),
+      d4: r.d4,
+      date: displayDate,
+      reason: r.reason || "",
+      status: "Pending",
+      startDate: displayDate,
+      endDate: ""
+    });
+  });
+  STATE.medical.push(...newMedicalRows);
+
+  // Commit: replace the attendance row + every PX/Fallout/ReportSick
+  // conductDetail row for this (date, time, conductId). Legacy RSI rows are
+  // preserved untouched — the wizard no longer manages RSI (the chat workflow
+  // moved away from it), but historical rows shouldn't be silently deleted.
+  if (w.attendanceId) {
+    const idx = STATE.attendance.findIndex(a => a.id === w.attendanceId);
+    if (idx >= 0) STATE.attendance[idx] = attendanceEntry;
+    else STATE.attendance.push(attendanceEntry);
+  } else {
+    STATE.attendance.push(attendanceEntry);
+  }
+  STATE.conductDetail = STATE.conductDetail.filter(d =>
+    !(d.date === displayDate && (d.time || "") === time && d.conductId === w.conductId && d.type !== "RSI")
+  );
+  STATE.conductDetail.push(...detailRows);
+
+  // LMS sync from polar.
+  recomputeAttendanceLmsFromPolar();
+  saveLocal();
+
+  const savedId = attendanceEntry.id;
+  const isNew = !w.attendanceId;
+  _logConduct = null;
+  closeModal();
+  render();
+
+  // On create: offer to copy the chat-format message and append rows to the
+  // Google Sheet for immediate sync. Edit mode skips the auto-push because
+  // the row count may have decreased — user uses Push to Sheet manually.
+  if (isNew) {
+    try { await copyConductChatFormat(savedId, /*silent*/ true); } catch (e) { /* clipboard denied */ }
+    if (STATE.apiUrl) {
+      API.appendRow("Attendance", attendanceEntry).catch(() => {});
+      if (detailRows.length) {
+        API.post({ action: "appendMany", tab: "ConductDetail", rows: detailRows }).catch(() => {});
+      }
+      if (newMedicalRows.length) {
+        API.post({ action: "appendMany", tab: "Medical", rows: newMedicalRows }).catch(() => {});
+      }
+    }
+    const medMsg = newMedicalRows.length
+      ? `\n\n${newMedicalRows.length} Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} auto-created for the Report Sick recruit${newMedicalRows.length === 1 ? "" : "s"} — update the status on the Medical tab once the MO clears them.`
+      : "";
+    alert(`Saved. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} created.${medMsg}\n\nChat-format message copied to clipboard${navigator.clipboard ? "" : " (or shown in fallback prompt)"}.`);
+  } else {
+    const medNote = newMedicalRows.length
+      ? `\n\n${newMedicalRows.length} new Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} added (existing medical entries for these recruits today were left alone).`
+      : "";
+    alert(`Saved locally.${medNote}\n\nClick "Push to Sheet" on the Attendance + Conduct Detail${newMedicalRows.length ? " + Medical" : ""} tab${newMedicalRows.length || true ? "s" : ""} to sync (edit mode replaces rows, so a full push is needed).`);
+  }
+}
+
+// === Chat-format generator ==============================================
+
+// Returns the WhatsApp parade-state message for the given attendance row.
+// Matches the format observed in the May 15–29 chat (Total/Participating/
+// Status/Report sick/Fallout, then per-section S/N + R/N + Reason blocks).
+function buildConductChatFormat(attendanceId) {
+  const a = STATE.attendance.find(x => x.id === attendanceId);
+  if (!a) return "";
+  const date = displayDateToISO(a.date);
+  const ddmmyy = toDDMMYY(date);
+  const time = pad4Time(a.time || "") || "0000";
+  const conductLabel = conductName(a.conductId) || "(unknown conduct)";
+  const details = STATE.conductDetail.filter(d =>
+    d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId
+  );
+  const byType = {
+    PX: details.filter(d => d.type === "PX"),
+    ReportSick: details.filter(d => d.type === "ReportSick"),
+    Fallout: details.filter(d => d.type === "Fallout"),
+    RSI: details.filter(d => d.type === "RSI")
+  };
+
+  const section = (label, rows, includeStatusBlock) => {
+    if (!rows.length) return `${label}:\n`;
+    const blocks = rows.map((d, i) => {
+      const sn = String(i + 1).padStart(2, "0");
+      const rn = paradeRN(d.d4);
+      let block = `S/N: ${sn}\nR/N: ${rn}\nReason: ${d.reason || ""}`;
+      if (includeStatusBlock) {
+        // Pull the recruit's active medical record on this date for status + duration.
+        const med = STATE.medical
+          .filter(m => m.d4 === d.d4 && medStatusActive(m, date))
+          .sort((x, y) => medSeverityRank(medStatusTag(y, date)?.tag) - medSeverityRank(medStatusTag(x, date)?.tag));
+        if (med.length === 1) {
+          block += `\nStatus: ${paradeStatusLabel(med[0])}\nDuration: ${paradeDuration(med[0])}`;
+        } else if (med.length > 1) {
+          const sub = med.map((r, j) => `${j + 1}. ${paradeStatusLabel(r)}\n    Duration: ${paradeDuration(r)}`).join("\n");
+          block += `\nStatus received:\n${sub}`;
+        }
+      }
+      return block;
+    });
+    return `${label}: ${String(rows.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
+  };
+
+  const header = `${ddmmyy} ${time} ${conductLabel}\nTotal strength: ${a.total}\nParticipating: ${a.participating}\nStatus: ${String(byType.PX.length).padStart(2, "0")}\nReport sick: ${String(byType.ReportSick.length).padStart(2, "0")}\nFallout: ${String(byType.Fallout.length).padStart(2, "0")}`;
+
+  const parts = [header];
+  parts.push(section("STATUS", byType.PX, /*includeStatusBlock*/ true));
+  if (byType.ReportSick.length) parts.push(section("REPORT SICK", byType.ReportSick, false));
+  if (byType.Fallout.length) parts.push(section("FALLOUT", byType.Fallout, false));
+  if (byType.RSI.length) parts.push(section("RSI", byType.RSI, false));
+  return parts.join("\n\n");
+}
+
+// Copies the chat-format message for the attendance row to the clipboard.
+// silent=true skips the success alert (used by the post-save flow which
+// already shows its own message).
+async function copyConductChatFormat(attendanceId, silent) {
+  const text = buildConductChatFormat(attendanceId);
+  if (!text) { alert("Couldn't find that conduct."); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    if (!silent) alert("Chat-format message copied to clipboard. Paste into WhatsApp.");
+  } catch (e) {
+    // Fallback modal with selectable textarea — Safari / blocked clipboard.
+    openModal("Chat-format message (copy manually)", `
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Clipboard access denied. Tap inside the box to select all, then Cmd/Ctrl+C.</p>
+      <textarea readonly rows="22" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.45;white-space:pre" onclick="this.select()">${escapeAttr(text)}</textarea>
+    `);
+  }
 }
 
 // ─── POLAR PHOTO IMPORT (AI extract) ───────────────────

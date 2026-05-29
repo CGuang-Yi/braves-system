@@ -113,6 +113,7 @@ function renderDashboard(el) {
           <button type="button" onclick="openReportModal('LP'); closeReportMenu()">📋 Last Parade State</button>
           <button type="button" onclick="openReportModal('MED'); closeReportMenu()">🏥 Medical Status List</button>
           <button type="button" onclick="openReportModal('MSK'); closeReportMenu()">🦵 MSK Report</button>
+          <button type="button" onclick="openReportModal('CONDUCT'); closeReportMenu()">📊 Per-Conduct Chat Format</button>
         </div>
       </div>
     </div>
@@ -474,7 +475,7 @@ function renderMSKAnalytics(el) {
       <h3>Daily MSK Impact</h3>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.55">
         Unique personnel affected per day, MSK cases only. Stacked by category:<br>
-        <span style="color:#5B8DEF;font-weight:600">■ PX</span> = Status personnel (excused with MO status before the conduct) ·
+        <span style="color:#5B8DEF;font-weight:600">■ Status</span> = pre-existing medical/excuse status before the conduct ·
         <span style="color:#E8573A;font-weight:600">■ Fallout</span> = dropped out during the conduct ·
         <span style="color:#F2A93B;font-weight:600">■ RSI</span> = reported sick at first parade
       </div>
@@ -515,7 +516,7 @@ function renderMSKAnalytics(el) {
 
     <div class="card" style="margin-bottom:14px">
       <h3>Most Affected Personnel</h3>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Ranked by MSK-related conduct detail entries (PX / Fallout / RSI).</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Ranked by MSK-related conduct detail entries (Status / Fallout / RSI).</div>
       ${ranked.length ? `<div style="display:flex;flex-direction:column;gap:4px">
         ${ranked.map((p, i) => `<div onclick="openPerson('${p.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;background:var(--surface2);border-radius:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="color:var(--orange);font-weight:700;min-width:22px;text-align:right">${i + 1}</span>
@@ -567,7 +568,7 @@ function renderMSKAnalytics(el) {
     _mskAnalyticsCharts.daily = new Chart(document.getElementById("msk-daily-bar"), {
       type: "bar",
       data: { labels: dateLabels, datasets: [
-        { label: "PX (status)",   data: daily.map(d => d.px),  backgroundColor: "#5B8DEF", stack: "a", borderWidth: 0, borderRadius: 4, borderSkipped: false, categoryPercentage: 0.7, barPercentage: 0.85 },
+        { label: "Status",        data: daily.map(d => d.px),  backgroundColor: "#5B8DEF", stack: "a", borderWidth: 0, borderRadius: 4, borderSkipped: false, categoryPercentage: 0.7, barPercentage: 0.85 },
         { label: "Fallout",       data: daily.map(d => d.fo),  backgroundColor: "#E8573A", stack: "a", borderWidth: 0, borderRadius: 4, borderSkipped: false, categoryPercentage: 0.7, barPercentage: 0.85 },
         { label: "RSI",           data: daily.map(d => d.rsi), backgroundColor: "#F2A93B", stack: "a", borderWidth: 0, borderRadius: 4, borderSkipped: false, categoryPercentage: 0.7, barPercentage: 0.85 }
       ] },
@@ -921,17 +922,18 @@ function renderAttendance(el) {
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" onclick="refreshLmsFromPolar()" title="Recount LMS participants for every conduct from STATE.polar (the Polar class summary photo is the LMS roster) and write into the attendance rows">🔄 Recompute LMS</button>
         <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)">Push to Sheet</button>
-        <button class="btn btn-primary" onclick="openAttendanceForm()">+ Log</button>
+        <button class="btn btn-primary" onclick="openLogConductWizard()" title="One-shot wizard: date + time + conduct + Status Personnel checklist + bulk Report Sick / Fallout / RSI rows + auto totals + chat-format copy">+ Log Conduct</button>
       </div>
     </div>
-    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>PX</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
+    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>Status</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
     ${STATE.attendance.map(a => {
       const r = pct(a.participating, a.total);
       const lms = +a.lms || 0;
       const lmsRate = pct(lms, a.participating);
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
-      return `<tr><td>${a.date}</td><td style="text-align:left">${conductName(a.conductId)}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openAttendanceForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
+      const time = pad4Time(a.time) || '—';
+      return `<tr><td>${a.date}</td><td class="mono" style="color:${a.time ? 'var(--text)' : 'var(--dim)'}">${time}</td><td style="text-align:left">${conductName(a.conductId)}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="copyConductChatFormat(${a.id})" title="Copy WhatsApp-format parade state message">📋</button> <button class="btn btn-icon" onclick="openLogConductWizard(${a.id})" title="Edit conduct (wizard)">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">No attendance records yet.</div>`}`;
 }
@@ -965,7 +967,7 @@ function renderDetailParticipantsSummary(scopedAll) {
           <strong style="color:var(--green)">Participated: ${participants.length}</strong>
           <span style="color:var(--muted)"> · </span>
           <strong style="color:var(--red)">Absent: ${conductRecords.length}</strong>
-          <span style="color:var(--muted)"> (PX ${ct("PX")} · RSI ${ct("RSI")} · Fallout ${ct("Fallout")} · ReportSick ${ct("ReportSick")})</span>
+          <span style="color:var(--muted)"> (Status ${ct("PX")} · RSI ${ct("RSI")} · Fallout ${ct("Fallout")} · ReportSick ${ct("ReportSick")})</span>
         </div>
         <button class="btn" onclick="toggleParticipants()">${_showParticipants ? "▾ Hide" : "▸ Show"} participants (${participants.length})</button>
       </div>
@@ -1029,7 +1031,7 @@ function renderConductDetail(el) {
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat"><label>PX (pre-existing)</label><div class="val" style="color:var(--orange)">${cnt("PX")}</div></div>
+      <div class="stat"><label>Status (pre-existing)</label><div class="val" style="color:var(--orange)">${cnt("PX")}</div></div>
       <div class="stat"><label>RSI (1st parade)</label><div class="val" style="color:var(--red)">${cnt("RSI")}</div></div>
       <div class="stat"><label>Fallout (mid-conduct)</label><div class="val" style="color:var(--purple)">${cnt("Fallout")}</div></div>
       <div class="stat"><label>Reported Sick (mid-day)</label><div class="val" style="color:var(--yellow)">${cnt("ReportSick")}</div></div>
@@ -1042,7 +1044,7 @@ function renderConductDetail(el) {
       </select>
       <select onchange="setDetailFilterType(this.value)" class="topbar-select">
         <option value="">All types</option>
-        ${["PX","RSI","Fallout","ReportSick"].map(t => `<option value="${t}" ${t === _detailFilterType ? "selected" : ""}>${t}</option>`).join("")}
+        ${[["PX","Status"],["RSI","RSI"],["Fallout","Fallout"],["ReportSick","Report Sick"]].map(([val,lab]) => `<option value="${val}" ${val === _detailFilterType ? "selected" : ""}>${lab}</option>`).join("")}
       </select>
       ${(_detailFilterConduct || _detailFilterType) ? `<button class="btn" onclick="clearDetailFilters()">Reset</button>` : ""}
     </div>
@@ -1423,7 +1425,7 @@ function renderPolar(el) {
 
     ${conductGaps.length ? `<div class="card" style="margin-bottom:14px">
       <h3>👻 Polar Attendance Gaps <span style="color:var(--dim);font-weight:400;font-size:11px">per conduct</span></h3>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Per conduct: recruits who attended (not PX/RSI/Fallout) but don't appear in Polar — chase them up to wear the watch.</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Per conduct: recruits who attended (not Status/RSI/Fallout) but don't appear in Polar — chase them up to wear the watch.</div>
       <div style="display:flex;flex-direction:column;gap:8px;max-height:520px;overflow-y:auto">
         ${conductGaps.map(g => `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">

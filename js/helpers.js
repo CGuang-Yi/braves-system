@@ -500,12 +500,17 @@ function exportJSON(data, filename) {
 // `roleFilter` is optional — pass "Commander" or "Recruit" to restrict the
 // dropdown (e.g. the Leave form picks commanders only). Commander options
 // render as "rank name" without the administrative 00xx prefix.
-function rosterSelect(id = "form-d4", required = true, selected = "", roleFilter = "") {
+// `opts.onchange` lets callers wire an inline change handler — useful when
+// the picker is one row in a list-style form (e.g. the Log Conduct wizard).
+function rosterSelect(id = "form-d4", required = true, selected = "", roleFilter = "", opts = {}) {
+  // Back-compat: some old callers pass {onchange: ...} as the fourth arg.
+  if (roleFilter && typeof roleFilter === "object") { opts = roleFilter; roleFilter = ""; }
   const rows = roleFilter ? STATE.roster.filter(r => r.role === roleFilter) : STATE.roster;
   const optLabel = r => r.role === "Commander"
     ? [r.rank, r.name].filter(Boolean).join(" ")
     : `${r.id} ${r.name}`;
-  return `<select id="${id}" ${required ? "required" : ""} style="padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px"><option value="">Select...</option>${rows.map(r => `<option value="${r.id}" ${r.id === selected ? "selected" : ""}>${optLabel(r)}</option>`).join("")}</select>`;
+  const onchangeAttr = opts.onchange ? ` onchange="${escapeAttr(opts.onchange)}"` : "";
+  return `<select id="${id}" ${required ? "required" : ""}${onchangeAttr} style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box"><option value="">Select...</option>${rows.map(r => `<option value="${r.id}" ${r.id === selected ? "selected" : ""}>${optLabel(r)}</option>`).join("")}</select>`;
 }
 function formField(id, label, type = "text", placeholder = "", extra = "") {
   const ph = placeholder ? ` placeholder="${placeholder}"` : "";

@@ -60,12 +60,18 @@
  *                startDate/endDate. After endDate, MC and LD get a 2-day
  *                "ghost" tag (MC+1, MC+2, LD+1, LD+2) computed client-side
  *                — not stored.)
- *   Attendance: id | date | conduct | total | participating | lms | px | fallout | remarks
+ *   Attendance: id | date | time | conductId | total | participating | lms | px | fallout | remarks
+ *               (time = "0730"/"1630" — same conduct on the same day at
+ *                different times produces distinct rows. The Log Conduct
+ *                wizard writes it directly; the legacy form leaves it blank.)
  *               (RSI removed from summary — morning report-sicks belong in
  *                the Medical log, not duplicated per-conduct. Legacy `rsi`
  *                column may still exist on older sheets; safe to delete.)
  *               (lms = how many of the participating recruits attended LMS for this conduct;
  *                LMS participation rate = lms / participating, computed client-side)
+ *               (px = count of recruits on pre-existing medical status who
+ *                did NOT participate. Renamed to "Status" in the UI but the
+ *                sheet column name stays `px` for history continuity.)
  *               (remarks = free-text flags on data inconsistencies / per-recruit notes)
  *   IPPT:       id | d4 | attempt | date | pushups | situps | runTime | score
  *   RouteMarch: id | d4 | rmNum | date | time | avgHr | maxHr | pass
