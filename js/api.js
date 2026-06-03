@@ -65,6 +65,20 @@ const API = {
   async appendRow(tabName, row) {
     return this.post({ action: "append", tab: tabName, row });
   },
+  // ID-based row upsert — finds by row.id, updates in place if found, else
+  // appends. The cross-device-safe write path: two devices editing different
+  // rows of the same tab never clobber each other (no full-table rewrite).
+  async upsertRow(tabName, row) {
+    return this.post({ action: "upsertRow", tab: tabName, row });
+  },
+  // ID-based row delete — surgical, doesn't rewrite the whole tab.
+  async deleteRowById(tabName, id) {
+    return this.post({ action: "deleteRowById", tab: tabName, id });
+  },
+  // Lightweight pre-write staleness check. Returns { dataRows } for the tab.
+  async rowCount(tabName) {
+    return this.post({ action: "rowCount", tab: tabName });
+  },
   // Sends one HTML email through the Apps Script owner's Gmail. Returns
   // { ok, remainingQuota } on success or { error, remainingQuota? } on
   // failure (quota exhaustion, bad recipient, transient send error).

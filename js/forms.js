@@ -515,9 +515,18 @@ function submitMedical() {
   } else {
     STATE.medical.push(entry);
   }
-  if (entry.d4 && entry.status) { const r = STATE.roster.find(x => x.id === entry.d4); if (r) r.status = entry.status; }
+  let rosterEdit = null;
+  if (entry.d4 && entry.status) {
+    const r = STATE.roster.find(x => x.id === entry.d4);
+    if (r) { r.status = entry.status; rosterEdit = r; }
+  }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("Medical", entry).catch(() => {});
+  if (STATE.apiUrl) {
+    autoSync("Medical", { type: "upsert", row: entry });
+    // Status field on the roster row also changes — push that update too,
+    // otherwise the recruit's roster row goes out of sync until next pull.
+    if (rosterEdit) autoSync("Roster", { type: "upsert", row: rosterEdit });
+  }
 }
 
 function openAttendanceForm(id) {
@@ -570,7 +579,7 @@ function submitAttendance() {
     STATE.attendance.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("Attendance", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("Attendance", { type: "upsert", row: entry });
 }
 
 function openIPPTForm(id) {
@@ -678,7 +687,7 @@ function submitIPPT() {
     STATE.ippt.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("IPPT", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("IPPT", { type: "upsert", row: entry });
 }
 
 function openRMForm(id) {
@@ -721,7 +730,7 @@ function submitRM() {
     STATE.rm.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("RouteMarch", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("RouteMarch", { type: "upsert", row: entry });
 }
 
 function openSOCForm(id) {
@@ -759,7 +768,7 @@ function submitSOC() {
     STATE.soc.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("SOC", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("SOC", { type: "upsert", row: entry });
 }
 
 // ─── CSV IMPORTERS ─────────────────────────────────────
@@ -904,11 +913,11 @@ function confirmPolarConductResolutions() {
 // the rest resolve directly via the registry.
 function finalizePolarImport(keyResolutions) {
   const { rawRows, rawConductByRowIdx } = _polarImportPending;
-  let inserted = 0;
+  const insertedRows = [];
   rawRows.forEach((row, idx) => {
     const rawConduct = rawConductByRowIdx[idx];
     const conductId = conductIdByName(rawConduct) || keyResolutions[normalizeConductKey(rawConduct)] || "";
-    STATE.polar.push({
+    const entry = {
       id: nextId(),
       d4: col(row, "4D", "id"),
       conductId,
@@ -920,13 +929,23 @@ function finalizePolarImport(keyResolutions) {
       trainingLoad: colNum(row, "Training Load", "TrainingLoad", "training_load", "Load"),
       duration: colNum(row, "Duration", "duration", "Time", "Dur"),
       distance: colNum(row, "Distance", "distance", "Dist")
-    });
-    inserted++;
+    };
+    STATE.polar.push(entry);
+    insertedRows.push(entry);
   });
   _polarImportPending = null;
   const lmsChanged = recomputeAttendanceLmsFromPolar();
   saveLocal(); render();
-  alert(`Imported ${inserted} Polar rows${lmsChanged ? `\nUpdated LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"}.` : ""}`);
+  // Auto-push the new rows. Previously the user had to navigate to PolarFlow
+  // tab and click Push to Sheet manually — exactly the kind of tab-switching
+  // this redesign eliminates.
+  if (STATE.apiUrl && insertedRows.length) {
+    autoSync("PolarFlow", { type: "appendMany", rows: insertedRows });
+    // If LMS counts on attendance changed, re-push those rows too (full
+    // replace because individual upserts would be N round-trips).
+    if (lmsChanged) autoSync("Attendance", { type: "replace", data: STATE.attendance });
+  }
+  alert(`Imported ${insertedRows.length} Polar rows${lmsChanged ? `\nUpdated LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"}.` : ""}\n\nSyncing to sheet — check the sidebar indicator for status.`);
 }
 function openConductDetailForm(id) {
   const e = id ? STATE.conductDetail.find(x => x.id === id) : null;
@@ -969,7 +988,7 @@ function submitConductDetail() {
     STATE.conductDetail.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("ConductDetail", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("ConductDetail", { type: "upsert", row: entry });
 }
 
 function openAppointmentForm(id, prefill) {
@@ -1017,7 +1036,7 @@ function submitAppointment() {
     STATE.appointments.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("Appointments", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("Appointments", { type: "upsert", row: entry });
 }
 
 // Toggle clearance on every MSK row for a recruit. Acts as case-level
@@ -1148,7 +1167,7 @@ function submitCommander() {
     STATE.roster.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("Roster", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("Roster", { type: "upsert", row: entry });
 }
 
 function openLeaveForm(id) {
@@ -1206,7 +1225,7 @@ function submitLeave() {
     STATE.leave.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (!editId && STATE.apiUrl) API.appendRow("Leave", entry).catch(() => {});
+  if (STATE.apiUrl) autoSync("Leave", { type: "upsert", row: entry });
 }
 
 // ─── PARADE STATE + MEDICAL STATUS GENERATORS ─────────
@@ -2496,16 +2515,15 @@ async function commitConductMigration() {
   // skipped it, future appendRow/appendMany on PolarFlow / Attendance /
   // ConductDetail would write into the OLD schema (which still has a
   // `conduct` column, not `conductId`), silently dropping the conductId
-  // values. So we push all four tabs immediately and surface any failure.
-  try {
-    await API.pushTab("Conducts", STATE.conducts);
-    await API.pushTab("Attendance", STATE.attendance);
-    await API.pushTab("PolarFlow", STATE.polar);
-    await API.pushTab("ConductDetail", STATE.conductDetail);
-    alert(`Migrated ${registry.length} conduct${registry.length === 1 ? "" : "s"} and synced to the Google Sheet.\n${lmsChanged ? `Backfilled LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"} from Polar data.\n` : ""}\nConducts tab created; Attendance / PolarFlow / ConductDetail now use the conductId column.`);
-  } catch (e) {
-    alert(`Migrated ${registry.length} conduct${registry.length === 1 ? "" : "s"} locally, BUT the sheet push failed:\n\n${e.message}\n\n⚠️ Until you manually push all four tabs (Conducts, Attendance, PolarFlow, ConductDetail) from each tab header, any new rows appended to the sheet will lose their conductId values. Go to each tab and click Push to Sheet now.`);
+  // values. Push all four tabs via autoSync so the indicator + dirty-
+  // tracking handle any failure — user can retry from the sidebar.
+  if (STATE.apiUrl) {
+    autoSync("Conducts", { type: "replace", data: STATE.conducts });
+    autoSync("Attendance", { type: "replace", data: STATE.attendance });
+    autoSync("PolarFlow", { type: "replace", data: STATE.polar });
+    autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
   }
+  alert(`Migrated ${registry.length} conduct${registry.length === 1 ? "" : "s"} and syncing to the Google Sheet.\n${lmsChanged ? `Backfilled LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"} from Polar data.\n` : ""}\nConducts tab created; Attendance / PolarFlow / ConductDetail now use the conductId column.\n\nWatch the sidebar sync indicator — if any push fails, click "Retry now" to re-send.`);
 }
 
 // ─── CONDUCT REGISTRY CRUD ───────────────────────────────
@@ -2518,8 +2536,13 @@ function createConduct(name) {
   const existing = conductIdByName(clean);
   if (existing) return existing;
   const id = nextConductId();
-  STATE.conducts.push({ id, name: clean });
+  const entry = { id, name: clean };
+  STATE.conducts.push(entry);
   saveLocal();
+  // Auto-push the new row — the original bug fix. Other devices pulling
+  // immediately after will resolve the new conductId to its name instead
+  // of showing `[c00X?]` placeholders.
+  autoSync("Conducts", { type: "append", row: entry });
   return id;
 }
 
@@ -2532,6 +2555,7 @@ function renameConduct(id, newName) {
   if (conflict) { alert(`"${clean}" already exists (${conflict.id}). Use Merge instead.`); return; }
   c.name = clean;
   saveLocal();
+  autoSync("Conducts", { type: "upsert", row: c });
   render();
 }
 
@@ -2543,13 +2567,20 @@ function mergeConductInto(fromId, toId) {
   const from = STATE.conducts.find(x => x.id === fromId);
   const to = STATE.conducts.find(x => x.id === toId);
   if (!from || !to) return;
-  if (!confirm(`Merge "${from.name}" → "${to.name}"?\n\nAll records currently using "${from.name}" will be repointed to "${to.name}", and "${from.name}" will be removed from the registry.`)) return;
+  if (!confirm(`Merge "${from.name}" → "${to.name}"?\n\nAll records currently using "${from.name}" will be repointed to "${to.name}", and "${from.name}" will be removed from the registry.\n\nThis touches every record across Attendance, ConductDetail, and PolarFlow — those tabs will be re-pushed.`)) return;
   const repoint = (arr) => (arr || []).forEach(r => { if (r.conductId === fromId) r.conductId = toId; });
   repoint(STATE.attendance);
   repoint(STATE.polar);
   repoint(STATE.conductDetail);
   STATE.conducts = STATE.conducts.filter(x => x.id !== fromId);
   saveLocal();
+  // Surgical delete on the registry, full replace on the affected child
+  // tabs (mergeConductInto rewrites N rows per tab — full replace is the
+  // honest "this is a bulk rewrite" signal).
+  autoSync("Conducts", { type: "delete", id: fromId });
+  autoSync("Attendance", { type: "replace", data: STATE.attendance });
+  autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
+  autoSync("PolarFlow", { type: "replace", data: STATE.polar });
   render();
 }
 
@@ -2564,6 +2595,7 @@ function deleteConduct(id) {
   if (!confirm(`Delete "${c.name}"? It has no records using it.`)) return;
   STATE.conducts = STATE.conducts.filter(x => x.id !== id);
   saveLocal();
+  autoSync("Conducts", { type: "delete", id });
   render();
 }
 
@@ -2783,7 +2815,12 @@ function openLogConductWizard(attendanceId) {
     status: [],
     rsi: [],
     fallout: [],
-    reportSick: []
+    reportSick: [],
+    // Original conductDetail row ids loaded into the wizard on edit. Save
+    // diffs against the new set and deletes any id that's no longer present,
+    // so the surgical sheet sync only touches rows that actually changed
+    // (vs full-tab replace which would risk clobbering parallel edits).
+    originalDetailIds: []
   };
   // Edit mode: pre-load every conductDetail row matching this attendance's
   // (date, time, conductId). Status personnel auto-rebuild already handles
@@ -2795,6 +2832,7 @@ function openLogConductWizard(attendanceId) {
     matchDetails.forEach(d => {
       // RSI is intentionally skipped — the wizard doesn't manage RSI anymore.
       // Legacy RSI rows pass through untouched on save (see saveLogConductWizard).
+      if (d.type !== "RSI") _logConduct.originalDetailIds.push(d.id);
       if (d.type === "Fallout") _logConduct.fallout.push({ d4: d.d4, reason: d.reason || "" });
       else if (d.type === "ReportSick") _logConduct.reportSick.push({ d4: d.d4, reason: d.reason || "" });
     });
@@ -3133,33 +3171,45 @@ async function saveLogConductWizard() {
 
   const savedId = attendanceEntry.id;
   const isNew = !w.attendanceId;
+  // Compute the obsolete child rows BEFORE we null out the wizard state:
+  // originalDetailIds are the ConductDetail row ids that were loaded when
+  // the wizard opened. Any that aren't in the new detailRows set need to
+  // be surgically deleted from the sheet (they've already been removed
+  // from local STATE by the filter above).
+  const newDetailIds = new Set(detailRows.map(r => r.id));
+  const obsoleteIds = (w.originalDetailIds || []).filter(id => !newDetailIds.has(id));
   _logConduct = null;
   closeModal();
   render();
 
-  // On create: offer to copy the chat-format message and append rows to the
-  // Google Sheet for immediate sync. Edit mode skips the auto-push because
-  // the row count may have decreased — user uses Push to Sheet manually.
+  // Auto-push everything: attendance upsert, surgical delete of obsolete
+  // detail rows, appendMany new detail/medical rows. Each fires through
+  // autoSync so the indicator + dirty-tracking handle failures.
+  if (STATE.apiUrl) {
+    autoSync("Attendance", { type: "upsert", row: attendanceEntry });
+    for (const id of obsoleteIds) {
+      autoSync("ConductDetail", { type: "delete", id });
+    }
+    if (detailRows.length) {
+      autoSync("ConductDetail", { type: "appendMany", rows: detailRows });
+    }
+    if (newMedicalRows.length) {
+      autoSync("Medical", { type: "appendMany", rows: newMedicalRows });
+    }
+  }
+
   if (isNew) {
     try { await copyConductChatFormat(savedId, /*silent*/ true); } catch (e) { /* clipboard denied */ }
-    if (STATE.apiUrl) {
-      API.appendRow("Attendance", attendanceEntry).catch(() => {});
-      if (detailRows.length) {
-        API.post({ action: "appendMany", tab: "ConductDetail", rows: detailRows }).catch(() => {});
-      }
-      if (newMedicalRows.length) {
-        API.post({ action: "appendMany", tab: "Medical", rows: newMedicalRows }).catch(() => {});
-      }
-    }
     const medMsg = newMedicalRows.length
-      ? `\n\n${newMedicalRows.length} Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} auto-created for the Report Sick recruit${newMedicalRows.length === 1 ? "" : "s"} — update the status on the Medical tab once the MO clears them.`
+      ? `\n\n${newMedicalRows.length} Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} auto-created — update the status on the Medical tab once MO clears.`
       : "";
-    alert(`Saved. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} created.${medMsg}\n\nChat-format message copied to clipboard${navigator.clipboard ? "" : " (or shown in fallback prompt)"}.`);
+    alert(`Saved & syncing. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} created.${medMsg}\n\nChat-format message copied to clipboard${navigator.clipboard ? "" : " (or shown in fallback prompt)"}.`);
   } else {
+    const obsoleteNote = obsoleteIds.length ? ` ${obsoleteIds.length} removed.` : "";
     const medNote = newMedicalRows.length
-      ? `\n\n${newMedicalRows.length} new Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} added (existing medical entries for these recruits today were left alone).`
+      ? `\n\n${newMedicalRows.length} new Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} added.`
       : "";
-    alert(`Saved locally.${medNote}\n\nClick "Push to Sheet" on the Attendance + Conduct Detail${newMedicalRows.length ? " + Medical" : ""} tab${newMedicalRows.length || true ? "s" : ""} to sync (edit mode replaces rows, so a full push is needed).`);
+    alert(`Saved & syncing. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} total.${obsoleteNote}${medNote}`);
   }
 }
 

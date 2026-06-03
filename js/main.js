@@ -197,8 +197,13 @@ async function tryRedeemInviteFromURL() {
   if (STATE.authToken && (cacheEmpty || justRedeemed)) {
     setSyncIndicator("● Loading data…", "var(--orange)");
     try {
-      const data = await API.pullAll();
-      setSyncIndicator(`● Synced ${new Date().toLocaleTimeString()}`, "var(--green)");
+      // Mark the pull in-flight so any writes triggered during render
+      // (e.g. a migration auto-push) wait until STATE is fresh.
+      const pullPromise = API.pullAll();
+      if (typeof setPullInFlight === "function") setPullInFlight(pullPromise);
+      const data = await pullPromise;
+      if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
+      else setSyncIndicator(`● Synced ${new Date().toLocaleTimeString()}`, "var(--green)");
       syncLog(`Auto-sync on launch: pulled from ${data.sheetName}`, "var(--green)");
     } catch (e) {
       if (e.name === "AuthError") {
@@ -210,9 +215,30 @@ async function tryRedeemInviteFromURL() {
     }
     render();
     maybeRunConductMigration();
+    maybeRestoreDirty();
   } else {
     render();
     autoSyncOnLaunch();
     maybeRunConductMigration();
+    maybeRestoreDirty();
   }
 })();
+
+// On launch, if previous session(s) left dirty tabs (pushes failed offline
+// or the tab closed before a retry), offer to retry now. Runs after the
+// initial render so the user sees their data before being asked.
+function maybeRestoreDirty() {
+  if (!STATE.dirty || STATE.dirty.size === 0 || !STATE.authToken) {
+    if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
+    return;
+  }
+  // Wait a moment so the modal stack from migration etc. has cleared.
+  setTimeout(() => {
+    const tabs = [...STATE.dirty];
+    const ok = confirm(
+      `${tabs.length} tab${tabs.length === 1 ? " has" : "s have"} unpushed changes from your last session:\n  • ${tabs.join("\n  • ")}\n\nPush now?`
+    );
+    if (ok && typeof retryAllDirty === "function") retryAllDirty();
+    else if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
+  }, 600);
+}

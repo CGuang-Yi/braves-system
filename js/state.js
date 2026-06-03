@@ -14,6 +14,42 @@ const AUTH_KEY = "cougar-auth";
 const FILTER_KEY = "cougar-filter";
 const IPPT_AGG_KEY = "cougar-ippt-agg";
 const FITNESS_SENT_KEY = "cougar-fitness-sent";
+const DIRTY_KEY = "cougar-dirty-tabs";
+
+// Sheet-tab-name → STATE-array-key lookup. The autoSync coalesce path uses
+// this when flushing a queued replace push: by the time the flush runs the
+// caller's `data` snapshot is stale, so we re-read the latest STATE[arrayKey]
+// from this map. Kept in state.js because it's tightly coupled to the STATE
+// shape above.
+const TAB_TO_STATE = {
+  "Roster": "roster",
+  "Medical": "medical",
+  "Attendance": "attendance",
+  "IPPT": "ippt",
+  "RouteMarch": "rm",
+  "SOC": "soc",
+  "PolarFlow": "polar",
+  "ConductDetail": "conductDetail",
+  "Appointments": "appointments",
+  "Leave": "leave",
+  "MSK": "msk",
+  "Conducts": "conducts"
+};
+
+// Persisted set of tab names with unpushed local changes. Survives reloads
+// in its own localStorage key (separate from STORAGE_KEY) so a "Clear cache"
+// of the data doesn't lose the dirty markers we need to know to retry.
+function loadDirty() {
+  try {
+    const raw = localStorage.getItem(DIRTY_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch { return new Set(); }
+}
+function saveDirty() {
+  localStorage.setItem(DIRTY_KEY, JSON.stringify([...(STATE.dirty || [])]));
+}
 
 // Reads the persisted "who got a fitness report and when" map.
 // Shape: { "1101": "2026-05-27T14:40:25.296Z", ... }.
@@ -91,6 +127,10 @@ const STATE = {
   // a session interrupted mid-batch (or a fresh device) can resume without
   // double-sending. Map of d4 → ISO timestamp of last successful send.
   fitnessSent: loadFitnessSent(),
+  // Set of sheet-tab names with unpushed local changes (push failed or
+  // never attempted). Drives the sidebar "X tabs need retry" warning and
+  // the on-launch dirty-restore prompt.
+  dirty: loadDirty(),
   charts: {}
 };
 

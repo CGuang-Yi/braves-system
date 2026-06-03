@@ -163,6 +163,20 @@ function doPost(e) {
       output = appendRow(tab, body.row);
     } else if (action === "appendMany" && tab && body.rows) {
       output = appendMany(tab, body.rows);
+    } else if (action === "upsertRow" && tab && body.row) {
+      // ID-based upsert — finds by `id` column, updates in place, appends if missing.
+      // Designed to be the default write path so two devices editing different
+      // rows of the same tab don't clobber each other (no full-table replace).
+      output = upsertRow(tab, body.row);
+    } else if (action === "deleteRowById" && tab && body.id !== undefined) {
+      // ID-based row delete — finds by `id` column. Safer than the legacy
+      // rowIndex-based deleteRow (frontend doesn't track sheet indices).
+      output = deleteRowById(tab, body.id);
+    } else if (action === "rowCount" && tab) {
+      // Lightweight pre-write staleness check. Returns the sheet's current
+      // data-row count so the frontend can warn before a bulk pushTab if
+      // another device added rows since the last pull.
+      output = rowCount(tab);
     } else if (action === "deleteRow" && tab && body.rowIndex !== undefined) {
       output = deleteRow(tab, body.rowIndex);
     } else if (action === "updateRow" && tab && body.rowIndex !== undefined && body.row) {
@@ -694,6 +708,105 @@ function appendMany(tabName, rows) {
     rowsAppended: newRows.length,
     timestamp: new Date().toISOString()
   };
+}
+
+// ID-based upsert. Finds the row whose `id` column matches `rowData.id`,
+// overwrites that row in place. If no such row exists, appends a new one.
+// This is the cross-device-safe write primitive — two devices editing
+// different rows of the same tab won't clobber each other (no full-table
+// rewrite). Same-row simultaneous edits remain last-write-wins per row.
+function upsertRow(tabName, rowData) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return { error: "Tab '" + tabName + "' not found" };
+  if (!rowData || rowData.id === undefined || rowData.id === null || rowData.id === "") {
+    return { error: "upsertRow requires a non-empty id field on the row" };
+  }
+  var lastCol = sheet.getLastColumn();
+  if (!lastCol) return { error: "Tab '" + tabName + "' has no header row" };
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var trimmed = headers.map(function (h) { return String(h).trim(); });
+  var idCol = trimmed.indexOf("id");
+  if (idCol === -1) return { error: "No 'id' column in tab " + tabName };
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var idCells = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
+    var target = String(rowData.id);
+    for (var i = 0; i < idCells.length; i++) {
+      if (String(idCells[i][0]) === target) {
+        var sheetRow = i + 2;
+        var updatedRow = trimmed.map(function (h) {
+          var val = rowData[h];
+          return val !== undefined && val !== null ? val : "";
+        });
+        sheet.getRange(sheetRow, 1, 1, headers.length).setValues([updatedRow]);
+        return {
+          ok: true,
+          tab: tabName,
+          action: "updated",
+          rowIndex: sheetRow,
+          timestamp: new Date().toISOString()
+        };
+      }
+    }
+  }
+  // Not found — append a new row.
+  var newRow = trimmed.map(function (h) {
+    var val = rowData[h];
+    return val !== undefined && val !== null ? val : "";
+  });
+  sheet.appendRow(newRow);
+  return {
+    ok: true,
+    tab: tabName,
+    action: "appended",
+    rowIndex: sheet.getLastRow(),
+    timestamp: new Date().toISOString()
+  };
+}
+
+// ID-based row delete. Finds the row whose `id` column matches and removes
+// it. Returns ok:false (not an error) when the id isn't found — the
+// frontend treats "row already gone" as a no-op success.
+function deleteRowById(tabName, rowId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return { error: "Tab '" + tabName + "' not found" };
+  var lastCol = sheet.getLastColumn();
+  if (!lastCol) return { error: "Tab '" + tabName + "' has no header row" };
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var trimmed = headers.map(function (h) { return String(h).trim(); });
+  var idCol = trimmed.indexOf("id");
+  if (idCol === -1) return { error: "No 'id' column in tab " + tabName };
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true, action: "noop", note: "tab empty" };
+  var idCells = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
+  var target = String(rowId);
+  for (var i = 0; i < idCells.length; i++) {
+    if (String(idCells[i][0]) === target) {
+      sheet.deleteRow(i + 2);
+      return {
+        ok: true,
+        tab: tabName,
+        action: "deleted",
+        rowIndex: i + 2,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+  return { ok: true, action: "noop", note: "id " + rowId + " not found in " + tabName };
+}
+
+// Lightweight pre-write staleness check. Returns just the data-row count
+// (last row minus header) so the frontend can warn before a bulk pushTab
+// when another device added rows since this device's last pull.
+function rowCount(tabName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return { error: "Tab '" + tabName + "' not found" };
+  var last = sheet.getLastRow();
+  return { ok: true, tab: tabName, dataRows: Math.max(0, last - 1) };
 }
 
 function updateRow(tabName, rowIndex, rowData) {

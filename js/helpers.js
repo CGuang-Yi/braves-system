@@ -234,13 +234,23 @@ function inferDateForConduct(conductId) {
 }
 
 // Generic delete: removes a row from STATE[arrayName] by id with a confirm
-// prompt. Local-only — propagating the delete to the Google Sheet requires
-// a Push to Sheet (writeTab rewrites the sheet from STATE).
+// prompt. Auto-syncs a surgical row delete to the Google Sheet via autoSync —
+// no need for the user to navigate to the tab and click Re-push all.
+const STATE_TO_TAB = {
+  roster: "Roster", medical: "Medical", attendance: "Attendance",
+  ippt: "IPPT", rm: "RouteMarch", soc: "SOC", polar: "PolarFlow",
+  conductDetail: "ConductDetail", appointments: "Appointments",
+  leave: "Leave", msk: "MSK", conducts: "Conducts"
+};
 function deleteEntry(arrayName, id, label) {
-  if (!confirm(`Delete this ${label || "entry"}?\n\nThis change is local. Hit Push to Sheet on the tab to sync the deletion to the Google Sheet.`)) return;
+  if (!confirm(`Delete this ${label || "entry"}?`)) return;
   STATE[arrayName] = STATE[arrayName].filter(x => x.id !== id);
   saveLocal();
   render();
+  const tabName = STATE_TO_TAB[arrayName];
+  if (tabName && STATE.apiUrl && typeof autoSync === "function") {
+    autoSync(tabName, { type: "delete", id });
+  }
 }
 
 // ── Medical status enum ──────────────────────────────────

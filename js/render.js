@@ -717,7 +717,7 @@ function renderLeave(el) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h2 style="font-size:18px;font-weight:700">📅 Leave / Out${titleSuffix}</h2>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-success" onclick="pushTab('Leave',STATE.leave)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('Leave',STATE.leave)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openLeaveForm()">+ Log</button>
       </div>
     </div>
@@ -900,7 +900,7 @@ function renderRoster(el) {
       <h2 style="font-size:18px;font-weight:700">Master Roster${titleSuffix}</h2>
       <div style="display:flex;gap:8px">
         <button class="btn" onclick="exportCSV(STATE.roster,'roster.csv')">Export CSV</button>
-        <button class="btn btn-success" onclick="pushTab('Roster',STATE.roster)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('Roster',STATE.roster)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
       </div>
     </div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Role</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
@@ -921,12 +921,18 @@ function renderAttendance(el) {
       <h2 style="font-size:18px;font-weight:700">Conduct Attendance</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" onclick="refreshLmsFromPolar()" title="Recount LMS participants for every conduct from STATE.polar (the Polar class summary photo is the LMS roster) and write into the attendance rows">🔄 Recompute LMS</button>
-        <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openLogConductWizard()" title="One-shot wizard: date + time + conduct + Status Personnel checklist + bulk Report Sick / Fallout / RSI rows + auto totals + chat-format copy">+ Log Conduct</button>
       </div>
     </div>
     ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>Status</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
-    ${STATE.attendance.map(a => {
+    ${[...STATE.attendance].sort((a, b) => {
+      // Newest first by date, then time (later in the day on top within a date).
+      const ai = displayDateToISO(a.date) || a.date || "";
+      const bi = displayDateToISO(b.date) || b.date || "";
+      if (ai !== bi) return ai < bi ? 1 : -1;
+      return (a.time || "") < (b.time || "") ? 1 : -1;
+    }).map(a => {
       const r = pct(a.participating, a.total);
       const lms = +a.lms || 0;
       const lmsRate = pct(lms, a.participating);
@@ -1033,7 +1039,7 @@ function renderConductDetail(el) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h2 style="font-size:18px;font-weight:700">Conduct Detail${titleSuffix}</h2>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-success" onclick="pushTab('ConductDetail',STATE.conductDetail)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('ConductDetail',STATE.conductDetail)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openConductDetailForm()">+ Log</button>
       </div>
     </div>
@@ -1139,7 +1145,7 @@ function renderMedical(el) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Report Sick</button>
       </div>
     </div>
@@ -1208,7 +1214,7 @@ function renderIPPT(el) {
       <h2 style="font-size:18px;font-weight:700">IPPT Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.ippt.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importIPPT(this)" style="display:none"></label>
-        <button class="btn btn-success" onclick="pushTab('IPPT',STATE.ippt)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('IPPT',STATE.ippt)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openIPPTForm()">+ Add</button>
       </div>
     </div>
@@ -1329,7 +1335,7 @@ function renderRM(el) {
       <h2 style="font-size:18px;font-weight:700">Route March Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.rm.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
         <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importRM(this)" style="display:none"></label>
-        <button class="btn btn-success" onclick="pushTab('RouteMarch',STATE.rm)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('RouteMarch',STATE.rm)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openRMForm()">+ Add</button>
       </div>
     </div>
@@ -1348,7 +1354,7 @@ function renderSOC(el) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:18px;font-weight:700">SOC Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.soc.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-success" onclick="pushTab('SOC',STATE.soc)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('SOC',STATE.soc)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openSOCForm()">+ Add</button>
       </div>
     </div>
@@ -1419,7 +1425,7 @@ function renderPolar(el) {
       <h2 style="font-size:18px;font-weight:700">Polar Flow Data${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.polar.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <label class="btn btn-primary" style="cursor:pointer">Import Polar CSV<input type="file" accept=".csv" onchange="importPolar(this)" style="display:none"></label>
-        <button class="btn btn-success" onclick="pushTab('PolarFlow',STATE.polar)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('PolarFlow',STATE.polar)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
       </div>
     </div>
 
@@ -1480,7 +1486,7 @@ function renderConducts(el) {
       <h2 style="font-size:18px;font-weight:700">Conducts Registry <span style="color:var(--muted);font-weight:400;font-size:13px">${rows.length} entries · ${totalUsage} record${totalUsage === 1 ? "" : "s"}</span></h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${needsConductMigration() ? `<button class="btn" onclick="maybeRunConductMigration()" title="Open the legacy-data migration modal">🔧 Migrate legacy data</button>` : ""}
-        <button class="btn btn-success" onclick="pushTab('Conducts',STATE.conducts)">Push to Sheet</button>
+        <button class="btn btn-success" onclick="pushTab('Conducts',STATE.conducts)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="promptCreateConduct()">+ New conduct</button>
       </div>
     </div>
