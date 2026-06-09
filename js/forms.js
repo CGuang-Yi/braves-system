@@ -110,7 +110,7 @@ function openPerson(d4) {
       <table style="width:100%;border-collapse:collapse">
         <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
         <tbody>
-          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + pad4Time(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${conductName(d.conductId)}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
+          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + fmtHrs(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${conductName(d.conductId)}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
         </tbody>
       </table>
     </div>`;
@@ -468,6 +468,17 @@ function openMedicalForm(id) {
   const statusOptions = MED_STATUS_GROUPS.map(g =>
     `<optgroup label="${g.label}">${g.options.map(o => `<option value="${o}" ${o === selectedStatus ? "selected" : ""}>${o}</option>`).join("")}</optgroup>`
   ).join("");
+  // Saved custom statuses (user-created) get their own group. An orphan option
+  // is injected when editing a record whose status isn't in any known list
+  // (e.g. a one-off custom status that was never saved), so it stays selected.
+  const customList = STATE.customStatuses || [];
+  const customOptions = customList.length
+    ? `<optgroup label="Custom">${customList.map(c => `<option value="${escapeAttr(c.name)}" ${c.name === selectedStatus ? "selected" : ""}>${escapeAttr(c.name)}${c.participates ? " (participates)" : ""}</option>`).join("")}</optgroup>`
+    : "";
+  const known = new Set([...MED_STATUSES, ...customList.map(c => c.name)]);
+  const orphanOption = (selectedStatus && !known.has(selectedStatus))
+    ? `<optgroup label="Current"><option value="${escapeAttr(selectedStatus)}" selected>${escapeAttr(selectedStatus)}</option></optgroup>`
+    : "";
   openModal(e ? "Edit Report Sick Entry" : "Log Report Sick", `
     <form onsubmit="event.preventDefault(); submitMedical(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
@@ -478,10 +489,19 @@ function openMedicalForm(id) {
         ${formField("f-reason", "Reason", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
         <div class="form-group">
           <label>Status</label>
-          <select id="f-status" required>
+          <select id="f-status" required onchange="medStatusSelChanged(this.value)">
             <option value="">Select status...</option>
             ${statusOptions}
+            ${customOptions}
+            ${orphanOption}
+            <option value="__new__">＋ New custom status…</option>
           </select>
+        </div>
+        <div id="f-custom-wrap" style="display:none;flex-direction:column;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px">
+          ${formField("f-custom-name", "New status name", "text", "e.g. Excuse Finger", `maxlength="40"`)}
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" id="f-custom-participates" style="width:15px;height:15px"> Still participates in conducts <span style="color:var(--dim)">(wizard won't auto-mark as out)</span></label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" id="f-custom-save" checked style="width:15px;height:15px"> Save for reuse <span style="color:var(--dim)">(adds it to this dropdown)</span></label>
+          <div style="font-size:10px;color:var(--muted)">Custom statuses are in-camp/restricted and don't get +1/+2 recovery tags.</div>
         </div>
         <div class="form-row">
           ${formField("f-start", "Start (inclusive)", "date", "", `value="${startVal}" min="2020-01-01" max="2099-12-31"`)}
@@ -492,9 +512,24 @@ function openMedicalForm(id) {
       </div>
     </form>`);
 }
+// Reveal the custom-status fields only when "＋ New custom status…" is picked.
+function medStatusSelChanged(v) {
+  const wrap = document.getElementById("f-custom-wrap");
+  if (wrap) wrap.style.display = v === "__new__" ? "flex" : "none";
+}
+
 function submitMedical() {
   const editId = +gv("f-entry-id");
-  const status = gv("f-status");
+  let status = gv("f-status");
+  // Resolve a freshly-created custom status: use the typed name as the status,
+  // and (optionally) persist it to the reusable list with its participates flag.
+  if (status === "__new__") {
+    const name = gv("f-custom-name").trim();
+    if (!name) { alert("Enter a name for the new custom status."); return; }
+    const participates = !!document.getElementById("f-custom-participates")?.checked;
+    if (document.getElementById("f-custom-save")?.checked) addCustomStatus(name, participates);
+    status = name;
+  }
   const startIso = gv("f-start");
   const endIso = gv("f-end");
   const noDurationStatuses = ["Pending", "NIL"];
@@ -1322,6 +1357,9 @@ function buildMedicalSection(label, dateIso, statusList) {
   }
   const byD4 = {};
   matches.forEach(m => { (byD4[m.d4] = byD4[m.d4] || []).push(m); });
+  // Collapse same-status duplicates per recruit (a re-issued MC) to the most
+  // recent record so it prints once, with the newest dates.
+  Object.keys(byD4).forEach(d4 => { byD4[d4] = dedupeActiveRecordsByFamily(byD4[d4]); });
   const peopleIds = Object.keys(byD4);
 
   if (!peopleIds.length) {
@@ -1385,7 +1423,7 @@ function buildAppointmentSection(dateIso, paradeTime) {
   if (!todays.length) return `MEDICAL APPT:\n\nS/N:\nR/N:\nReason:\nLocation:\nDate:\nTime:`;
   const blocks = todays.map((a, idx) => {
     const sn = String(idx + 1).padStart(2, "0");
-    return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${pad4Time(a.time) || ""}`;
+    return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${fmtHrs(a.time)}`;
   });
   return `MEDICAL APPT: ${String(todays.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
 }
@@ -1468,12 +1506,12 @@ function generateParadeStateText(type, dateIso, time) {
     buildAppointmentSection(dateIso, time),
     buildOthersSection(dateIso)
   ];
-  return `COUGAR COMPANY\n${header}\nDATE: ${dateStr} @ ${time}\n\n${SEP}\n\n${sections.join(`\n\n${SEP}\n\n`)}\n\n${SEP}`;
+  return `COUGAR COMPANY\n${header}\nDATE: ${dateStr} @ ${fmtHrs(time)}\n\n${SEP}\n\n${sections.join(`\n\n${SEP}\n\n`)}\n\n${SEP}`;
 }
 
 function generateMedicalStatusText(dateIso, time) {
   const dateStr = toDDMMYY(dateIso);
-  const heading = `${dateStr}(latest version as of ${dateStr} @${time})`;
+  const heading = `${dateStr}(latest version as of ${dateStr} @${fmtHrs(time)})`;
   const body = buildMedicalSection("MEDICAL STATUS", dateIso, ["LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"]);
   return `${heading}\n\n${body}`;
 }
@@ -1492,7 +1530,7 @@ function generateMSKReportText(dateIso, time) {
     .filter(c => !c.allCleared);
 
   const dateStr = toDDMMYY(dateIso);
-  const heading = `MSK: ${String(cases.length).padStart(2, "0")} (as of ${dateStr} @${time})`;
+  const heading = `MSK: ${String(cases.length).padStart(2, "0")} (as of ${dateStr} @${fmtHrs(time)})`;
 
   if (!cases.length) return `${heading}\n\nNo active MSK cases.`;
 
@@ -2860,20 +2898,27 @@ function rebuildLogConductStatus() {
     }
   }
   const dateIso = _logConduct.date;
-  const effective = currentMedicalEffectiveAll(dateIso);
+  // Commanders are not tracked in conduct attendance — exclude them from the
+  // status checklist entirely.
+  const effective = currentMedicalEffectiveAll(dateIso).filter(({ d4 }) => !isCommander(d4));
   _logConduct.status = effective.map(({ d4, statuses }) => {
     // Pick the most-severe active status as the canonical tag/reason.
     const top = statuses[0];
     const prev = prevByD4[d4];
+    // A status can mean "still does the conduct" (e.g. a finger injury). Default
+    // to participating only when EVERY active status participates; any
+    // restrictive status (MC/LD/Excuse/…) defaults the recruit to not-
+    // participating. The user can always override per conduct.
+    const defaultNP = statuses.some(s => !statusParticipates(s.tag));
     return {
       d4,
       // Concatenate every active status so the user sees "MC + Excuse Heavy Load"
       statusTag: statuses.map(s => s.tag).join(" + "),
       reason: prev ? prev.reason : (existingPxByD4[d4] ?? top.record.reason ?? ""),
-      // First-time defaults to "not participating" (chat convention). Edit-mode
+      // First-time defaults from the per-status participation flag. Edit-mode
       // honors whether there's an existing PX row.
       notParticipating: prev ? prev.notParticipating
-        : (_logConduct.attendanceId ? (d4 in existingPxByD4) : true)
+        : (_logConduct.attendanceId ? (d4 in existingPxByD4) : defaultNP)
     };
   }).sort((a, b) => a.d4.localeCompare(b.d4));
 }
@@ -2906,7 +2951,7 @@ function renderLogConductWizard() {
     const rows = (w[key] || []).map((row, i) => `
       <div class="lc-wiz-bulk-row" style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 32px;gap:8px;align-items:center;padding:8px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
         <span class="mono" style="color:var(--muted);font-size:12px;font-weight:700">${String(i + 1).padStart(2, "0")}</span>
-        <div style="min-width:0">${rosterSelect(`wiz-${key}-d4-${i}`, true, row.d4, { onchange: `wizUpdateRowD4('${key}', ${i}, this.value)` })}</div>
+        <div style="min-width:0">${rosterSelect(`wiz-${key}-d4-${i}`, true, row.d4, "Recruit", { onchange: `wizUpdateRowD4('${key}', ${i}, this.value)` })}</div>
         <input type="text" value="${escapeAttr(row.reason)}" placeholder="reason" oninput="wizUpdateRowReason('${key}', ${i}, this.value)" style="min-width:0;width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
         <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveRow('${key}', ${i})" title="Remove" style="padding:4px 8px">✕</button>
       </div>
@@ -3242,10 +3287,11 @@ function buildConductChatFormat(attendanceId) {
       const rn = paradeRN(d.d4);
       let block = `S/N: ${sn}\nR/N: ${rn}\nReason: ${d.reason || ""}`;
       if (includeStatusBlock) {
-        // Pull the recruit's active medical record on this date for status + duration.
-        const med = STATE.medical
-          .filter(m => m.d4 === d.d4 && medStatusActive(m, date))
-          .sort((x, y) => medSeverityRank(medStatusTag(y, date)?.tag) - medSeverityRank(medStatusTag(x, date)?.tag));
+        // Pull the recruit's active medical record on this date for status +
+        // duration. Collapse same-status duplicates to the most recent first.
+        const med = dedupeActiveRecordsByFamily(
+          STATE.medical.filter(m => m.d4 === d.d4 && medStatusActive(m, date))
+        ).sort((x, y) => medSeverityRank(medStatusTag(y, date)?.tag) - medSeverityRank(medStatusTag(x, date)?.tag));
         if (med.length === 1) {
           block += `\nStatus: ${paradeStatusLabel(med[0])}\nDuration: ${paradeDuration(med[0])}`;
         } else if (med.length > 1) {
@@ -3258,7 +3304,7 @@ function buildConductChatFormat(attendanceId) {
     return `${label}: ${String(rows.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
   };
 
-  const header = `${ddmmyy} ${time} ${conductLabel}\nTotal strength: ${a.total}\nParticipating: ${a.participating}\nStatus: ${String(byType.PX.length).padStart(2, "0")}\nReport sick: ${String(byType.ReportSick.length).padStart(2, "0")}\nFallout: ${String(byType.Fallout.length).padStart(2, "0")}`;
+  const header = `${ddmmyy} ${fmtHrs(time)} ${conductLabel}\nTotal strength: ${a.total}\nParticipating: ${a.participating}\nStatus: ${String(byType.PX.length).padStart(2, "0")}\nReport sick: ${String(byType.ReportSick.length).padStart(2, "0")}\nFallout: ${String(byType.Fallout.length).padStart(2, "0")}`;
 
   const parts = [header];
   parts.push(section("STATUS", byType.PX, /*includeStatusBlock*/ true));

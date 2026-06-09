@@ -258,17 +258,76 @@ function deleteEntry(arrayName, id, label) {
 // when the recruit reported sick. `status` is the outcome from the MO.
 // Only these statuses are official:
 //   • MC / Warded — away from camp
-//   • LD / RMJ / Excuse X — in camp, restricted
+//   • LD / Excuse X (incl. Excuse RMJ) — in camp, restricted
 //   • Pending — reported sick, MO outcome not yet known
 //   • NIL — MO seen, no status issued (recruit back to active)
 const MED_STATUS_GROUPS = [
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
-  { label: "In camp, restricted",     options: ["LD", "RMJ"] },
+  { label: "In camp, restricted",     options: ["LD"] },
   { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"] },
   { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Cleared by MO",           options: ["NIL"] }
 ];
 const MED_STATUSES = MED_STATUS_GROUPS.flatMap(g => g.options);
+
+// ── Custom statuses ──────────────────────────────────────
+// User-defined statuses live in STATE.customStatuses (persisted via state.js).
+// They behave like an in-camp restricted status (e.g. an Excuse), never get
+// +1/+2 ghost tags, and carry a `participates` flag.
+function customStatusByName(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (!key) return null;
+  return (STATE.customStatuses || []).find(s => String(s.name).toLowerCase() === key) || null;
+}
+// Create or update a saved custom status. Idempotent on name (case-insensitive).
+function addCustomStatus(name, participates) {
+  name = String(name || "").trim();
+  if (!name) return;
+  const existing = customStatusByName(name);
+  if (existing) { existing.participates = !!participates; }
+  else { (STATE.customStatuses = STATE.customStatuses || []).push({ name, participates: !!participates }); }
+  saveCustomStatuses();
+}
+// Does this status mean the recruit normally still participates in conducts?
+// Built-in: only NIL (MO cleared, back to active). Custom: per its saved flag.
+// Strips any +N ghost suffix first so "MC+1" resolves to "MC".
+function statusParticipates(status) {
+  const base = medStatusBaseFamily(status);
+  if (base === "NIL") return true;
+  const c = customStatusByName(base);
+  return c ? !!c.participates : false;
+}
+
+// ── Same-status-family collapsing ────────────────────────
+// A tag's base family ignores the ghost suffix: MC+1 → MC, LD+2 → LD. Used to
+// collapse duplicate statuses of the same kind (a re-issued MC) down to one.
+const medStatusBaseFamily = tag => String(tag).replace(/\+\d+$/, "");
+
+// Within one status family, is record-tag pair `a` more significant than `b`?
+// More severe wins; ties broken by recency (later start date), so a newly
+// issued MC supersedes an older overlapping one.
+function medStatusMoreSignificant(a, b) {
+  const ra = medSeverityRank(a.tag), rb = medSeverityRank(b.tag);
+  if (ra !== rb) return ra > rb;
+  const sa = displayDateToISO(a.record.startDate || a.record.date || "") || "";
+  const sb = displayDateToISO(b.record.startDate || b.record.date || "") || "";
+  return sa > sb;
+}
+
+// Collapse a recruit's active medical *records* to one per status family,
+// keeping the most recent (latest start date). Shared by the parade-state and
+// conduct-chat builders so a re-issued MC/LD prints only once (newest dates).
+function dedupeActiveRecordsByFamily(records) {
+  const best = {};
+  (records || []).forEach(m => {
+    const k = medStatusBaseFamily(m.status);
+    const rec = displayDateToISO(m.startDate || m.date || "") || "";
+    const cur = best[k];
+    const curRec = cur ? (displayDateToISO(cur.startDate || cur.date || "") || "") : "";
+    if (!cur || rec > curRec) best[k] = m;
+  });
+  return Object.values(best);
+}
 
 // Days between two ISO date strings (both inclusive of the date — date math
 // only, no time of day). Returns isoB − isoA in whole days.
@@ -324,6 +383,8 @@ function medSeverityRank(tag) {
   if (tag === "LD+1") return 30;
   if (tag === "LD+2") return 20;
   if (tag === "Pending") return 10;
+  // Custom statuses rank just below the built-in excuses (in-camp/restricted).
+  if (customStatusByName(medStatusBaseFamily(tag))) return 55;
   return 0;
 }
 
@@ -335,27 +396,44 @@ function currentMedicalEffective(todayIso) {
   STATE.medical.forEach(m => {
     const t = medStatusTag(m, todayIso);
     if (!t) return;
+    const cand = { d4: m.d4, record: m, tag: t.tag, ghostDay: t.ghostDay };
     const existing = byD4[m.d4];
-    if (!existing || medSeverityRank(t.tag) > medSeverityRank(existing.tag)) {
-      byD4[m.d4] = { d4: m.d4, record: m, tag: t.tag, ghostDay: t.ghostDay };
-    }
+    // Most severe wins; ties broken by recency so a re-issued MC supersedes
+    // the older one.
+    if (!existing || medStatusMoreSignificant(cand, existing)) byD4[m.d4] = cand;
   });
   return Object.values(byD4);
 }
 
-// Like currentMedicalEffective but keeps every active status per recruit
-// (sorted severity-desc) so the UI can show stacked tags. A recruit on
-// MC + Excuse Heavy Load shows up here with both statuses, not just MC.
-// Output: array of { d4, statuses: [{ record, tag, ghostDay }, ...] }.
+// Like currentMedicalEffective but keeps every DISTINCT active status per
+// recruit (sorted severity-desc) so the UI can show stacked tags. A recruit on
+// MC + Excuse Heavy Load shows up here with both. Duplicates of the SAME family
+// (e.g. two overlapping MCs, or MC + MC+1) collapse to the most severe + most
+// recent; the collapsed-out records move to `hidden` (still viewable in the
+// person's Medical History). This is what stops the dashboard table and pie
+// chart from double-counting a re-issued status.
+// Output: array of { d4, statuses: [{record, tag, ghostDay}, ...], hidden: [...] }.
 function currentMedicalEffectiveAll(todayIso) {
   todayIso = todayIso || todayISO();
   const byD4 = {};
   STATE.medical.forEach(m => {
     const t = medStatusTag(m, todayIso);
     if (!t) return;
-    (byD4[m.d4] = byD4[m.d4] || { d4: m.d4, statuses: [] }).statuses.push({ record: m, tag: t.tag, ghostDay: t.ghostDay });
+    (byD4[m.d4] = byD4[m.d4] || { d4: m.d4, statuses: [], hidden: [] }).statuses.push({ record: m, tag: t.tag, ghostDay: t.ghostDay });
   });
-  Object.values(byD4).forEach(b => b.statuses.sort((x, y) => medSeverityRank(y.tag) - medSeverityRank(x.tag)));
+  Object.values(byD4).forEach(b => {
+    const best = {};
+    const hidden = [];
+    b.statuses.forEach(s => {
+      const fam = medStatusBaseFamily(s.tag);
+      const cur = best[fam];
+      if (!cur) { best[fam] = s; }
+      else if (medStatusMoreSignificant(s, cur)) { hidden.push(cur); best[fam] = s; }
+      else { hidden.push(s); }
+    });
+    b.statuses = Object.values(best).sort((x, y) => medSeverityRank(y.tag) - medSeverityRank(x.tag));
+    b.hidden = hidden;
+  });
   return Object.values(byD4);
 }
 
@@ -377,6 +455,8 @@ function medTagBadge(tag) {
   };
   const p = palettes[tag] || (typeof tag === "string" && tag.startsWith("Excuse")
     ? { bg: "#BC8CFF22", bd: "#BC8CFF44", fg: "var(--purple)" }
+    : customStatusByName(medStatusBaseFamily(tag))
+    ? { bg: "#39D2C022", bd: "#39D2C044", fg: "#39D2C0" }
     : palettes.Pending);
   return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:${p.bg};color:${p.fg};border:1px solid ${p.bd}">${tag}</span>`;
 }
@@ -583,6 +663,17 @@ function pad4Time(t) {
   if (s.length === 3) return "0" + s;          // "930" → "0930"
   if (s.length === 2) return s + "00";          // "07"  → "0700"
   return "0" + s + "00";                        // "7"   → "0700"
+}
+
+// Display-only formatter: normalize a clock time and append "Hrs", e.g.
+// "0530" → "0530 Hrs", "0700-2100" → "0700-2100 Hrs". Empty → "". This is
+// strictly for rendering (parade states, tables) — never persist its output;
+// pad4Time remains the normalizer used for storage and matching keys. Leaves
+// non-time strings (already-suffixed, "TBC", durations like "12:34") untouched.
+function fmtHrs(t) {
+  const p = pad4Time(t);
+  if (!p || /hrs/i.test(p) || !/\d/.test(p) || p.includes(":")) return p;
+  return `${p} Hrs`;
 }
 
 // ── MSK INJURY CLASSIFICATION ────────────────────────────

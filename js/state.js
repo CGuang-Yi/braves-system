@@ -15,6 +15,7 @@ const FILTER_KEY = "cougar-filter";
 const IPPT_AGG_KEY = "cougar-ippt-agg";
 const FITNESS_SENT_KEY = "cougar-fitness-sent";
 const DIRTY_KEY = "cougar-dirty-tabs";
+const CUSTOM_STATUS_KEY = "cougar-custom-statuses";
 
 // Sheet-tab-name → STATE-array-key lookup. The autoSync coalesce path uses
 // this when flushing a queued replace push: by the time the flush runs the
@@ -49,6 +50,22 @@ function loadDirty() {
 }
 function saveDirty() {
   localStorage.setItem(DIRTY_KEY, JSON.stringify([...(STATE.dirty || [])]));
+}
+
+// User-created medical statuses, persisted per-device. Shape:
+//   [{ name: "Excuse Finger", participates: true }]
+// `participates` = recruit normally still does the conduct despite this status
+// (drives the wizard's "not participating" default). Custom statuses are
+// always in-camp/restricted and never get +1/+2 ghost tags. Lives in its own
+// localStorage key so a data-cache reset doesn't wipe the user's status list.
+function loadCustomStatuses() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(CUSTOM_STATUS_KEY) || "[]");
+    return Array.isArray(arr) ? arr.filter(s => s && s.name) : [];
+  } catch { return []; }
+}
+function saveCustomStatuses() {
+  localStorage.setItem(CUSTOM_STATUS_KEY, JSON.stringify(STATE.customStatuses || []));
 }
 
 // Reads the persisted "who got a fitness report and when" map.
@@ -131,6 +148,9 @@ const STATE = {
   // never attempted). Drives the sidebar "X tabs need retry" warning and
   // the on-launch dirty-restore prompt.
   dirty: loadDirty(),
+  // User-created medical statuses (see loadCustomStatuses). Reusable in the
+  // Report Sick form's status dropdown alongside the built-in vocabulary.
+  customStatuses: loadCustomStatuses(),
   charts: {}
 };
 

@@ -145,6 +145,15 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  // ── Telegram webhook branch ──────────────────────────
+  // Telegram posts its update JSON here. Apps Script can't read request
+  // headers, so the shared secret rides in the `tgsecret` query param that
+  // setTelegramWebhook() bakes into the webhook URL. Everything else falls
+  // through to the existing frontend routing untouched.
+  if (e && e.parameter && e.parameter.tgsecret !== undefined) {
+    return handleTelegramWebhook(e);
+  }
+
   var output;
   try {
     var body = JSON.parse(e.postData.contents);
@@ -854,4 +863,856 @@ function deleteRow(tabName, rowIndex) {
     rowDeleted: rowIndex,
     timestamp: new Date().toISOString()
   };
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * TELEGRAM REPORT-SICK (RSO) BOT
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * A serverless Telegram bot that guides a recruit through reporting sick
+ * the right way and logs it straight into the existing Sheet (Medical /
+ * ReportSick) so it shows up in the dashboard + parade states, then pings
+ * the section commander in a commanders' group.
+ *
+ * ONE-TIME SETUP (run from the Apps Script editor, in order):
+ *   1. setupBotTabs()                       — creates TgUsers / ReportSick / Config tabs
+ *   2. setTelegramSecrets("<bot-token>", "<any-random-secret>")
+ *   3. Deploy the web app (same deployment / new version)
+ *   4. setTelegramWebhook()                 — registers the webhook
+ *   5. getTelegramWebhookInfo()             — confirm "ok":true, no last_error
+ *   6. Add the bot to the commanders' group, type /here in that group,
+ *      copy the printed chat id into Config!botGroupChatId.
+ *
+ * Config tab (single data row, edited by the duty COS):
+ *   botGroupChatId | nextBookInDate | nextBookInTime | outOfCamp | cutoffHours | rsoFormUrl
+ *   e.g.  -1002345 | 12 Jul 2026    | 2200           | TRUE      | 4           | https://form.gov.sg/...
+ */
+
+var TG_PROCEDURE =
+  "📋 Report-Sick (RSO) Procedure\n\n" +
+  "BEFORE seeing a doctor:\n" +
+  "• Inform your Section Commander.\n" +
+  "• Tell me the reason + which clinic (this bot logs it + pings your SC).\n\n" +
+  "OUT OF CAMP: your status/MC must be SUBMITTED by the cut-off = 4 hours before book-in. " +
+  "That means you must report sick, see the doctor, AND send your status here before that time — " +
+  "so start early; don't wait. While on MC: rest at home the whole duration, no overseas/strenuous activity, " +
+  "only leave home for food/meds/doctor.\n\n" +
+  "IN CAMP: inform your duty commander + sign the Report-Sick book at the COS office, then use this bot.\n\n" +
+  "AFTER the doctor: come back and tap “Submit MC”, choose your status + days, and upload a photo of the MC slip. " +
+  "This must be in by the cut-off (4h before book-in).";
+
+// ─── Telegram transport ────────────────────────────────
+
+function tgProp(k) { return PropertiesService.getScriptProperties().getProperty(k); }
+
+function tgApi(method, payload) {
+  var token = tgProp("TG_BOT_TOKEN");
+  if (!token) { Logger.log("Telegram: TG_BOT_TOKEN not set"); return null; }
+  try {
+    var res = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/" + method, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    return JSON.parse(res.getContentText());
+  } catch (e) {
+    Logger.log("Telegram api " + method + " error: " + e);
+    return null;
+  }
+}
+
+function tgSend(chatId, text, markup, entities) {
+  var p = { chat_id: chatId, text: text, disable_web_page_preview: true };
+  if (markup) p.reply_markup = markup;
+  if (entities && entities.length) p.entities = entities;
+  return tgApi("sendMessage", p);
+}
+
+function tgAnswer(callbackId, text) {
+  tgApi("answerCallbackQuery", { callback_query_id: callbackId, text: text || "" });
+}
+
+function kb(rows) { return { inline_keyboard: rows }; }
+function btn(text, data) { return { text: text, callback_data: data }; }
+
+// Removes the inline keyboard from a message once a button has been used, so
+// it can't be tapped again (defence against double-taps during slow processing).
+function tgStripKeyboard(cb) {
+  if (cb && cb.message) {
+    tgApi("editMessageReplyMarkup", {
+      chat_id: cb.message.chat.id,
+      message_id: cb.message.message_id,
+      reply_markup: { inline_keyboard: [] }
+    });
+  }
+}
+
+// Downloads a Telegram photo and saves it to a Drive folder; returns the file URL.
+function tgSavePhoto(fileId, name) {
+  var token = tgProp("TG_BOT_TOKEN");
+  var info = tgApi("getFile", { file_id: fileId });
+  if (!info || !info.ok) return "";
+  try {
+    var path = info.result.file_path;
+    var blob = UrlFetchApp.fetch("https://api.telegram.org/file/bot" + token + "/" + path,
+      { muteHttpExceptions: true }).getBlob();
+    blob.setName(name || "MC.jpg");
+    var folder = tgMcFolder();
+    var file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getUrl();
+  } catch (e) {
+    Logger.log("tgSavePhoto error: " + e);
+    return "";
+  }
+}
+
+function tgMcFolder() {
+  var id = tgProp("TG_MC_FOLDER_ID");
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* recreate below */ } }
+  var folder = DriveApp.createFolder("Cougar MC Submissions");
+  PropertiesService.getScriptProperties().setProperty("TG_MC_FOLDER_ID", folder.getId());
+  return folder;
+}
+
+// ─── Setup helpers (run from the editor) ───────────────
+
+function setTelegramSecrets(token, secret) {
+  var p = PropertiesService.getScriptProperties();
+  if (token) p.setProperty("TG_BOT_TOKEN", token);
+  if (secret) p.setProperty("TG_WEBHOOK_SECRET", secret);
+  Logger.log("Stored. token length " + (token ? token.length : "unchanged") + ", secret " + (secret ? "set" : "unchanged"));
+}
+
+function setTelegramWebhook() {
+  var token = tgProp("TG_BOT_TOKEN"), secret = tgProp("TG_WEBHOOK_SECRET");
+  if (!token || !secret) { Logger.log("Run setTelegramSecrets(token, secret) first."); return; }
+  var url = ScriptApp.getService().getUrl();
+  if (!url) { Logger.log("Deploy as a web app first, then re-run."); return; }
+  // getUrl() often returns the editor-only /dev endpoint, which Telegram can't
+  // reach (it requires the developer to be logged in). The public webhook must
+  // hit the deployed /exec URL. If you ever need to override, paste your
+  // Manage-deployments /exec URL into TG_EXEC_URL via setTelegramExecUrl().
+  var override = tgProp("TG_EXEC_URL");
+  if (override) url = override;
+  else url = url.replace(/\/dev$/, "/exec");
+  var hookUrl = url + (url.indexOf("?") === -1 ? "?" : "&") + "tgsecret=" + encodeURIComponent(secret);
+  var res = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/setWebhook", {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ url: hookUrl, secret_token: secret, allowed_updates: ["message", "callback_query"], drop_pending_updates: true }),
+    muteHttpExceptions: true
+  });
+  Logger.log("setWebhook → " + res.getContentText());
+}
+
+// Pin the public /exec URL the webhook should use (copy from Deploy →
+// Manage deployments → Web app URL — it ends in /exec). Run once, then
+// re-run setTelegramWebhook().
+function setTelegramExecUrl(execUrl) {
+  PropertiesService.getScriptProperties().setProperty("TG_EXEC_URL", execUrl);
+  Logger.log("Stored exec URL: " + execUrl);
+}
+
+function getTelegramWebhookInfo() {
+  var token = tgProp("TG_BOT_TOKEN");
+  if (!token) { Logger.log("No token."); return "(no token)"; }
+  var txt = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/getWebhookInfo", { muteHttpExceptions: true }).getContentText();
+  Logger.log(txt);
+  return txt;
+}
+
+function deleteTelegramWebhook() {
+  var token = tgProp("TG_BOT_TOKEN");
+  if (!token) { Logger.log("No token."); return; }
+  Logger.log(UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/deleteWebhook?drop_pending_updates=true", { muteHttpExceptions: true }).getContentText());
+}
+
+// ─── POLLING MODE (recommended — avoids the Apps Script 302 webhook issue) ──
+//
+// Apps Script web apps answer with a 302 redirect, which Telegram rejects
+// ("Wrong response 302") and then retry-storms. Polling with getUpdates has
+// none of that. startTelegramPolling() deletes the webhook and installs a
+// 1-minute trigger that runs tgPoll(); tgPoll long-polls for up to ~5 min so
+// replies are effectively real-time, and a script lock keeps only one poller
+// alive at a time.
+
+function startTelegramPolling() {
+  deleteTelegramWebhook();   // getUpdates 409s if a webhook is still set
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "tgPoll") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("tgPoll").timeBased().everyMinutes(1).create();
+  Logger.log("Polling started: webhook removed + 1-min trigger installed. Now run tgPoll() once to begin immediately.");
+}
+
+function stopTelegramPolling() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "tgPoll") ScriptApp.deleteTrigger(t);
+  });
+  Logger.log("Polling stopped (tgPoll triggers removed).");
+}
+
+// Run this to see whether polling is currently ON. Check View → Logs after running.
+function tgPollingStatus() {
+  var n = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "tgPoll") n++;
+  });
+  var offset = PropertiesService.getScriptProperties().getProperty("TG_OFFSET");
+  Logger.log("Polling is " + (n > 0 ? "ON ✅" : "OFF ❌") + " (" + n + " tgPoll trigger(s) installed).");
+  Logger.log("TG_OFFSET (last acked update + 1): " + (offset || "(none yet)"));
+  Logger.log("Webhook (the \"url\" field should be EMPTY when polling): " + getTelegramWebhookInfo());
+  return n > 0;
+}
+
+function tgPoll() {
+  var token = tgProp("TG_BOT_TOKEN");
+  if (!token) return;
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(500)) return;   // another poller is already running
+  try {
+    var start = Date.now();
+    while (Date.now() - start < 5 * 60 * 1000) {     // stay under the 6-min cap
+      var offset = Number(PropertiesService.getScriptProperties().getProperty("TG_OFFSET") || 0);
+      var url = "https://api.telegram.org/bot" + token + "/getUpdates?timeout=50" +
+        "&allowed_updates=" + encodeURIComponent('["message","callback_query"]') +
+        (offset ? "&offset=" + offset : "");
+      var res, data;
+      try { res = UrlFetchApp.fetch(url, { muteHttpExceptions: true }); data = JSON.parse(res.getContentText()); }
+      catch (e) { Utilities.sleep(1500); continue; }
+      if (!data || !data.ok) { Utilities.sleep(1500); continue; }
+      var updates = data.result || [];
+      for (var i = 0; i < updates.length; i++) {
+        var u = updates[i];
+        try { handleTelegramUpdate(u); }
+        catch (err) { Logger.log("tgPoll handle error: " + err + (err && err.stack ? "\n" + err.stack : "")); }
+        // Advancing the offset past this update_id acks it server-side, so
+        // Telegram never resends it — no dedupe needed, no 302.
+        PropertiesService.getScriptProperties().setProperty("TG_OFFSET", String(u.update_id + 1));
+      }
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Diagnostic / reset: clears the dedupe marker + all in-progress conversation
+// state. Run from the editor if the bot gets wedged. Also logs the current
+// dedupe marker so you can see what it thinks the last update_id was.
+function tgResetBot() {
+  var props = PropertiesService.getScriptProperties();
+  Logger.log("TG_LAST_UPDATE was: " + props.getProperty("TG_LAST_UPDATE"));
+  props.deleteProperty("TG_LAST_UPDATE");
+  var all = props.getProperties();
+  var cleared = 0;
+  for (var k in all) { if (k.indexOf("tg:state:") === 0) { props.deleteProperty(k); cleared++; } }
+  Logger.log("Reset done. Cleared dedupe marker + " + cleared + " conversation state(s).");
+}
+
+function setupBotTabs() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  function ensure(name, headers, seed) {
+    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    if (sh.getLastRow() === 0) {
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
+      sh.setFrozenRows(1);
+      if (seed) sh.getRange(2, 1, 1, headers.length).setValues([headers.map(function (h) {
+        return seed[h] !== undefined ? seed[h] : "";
+      })]);
+    }
+  }
+  ensure("TgUsers", ["id", "chatId", "userId", "username", "d4", "name", "role", "sectionsOwned", "registeredAt"]);
+  ensure("ReportSick", ["id", "d4", "name", "plt", "sect", "context", "reason", "clinic", "reportedAt", "cutoffAt", "bookInAt", "status", "startDate", "endDate", "mcUrl", "state", "notifiedSC"]);
+  ensure("Config", ["botGroupChatId", "nextBookInDate", "nextBookInTime", "outOfCamp", "cutoffHours", "rsoFormUrl"], { cutoffHours: 4, outOfCamp: "FALSE" });
+  Logger.log("Bot tabs ready: TgUsers, ReportSick, Config");
+}
+
+// ─── Small utilities ───────────────────────────────────
+
+function tgPadD4(v) {
+  var s = String(v == null ? "" : v).trim().toUpperCase();
+  if (s.charAt(0) === "C") s = s.slice(1);
+  s = s.replace(/[^0-9]/g, "");
+  while (s.length > 0 && s.length < 4) s = "0" + s;
+  return s;
+}
+
+function tgTruthy(v) {
+  if (v === true) return true;
+  var s = String(v).trim().toLowerCase();
+  return s === "true" || s === "yes" || s === "1" || s === "y";
+}
+
+function tgNorm(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim(); }
+
+function tgNameMatches(rosterName, typed) {
+  var a = tgNorm(rosterName), b = tgNorm(typed);
+  if (!a || !b) return false;
+  if (a === b || a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return true;
+  var ta = a.split(" "), tb = b.split(" "), overlap = 0;
+  ta.forEach(function (t) { if (t.length >= 3 && tb.indexOf(t) !== -1) overlap++; });
+  return overlap >= 2;
+}
+
+function tgAddDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+function tgDisplayDate(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), "dd MMM yyyy"); }
+function tgHHMM(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), "HHmm") + "hrs"; }
+function tgDateTimeLabel(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), "EEE dd MMM, HHmm") + "hrs"; }
+
+function tgParseDisplayDateTime(dateStr, timeStr) {
+  if (!dateStr) return null;
+  var months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  var parts = String(dateStr).trim().split(/\s+/);   // "12 Jul 2026"
+  if (parts.length < 3) return null;
+  var day = parseInt(parts[0], 10);
+  var mon = months[parts[1].slice(0, 3).toLowerCase()];
+  var year = parseInt(parts[2], 10);
+  if (isNaN(day) || mon == null || isNaN(year)) return null;
+  var digits = String(timeStr == null ? "0000" : timeStr).replace(/[^0-9]/g, "");
+  if (digits.length === 3) digits = "0" + digits;
+  if (digits.length < 4) digits = "0000";
+  return new Date(year, mon, day, parseInt(digits.slice(0, 2), 10), parseInt(digits.slice(2, 4), 10), 0);
+}
+
+// ─── Config + cut-off ──────────────────────────────────
+
+function tgReadConfig() {
+  var rows = readTab("Config");
+  if (rows.error || !rows.length) return {};
+  return rows[0];
+}
+
+function tgComputeCutoff(cfg) {
+  var bookIn = tgParseDisplayDateTime(cfg.nextBookInDate, cfg.nextBookInTime);
+  var hours = parseFloat(cfg.cutoffHours) || 4;
+  var out = { outOfCamp: tgTruthy(cfg.outOfCamp), bookIn: bookIn, cutoff: null, tooLate: false, hours: hours };
+  if (bookIn) {
+    out.cutoff = new Date(bookIn.getTime() - hours * 3600 * 1000);
+    out.tooLate = new Date() > out.cutoff;
+  }
+  return out;
+}
+
+// ─── Identity ──────────────────────────────────────────
+
+function tgFindUser(chatId) {
+  var rows = readTab("TgUsers");
+  if (rows.error) return null;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].id) === String(chatId) || String(rows[i].chatId) === String(chatId)) {
+      var u = rows[i];
+      u.d4 = tgPadD4(u.d4);
+      u.plt = u.d4.charAt(0);
+      u.sect = u.d4.charAt(1);
+      return u;
+    }
+  }
+  return null;
+}
+
+function tgUpsertUser(u) { return upsertRow("TgUsers", u); }
+
+// Returns the TgUsers row that already claims this 4D on a DIFFERENT chat, else null.
+// This is what stops anyone from registering as someone they aren't: a 4D can only be
+// linked to one Telegram account, and a second account can't silently take it over.
+function tg4dClaimedByOther(d4, chatId) {
+  var rows = readTab("TgUsers");
+  if (!rows || rows.error) return null;
+  for (var i = 0; i < rows.length; i++) {
+    if (tgPadD4(rows[i].d4) === d4 && String(rows[i].id) !== String(chatId)) return rows[i];
+  }
+  return null;
+}
+
+// Finalise a registration the recruit has explicitly confirmed is them.
+function tgConfirmRegistration(chatId) {
+  var state = tgGetState(chatId);
+  var d = state && state.draft;
+  if (!d || state.step !== "reg_confirm") { tgStartRegistration(chatId); return; }
+
+  var other = tg4dClaimedByOther(d.d4, chatId);
+  if (other) {
+    tgClearState(chatId);
+    tgSend(chatId, "⚠️ 4D " + d.d4 + " is already linked to another Telegram account" +
+      (other.name ? " (" + other.name + ")" : "") + ".\n\nIf this is genuinely you, ask your COS/SC to remove the old link first — this is how we stop anyone registering as someone they're not. Then /start again.");
+    return;
+  }
+
+  var u = {
+    id: chatId, chatId: chatId, userId: d.userId || "", username: d.username || "",
+    d4: d.d4, name: d.name, role: d.role, rank: d.rank || "",
+    sectionsOwned: "", registeredAt: new Date().toISOString()
+  };
+  tgUpsertUser(u);
+  if (d.role === "Commander") {
+    tgSetState(chatId, { step: "reg_sections" });
+    tgSend(chatId, "You're a commander ✅. Which section(s) do you command? e.g. P1S3 (comma-separate for multiple).");
+  } else {
+    tgClearState(chatId);
+    tgSendMenu(chatId, "✅ Registered: REC " + d.name + " (C" + d.d4 + "), Platoon " + d.d4.charAt(0) + " Section " + d.d4.charAt(1) + ".\nWhenever you feel unwell, tap below or type /reportsick.");
+  }
+}
+
+// Restart registration for this chat (frees its own link first; can't claim another's 4D).
+function tgDoReRegister(chatId) {
+  try { deleteRowById("TgUsers", chatId); } catch (e) {}
+  tgClearState(chatId);
+  tgStartRegistration(chatId);
+}
+
+function tgRosterLookup(d4) {
+  var rows = readTab("Roster");
+  if (rows.error) return null;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var rid = tgPadD4(r["4d"] != null && r["4d"] !== "" ? r["4d"] : r.id);
+    if (rid === d4) {
+      return {
+        name: String(r.name || "").trim(),
+        role: String(r.role || "Recruit").trim() || "Recruit",
+        rank: String(r.rank || "").trim()
+      };
+    }
+  }
+  return null;
+}
+
+// Returns ALL commanders who own this section (a section can have more than one).
+function tgFindSectionCmds(plt, sect) {
+  var key = ("P" + plt + "S" + sect).toUpperCase();
+  var out = [];
+  var rows = readTab("TgUsers");
+  if (!rows || rows.error) return out;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (String(r.role) === "Commander" && r.sectionsOwned) {
+      var owned = String(r.sectionsOwned).toUpperCase().split(/[,\s]+/);
+      if (owned.indexOf(key) !== -1) out.push(r);
+    }
+  }
+  return out;
+}
+
+function tgRN(user) {
+  if (user.role === "Commander") return (user.rank ? user.rank + " " : "") + user.name;
+  return "REC " + user.name + " (C" + tgPadD4(user.d4) + ")";
+}
+
+// ─── Group notify (with @mention of the SC) ────────────
+
+// Posts to the commanders' group. If photoFileId is given, the message is sent
+// as that photo with the text as its caption (so the MC image shows inline
+// instead of a Drive link). `scs` may be a single commander or an array — every
+// one is @mentioned via a text_mention entity (a section can have multiple SCs).
+function tgGroupNotify(text, scs, photoFileId) {
+  var cfg = tgReadConfig();
+  var gid = cfg.botGroupChatId;
+  if (!gid) return;
+  if (scs && !Array.isArray(scs)) scs = [scs];
+  scs = (scs || []).filter(Boolean);
+  var full = text + "\n", entities = [];
+  if (scs.length) {
+    full += "SC: ";
+    for (var i = 0; i < scs.length; i++) {
+      var sc = scs[i];
+      if (i > 0) full += ", ";
+      if (sc.userId) {
+        var offset = full.length;        // UTF-16 code units — what Telegram expects
+        var nm = sc.name || "SC";
+        full += nm;
+        entities.push({ type: "text_mention", offset: offset, length: nm.length, user: { id: Number(sc.userId) } });
+      } else if (sc.username) {
+        full += "@" + String(sc.username).replace(/^@/, "");
+      } else {
+        full += (sc.name || "SC") + " (not on bot)";
+      }
+    }
+    full += "  ← please acknowledge";
+  } else {
+    full += "(section commander not registered — please acknowledge)";
+  }
+  if (photoFileId) {
+    var p = { chat_id: gid, photo: photoFileId, caption: full };
+    if (entities.length) p.caption_entities = entities;
+    var r = tgApi("sendPhoto", p);
+    if (r && r.ok) return;
+    // Photo send failed (e.g. file_id expired) — fall back to a text message.
+  }
+  tgSend(gid, full, null, entities);
+}
+
+// ─── Conversation state (per chat, in ScriptProperties) ─
+
+function tgStateKey(chatId) { return "tg:state:" + chatId; }
+function tgGetState(chatId) { var s = tgProp(tgStateKey(chatId)); if (!s) return {}; try { return JSON.parse(s); } catch (e) { return {}; } }
+function tgSetState(chatId, obj) { PropertiesService.getScriptProperties().setProperty(tgStateKey(chatId), JSON.stringify(obj)); }
+function tgClearState(chatId) { PropertiesService.getScriptProperties().deleteProperty(tgStateKey(chatId)); }
+
+// ─── Webhook entry + dispatch ──────────────────────────
+
+function handleTelegramWebhook(e) {
+  try {
+    var secret = tgProp("TG_WEBHOOK_SECRET");
+    if (!secret || e.parameter.tgsecret !== secret) return ContentService.createTextOutput("");
+    var update = JSON.parse(e.postData.contents);
+
+    // Telegram delivers AT LEAST ONCE — because Apps Script answers via a 302
+    // redirect, Telegram sometimes resends the same update, which would replay
+    // the same reply (e.g. the welcome message). Dedupe by update_id under a
+    // script lock so each update is processed exactly once.
+    var lock = LockService.getScriptLock();
+    try { lock.waitLock(20000); } catch (le) { return ContentService.createTextOutput(""); }
+    try {
+      var uid = update.update_id;
+      var last = Number(tgProp("TG_LAST_UPDATE") || 0);
+      if (uid == null || uid > last) {
+        if (uid != null) PropertiesService.getScriptProperties().setProperty("TG_LAST_UPDATE", String(uid));
+        handleTelegramUpdate(update);
+      }
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    Logger.log("Telegram webhook error: " + err + (err && err.stack ? "\n" + err.stack : ""));
+  }
+  return ContentService.createTextOutput("");   // always 200 so Telegram doesn't retry-storm
+}
+
+function handleTelegramUpdate(update) {
+  if (update.callback_query) { tgHandleCallback(update.callback_query); return; }
+  if (update.message) { tgHandleMessage(update.message); return; }
+}
+
+function tgHandleMessage(msg) {
+  var chatId = msg.chat.id;
+
+  // Group/supergroup: only respond to /here (so the COS can grab the chat id).
+  if (msg.chat.type !== "private") {
+    if ((msg.text || "").indexOf("/here") === 0) {
+      tgSend(chatId, "This chat's ID: " + chatId + "\nPaste it into the Config tab → botGroupChatId.");
+    }
+    return;
+  }
+
+  var text = (msg.text || "").trim();
+  var user = tgFindUser(chatId);
+  var state = tgGetState(chatId);
+
+  // Global commands (work in any state).
+  if (text === "/cancel") { tgClearState(chatId); tgSendMenu(chatId, "Cancelled. What would you like to do?"); return; }
+  if (text === "/start") {
+    if (user) tgSendMenu(chatId, "Welcome back, " + (user.role === "Commander" ? user.name : ("REC " + user.name)) + ".");
+    else tgStartRegistration(chatId);
+    return;
+  }
+  if (text === "/help" || text === "/procedure") { tgSend(chatId, TG_PROCEDURE); return; }
+  if (text === "/whoami") {
+    if (!user) { tgSend(chatId, "You're not registered yet. Send /start."); return; }
+    var wd4 = tgPadD4(user.d4);
+    tgSend(chatId, "You're registered as " + tgRN(user) +
+      (user.role === "Commander" ? "" : " · Platoon " + wd4.charAt(0) + " Section " + wd4.charAt(1)) + ".",
+      kb([[btn("🔄 Not me — re-register", "reg:again")]]));
+    return;
+  }
+  if (text === "/register") { tgDoReRegister(chatId); return; }
+  if (text === "/reportsick" || text === "/report") {
+    if (!user) { tgSend(chatId, "Please /start to register first."); return; }
+    tgBeginReportSick(chatId, user);
+    return;
+  }
+
+  // Registration flow (user not yet linked).
+  if (!user) {
+    if (state.step === "reg_d4") {
+      var d4 = tgPadD4(text);
+      if (d4.length !== 4) { tgSend(chatId, "That doesn't look like a 4D number. Send 4 digits, e.g. 1311."); return; }
+      state.d4 = d4; state.step = "reg_name"; tgSetState(chatId, state);
+      tgSend(chatId, "And your full name as in the system?");
+      return;
+    }
+    if (state.step === "reg_name") {
+      var match = tgRosterLookup(state.d4);
+      if (!match) { tgClearState(chatId); tgSend(chatId, "❌ 4D " + state.d4 + " isn't in the system. Check with your SC, then /start again."); return; }
+      if (!tgNameMatches(match.name, text)) {
+        state.tries = (state.tries || 0) + 1;
+        if (state.tries >= 3) { tgClearState(chatId); tgSend(chatId, "❌ Name didn't match after 3 tries. Please check with your SC, then /start again."); }
+        else { tgSetState(chatId, state); tgSend(chatId, "❌ That name doesn't match 4D " + state.d4 + ". Type your full name as in your 11B."); }
+        return;
+      }
+      var role = match.role || "Recruit";
+      // Confirm before saving, so a wrong 4D/name is caught up front.
+      state.step = "reg_confirm";
+      state.draft = {
+        d4: state.d4, name: match.name, role: role, rank: match.rank || "",
+        userId: (msg.from && msg.from.id) || "", username: (msg.from && msg.from.username) || ""
+      };
+      tgSetState(chatId, state);
+      var who = role === "Commander"
+        ? ((match.rank ? match.rank + " " : "") + match.name)
+        : ("REC " + match.name + " (C" + state.d4 + ")");
+      tgSend(chatId, "Please confirm — you're registering as:\n\n" + who +
+        "\nPlatoon " + state.d4.charAt(0) + " Section " + state.d4.charAt(1) + "\n\nIs this you?",
+        kb([[btn("✅ Yes, that's me", "reg:confirm")], [btn("🔄 No, re-enter", "reg:redo")]]));
+      return;
+    }
+    if (state.step === "reg_confirm") { tgSend(chatId, "Please tap ✅ Yes or 🔄 No above to finish registering."); return; }
+    tgSend(chatId, "Please /start to register first.");
+    return;
+  }
+
+  // MC photo upload.
+  if (state.step === "mc_photo") {
+    if (msg.photo && msg.photo.length) { tgPhotoReceived(chatId, state, msg.photo[msg.photo.length - 1].file_id); return; }
+    if (msg.document && String(msg.document.mime_type || "").indexOf("image") === 0) { tgPhotoReceived(chatId, state, msg.document.file_id); return; }
+    tgSend(chatId, "Please upload a PHOTO of your MC / status slip 📷 (or /cancel).");
+    return;
+  }
+
+  // Stateful free-text steps.
+  switch (state.step) {
+    case "reg_sections": {
+      var owned = text.toUpperCase().replace(/[^0-9PS,\s]/g, "").replace(/\s+/g, "").trim();
+      var cu = tgFindUser(chatId); cu.sectionsOwned = owned; tgUpsertUser(cu); tgClearState(chatId);
+      tgSendMenu(chatId, "✅ Registered as commander for: " + owned + "\nYou'll be pinged in the group when your recruits report sick.");
+      return;
+    }
+    case "rs_reason":
+      state.reason = text; tgSetState(chatId, state);
+      if (state.context === "OutOfCamp") { state.step = "rs_clinic"; tgSetState(chatId, state); tgSend(chatId, "Which clinic / polyclinic / hospital will you go to?", kb([[btn("✖️ Cancel report sick", "rs:cancel")]])); }
+      else tgAskSC(chatId, state, user);
+      return;
+    case "rs_clinic":
+      state.clinic = text; tgSetState(chatId, state); tgAskSC(chatId, state, user);
+      return;
+    default:
+      tgSendMenu(chatId, "Tap an option, or type /reportsick.");
+      return;
+  }
+}
+
+function tgHandleCallback(cb) {
+  tgAnswer(cb.id);
+  if (!cb.message || cb.message.chat.type !== "private") return;
+  var chatId = cb.message.chat.id;
+  var data = cb.data || "";
+  var user = tgFindUser(chatId);
+  var state = tgGetState(chatId);
+
+  // Registration callbacks — must work before a TgUsers row exists.
+  if (data === "reg:confirm") { tgStripKeyboard(cb); tgConfirmRegistration(chatId); return; }
+  if (data === "reg:redo" || data === "reg:again") { tgStripKeyboard(cb); tgDoReRegister(chatId); return; }
+
+  if (!user) { tgSend(chatId, "Please /start to register first."); return; }
+
+  var step = state.step;
+
+  if (data === "info") { tgSend(chatId, TG_PROCEDURE); return; }
+  if (data === "rs:begin") { tgBeginReportSick(chatId, user); return; }
+  if (data === "rs:cancel") { tgClearState(chatId); tgStripKeyboard(cb); tgSendMenu(chatId, "Cancelled. What would you like to do?"); return; }
+
+  if (data === "rs:start" || data === "incamp:continue") {
+    if (step !== "rs_confirm") return;                       // already past this step — ignore repeat taps
+    tgStripKeyboard(cb);
+    tgAskReason(chatId, state);
+    return;
+  }
+
+  if (data === "toolate:tellsc") {
+    if (step !== "toolate") return;                          // one-shot
+    tgSetState(chatId, { step: "toolate_done" });            // claim immediately so a repeat tap is a no-op
+    tgStripKeyboard(cb);
+    var sc0 = tgFindSectionCmds(user.plt, user.sect);
+    tgGroupNotify("⚠️ FEELING UNWELL (past report-sick cut-off) — " + tgRN(user) + " · P" + user.plt + " S" + user.sect + "\nWill report sick in camp at next book-in.", sc0);
+    tgSend(chatId, "📨 Your SC has been notified. Book in as normal and report sick at first parade.");
+    tgClearState(chatId);
+    tgSendMenu(chatId, "What would you like to do?");
+    return;
+  }
+
+  if (data === "sc:informed") {
+    if (step !== "rs_sc") return;                            // already submitted — ignore repeat taps
+    state.step = "rs_finalizing"; tgSetState(chatId, state); // claim immediately
+    tgStripKeyboard(cb);
+    tgFinalizeRequest(chatId, user, state, true);            // SC is pinged regardless
+    return;
+  }
+
+  if (data === "rs:submitmc") {
+    if (step !== "post_request") return;   // only valid right after a finalized request — ignore stale taps
+    tgStripKeyboard(cb);
+    tgAskMCPhoto(chatId, state);
+    return;
+  }
+
+  if (data === "mc:nostatus") {
+    if (step !== "mc_photo") return;
+    tgStripKeyboard(cb);
+    tgCompleteNoStatus(chatId, state);
+    return;
+  }
+
+}
+
+// ─── Flows ─────────────────────────────────────────────
+
+function tgSendMenu(chatId, text) {
+  tgSend(chatId, text || "What would you like to do?", kb([[btn("📋 Report Sick", "rs:begin")], [btn("ℹ️ RSO Procedure", "info")]]));
+}
+
+function tgStartRegistration(chatId) {
+  tgSetState(chatId, { step: "reg_d4", tries: 0 });
+  tgSend(chatId, "👋 Welcome to the Cougar Report-Sick bot. This helps you report sick the right way and notifies your commander automatically.\n\nFirst, let's verify who you are. What's your 4D number? (e.g. 1311)");
+}
+
+function tgBeginReportSick(chatId, user) {
+  var cfg = tgReadConfig();
+  var cc = tgComputeCutoff(cfg);
+
+  if (cc.outOfCamp) {
+    if (cc.bookIn && cc.tooLate) {
+      tgSetState(chatId, { step: "toolate" });
+      tgSend(chatId,
+        "⚠️ It's now " + tgHHMM(new Date()) + ". Your status/MC had to be SUBMITTED by " + tgHHMM(cc.cutoff) +
+        " (" + cc.hours + "h before book-in at " + tgHHMM(cc.bookIn) + ") — and there's no longer enough time to see a doctor and submit it before then.\n\n" +
+        "❌ You can no longer report sick outside for this book-in.\n\n" +
+        "What to do instead:\n" +
+        "• Book in as normal.\n" +
+        "• Report sick IN CAMP at first parade — inform your duty commander on arrival.\n" +
+        "• Real emergency? Go to A&E now and message your SC immediately.",
+        kb([[btn("📨 Tell my SC I'm unwell", "toolate:tellsc")], [btn("ℹ️ RSO Procedure", "info")]]));
+      return;
+    }
+    var msg = "You're currently OUT OF CAMP (booked out).\n";
+    if (cc.bookIn) msg += "📅 Next book-in: " + tgDateTimeLabel(cc.bookIn) + "\n⏰ Your status/MC must be SUBMITTED by " + tgHHMM(cc.cutoff) + " (" + cc.hours + "h before book-in). See the doctor and send it here before then — start now, don't wait. ✅\n\n";
+    else msg += "⏰ Book-in time not set by COS yet — proceed, but confirm timings with your SC.\n\n";
+    msg += "Before you see a doctor, take note (GOM rules while on MC):\n" +
+      "• Rest at home for the FULL duration, including off-hours.\n" +
+      "• ❌ No overseas travel, no clubbing/drinking, no strenuous activity/sports.\n" +
+      "• You may leave home ONLY to buy takeaway, buy meds, or see a doctor — tell your commander.\n\n" +
+      "Ready to log your report-sick request?";
+    tgSetState(chatId, { step: "rs_confirm", context: "OutOfCamp" });
+    tgSend(chatId, msg, kb([[btn("✅ Yes, start", "rs:start")], [btn("Cancel", "rs:cancel")]]));
+  } else {
+    tgSetState(chatId, { step: "rs_confirm", context: "InCamp" });
+    tgSend(chatId,
+      "You're IN CAMP. To report sick here:\n" +
+      "1️⃣ Inform your duty commander now.\n" +
+      "2️⃣ Sign the Report-Sick book at the COS office.\n" +
+      "3️⃣ Complete this form so it's logged + your SC is pinged.",
+      kb([[btn("✅ Done 1 & 2, continue", "incamp:continue")], [btn("Cancel", "rs:cancel")]]));
+  }
+}
+
+function tgAskReason(chatId, state) {
+  state.step = "rs_reason"; tgSetState(chatId, state);
+  tgSend(chatId, "What's wrong? (short reason — this goes to your commander)",
+    kb([[btn("✖️ Cancel report sick", "rs:cancel")]]));
+}
+
+function tgAskSC(chatId, state, user) {
+  state.step = "rs_sc"; tgSetState(chatId, state);
+  var scs = tgFindSectionCmds(user.plt, user.sect);
+  var scName = scs.length ? scs.map(function (s) { return s.name; }).join(" / ") : "your Section Commander";
+  tgSend(chatId, "🛑 STOP. DO NOT report sick until you have personally messaged " + scName + " on WhatsApp.\n\n" +
+    "This is NOT optional. You MUST tell " + scName + " directly that you are reporting sick — BEFORE you go anywhere.\n\n" + 
+    "Only tap below AFTER you have actually sent that WhatsApp message:",
+    kb([[btn("✅ I have messaged my SC on WhatsApp", "sc:informed")], [btn("✖️ Cancel report sick", "rs:cancel")]]));
+}
+
+function tgFinalizeRequest(chatId, user, state, informed) {
+  var cfg = tgReadConfig();
+  var cc = tgComputeCutoff(cfg);
+  var now = new Date();
+  var rsId = Date.now();
+  var row = {
+    id: rsId, d4: user.d4, name: user.name, plt: user.plt, sect: user.sect,
+    context: state.context || "", reason: state.reason || "", clinic: state.clinic || "",
+    reportedAt: Utilities.formatDate(now, Session.getScriptTimeZone(), "dd MMM yyyy HHmm"),
+    cutoffAt: cc.cutoff ? tgHHMM(cc.cutoff) : "", bookInAt: cc.bookIn ? tgDateTimeLabel(cc.bookIn) : "",
+    status: "", startDate: "", endDate: "", mcUrl: "", state: "Requested",
+    notifiedSC: informed ? "informed" : "pinged"
+  };
+  upsertRow("ReportSick", row);
+
+  var sc = tgFindSectionCmds(user.plt, user.sect);
+  var gtext = "🤒 REPORT SICK — " + tgRN(user) + " · P" + user.plt + " S" + user.sect + "\n" +
+    "Context: " + (state.context === "InCamp" ? "In camp" : "Out of camp") + "\n" +
+    "Reason: " + (state.reason || "-") +
+    (state.clinic ? ("\nClinic: " + state.clinic) : "") + "\n" +
+    "Reported: " + row.reportedAt + (cc.cutoff ? (" · Cut-off " + tgHHMM(cc.cutoff)) : "") + "\n" +
+    "(recruit confirms he has messaged his SC on WhatsApp — please acknowledge)";
+  tgGroupNotify(gtext, sc);
+
+  state.step = "post_request"; state.rsId = rsId; tgSetState(chatId, state);
+  var ack = "📨 Logged" + (cfg.botGroupChatId ? " and your SC has been notified in the commanders' group." : ".") + "\n";
+  ack += state.context === "InCamp"
+    ? "Head to the Medical Centre. After you get your status, tap “Submit MC”."
+    : ("Now go see the doctor. AFTER you get your status, come back and tap “Submit MC”" + (cc.cutoff ? (" — your status/MC must be submitted by " + tgHHMM(cc.cutoff) + " (4h before book-in). Don't leave it to the last minute.") : "."));
+  tgSend(chatId, ack, kb([[btn("📄 Submit MC / status", "rs:submitmc")]]));
+}
+
+function tgAskMCPhoto(chatId, state) {
+  state.step = "mc_photo"; tgSetState(chatId, state);
+  tgSend(chatId, "Upload a clear PHOTO of your MC / status slip 📷\n\nYour commander will read the status and duration straight off the slip — no need to type them in.",
+    kb([[btn("🚫 No status given (nothing to upload)", "mc:nostatus")], [btn("✖️ Cancel", "rs:cancel")]]));
+}
+
+function tgPhotoReceived(chatId, state, fileId) {
+  var url = tgSavePhoto(fileId, "MC_" + (state && state.rsId ? state.rsId : Date.now()) + ".jpg");
+  tgCompleteMC(chatId, state, url, fileId);
+}
+
+function tgGetReportSickById(id) {
+  var rows = readTab("ReportSick");
+  if (rows.error) return null;
+  for (var i = 0; i < rows.length; i++) if (String(rows[i].id) === String(id)) return rows[i];
+  return null;
+}
+
+function tgCompleteMC(chatId, state, url, fileId) {
+  var user = tgFindUser(chatId);
+  var today = tgDisplayDate(new Date());
+
+  if (state.rsId) {
+    var rs = tgGetReportSickById(state.rsId);
+    if (rs) {
+      // status/startDate/endDate left blank — the COS keys them in from the MC image.
+      rs.mcUrl = url || ""; rs.state = "MC-Submitted";
+      upsertRow("ReportSick", rs);
+    }
+  }
+
+  // Append a Medical row so it flows into the dashboard + parade state. Status
+  // and dates are left BLANK for the COS to fill in from the MC image — recruits
+  // no longer self-declare their status.
+  appendRow("Medical", {
+    id: Date.now(), d4: user.d4, date: today,
+    reason: state.reason || "Reported sick", status: "",
+    startDate: "", endDate: ""
+  });
+
+  var sc = tgFindSectionCmds(user.plt, user.sect);
+  // Caption (no Drive link — the photo itself is shown in the group). The
+  // Drive copy is still kept in ReportSick.mcUrl for the records/dashboard.
+  tgGroupNotify(
+    "📄 MC SUBMITTED — " + tgRN(user) + " · P" + user.plt + " S" + user.sect + "\n" +
+    "Status + duration: read from the MC image below — please record it in the system.", sc, fileId);
+
+  tgSend(chatId, "✅ Received — your MC has been sent to your commanders. They'll record your status and duration from the slip.\nRemember to book in on time once your status ends.");
+  tgClearState(chatId);
+  tgSendMenu(chatId, "What would you like to do?");
+}
+
+function tgCompleteNoStatus(chatId, state) {
+  var user = tgFindUser(chatId);
+  if (state.rsId) {
+    var rs = tgGetReportSickById(state.rsId);
+    if (rs) { rs.status = "NIL"; rs.state = "NoStatus"; upsertRow("ReportSick", rs); }
+  }
+  var sc = tgFindSectionCmds(user.plt, user.sect);
+  tgGroupNotify("ℹ️ NO STATUS — " + tgRN(user) + " · P" + user.plt + " S" + user.sect + "\nMO saw him, no status given.", sc);
+  tgSend(chatId, "Noted — no status given, you're fit for normal duties. Remember to still book in on time. 💪");
+  tgClearState(chatId);
+  tgSendMenu(chatId, "What would you like to do?");
 }
