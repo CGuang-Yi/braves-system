@@ -1271,6 +1271,15 @@ function submitLeave() {
 
 const SEP = "----------------------------------------------------------------";
 
+// Statuses that have their own dedicated parade-state section (ATTC = MC/Warded,
+// REPORT SICK = Pending) or are cleared (NIL). MEDICAL STATUS is the catch-all
+// for every OTHER active restriction — LD, all Excuses, and any custom/one-off
+// status (e.g. "Excuse Jumping") that isn't in the canonical MED_STATUSES list.
+// Using an exclusion predicate instead of a hardcoded allowlist means a new or
+// custom status can never silently fall through the cracks of the report.
+const PARADE_SECTIONED_STATUSES = ["MC", "Warded", "Pending", "NIL"];
+const isMedicalStatusCatchAll = s => !!s && !PARADE_SECTIONED_STATUSES.includes(s);
+
 // "2026-05-20" → "200526" — battalion uses DDMMYY everywhere.
 function toDDMMYY(iso) {
   if (!iso) return "";
@@ -1341,9 +1350,14 @@ function toggleBorderline(d4, checked, type) {
   regenerateReport(type);
 }
 
-function buildMedicalSection(label, dateIso, statusList) {
+// statusFilter is either an allowlist array (status ∈ list) or a predicate
+// (status => boolean) — the latter lets MEDICAL STATUS act as a catch-all.
+function buildMedicalSection(label, dateIso, statusFilter) {
+  const matchStatus = typeof statusFilter === "function"
+    ? statusFilter
+    : s => statusFilter.includes(s);
   let matches = STATE.medical.filter(m =>
-    medStatusActive(m, dateIso) && statusList.includes(m.status)
+    medStatusActive(m, dateIso) && matchStatus(m.status)
   );
 
   // ATTC gets the PDS-confirmed borderline returnees folded in so they
@@ -1502,7 +1516,7 @@ function generateParadeStateText(type, dateIso, time) {
     buildStrengthBlock(dateIso),
     buildMedicalSection("ATTC", dateIso, ["MC", "Warded"]),
     buildMedicalSection("REPORT SICK", dateIso, ["Pending"]),
-    buildMedicalSection("MEDICAL STATUS", dateIso, ["LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"]),
+    buildMedicalSection("MEDICAL STATUS", dateIso, isMedicalStatusCatchAll),
     buildAppointmentSection(dateIso, time),
     buildOthersSection(dateIso)
   ];
@@ -1512,7 +1526,7 @@ function generateParadeStateText(type, dateIso, time) {
 function generateMedicalStatusText(dateIso, time) {
   const dateStr = toDDMMYY(dateIso);
   const heading = `${dateStr}(latest version as of ${dateStr} @${fmtHrs(time)})`;
-  const body = buildMedicalSection("MEDICAL STATUS", dateIso, ["LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"]);
+  const body = buildMedicalSection("MEDICAL STATUS", dateIso, isMedicalStatusCatchAll);
   return `${heading}\n\n${body}`;
 }
 

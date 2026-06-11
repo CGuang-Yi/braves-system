@@ -177,10 +177,40 @@ function renderDashboard(el) {
     options: { plugins: { legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } } } }
   });
 
+  // Participation trend — a smooth line whose color ENCODES participation
+  // health using the same thresholds as the attendance table: green ≥95%
+  // (healthy), amber ≥70% (watch), red <70% (problem). Each point is colored
+  // by its own rate; each segment takes the color of the rate it descends/rises
+  // INTO, so the eye is drawn to where participation drops into a bad conduct.
+  // Plot chronologically — oldest conduct on the left, newest on the right.
+  const partRows = [...STATE.attendance].sort((a, b) => {
+    const ai = displayDateToISO(a.date) || a.date || "";
+    const bi = displayDateToISO(b.date) || b.date || "";
+    if (ai !== bi) return ai < bi ? -1 : 1;
+    return (a.time || "") < (b.time || "") ? -1 : 1;
+  });
+  const partData = partRows.map(a => pct(a.participating, a.total));
+  const rateColorHex = r => r >= 95 ? "#3FB950" : r >= 70 ? "#D29922" : "#F85149";
+  const partColors = partData.map(rateColorHex);
   STATE.charts.participation = new Chart(document.getElementById("chart-participation"), {
-    type: "bar",
-    data: { labels: STATE.attendance.map(a => conductName(a.conductId).slice(0, 12)), datasets: [{ data: STATE.attendance.map(a => pct(a.participating, a.total)), backgroundColor: "#58A6FF44", borderColor: "#58A6FF", borderWidth: 1 }] },
-    options: { plugins: { legend: { display: false } }, scales: { y: { min: 80, max: 100, grid: { color: "#30363D" }, ticks: { color: "#8B949E" } }, x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 9 } } } } }
+    type: "line",
+    data: { labels: partRows.map(a => conductName(a.conductId).slice(0, 12)), datasets: [{
+      data: partData,
+      borderColor: "#8B949E",
+      borderWidth: 2,
+      tension: 0.35,
+      fill: false,
+      pointRadius: 4,
+      pointHoverRadius: 7,
+      pointBackgroundColor: partColors,
+      pointBorderColor: partColors,
+      // Color each segment by the rate it lands on (the later point), so a drop
+      // into a weak conduct turns the descending line red/amber.
+      segment: { borderColor: ctx => rateColorHex(partData[ctx.p1DataIndex]) }
+    }] },
+    // No fixed min/max — let the axis auto-scale around the data so dips below
+    // 80% are visible instead of being clipped off the bottom.
+    options: { plugins: { legend: { display: false } }, scales: { y: { grace: "10%", grid: { color: "#30363D" }, ticks: { color: "#8B949E" } }, x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 9 } } } } }
   });
 }
 

@@ -1478,14 +1478,30 @@ function tgHandleMessage(msg) {
       return;
     }
     case "rs_reason":
+      if (!text) { tgSend(chatId, "✍️ Please TYPE your reason as a text message below (e.g. “Fever and sore throat”), or tap ✖️ Cancel.", kb([[btn("✖️ Cancel report sick", "rs:cancel")]])); return; }
       state.reason = text; tgSetState(chatId, state);
-      if (state.context === "OutOfCamp") { state.step = "rs_clinic"; tgSetState(chatId, state); tgSend(chatId, "Which clinic / polyclinic / hospital will you go to?", kb([[btn("✖️ Cancel report sick", "rs:cancel")]])); }
+      if (state.context === "OutOfCamp") { state.step = "rs_clinic"; tgSetState(chatId, state); tgSend(chatId, "✍️ Which clinic / polyclinic / hospital will you go to? Type it below (e.g. “Healthway Medical, Yishun”).", kb([[btn("✖️ Cancel report sick", "rs:cancel")]])); }
       else tgAskSC(chatId, state, user);
       return;
     case "rs_clinic":
+      if (!text) { tgSend(chatId, "✍️ Please TYPE the clinic / hospital name as a text message below, or tap ✖️ Cancel.", kb([[btn("✖️ Cancel report sick", "rs:cancel")]])); return; }
       state.clinic = text; tgSetState(chatId, state); tgAskSC(chatId, state, user);
       return;
     default:
+      // User typed text during a button-only step — guide them back to the right
+      // action instead of capturing the text into the wrong field or dumping them out.
+      if (state.step === "rs_confirm")
+        return void tgSend(chatId, "👆 Please tap a button above to continue, or ✖️ Cancel.", kb([[btn("✖️ Cancel report sick", "rs:cancel")]]));
+      if (state.step === "rs_sc")
+        return void tgSend(chatId, "👆 Don't type it here. After you've actually WhatsApp'd your SC, tap “✅ I have messaged my SC on WhatsApp” above.", kb([[btn("✖️ Cancel report sick", "rs:cancel")]]));
+      if (state.step === "post_request")
+        return void tgSend(chatId, "👆 When you have your status, tap “📄 Submit MC / status” above.\nEven if the doctor gave you NO status, still tap it.", kb([[btn("📄 Submit MC / status", "rs:submitmc")]]));
+      if (state.step === "mc_photo")
+        return void tgSend(chatId, "📷 Please UPLOAD a photo of your MC / status slip — don't type it.\nNo status? Tap the button below.", kb([[btn("🚫 No status given (nothing to upload)", "mc:nostatus")], [btn("✖️ Cancel", "rs:cancel")]]));
+      if (state.step === "mc_saving")
+        return void tgSend(chatId, "⏳ Still saving your last MC — hang on a moment.");
+      if (state.step === "toolate")
+        return void tgSend(chatId, "👆 Please tap one of the options above.");
       tgSendMenu(chatId, "Tap an option, or type /reportsick.");
       return;
   }
@@ -1606,7 +1622,7 @@ function tgBeginReportSick(chatId, user) {
 
 function tgAskReason(chatId, state) {
   state.step = "rs_reason"; tgSetState(chatId, state);
-  tgSend(chatId, "What's wrong? (short reason — this goes to your commander)",
+  tgSend(chatId, "✍️ What's wrong? Type a short reason below (e.g. “Fever and sore throat”) — this goes to your commander.",
     kb([[btn("✖️ Cancel report sick", "rs:cancel")]]));
 }
 
@@ -1647,8 +1663,9 @@ function tgFinalizeRequest(chatId, user, state, informed) {
   state.step = "post_request"; state.rsId = rsId; tgSetState(chatId, state);
   var ack = "📨 Logged" + (cfg.botGroupChatId ? " and your SC has been notified in the commanders' group." : ".") + "\n";
   ack += state.context === "InCamp"
-    ? "Head to the Medical Centre. After you get your status, tap “Submit MC”."
-    : ("Now go see the doctor. AFTER you get your status, come back and tap “Submit MC”" + (cc.cutoff ? (" — your status/MC must be submitted by " + tgHHMM(cc.cutoff) + " (4h before book-in). Don't leave it to the last minute.") : "."));
+    ? "Head to the Medical Centre. After you've seen the MO, tap “Submit MC” below."
+    : ("Now go see the doctor. AFTER you've seen the MO, come back and tap “Submit MC” below" + (cc.cutoff ? (" — your status/MC must be submitted by " + tgHHMM(cc.cutoff) + " (4h before book-in). Don't leave it to the last minute.") : "."));
+  ack += "\n\n⚠️ Even if the doctor gives you NO status, you must STILL tap “Submit MC” — there's a “No status given” option on the next screen.";
   tgSend(chatId, ack, kb([[btn("📄 Submit MC / status", "rs:submitmc")]]));
 }
 
@@ -1659,7 +1676,13 @@ function tgAskMCPhoto(chatId, state) {
 }
 
 function tgPhotoReceived(chatId, state, fileId) {
-  var url = tgSavePhoto(fileId, "MC_" + (state && state.rsId ? state.rsId : Date.now()) + ".jpg");
+  // Claim the step immediately so a duplicate photo / retry can't double-process,
+  // and give instant feedback before the (slower) Drive save + group post.
+  state.step = "mc_saving"; tgSetState(chatId, state);
+  tgSend(chatId, "📷 Got your MC — saving and notifying your commanders…");
+  var url = "";
+  try { url = tgSavePhoto(fileId, "MC_" + (state && state.rsId ? state.rsId : Date.now()) + ".jpg"); }
+  catch (e) { Logger.log("tgPhotoReceived save error: " + e); }
   tgCompleteMC(chatId, state, url, fileId);
 }
 
@@ -1672,25 +1695,33 @@ function tgGetReportSickById(id) {
 
 function tgCompleteMC(chatId, state, url, fileId) {
   var user = tgFindUser(chatId);
+  if (!user) {
+    tgSend(chatId, "⚠️ I couldn't find your registration to log this. Your MC image: " + (url || "(not saved)") + "\nPlease /start to re-register, or tell your SC directly.");
+    tgClearState(chatId);
+    return;
+  }
   var today = tgDisplayDate(new Date());
 
-  if (state.rsId) {
-    var rs = tgGetReportSickById(state.rsId);
-    if (rs) {
-      // status/startDate/endDate left blank — the COS keys them in from the MC image.
-      rs.mcUrl = url || ""; rs.state = "MC-Submitted";
-      upsertRow("ReportSick", rs);
+  try {
+    if (state.rsId) {
+      var rs = tgGetReportSickById(state.rsId);
+      if (rs) {
+        // status/startDate/endDate left blank — the COS keys them in from the MC image.
+        rs.mcUrl = url || ""; rs.state = "MC-Submitted";
+        upsertRow("ReportSick", rs);
+      }
     }
+    // Append a Medical row so it flows into the dashboard + parade state. Status
+    // and dates are left BLANK for the COS to fill in from the MC image — recruits
+    // no longer self-declare their status.
+    appendRow("Medical", {
+      id: Date.now(), d4: user.d4, date: today,
+      reason: state.reason || "Reported sick", status: "",
+      startDate: "", endDate: ""
+    });
+  } catch (e) {
+    Logger.log("tgCompleteMC sheet error: " + e);
   }
-
-  // Append a Medical row so it flows into the dashboard + parade state. Status
-  // and dates are left BLANK for the COS to fill in from the MC image — recruits
-  // no longer self-declare their status.
-  appendRow("Medical", {
-    id: Date.now(), d4: user.d4, date: today,
-    reason: state.reason || "Reported sick", status: "",
-    startDate: "", endDate: ""
-  });
 
   var sc = tgFindSectionCmds(user.plt, user.sect);
   // Caption (no Drive link — the photo itself is shown in the group). The
@@ -1699,7 +1730,7 @@ function tgCompleteMC(chatId, state, url, fileId) {
     "📄 MC SUBMITTED — " + tgRN(user) + " · P" + user.plt + " S" + user.sect + "\n" +
     "Status + duration: read from the MC image below — please record it in the system.", sc, fileId);
 
-  tgSend(chatId, "✅ Received — your MC has been sent to your commanders. They'll record your status and duration from the slip.\nRemember to book in on time once your status ends.");
+  tgSend(chatId, "✅ Received — your MC has been sent to your commanders.\n Get the book in timing from your Commaders, and remember to book in on time once your status ends.");
   tgClearState(chatId);
   tgSendMenu(chatId, "What would you like to do?");
 }
