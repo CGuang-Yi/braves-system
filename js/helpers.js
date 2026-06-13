@@ -777,3 +777,239 @@ function getMSKRegionsForRecruit(d4) {
   if (result.length > 1) return result.filter(r => r !== "Other");
   return result;
 }
+
+// Check if a conduct should be excluded from Heat Acclimatisation calculation
+function isHAExcluded(conductId) {
+  const name = String(conductName(conductId) || "").toLowerCase();
+  return name.includes("ippt") || name.includes("sports & games") || name.includes("swim");
+}
+
+// Compute Heat Acclimatisation status and streak details for a recruit
+function computeHA(d4) {
+  // Get all qualifying sessions (PT sessions, excluding IPPT, Sports & Games, Swim)
+  const nonParticipationTypes = new Set(["PX", "RSI", "Fallout"]);
+  const sessions = [];
+  
+  for (const a of (STATE.attendance || [])) {
+    if (!a.conductId || isHAExcluded(a.conductId)) continue;
+    
+    // Check if recruit d4 was absent (PX, RSI, Fallout)
+    const isAbsent = (STATE.conductDetail || []).some(d => 
+      d.d4 === d4 &&
+      d.date === a.date &&
+      (d.time || "") === (a.time || "") &&
+      d.conductId === a.conductId &&
+      nonParticipationTypes.has(d.type)
+    );
+    
+    if (!isAbsent) {
+      const isoDate = displayDateToISO(a.date);
+      if (isoDate) {
+        sessions.push({
+          date: a.date,
+          isoDate: isoDate,
+          time: a.time || "",
+          conductId: a.conductId,
+          name: conductName(a.conductId)
+        });
+      }
+    }
+  }
+  
+  if (sessions.length === 0) {
+    return {
+      status: "Not Started",
+      periods: 0,
+      days: 0,
+      dates: [],
+      acclimatised: false,
+      history: []
+    };
+  }
+
+  // Sort chronologically (ascending)
+  sessions.sort((a, b) => {
+    if (a.isoDate !== b.isoDate) return a.isoDate.localeCompare(b.isoDate);
+    return a.time.localeCompare(b.time);
+  });
+
+  const firstDate = sessions[0].isoDate;
+  const today = todayISO();
+  const lastDate = today > sessions[sessions.length - 1].isoDate ? today : sessions[sessions.length - 1].isoDate;
+
+  let isAcclimatised = false;
+  let streakDates = [];
+  let streakPeriodsCount = 0;
+  const history = [];
+
+  // Group sessions by ISO date for O(1) lookup
+  const sessionsByDate = {};
+  for (const s of sessions) {
+    if (!sessionsByDate[s.isoDate]) {
+      sessionsByDate[s.isoDate] = [];
+    }
+    sessionsByDate[s.isoDate].push(s);
+  }
+
+  // Helper to get sessions in rolling 14-day window ending on dateStr
+  function getSessionsInWindow(dateStr) {
+    const end = new Date(dateStr + "T00:00:00");
+    const start = new Date(end);
+    start.setDate(start.getDate() - 13); // 14-day window [t-13, t]
+    
+    return sessions.filter(s => {
+      const d = new Date(s.isoDate + "T00:00:00");
+      return d >= start && d <= end;
+    });
+  }
+
+  // Check rolling maintenance rule
+  function checkMaintenance(sessionsIn14Days) {
+    if (sessionsIn14Days.length < 2) return false;
+    for (let i = 0; i < sessionsIn14Days.length; i++) {
+      for (let j = i + 1; j < sessionsIn14Days.length; j++) {
+        const d1 = new Date(sessionsIn14Days[i].isoDate + "T00:00:00");
+        const d2 = new Date(sessionsIn14Days[j].isoDate + "T00:00:00");
+        const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+        if (Math.abs(diffDays) <= 7) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Run simulation day-by-day
+  const cur = new Date(firstDate + "T00:00:00");
+  const end = new Date(lastDate + "T00:00:00");
+
+  while (cur <= end) {
+    const t = cur.toISOString().slice(0, 10);
+    const daySessions = sessionsByDate[t] || [];
+    const periodsOnDay = daySessions.length;
+
+    if (isAcclimatised) {
+      // Check maintenance
+      const windowSessions = getSessionsInWindow(t);
+      const maintained = checkMaintenance(windowSessions);
+      
+      if (!maintained) {
+        isAcclimatised = false;
+        streakDates = [];
+        streakPeriodsCount = 0;
+        history.push({
+          date: isoToDisplayDate(t),
+          isoDate: t,
+          type: "lapsed",
+          text: `HA status lapsed (failed rolling maintenance; only ${windowSessions.length} session(s) in last 14 days)`
+        });
+
+        // If they had a session today, start new streak
+        if (periodsOnDay > 0) {
+          streakDates = [t];
+          streakPeriodsCount = periodsOnDay;
+          daySessions.forEach(s => {
+            history.push({
+              date: s.date,
+              isoDate: t,
+              type: "session",
+              text: `PT Session: ${s.name} (${fmtHrs(s.time) || "—"})`
+            });
+          });
+        }
+      } else {
+        // Maintained
+        daySessions.forEach(s => {
+          history.push({
+            date: s.date,
+            isoDate: t,
+            type: "session",
+            text: `PT Session: ${s.name} (${fmtHrs(s.time) || "—"})`
+          });
+        });
+      }
+    } else {
+      // Not acclimatised
+      if (periodsOnDay > 0) {
+        // Check break limit
+        if (streakDates.length > 0) {
+          const prev = streakDates[streakDates.length - 1];
+          const d1 = new Date(prev + "T00:00:00");
+          const d2 = new Date(t + "T00:00:00");
+          const gap = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+          
+          if (gap >= 4) {
+            streakDates = [t];
+            streakPeriodsCount = periodsOnDay;
+            history.push({
+              date: isoToDisplayDate(t),
+              isoDate: t,
+              type: "reset",
+              text: `Streak reset: break of ${gap - 1} days exceeded the 2-day limit`
+            });
+          } else {
+            streakDates.push(t);
+            streakPeriodsCount += periodsOnDay;
+          }
+        } else {
+          streakDates = [t];
+          streakPeriodsCount = periodsOnDay;
+        }
+
+        daySessions.forEach(s => {
+          history.push({
+            date: s.date,
+            isoDate: t,
+            type: "session",
+            text: `PT Session: ${s.name} (${fmtHrs(s.time) || "—"})`
+          });
+        });
+
+        if (streakDates.length >= 10 && streakPeriodsCount >= 10) {
+          isAcclimatised = true;
+          history.push({
+            date: isoToDisplayDate(t),
+            isoDate: t,
+            type: "achieved",
+            text: `Achieved HA status: Completed 10 periods across 10 days!`
+          });
+        }
+      } else {
+        // No session today. Check if current streak is broken by gap to current day
+        if (streakDates.length > 0) {
+          const prev = streakDates[streakDates.length - 1];
+          const d1 = new Date(prev + "T00:00:00");
+          const d2 = new Date(t + "T00:00:00");
+          const gap = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+          if (gap >= 4) {
+            streakDates = [];
+            streakPeriodsCount = 0;
+          }
+        }
+      }
+    }
+
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  let status = "In Progress";
+  if (isAcclimatised) {
+    status = "Acclimatised";
+  } else if (streakDates.length > 0) {
+    status = "In Progress";
+  } else if (history.some(h => h.type === "lapsed")) {
+    status = "Lapsed";
+  } else {
+    status = "Not Started";
+  }
+
+  return {
+    status: status,
+    periods: streakPeriodsCount,
+    days: streakDates.length,
+    dates: streakDates,
+    acclimatised: isAcclimatised,
+    history: history
+  };
+}
+

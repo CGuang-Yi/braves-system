@@ -189,6 +189,55 @@ function openPerson(d4) {
     }
   }
 
+  // ── Heat Acclimatisation section ─────────────────────
+  if (p.role === "Recruit" || p.role === "") {
+    const ha = computeHA(d4);
+    let badgeColor = "var(--muted)";
+    if (ha.status === "Acclimatised") badgeColor = "var(--green)";
+    else if (ha.status === "In Progress") badgeColor = "var(--orange)";
+    else if (ha.status === "Lapsed") badgeColor = "var(--red)";
+
+    const haPct = Math.min(100, Math.round((ha.days / 10) * 100));
+
+    const timelineHtml = (ha.history || []).map(h => {
+      let icon = "📋";
+      let color = "var(--text)";
+      if (h.type === "achieved") { icon = "🎉"; color = "var(--green)"; }
+      else if (h.type === "lapsed") { icon = "⚠️"; color = "var(--red)"; }
+      else if (h.type === "reset") { icon = "🔄"; color = "var(--orange)"; }
+      return `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:8px">
+        <span class="mono" style="color:var(--muted);white-space:nowrap">${h.date}</span>
+        <span>${icon}</span>
+        <span style="color:${color}">${h.text}</span>
+      </div>`;
+    }).join("");
+
+    html += `
+      <h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">🌡️ Heat Acclimatisation (HA)</h4>
+      <div class="card" style="padding:14px;background:var(--surface2);margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div>
+            Status: <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600">${ha.status}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted)">
+            Streak: <strong>${ha.days}</strong>/10 Days (${ha.periods} Periods)
+          </div>
+        </div>
+        
+        <div style="width:100%;height:8px;background:var(--surface);border-radius:4px;overflow:hidden;margin-bottom:12px;border:1px solid var(--border)">
+          <div style="width:${haPct}%;height:100%;background:${badgeColor};border-radius:4px;transition:width .4s ease"></div>
+        </div>
+
+        ${timelineHtml ? `
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Acclimatisation History</div>
+          <div style="max-height:150px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px;display:flex;flex-direction:column">
+            ${timelineHtml}
+          </div>
+        ` : `<div style="font-size:11px;color:var(--muted);text-align:center">No HA sessions logged yet.</div>`}
+      </div>
+    `;
+  }
+
   // ── Polar metrics section ────────────────────────────
   if (computed.length) {
     // Color thresholds: HR ranges follow the existing Polar table convention.

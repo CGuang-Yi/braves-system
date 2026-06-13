@@ -30,6 +30,7 @@ function render() {
     case "ippt": renderIPPT(el); break;
     case "rm": renderRM(el); break;
     case "soc": renderSOC(el); break;
+    case "ha": renderHA(el); break;
     case "polar": renderPolar(el); break;
     case "leave": renderLeave(el); break;
     case "mskAnalytics": renderMSKAnalytics(el); break;
@@ -1572,4 +1573,231 @@ function promptRenameConduct(id) {
   const newName = prompt("New name:", c.name);
   if (newName == null) return;
   renameConduct(id, newName);
+}
+
+// Render the Heat Acclimatisation (HA) tab
+function renderHA(el) {
+  const scoped = filteredRoster().filter(r => r.role === "Recruit" || r.role === "");
+  const haResults = scoped.map(r => {
+    return {
+      recruit: r,
+      ha: computeHA(r.id)
+    };
+  });
+
+  // Sort: Lapsed first, then Not Started, then In Progress, then Acclimatised.
+  // Within same status, sort by active days ascending.
+  const statusPriority = {
+    "Lapsed": 0,
+    "Not Started": 1,
+    "In Progress": 2,
+    "Acclimatised": 3
+  };
+  haResults.sort((a, b) => {
+    const pa = statusPriority[a.ha.status] ?? 4;
+    const pb = statusPriority[b.ha.status] ?? 4;
+    if (pa !== pb) return pa - pb;
+    return a.ha.days - b.ha.days;
+  });
+
+  const acclimatisedCount = haResults.filter(x => x.ha.status === "Acclimatised").length;
+  const inProgressCount = haResults.filter(x => x.ha.status === "In Progress").length;
+  const lapsedCount = haResults.filter(x => x.ha.status === "Lapsed").length;
+  const notStartedCount = haResults.filter(x => x.ha.status === "Not Started").length;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:18px;font-weight:700">Heat Acclimatisation (HA) Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}]</span>` : ""}</h2>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat"><label>Total Recruits</label><div class="val">${scoped.length}</div></div>
+      <div class="stat" style="border-left: 3px solid var(--green)"><label>Acclimatised</label><div class="val" style="color:var(--green)">${acclimatisedCount}</div></div>
+      <div class="stat" style="border-left: 3px solid var(--orange)"><label>In Progress</label><div class="val" style="color:var(--orange)">${inProgressCount}</div></div>
+      <div class="stat" style="border-left: 3px solid var(--red)"><label>Lapsed</label><div class="val" style="color:var(--red)">${lapsedCount}</div></div>
+      <div class="stat" style="border-left: 3px solid var(--muted)"><label>Not Started</label><div class="val" style="color:var(--muted)">${notStartedCount}</div></div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom: 20px">
+      <div class="card" style="padding:16px; min-height: 280px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Status Breakdown</h3>
+        <div style="height: 200px; display: flex; justify-content: center; align-items: center">
+          <canvas id="chart-ha-distribution"></canvas>
+        </div>
+      </div>
+      <div class="card" style="padding:16px; min-height: 280px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Recruit Streak Progress (Active Days)</h3>
+        <div style="height: 200px; overflow-y: auto; position: relative">
+          <canvas id="chart-ha-streaks"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:16px">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Acclimatisation Status Roster</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>4D</th>
+              <th style="text-align:left">Name</th>
+              <th>Plt/Sect</th>
+              <th>Status</th>
+              <th>Active Days</th>
+              <th>Active Periods</th>
+              <th>Last 14d Sessions</th>
+              <th style="text-align:left">Active Streak Dates</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${haResults.map(r => {
+              let badgeColor = "var(--muted)";
+              if (r.ha.status === "Acclimatised") badgeColor = "var(--green)";
+              else if (r.ha.status === "In Progress") badgeColor = "var(--orange)";
+              else if (r.ha.status === "Lapsed") badgeColor = "var(--red)";
+
+              // Calculate sessions in the last 14 days
+              const today = todayISO();
+              const end = new Date(today + "T00:00:00");
+              const start = new Date(end);
+              start.setDate(start.getDate() - 13);
+              const sessionsInLast14d = (r.ha.history || [])
+                .filter(h => h.type === "session")
+                .map(h => h.isoDate)
+                .filter(d => {
+                  const dateVal = new Date(d + "T00:00:00");
+                  return dateVal >= start && dateVal <= end;
+                }).length;
+
+              const dateBadges = r.ha.dates.map(d => {
+                const parts = isoToDisplayDate(d).split(" ");
+                return `<span style="font-size:10px;padding:2px 5px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);margin-right:4px">${parts[0]} ${parts[1]}</span>`;
+              }).join("");
+
+              return `
+                <tr onclick="openPerson('${r.recruit.id}')" style="cursor:pointer">
+                  <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(r.recruit.id)}</td>
+                  <td style="text-align:left">${displayPersonLabel(r.recruit.id)}</td>
+                  <td>P${getPlt(r.recruit)}S${getSect(r.recruit)}</td>
+                  <td>
+                    <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">
+                      ${r.ha.status}
+                    </span>
+                  </td>
+                  <td class="mono">${r.ha.days}</td>
+                  <td class="mono">${r.ha.periods}</td>
+                  <td class="mono" style="font-weight:700;color:${sessionsInLast14d >= 2 ? "var(--green)" : r.ha.status === "Acclimatised" ? "var(--red)" : "var(--muted)"}">
+                    ${sessionsInLast14d}
+                  </td>
+                  <td style="text-align:left;line-height:1.8">${dateBadges || '<span style="color:var(--muted)">—</span>'}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  buildHADistributionChart(acclimatisedCount, inProgressCount, lapsedCount, notStartedCount);
+  buildHAStreaksChart(haResults);
+}
+
+function buildHADistributionChart(acclimatised, inProgress, lapsed, notStarted) {
+  const canvas = document.getElementById("chart-ha-distribution");
+  if (!canvas) return;
+  STATE.charts.haDistribution = new Chart(canvas, {
+    type: "doughnut",
+    data: {
+      labels: ["Acclimatised", "In Progress", "Lapsed", "Not Started"],
+      datasets: [{
+        data: [acclimatised, inProgress, lapsed, notStarted],
+        backgroundColor: ["#3FB950", "#D29922", "#F85149", "#8B949E"],
+        borderColor: "#161B22",
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "right",
+          labels: {
+            color: "#8B949E",
+            font: {
+              size: 11
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function buildHAStreaksChart(haResults) {
+  const canvas = document.getElementById("chart-ha-streaks");
+  if (!canvas) return;
+
+  const chartResults = [...haResults].sort((a, b) => a.ha.days - b.ha.days);
+
+  const labels = chartResults.map(r => r.recruit.name || r.recruit.id);
+  const data = chartResults.map(r => r.ha.days);
+  const colors = chartResults.map(r => {
+    if (r.ha.status === "Acclimatised") return "#3FB950";
+    if (r.ha.status === "In Progress") return "#D29922";
+    if (r.ha.status === "Lapsed") return "#F85149";
+    return "#8B949E";
+  });
+
+  const chartHeight = Math.max(200, chartResults.length * 18);
+  canvas.style.height = chartHeight + "px";
+
+  STATE.charts.haStreaks = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "Active Days (Streak)",
+        data: data,
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        x: {
+          min: 0,
+          max: 10,
+          ticks: {
+            stepSize: 1,
+            color: "#8B949E"
+          },
+          grid: {
+            color: "#30363D"
+          }
+        },
+        y: {
+          ticks: {
+            color: "#8B949E",
+            font: {
+              size: 10
+            }
+          },
+          grid: {
+            display: false
+          }
+        }
+      }
+    }
+  });
 }
