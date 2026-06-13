@@ -1621,14 +1621,14 @@ function renderHA(el) {
     <div class="grid-2" style="margin-bottom: 20px">
       <div class="card" style="padding:16px; min-height: 280px">
         <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Status Breakdown</h3>
-        <div style="height: 200px; display: flex; justify-content: center; align-items: center">
-          <canvas id="chart-ha-distribution"></canvas>
+        <div style="height: 200px; position: relative; width: 100%; overflow: hidden;">
+          <canvas id="chart-ha-distribution" style="width: 100% !important; height: 100% !important;"></canvas>
         </div>
       </div>
       <div class="card" style="padding:16px; min-height: 280px">
         <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Recruit Streak Progress (Active Days)</h3>
-        <div style="height: 200px; overflow-y: auto; position: relative">
-          <canvas id="chart-ha-streaks"></canvas>
+        <div style="height: 200px; overflow-y: auto; overflow-x: hidden; position: relative; width: 100%">
+          <canvas id="chart-ha-streaks" style="width: 100% !important; display: block;"></canvas>
         </div>
       </div>
     </div>
@@ -1752,6 +1752,7 @@ function buildHAStreaksChart(haResults) {
 
   const chartHeight = Math.max(200, chartResults.length * 18);
   canvas.style.height = chartHeight + "px";
+  canvas.style.width = "100%";
 
   STATE.charts.haStreaks = new Chart(canvas, {
     type: "bar",

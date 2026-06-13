@@ -33,7 +33,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .filter-role-group .role-btn{padding:6px 10px;font:inherit;font-size:11px;font-weight:600;background:var(--bg);color:var(--muted);border:none;border-right:1px solid var(--border);cursor:pointer;outline:none}
 .filter-role-group .role-btn:last-child{border-right:none}
 .filter-role-group .role-btn.active{background:#58A6FF22;color:var(--accent)}
-#content{flex:1;padding:20px;overflow-y:auto}
+#content{flex:1;padding:20px;overflow-y:auto;overflow-x:hidden}
 
 /* Components */
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;flex:1;min-width:120}
@@ -66,6 +66,7 @@ tr:hover{background:var(--surface2)}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px}
 .card h3{font-size:13px;color:var(--muted);margin-bottom:12px}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-2 > *{min-width:0}
 
 /* Forms */
 .form-group{display:flex;flex-direction:column;gap:4px}
