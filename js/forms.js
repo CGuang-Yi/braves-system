@@ -457,28 +457,85 @@ function toggleReportSickPatterns(d4) {
 const editHint = `<div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:4px">Edits save locally. Use the tab's <strong>Push to Sheet</strong> button to sync.</div>`;
 
 
+// Builds the <option> markup for a medical-status <select>: the standard enum
+// (grouped by severity), saved custom statuses, and — when `selected` is a
+// one-off status not in any known list — an orphan option so it stays selected.
+// Shared by the main status field and every "additional status" row.
+function medStatusOptionsHtml(selected = "") {
+  const std = MED_STATUS_GROUPS.map(g =>
+    `<optgroup label="${g.label}">${g.options.map(o => `<option value="${o}" ${o === selected ? "selected" : ""}>${o}</option>`).join("")}</optgroup>`
+  ).join("");
+  const customList = STATE.customStatuses || [];
+  const custom = customList.length
+    ? `<optgroup label="Custom">${customList.map(c => `<option value="${escapeAttr(c.name)}" ${c.name === selected ? "selected" : ""}>${escapeAttr(c.name)}${c.participates ? " (participates)" : ""}</option>`).join("")}</optgroup>`
+    : "";
+  const known = new Set([...MED_STATUSES, ...customList.map(c => c.name)]);
+  const orphan = (selected && !known.has(selected))
+    ? `<optgroup label="Current"><option value="${escapeAttr(selected)}" selected>${escapeAttr(selected)}</option></optgroup>`
+    : "";
+  return `<option value="">Select status...</option>${std}${custom}${orphan}`;
+}
+
+// Appends an "additional status" row to the medical form so one report-sick
+// entry can carry several statuses (e.g. "2D LD" + "4D Excuse RMJ"), each with
+// its own duration. On submit these become sibling Medical rows sharing the
+// recruit/date/reason/location — which the parade state + dashboard already
+// group under one person. Optional args pre-fill the row when editing.
+let _medExtraIdx = 0;
+function addMedStatusRow(status = "", startIso = null, endIso = null) {
+  const host = document.getElementById("f-extra-statuses");
+  if (!host) return;
+  // Subsequent statuses usually share the previous one's duration, so default
+  // the dates to the status directly above (the last extra row, or the main
+  // status fields if this is the first extra). Passing explicit dates overrides.
+  if (startIso === null || endIso === null) {
+    const rows = host.querySelectorAll(".med-extra-row");
+    const last = rows.length ? rows[rows.length - 1] : null;
+    const prevStart = last ? (last.querySelector(".f-extra-start")?.value || "") : gv("f-start");
+    const prevEnd = last ? (last.querySelector(".f-extra-end")?.value || "") : gv("f-end");
+    if (startIso === null) startIso = prevStart;
+    if (endIso === null) endIso = prevEnd;
+  }
+  _medExtraIdx++;
+  const row = document.createElement("div");
+  row.className = "med-extra-row";
+  row.style.cssText = "display:flex;flex-direction:column;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px";
+  row.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:11px;color:var(--muted);font-weight:600">Additional status</span>
+      <button type="button" class="btn btn-icon btn-danger" title="Remove this status" onclick="this.closest('.med-extra-row').remove()">✕</button>
+    </div>
+    <div class="form-group"><label>Status</label>
+      <select class="f-extra-status" required onchange="medExtraStatusChanged(this)">
+        ${medStatusOptionsHtml(status)}
+        <option value="__new__">＋ New custom status…</option>
+      </select>
+    </div>
+    <div class="f-extra-custom" style="display:none;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px">
+      <div class="form-group"><label>New status name</label><input class="f-extra-custom-name" type="text" maxlength="40" placeholder="e.g. Excuse Finger"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" class="f-extra-custom-participates" style="width:15px;height:15px"> Still participates in conducts</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" class="f-extra-custom-save" checked style="width:15px;height:15px"> Save for reuse <span style="color:var(--dim)">(adds it to the dropdowns)</span></label>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Start (inclusive)</label><input type="date" class="f-extra-start" value="${startIso}" min="2020-01-01" max="2099-12-31"></div>
+      <div class="form-group"><label>End (inclusive)</label><input type="date" class="f-extra-end" value="${endIso}" min="2020-01-01" max="2099-12-31"></div>
+    </div>`;
+  host.appendChild(row);
+}
+
+// Reveal a row's custom-status fields only when "＋ New custom status…" is picked.
+function medExtraStatusChanged(sel) {
+  const wrap = sel.closest(".med-extra-row")?.querySelector(".f-extra-custom");
+  if (wrap) wrap.style.display = sel.value === "__new__" ? "flex" : "none";
+}
+
 function openMedicalForm(id) {
   const e = id ? STATE.medical.find(x => x.id === id) : null;
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
   const startVal = e ? displayDateToISO(e.startDate) || dateVal : todayISO();
   const endVal = e ? displayDateToISO(e.endDate) || "" : "";
   const selectedStatus = e?.status || "";
-  // Status is an enum drawn from the official parade-state vocabulary. Grouped
-  // with optgroups so the form makes the severity tiers visually obvious.
-  const statusOptions = MED_STATUS_GROUPS.map(g =>
-    `<optgroup label="${g.label}">${g.options.map(o => `<option value="${o}" ${o === selectedStatus ? "selected" : ""}>${o}</option>`).join("")}</optgroup>`
-  ).join("");
-  // Saved custom statuses (user-created) get their own group. An orphan option
-  // is injected when editing a record whose status isn't in any known list
-  // (e.g. a one-off custom status that was never saved), so it stays selected.
-  const customList = STATE.customStatuses || [];
-  const customOptions = customList.length
-    ? `<optgroup label="Custom">${customList.map(c => `<option value="${escapeAttr(c.name)}" ${c.name === selectedStatus ? "selected" : ""}>${escapeAttr(c.name)}${c.participates ? " (participates)" : ""}</option>`).join("")}</optgroup>`
-    : "";
-  const known = new Set([...MED_STATUSES, ...customList.map(c => c.name)]);
-  const orphanOption = (selectedStatus && !known.has(selectedStatus))
-    ? `<optgroup label="Current"><option value="${escapeAttr(selectedStatus)}" selected>${escapeAttr(selectedStatus)}</option></optgroup>`
-    : "";
+  _medExtraIdx = 0;
   openModal(e ? "Edit Report Sick Entry" : "Log Report Sick", `
     <form onsubmit="event.preventDefault(); submitMedical(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
@@ -491,10 +548,7 @@ function openMedicalForm(id) {
         <div class="form-group">
           <label>Status</label>
           <select id="f-status" required onchange="medStatusSelChanged(this.value)">
-            <option value="">Select status...</option>
-            ${statusOptions}
-            ${customOptions}
-            ${orphanOption}
+            ${medStatusOptionsHtml(selectedStatus)}
             <option value="__new__">＋ New custom status…</option>
           </select>
         </div>
@@ -509,6 +563,9 @@ function openMedicalForm(id) {
           ${formField("f-end", "End (inclusive)", "date", "", `value="${endVal}" min="2020-01-01" max="2099-12-31"`)}
         </div>
         <div style="font-size:10px;color:var(--muted)">Start and end dates can be left blank for <strong>Pending</strong> (MO outcome unknown) and <strong>NIL</strong> (MO cleared, no status). Required for everything else.</div>
+        <div id="f-extra-statuses" style="display:flex;flex-direction:column;gap:8px"></div>
+        <button type="button" class="btn" style="font-size:11px;align-self:flex-start" onclick="addMedStatusRow()">＋ Add another status</button>
+        <div style="font-size:10px;color:var(--muted)">Use this when the MO gives more than one status for the same visit (e.g. <strong>2D LD</strong> + <strong>4D Excuse RMJ</strong>). Each status keeps its own duration.</div>
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
     </form>`);
@@ -531,35 +588,68 @@ function submitMedical() {
     if (document.getElementById("f-custom-save")?.checked) addCustomStatus(name, participates);
     status = name;
   }
-  const startIso = gv("f-start");
-  const endIso = gv("f-end");
-  const noDurationStatuses = ["Pending", "NIL"];
-  if (!noDurationStatuses.includes(status) && !endIso) { alert("End date is required for all statuses except Pending and NIL."); return; }
-  if (endIso && startIso && endIso < startIso) { alert("End date cannot be before start date."); return; }
-  const entry = {
-    id: editId || nextId(),
-    d4: gv("f-d4"),
-    date: isoToDisplayDate(gv("f-date")),
-    reason: gv("f-reason"),
-    location: gv("f-location").trim(),
-    status,
-    startDate: isoToDisplayDate(startIso),
-    endDate: endIso ? isoToDisplayDate(endIso) : ""
-  };
-  if (editId) {
-    const idx = STATE.medical.findIndex(m => m.id === editId);
-    if (idx >= 0) STATE.medical[idx] = entry;
-  } else {
-    STATE.medical.push(entry);
+  // Gather the main status plus any "additional status" rows. Each carries its
+  // own status + duration; they share the recruit/date/reason/location below.
+  const statuses = [{ status, startIso: gv("f-start"), endIso: gv("f-end") }];
+  for (const row of document.querySelectorAll("#f-extra-statuses .med-extra-row")) {
+    let s = row.querySelector(".f-extra-status")?.value || "";
+    if (!s) continue; // ignore a blank row rather than erroring
+    // Resolve a per-row freshly-created custom status, same as the main field.
+    if (s === "__new__") {
+      const name = (row.querySelector(".f-extra-custom-name")?.value || "").trim();
+      if (!name) { alert("Enter a name for the new custom status."); return; }
+      const participates = !!row.querySelector(".f-extra-custom-participates")?.checked;
+      if (row.querySelector(".f-extra-custom-save")?.checked) addCustomStatus(name, participates);
+      s = name;
+    }
+    statuses.push({
+      status: s,
+      startIso: row.querySelector(".f-extra-start")?.value || "",
+      endIso: row.querySelector(".f-extra-end")?.value || ""
+    });
   }
+
+  const noDurationStatuses = ["Pending", "NIL"];
+  for (const st of statuses) {
+    if (!st.status) { alert("Select a status for every row (or remove the empty one)."); return; }
+    if (!noDurationStatuses.includes(st.status) && !st.endIso) { alert(`End date is required for "${st.status}" (only Pending and NIL may be left blank).`); return; }
+    if (st.endIso && st.startIso && st.endIso < st.startIso) { alert(`End date cannot be before start date for "${st.status}".`); return; }
+  }
+
+  const d4 = gv("f-d4");
+  const date = isoToDisplayDate(gv("f-date"));
+  const reason = gv("f-reason");
+  const location = gv("f-location").trim();
+
+  // First status reuses the edited row's id; each extra status becomes a new
+  // sibling row. Siblings group automatically per-recruit in the reports.
+  const records = statuses.map((st, i) => ({
+    id: (i === 0 && editId) ? editId : nextId(),
+    d4, date, reason, location,
+    status: st.status,
+    startDate: isoToDisplayDate(st.startIso),
+    endDate: st.endIso ? isoToDisplayDate(st.endIso) : ""
+  }));
+
+  records.forEach((rec, i) => {
+    if (i === 0 && editId) {
+      const idx = STATE.medical.findIndex(m => m.id === editId);
+      if (idx >= 0) STATE.medical[idx] = rec; else STATE.medical.push(rec);
+    } else {
+      STATE.medical.push(rec);
+    }
+  });
+
+  // Roster status mirrors the primary (first) status, as before.
   let rosterEdit = null;
-  if (entry.d4 && entry.status) {
-    const r = STATE.roster.find(x => x.id === entry.d4);
-    if (r) { r.status = entry.status; rosterEdit = r; }
+  const main = records[0];
+  if (main.d4 && main.status) {
+    const r = STATE.roster.find(x => x.id === main.d4);
+    if (r) { r.status = main.status; rosterEdit = r; }
   }
   saveLocal(); closeModal(); render();
   if (STATE.apiUrl) {
-    autoSync("Medical", { type: "upsert", row: entry });
+    records.forEach(rec => autoSync("Medical", { type: "upsert", row: rec }));
     // Status field on the roster row also changes — push that update too,
     // otherwise the recruit's roster row goes out of sync until next pull.
     if (rosterEdit) autoSync("Roster", { type: "upsert", row: rosterEdit });
@@ -1047,6 +1137,10 @@ function openAppointmentForm(id, prefill) {
         </div>
         ${formField("f-location", "Location", "text", "MO Office / SAFTI MC / Camp HQ…", `required maxlength="100" value="${escapeAttr(e?.location)}"`)}
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer">
+          <input id="f-appt-ooc" type="checkbox" ${e?.outOfCamp ? "checked" : ""} style="width:16px;height:16px;cursor:pointer">
+          Out of camp (recruit leaves camp for this appointment)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer">
           <input id="f-resolved" type="checkbox" ${e?.resolved ? "checked" : ""} style="width:16px;height:16px;cursor:pointer">
           Mark as resolved (hides from dashboard + parade state)
         </label>
@@ -1063,6 +1157,7 @@ function submitAppointment() {
     date: isoToDisplayDate(gv("f-date")),
     time: gv("f-time"),
     location: gv("f-location"),
+    outOfCamp: document.getElementById("f-appt-ooc")?.checked || false,
     resolved: document.getElementById("f-resolved")?.checked || false
   };
   entry.time = pad4Time(entry.time);
@@ -1222,7 +1317,7 @@ function openLeaveForm(id) {
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
         <div class="form-group"><label>Person</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Leave", "Leave"], ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Annual Leave", "Annual Leave"], ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
         <div class="form-row">
           ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
           ${formField("f-end", "End date", "date", "", `required value="${endVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
@@ -1336,6 +1431,12 @@ function paradeStatusLabel(record) {
 // medical record having ended". Cleared on modal open and on date change.
 let _paradeOverrides = {};
 
+// Per-parade in/out-of-camp overrides for appointments, keyed by appointment id.
+// A present key wins over the appointment's stored outOfCamp flag, letting the
+// PDS flip an appointment in/out for THIS parade without editing the record.
+// Cleared on modal open and on date change.
+let _apptCampOverrides = {};
+
 function findBorderlineReturnees(dateIso) {
   if (!dateIso) return [];
   const y = new Date(dateIso); y.setDate(y.getDate() - 1);
@@ -1434,13 +1535,14 @@ function paradeTimeMinutes(timeStr) {
   return parseInt(padded.slice(0, 2), 10) * 60 + parseInt(padded.slice(2, 4), 10);
 }
 
-function buildAppointmentSection(dateIso, paradeTime) {
+// The upcoming appointments a parade state will list: the parade date plus all
+// future dates. The time-of-day cutoff only applies on the parade day itself —
+// a same-day appt that's already passed is dropped, but a future-dated one
+// always shows regardless of its time. Sorted chronologically (date, then time).
+// Shared by the report generator and the in/out-of-camp tick checklist.
+function upcomingParadeAppointments(dateIso, paradeTime) {
   const paradeMins = paradeTimeMinutes(paradeTime);
-  // Show every UPCOMING appointment: the parade date plus all future dates.
-  // The time-of-day cutoff only applies on the parade day itself — a same-day
-  // appt that's already passed is dropped, but a future-dated one always shows
-  // regardless of its time. Sorted chronologically (date, then time).
-  const upcoming = STATE.appointments
+  return STATE.appointments
     .filter(a => !a.resolved)
     .filter(a => {
       const iso = displayDateToISO(a.date) || "";
@@ -1454,35 +1556,89 @@ function buildAppointmentSection(dateIso, paradeTime) {
       if (ai !== bi) return ai < bi ? -1 : 1;
       return apptEndMinutes(a.time) - apptEndMinutes(b.time);
     });
-  if (!upcoming.length) return `MEDICAL APPT:\n\nS/N:\nR/N:\nReason:\nLocation:\nDate:\nTime:`;
+}
+
+// Outside-camp appointments (a.outOfCamp) on the parade date — the WHOLE day,
+// regardless of parade time. Presence (has the recruit LEFT for / RETURNED from
+// the appointment) is tracked via ticks in the report modal, so an early appt
+// must still show at last parade to confirm they've come back. paradeTime is
+// kept for signature parity with the other parade builders.
+function outsideApptsForParade(dateIso, paradeTime) {
+  return STATE.appointments.filter(a =>
+    !a.resolved && a.outOfCamp &&
+    displayDateToISO(a.date) === dateIso
+  );
+}
+
+// Whether a recruit on an outside appt is currently OUT of camp at this parade.
+// Tracked per-parade via a tick; default (no tick) = in camp / not yet left or
+// already returned.
+function apptCurrentlyOut(a) { return _apptCampOverrides[a.id] === true; }
+
+// Outside appts whose recruit is currently out of camp — folded into the OTHERS
+// roll and removed from CURRENT STRENGTH.
+function outOfCampApptsForParade(dateIso, paradeTime) {
+  return outsideApptsForParade(dateIso, paradeTime).filter(apptCurrentlyOut);
+}
+
+function buildAppointmentSection(dateIso, paradeTime) {
+  const upcoming = upcomingParadeAppointments(dateIso, paradeTime);
+  if (!upcoming.length) return `MEDICAL APPT:\n\nS/N:\nR/N:\nReason:\nLocation:\nDate:\nTime:\nCamp:`;
   const blocks = upcoming.map((a, idx) => {
     const sn = String(idx + 1).padStart(2, "0");
-    return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${fmtHrs(a.time)}`;
+    // For an in-camp appt: always "In camp". For an outside appt: on the parade
+    // day reflect the live tick (left vs not), else just note it's outside.
+    const isToday = displayDateToISO(a.date) === dateIso;
+    let camp;
+    if (!a.outOfCamp) camp = "In camp";
+    else if (isToday) camp = apptCurrentlyOut(a) ? "Out of camp (left)" : "In camp (not left / returned)";
+    else camp = "Outside camp";
+    return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${fmtHrs(a.time)}\nCamp: ${camp}`;
   });
   return `MEDICAL APPT: ${String(upcoming.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
 }
 
-function buildOthersSection(dateIso) {
+function buildOthersSection(dateIso, paradeTime) {
   const active = STATE.leave.filter(l => {
     const s = displayDateToISO(l.startDate);
     const e = displayDateToISO(l.endDate);
     return s && e && s <= dateIso && dateIso <= e;
   });
-  if (!active.length) return `OTHERS:\n\nS/N:\nR/N:\nReason:`;
-  const blocks = active.map((l, idx) => {
-    const sn = String(idx + 1).padStart(2, "0");
-    // Reason = leave type + optional free text, so the section reads like
-    // the chat's "Guard Duty" / "APSC in Gedong till 24th April" entries.
-    const reasonParts = [l.type, l.reason].filter(Boolean);
-    return `S/N: ${sn}\nR/N: ${paradeRN(l.d4)}\nReason: ${reasonParts.join(" — ")}`;
+  // Reason = leave type + optional free text, so the section reads like the
+  // chat's "Guard Duty" / "APSC in Gedong till 24th April" entries. `extra` is
+  // the trailing line(s): leave shows a Duration range; appts show Date + Time.
+  const entries = active.map(l => {
+    const dur = paradeDuration(l);
+    return {
+      d4: l.d4,
+      reason: [l.type, l.reason].filter(Boolean).join(" — "),
+      extra: dur ? `\nDuration: ${dur}` : ""
+    };
   });
-  return `OTHERS: ${String(active.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
+  // Recruits currently out of camp for an outside appointment count as away too
+  // — list them on the OTHERS roll, labelled so they're distinct from leave,
+  // with the appointment's Date + Time.
+  outOfCampApptsForParade(dateIso, paradeTime).forEach(a => {
+    const locLine = a.location ? `\nLocation: ${a.location}` : "";
+    entries.push({
+      d4: a.d4,
+      reason: "Medical Appointment" + (a.reason ? ` — ${a.reason}` : ""),
+      extra: `${locLine}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${fmtHrs(a.time)}`
+    });
+  });
+  if (!entries.length) return `OTHERS:\n\nS/N:\nR/N:\nReason:\nDuration:`;
+  const blocks = entries.map((e, idx) => {
+    const sn = String(idx + 1).padStart(2, "0");
+    return `S/N: ${sn}\nR/N: ${paradeRN(e.d4)}\nReason: ${e.reason}${e.extra}`;
+  });
+  return `OTHERS: ${String(entries.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
 }
 
 // Strength block — TOTAL is the entire roster (recruits + commanders);
 // CURRENT is TOTAL minus anyone away today (active MC/Warded + any leave
-// covering the date). Per-platoon and commander lines break the count out.
-function buildStrengthBlock(dateIso) {
+// covering the date + out-of-camp medical appts today). Per-platoon and
+// commander lines break the count out.
+function buildStrengthBlock(dateIso, paradeTime) {
   const all = STATE.roster;
   const recruits = all.filter(r => r.role !== "Commander");
   const commanders = all.filter(r => r.role === "Commander");
@@ -1503,6 +1659,9 @@ function buildStrengthBlock(dateIso) {
       return s && e && s <= dateIso && dateIso <= e;
     })
     .map(l => l.d4));
+  // Out-of-camp medical appts today put the recruit away too — keep this in sync
+  // with what the OTHERS section lists so CURRENT STRENGTH reconciles.
+  outOfCampApptsForParade(dateIso, paradeTime).forEach(a => othersD4s.add(a.d4));
   const isAway = r => attcD4s.has(r.id) || othersD4s.has(r.id);
 
   // Per-platoon recruit breakdown.
@@ -1533,12 +1692,12 @@ function generateParadeStateText(type, dateIso, time) {
   const dateStr = toDDMMYY(dateIso);
   const header = (type === "FP" ? "FIRST" : "LAST") + " PARADE STATE";
   const sections = [
-    buildStrengthBlock(dateIso),
+    buildStrengthBlock(dateIso, time),
     buildMedicalSection("ATTC", dateIso, ["MC", "Warded"]),
     buildMedicalSection("REPORT SICK", dateIso, ["Pending"]),
     buildMedicalSection("MEDICAL STATUS", dateIso, isMedicalStatusCatchAll),
     buildAppointmentSection(dateIso, time),
-    buildOthersSection(dateIso)
+    buildOthersSection(dateIso, time)
   ];
   return `COUGAR COMPANY\n${header}\nDATE: ${dateStr} @ ${fmtHrs(time)}\n\n${SEP}\n\n${sections.join(`\n\n${SEP}\n\n`)}\n\n${SEP}`;
 }
@@ -1607,9 +1766,10 @@ function openReportModal(type) {
     : type === "CONDUCT" ? "Per-Conduct Chat Format"
     : "Medical Status List";
 
-  // Borderline overrides are scoped to a single modal session — clearing
-  // here avoids stale ticks leaking from a previous open.
+  // Borderline + appointment-camp overrides are scoped to a single modal
+  // session — clearing here avoids stale ticks leaking from a previous open.
   _paradeOverrides = {};
+  _apptCampOverrides = {};
 
   // The borderline checklist is only meaningful for FP/LP. MED/MSK/CONDUCT
   // reports skip the section + date onchange wiring entirely.
@@ -1622,7 +1782,9 @@ function openReportModal(type) {
       : `value="${defaultDate}" required`;
   const timeExtra = isConduct
     ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
-    : `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required`;
+    : isParade
+      ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="onParadeTimeChange('${type}')"`
+      : `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required`;
 
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
@@ -1637,6 +1799,7 @@ function openReportModal(type) {
           ${formField("rep-time", "Time (HHMM)", "text", "0700", timeExtra)}
         </div>
         ${isParade ? `<div id="borderline-section"></div>` : ""}
+        ${isParade ? `<div id="appt-camp-section"></div>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
         <textarea id="rep-text" rows="20" spellcheck="false" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre"></textarea>
@@ -1648,6 +1811,7 @@ function openReportModal(type) {
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
   if (isParade) renderBorderlineSection(defaultDate, type);
+  if (isParade) renderApptCampSection(defaultDate, defaultTime, type);
   if (isConduct) renderConductPicker();
   regenerateReport(type);
 }
@@ -1686,8 +1850,46 @@ function renderConductPicker() {
 // for the new date, then regenerates the textarea.
 function onParadeDateChange(type) {
   _paradeOverrides = {};
+  _apptCampOverrides = {};
   renderBorderlineSection(gv("rep-date"), type);
+  renderApptCampSection(gv("rep-date"), gv("rep-time") || "0700", type);
   regenerateReport(type);
+}
+
+// Time change only affects the appointment checklist's parade-time cutoff — the
+// borderline list is date-only. Ticks are KEPT (overrides not cleared) so a
+// time tweak doesn't wipe who's already marked out.
+function onParadeTimeChange(type) {
+  renderApptCampSection(gv("rep-date"), gv("rep-time") || "0700", type);
+  regenerateReport(type);
+}
+
+function toggleApptCamp(id, checked, type) {
+  _apptCampOverrides[id] = checked;   // checked = currently OUT of camp (has left)
+  regenerateReport(type);
+}
+
+// Renders the presence checklist for today's OUTSIDE appointments. Tick a recruit
+// once they've LEFT camp for the appointment; untick when they're back. Ticked
+// recruits drop to the OTHERS roll and out of current strength. Empty section
+// when there are no outside appointments today (no noise).
+function renderApptCampSection(dateIso, paradeTime, type) {
+  const section = document.getElementById("appt-camp-section");
+  if (!section) return;
+  const appts = outsideApptsForParade(dateIso, paradeTime);
+  if (!appts.length) { section.innerHTML = ""; return; }
+  const rows = appts.map(a => {
+    const checked = apptCurrentlyOut(a) ? "checked" : "";
+    return `<label style="display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <input type="checkbox" ${checked} onchange="toggleApptCamp(${a.id}, this.checked, '${type}')" style="width:14px;height:14px;cursor:pointer">
+      <span>${paradeRN(a.d4)} — ${escapeAttr(a.reason || "")} (${fmtHrs(a.time)})</span>
+    </label>`;
+  }).join("");
+  section.innerHTML = `<div style="font-size:11px;background:#58A6FF11;border:1px solid #58A6FF44;border-radius:6px;padding:8px 10px">
+    <div style="color:var(--accent);font-weight:600;margin-bottom:4px">📅 Outside appointments today (${appts.length}) — tick if OUT of camp now</div>
+    <div style="color:var(--muted);margin-bottom:6px">Tick once the recruit has LEFT camp for the appointment; untick when they return. Out = added to OTHERS + removed from current strength.</div>
+    ${rows}
+  </div>`;
 }
 
 // Renders the borderline checklist for the given date. Empty section when
