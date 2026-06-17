@@ -221,6 +221,18 @@ function normalizeMedical(records) {
   });
 }
 
+// Leave records get d4 padding plus a one-way migration of the legacy bare
+// "Leave" type to its current "Annual Leave" spelling, so old records keep
+// their badge color / calendar legend mapping after the rename.
+function normalizeLeave(records) {
+  return (records || []).map(r => {
+    if (!r) return r;
+    const out = r.d4 != null ? { ...r, d4: padD4(r.d4) } : { ...r };
+    if (out.type === "Leave") out.type = "Annual Leave";
+    return out;
+  });
+}
+
 // Generic d4-padding pass for layers that don't have their own normalizer.
 // Applied at every read boundary (loadLocal, pullAll) so commander 4Ds
 // stay 4 digits regardless of how Sheets mangles them on round-trip.
@@ -292,7 +304,7 @@ function loadLocal() {
     STATE.polar = padD4OnLayer(d.polar);
     STATE.conductDetail = padD4OnLayer(d.conductDetail);
     STATE.appointments = padD4OnLayer(d.appointments);
-    STATE.leave = padD4OnLayer(d.leave);
+    STATE.leave = normalizeLeave(d.leave);
     STATE.msk = normalizeMSK(d.msk);
     STATE.conducts = Array.isArray(d.conducts) ? d.conducts : [];
   } catch { /* fall through to empty state */ }
