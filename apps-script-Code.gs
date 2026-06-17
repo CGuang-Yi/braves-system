@@ -47,9 +47,11 @@
  *                UI by id — their rank+name shows instead. rank is free
  *                text ("3SG", "2LT", "CPT", "MSG"); leaveQuota is the
  *                off-in-lieu day cap (numeric, optional for recruits).)
- *   Medical:    id | d4 | date | reason | status | startDate | endDate
+ *   Medical:    id | d4 | date | reason | location | status | startDate | endDate
  *               (Each row represents a "report sick" event — `date` is the
- *                date the recruit reported sick. status ∈ {MC, Warded, LD,
+ *                date the recruit reported sick. `location` is optional —
+ *                the clinic/hospital where the recruit reported sick OUTSIDE;
+ *                blank for in-camp report sick. status ∈ {MC, Warded, LD,
  *                RMJ, Excuse Heavy Load, Excuse Kneeling, Excuse Squatting,
  *                Excuse Uniform, Excuse RMJ, Excuse Swimming,
  *                Excuse Prolonged Standing, Excuse Upper Limb,
@@ -1713,11 +1715,15 @@ function tgCompleteMC(chatId, state, url, fileId) {
     }
     // Append a Medical row so it flows into the dashboard + parade state. Status
     // and dates are left BLANK for the COS to fill in from the MC image — recruits
-    // no longer self-declare their status.
+    // no longer self-declare their status. `location` carries the clinic/hospital
+    // captured in the rs_clinic step (out-of-camp only) so report-sick-outside
+    // cases show the location in the parade state. Falls back to the ReportSick
+    // row's clinic in case the conversation state was trimmed.
     appendRow("Medical", {
       id: Date.now(), d4: user.d4, date: today,
-      reason: state.reason || "Reported sick", status: "",
-      startDate: "", endDate: ""
+      reason: state.reason || "Reported sick",
+      location: state.clinic || (rs && rs.clinic) || "",
+      status: "", startDate: "", endDate: ""
     });
   } catch (e) {
     Logger.log("tgCompleteMC sheet error: " + e);

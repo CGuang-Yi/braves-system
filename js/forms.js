@@ -487,6 +487,7 @@ function openMedicalForm(id) {
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
         ${formField("f-date", "Date Reported Sick", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
         ${formField("f-reason", "Reason", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
+        ${formField("f-location", "Location (only if reported sick outside)", "text", "e.g. Lim Clinic and Surgery", `maxlength="200" value="${escapeAttr(e?.location)}"`)}
         <div class="form-group">
           <label>Status</label>
           <select id="f-status" required onchange="medStatusSelChanged(this.value)">
@@ -540,6 +541,7 @@ function submitMedical() {
     d4: gv("f-d4"),
     date: isoToDisplayDate(gv("f-date")),
     reason: gv("f-reason"),
+    location: gv("f-location").trim(),
     status,
     startDate: isoToDisplayDate(startIso),
     endDate: endIso ? isoToDisplayDate(endIso) : ""
@@ -1387,16 +1389,20 @@ function buildMedicalSection(label, dateIso, statusFilter) {
     // Use the first record's reason as the headline — multi-status entries
     // typically share an underlying cause (per BENJAMIN sample).
     const reason = records[0].reason || "";
+    // Location line only renders for report-sick-outside cases (external
+    // clinic/hospital). In-camp report sicks leave it blank → omitted entirely.
+    const location = records.map(r => r.location).find(v => v && String(v).trim()) || "";
+    const locationLine = location ? `\nLocation: ${location}` : "";
 
     if (records.length === 1) {
       const r = records[0];
-      return `S/N: ${sn}\nR/N: ${rn}\nReason: ${reason}\nStatus: ${paradeStatusLabel(r)}\nDuration: ${paradeDuration(r)}`;
+      return `S/N: ${sn}\nR/N: ${rn}\nReason: ${reason}${locationLine}\nStatus: ${paradeStatusLabel(r)}\nDuration: ${paradeDuration(r)}`;
     }
     // Multi-status: stack numbered Status + Duration pairs under one R/N.
     const subStatuses = records.map((r, i) =>
       `${i + 1}. ${paradeStatusLabel(r)}\nDuration: ${paradeDuration(r)}`
     ).join("\n");
-    return `S/N: ${sn}\nR/N: ${rn}\nReason: ${reason}\nStatus received:\n${subStatuses}`;
+    return `S/N: ${sn}\nR/N: ${rn}\nReason: ${reason}${locationLine}\nStatus received:\n${subStatuses}`;
   });
 
   return `${label}: ${String(peopleIds.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
@@ -1430,16 +1436,30 @@ function paradeTimeMinutes(timeStr) {
 
 function buildAppointmentSection(dateIso, paradeTime) {
   const paradeMins = paradeTimeMinutes(paradeTime);
-  const todays = STATE.appointments
+  // Show every UPCOMING appointment: the parade date plus all future dates.
+  // The time-of-day cutoff only applies on the parade day itself — a same-day
+  // appt that's already passed is dropped, but a future-dated one always shows
+  // regardless of its time. Sorted chronologically (date, then time).
+  const upcoming = STATE.appointments
     .filter(a => !a.resolved)
-    .filter(a => displayDateToISO(a.date) === dateIso)
-    .filter(a => apptEndMinutes(a.time) >= paradeMins);
-  if (!todays.length) return `MEDICAL APPT:\n\nS/N:\nR/N:\nReason:\nLocation:\nDate:\nTime:`;
-  const blocks = todays.map((a, idx) => {
+    .filter(a => {
+      const iso = displayDateToISO(a.date) || "";
+      if (!iso || iso < dateIso) return false;
+      if (iso === dateIso) return apptEndMinutes(a.time) >= paradeMins;
+      return true;
+    })
+    .sort((a, b) => {
+      const ai = displayDateToISO(a.date) || "";
+      const bi = displayDateToISO(b.date) || "";
+      if (ai !== bi) return ai < bi ? -1 : 1;
+      return apptEndMinutes(a.time) - apptEndMinutes(b.time);
+    });
+  if (!upcoming.length) return `MEDICAL APPT:\n\nS/N:\nR/N:\nReason:\nLocation:\nDate:\nTime:`;
+  const blocks = upcoming.map((a, idx) => {
     const sn = String(idx + 1).padStart(2, "0");
     return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${fmtHrs(a.time)}`;
   });
-  return `MEDICAL APPT: ${String(todays.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
+  return `MEDICAL APPT: ${String(upcoming.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
 }
 
 function buildOthersSection(dateIso) {

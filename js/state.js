@@ -211,6 +211,9 @@ function normalizeMedical(records) {
       d4: padD4(r.d4 || ""),
       date: r.date || "",
       reason: r.reason || "",
+      // Where the recruit reported sick — only meaningful for report-sick-
+      // outside cases (external clinic/hospital). Blank for in-camp report sick.
+      location: r.location || "",
       status,
       startDate: r.startDate || "",
       endDate: r.endDate || ""
