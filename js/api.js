@@ -46,7 +46,7 @@ const API = {
     if (data.polar?.length) STATE.polar = padD4OnLayer(data.polar);
     if (data.conductDetail?.length) STATE.conductDetail = padD4OnLayer(data.conductDetail);
     if (data.appointments?.length) STATE.appointments = padD4OnLayer(data.appointments);
-    if (data.leave?.length) STATE.leave = padD4OnLayer(data.leave);
+    if (data.leave?.length) STATE.leave = normalizeLeave(data.leave);
     if (data.msk?.length) STATE.msk = normalizeMSK(data.msk);
     if (data.conducts?.length) STATE.conducts = data.conducts;
     // Re-sync LMS counts from polar after every pull. Polar entries are the

@@ -47,9 +47,11 @@
  *                UI by id — their rank+name shows instead. rank is free
  *                text ("3SG", "2LT", "CPT", "MSG"); leaveQuota is the
  *                off-in-lieu day cap (numeric, optional for recruits).)
- *   Medical:    id | d4 | date | reason | status | startDate | endDate
+ *   Medical:    id | d4 | date | reason | location | status | startDate | endDate
  *               (Each row represents a "report sick" event — `date` is the
- *                date the recruit reported sick. status ∈ {MC, Warded, LD,
+ *                date the recruit reported sick. `location` is optional —
+ *                the clinic/hospital where the recruit reported sick OUTSIDE;
+ *                blank for in-camp report sick. status ∈ {MC, Warded, LD,
  *                RMJ, Excuse Heavy Load, Excuse Kneeling, Excuse Squatting,
  *                Excuse Uniform, Excuse RMJ, Excuse Swimming,
  *                Excuse Prolonged Standing, Excuse Upper Limb,
@@ -87,11 +89,14 @@
  *                Aggregates in the Attendance sheet should match the
  *                per-conduct totals of these rows.)
  *
- *   Appointments: id | d4 | reason | date | time | location
+ *   Appointments: id | d4 | reason | date | time | location | outOfCamp | resolved
  *               (Booked future events — medical specialist visits, IPPT
  *                retakes, board appearances, etc. Sheet keeps full history;
  *                dashboard only shows entries where date >= today. date is
- *                display-format ("16 May 2026"); time is free text ("0930").)
+ *                display-format ("16 May 2026"); time is free text ("0930").
+ *                outOfCamp = TRUE when the recruit leaves camp for the appt
+ *                (shown in the parade state's MEDICAL APPT "Camp:" line);
+ *                resolved = TRUE hides it from the dashboard + parade state.)
  *
  *   Leave:      id | d4 | type | startDate | endDate | days | reason
  *               (Personnel absences. type ∈ {Leave, Compassionate,
@@ -670,14 +675,36 @@ function writeTab(tabName, data) {
   };
 }
 
+// Ensures the sheet has a column for every key in `keys`. Any missing header is
+// appended to row 1 (bold) so NEW fields persist on first write instead of being
+// silently dropped — the row-level writers only map to existing columns, which
+// otherwise loses a field until someone does a full re-push. Returns the
+// up-to-date trimmed header list.
+function ensureColumnsForKeys(sheet, keys) {
+  var lastCol = sheet.getLastColumn();
+  var headers = lastCol ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var trimmed = headers.map(function (h) { return String(h).trim(); });
+  var missing = [];
+  keys.forEach(function (k) {
+    if (k && trimmed.indexOf(k) === -1 && missing.indexOf(k) === -1) missing.push(k);
+  });
+  if (missing.length) {
+    var rng = sheet.getRange(1, trimmed.length + 1, 1, missing.length);
+    rng.setValues([missing]);
+    rng.setFontWeight("bold");
+    trimmed = trimmed.concat(missing);
+  }
+  return trimmed;
+}
+
 function appendRow(tabName, rowData) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found" };
 
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var newRow = headers.map(function (h) {
-    var val = rowData[String(h).trim()];
+  var trimmed = ensureColumnsForKeys(sheet, Object.keys(rowData));
+  var newRow = trimmed.map(function (h) {
+    var val = rowData[h];
     return val !== undefined && val !== null ? val : "";
   });
 
@@ -700,16 +727,18 @@ function appendMany(tabName, rows) {
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found" };
 
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var keySet = {};
+  rows.forEach(function (r) { Object.keys(r).forEach(function (k) { keySet[k] = true; }); });
+  var trimmed = ensureColumnsForKeys(sheet, Object.keys(keySet));
   var newRows = rows.map(function (rowData) {
-    return headers.map(function (h) {
-      var val = rowData[String(h).trim()];
+    return trimmed.map(function (h) {
+      var val = rowData[h];
       return val !== undefined && val !== null ? val : "";
     });
   });
 
   var startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, newRows.length, headers.length).setValues(newRows);
+  sheet.getRange(startRow, 1, newRows.length, trimmed.length).setValues(newRows);
 
   return {
     ok: true,
@@ -731,10 +760,9 @@ function upsertRow(tabName, rowData) {
   if (!rowData || rowData.id === undefined || rowData.id === null || rowData.id === "") {
     return { error: "upsertRow requires a non-empty id field on the row" };
   }
-  var lastCol = sheet.getLastColumn();
-  if (!lastCol) return { error: "Tab '" + tabName + "' has no header row" };
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var trimmed = headers.map(function (h) { return String(h).trim(); });
+  if (!sheet.getLastColumn()) return { error: "Tab '" + tabName + "' has no header row" };
+  // Auto-create columns for any new fields so they persist instead of dropping.
+  var trimmed = ensureColumnsForKeys(sheet, Object.keys(rowData));
   var idCol = trimmed.indexOf("id");
   if (idCol === -1) return { error: "No 'id' column in tab " + tabName };
 
@@ -749,7 +777,7 @@ function upsertRow(tabName, rowData) {
           var val = rowData[h];
           return val !== undefined && val !== null ? val : "";
         });
-        sheet.getRange(sheetRow, 1, 1, headers.length).setValues([updatedRow]);
+        sheet.getRange(sheetRow, 1, 1, trimmed.length).setValues([updatedRow]);
         return {
           ok: true,
           tab: tabName,
@@ -1713,11 +1741,15 @@ function tgCompleteMC(chatId, state, url, fileId) {
     }
     // Append a Medical row so it flows into the dashboard + parade state. Status
     // and dates are left BLANK for the COS to fill in from the MC image — recruits
-    // no longer self-declare their status.
+    // no longer self-declare their status. `location` carries the clinic/hospital
+    // captured in the rs_clinic step (out-of-camp only) so report-sick-outside
+    // cases show the location in the parade state. Falls back to the ReportSick
+    // row's clinic in case the conversation state was trimmed.
     appendRow("Medical", {
       id: Date.now(), d4: user.d4, date: today,
-      reason: state.reason || "Reported sick", status: "",
-      startDate: "", endDate: ""
+      reason: state.reason || "Reported sick",
+      location: state.clinic || (rs && rs.clinic) || "",
+      status: "", startDate: "", endDate: ""
     });
   } catch (e) {
     Logger.log("tgCompleteMC sheet error: " + e);

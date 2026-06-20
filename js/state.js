@@ -211,10 +211,25 @@ function normalizeMedical(records) {
       d4: padD4(r.d4 || ""),
       date: r.date || "",
       reason: r.reason || "",
+      // Where the recruit reported sick — only meaningful for report-sick-
+      // outside cases (external clinic/hospital). Blank for in-camp report sick.
+      location: r.location || "",
       status,
       startDate: r.startDate || "",
       endDate: r.endDate || ""
     };
+  });
+}
+
+// Leave records get d4 padding plus a one-way migration of the legacy bare
+// "Leave" type to its current "Annual Leave" spelling, so old records keep
+// their badge color / calendar legend mapping after the rename.
+function normalizeLeave(records) {
+  return (records || []).map(r => {
+    if (!r) return r;
+    const out = r.d4 != null ? { ...r, d4: padD4(r.d4) } : { ...r };
+    if (out.type === "Leave") out.type = "Annual Leave";
+    return out;
   });
 }
 
@@ -289,7 +304,7 @@ function loadLocal() {
     STATE.polar = padD4OnLayer(d.polar);
     STATE.conductDetail = padD4OnLayer(d.conductDetail);
     STATE.appointments = padD4OnLayer(d.appointments);
-    STATE.leave = padD4OnLayer(d.leave);
+    STATE.leave = normalizeLeave(d.leave);
     STATE.msk = normalizeMSK(d.msk);
     STATE.conducts = Array.isArray(d.conducts) ? d.conducts : [];
   } catch { /* fall through to empty state */ }
