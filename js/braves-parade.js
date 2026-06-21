@@ -1,26 +1,19 @@
 // ============================================================================
-// BRAVES PARADE STATE — Step 3 (spec §7–9)  ***DRAFT — NOT YET LOADED***
+// BRAVES PARADE STATE — Step 3 (spec §7–9)
 // ============================================================================
-// This file is intentionally NOT referenced from index.html yet. It was written
-// during the overnight session while the Bash safety classifier was unavailable,
-// so it could NOT be run, `node --check`ed, or byte-validated against
-// `Message Formats.md` (the explicit Step-3 acceptance test). Loading it blind
-// could break the whole app (all scripts share global scope), so integration is
-// deferred until it can be verified. See SESSION_LOG.md handoff + DECISIONS #26–33.
+// The Braves §7–9 parade-state generator. Loaded after forms.js / before sync.js
+// (it leans on globals defined in earlier files). Replaces the legacy Cougar
+// parade builders; `regenerateReport()` routes FP/LP here via
+// generateBravesParadeState(scope, type, dateIso, time), and `paradeRN` delegates
+// to bravesParadeRN (so the borderline/appointment checklist sections still work).
 //
-// INTEGRATION CHECKLIST (do once Bash/node is back):
-//   1. node --check js/braves-parade.js
-//   2. Add  <script src="js/braves-parade.js?v=NN"></script>  AFTER forms.js,
-//      BEFORE sync.js, in index.html; bump ?v on every tag.
-//   3. Replace the legacy Cougar generators: point regenerateReport()'s FP/LP
-//      branch at generateBravesParadeState(scope, type, dateIso, time), and add a
-//      company/platoon scope selector to openReportModal (see notes at bottom).
-//   4. Remove the now-dead Cougar parade fns from forms.js (buildStrengthBlock,
-//      buildMedicalSection, buildOthersSection, buildAppointmentSection,
-//      generateParadeStateText, the old paradeRN) — or keep paradeRN's name and
-//      have it delegate to bravesParadeRN.
-//   5. Run the byte-comparison: generate FP for the sample data and diff against
-//      `Message Formats.md` (Company + Platoon sections). Tune SEP arrays / spacing.
+// Byte-validated 2026-06-21 against `Message Formats.md` with a Node fixture
+// harness (structural match + literal helper assertions). The sample is an
+// internally date-inconsistent montage and can't be reproduced verbatim end-to-
+// end (no source data; it even mis-counts one section and renders one person two
+// ways) — so the validation is structural + per-helper, not literal 279-pax.
+// Format decisions: DECISIONS #26–33 + #35 (this session). The sample's incidental
+// double-spaces are dropped (#26); names are NOT force-uppercased (#30).
 //
 // DEPENDENCIES (globals from earlier files; present once loaded after forms.js):
 //   STATE, configGet, displayDateToISO, medStatusActive, personPlatoon,
@@ -46,13 +39,24 @@ const BP_SECTION_LABELS = {
   others: "OTHERS"
 };
 
-// Leave types that count as AL/OIL (DECISIONS #32 — flag for confirmation; make
-// Config-driven later). Everything else → OTHERS (NOT IN CAMP).
-const BP_ALOIL_TYPES = new Set(
-  ["leave", "off-in-lieu", "oil", "al", "annual leave", "weekend", "night's out", "nights out", "compassionate"]
-);
+// Leave types that count as AL/OIL vs OTHERS (DECISIONS #32, resolved #35 this
+// session). Config-driven: configGet("alOilLeaveTypes") supplies the list
+// (comma-separated string or array); the hardcoded set below is the fallback if
+// Config is absent. Everything NOT in the set falls to OTHERS, sub-typed in/out
+// of camp by the reason-keyword derivation (bpOthersNotInCamp), per spec §8.
+const BP_ALOIL_TYPES_DEFAULT =
+  ["leave", "off-in-lieu", "oil", "al", "annual leave", "weekend", "night's out", "nights out", "compassionate"];
+function bpAlOilTypeSet() {
+  const cfg = configGet("alOilLeaveTypes");
+  if (cfg) {
+    const arr = Array.isArray(cfg) ? cfg : String(cfg).split(",");
+    const cleaned = arr.map(s => String(s).trim().toLowerCase()).filter(Boolean);
+    if (cleaned.length) return new Set(cleaned);
+  }
+  return new Set(BP_ALOIL_TYPES_DEFAULT);
+}
 function bpIsAlOilType(type) {
-  return BP_ALOIL_TYPES.has(String(type || "").trim().toLowerCase());
+  return bpAlOilTypeSet().has(String(type || "").trim().toLowerCase());
 }
 
 // ── Date helpers ────────────────────────────────────────────────────────────
@@ -133,13 +137,22 @@ function bpClassifyPerson(r, dateIso) {
     if (l.d4 !== r.id) return;
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
-    const reason = [l.type, l.reason].filter(Boolean).join(" — ") || l.type || "";
+    // The entry text is the free-text reason ("48HR BO"), falling back to the
+    // leave type when no reason was recorded. (NOT "type — reason" — the sample
+    // shows a single clean label.)
+    const reason = l.reason || l.type || "";
     if (bpIsAlOilType(l.type)) {
       out.alOil.push(`${rn} - ${reason} ${bpRange(l, true)}`.trim());
+      notInCamp = true;  // AL/OIL is always not in camp
     } else {
-      out.others.push(`${rn} - ${reason} ${bpRange(l, false)} (OTHERS (NOT IN CAMP))`.replace(/\s+\(/, " (").trim());
+      // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
+      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP).
+      const nic = bpOthersNotInCamp(reason);
+      const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      const rng = bpRange(l, false);
+      out.others.push(`${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim());
+      if (nic) notInCamp = true;
     }
-    notInCamp = true;
   });
 
   // Medical rows for this person.
@@ -190,13 +203,17 @@ function bpClassifyPerson(r, dateIso) {
     }
   });
 
-  // Out-of-camp medical appointments (MA) dated today → OTHERS (NOT IN CAMP).
+  // Medical appointments (MA) dated today → OTHERS. The stored `outOfCamp` bit
+  // (set when booking, toggled live by the parade presence-tick) drives the
+  // sub-type: out of camp → NOT IN CAMP (and subtracts from current strength);
+  // in camp → OTHERS (IN CAMP), still present. Resolved appointments drop out.
   (STATE.appointments || []).forEach(a => {
     if (a.d4 !== r.id || a.resolved) return;
     if (displayDateToISO(a.date) !== dateIso) return;
-    if (!bpOthersNotInCamp(a.reason, a.othersInCamp)) return;
-    out.others.push(`${rn} - ${a.reason || "Appointment"} (OTHERS (NOT IN CAMP))`.trim());
-    notInCamp = true;
+    const outOfCamp = !!a.outOfCamp;
+    const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+    out.others.push(`${rn} - ${a.reason || "Appointment"} (${label})`.trim());
+    if (outOfCamp) notInCamp = true;
   });
 
   // Dedupe each section by exact line (collapses multi-status sibling rows).

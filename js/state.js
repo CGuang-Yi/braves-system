@@ -63,7 +63,12 @@ const DEFAULT_CONFIG = {
   // Which signal decides whether a conduct earns an HA period (spec §14.3):
   // "isHAExcluded" = existing conduct-name logic; "currencyTag" = the CSV
   // "Currency Tags: HA" metadata. Switchable without code changes.
-  haEligibilitySource: "isHAExcluded"
+  haEligibilitySource: "isHAExcluded",
+  // Leave types that classify as AL/OIL in parade state (spec §8, DECISIONS
+  // #32/#35). Any leave type NOT in this comma-separated list falls to OTHERS,
+  // sub-typed in/out of camp by reason keywords. Edit here (or override via the
+  // Config tab) to retune the split without touching code.
+  alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate"
 };
 
 // Read a Config value with the company default as a fallback. Always returns a

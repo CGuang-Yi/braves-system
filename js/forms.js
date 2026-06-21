@@ -1509,19 +1509,13 @@ function toDDMMYY(iso) {
   return m[3] + m[2] + m[1].slice(2);
 }
 
-// R/N formatting per chat convention. Commanders are rank+name, no 4D.
-// Recruits are "REC <NAME> C<4D>" — the C prefix marks Cougar in the
-// battalion-wide parade state.
+// R/N formatting (spec §7). Delegates to the Braves implementation in
+// braves-parade.js (loaded after this file, so the global is resolved by the
+// time any UI calls paradeRN). Kept under the old name because the medical-
+// status report + the borderline/appointment checklists still call paradeRN;
+// they now get Braves-format R/N ("MARTIN TAN B1411" / "LCP CALVIN LEE").
 function paradeRN(d4) {
-  const r = STATE.roster.find(x => x.id === d4);
-  if (!r) return d4;
-  const name = (r.name || "").toUpperCase();
-  if (r.role === "Commander") return [r.rank, name].filter(Boolean).join(" ");
-  // Strip any existing C prefix on the id before re-adding it — some sheets
-  // store the recruit 4D as "C1415" already, which would round-trip to
-  // "CC1415" otherwise.
-  const bareId = String(r.id).replace(/^C/i, "");
-  return `REC ${name} C${bareId}`;
+  return bravesParadeRN(d4);
 }
 
 // Duration label per chat samples ("Duration: 180526 - 010626"). Pending /
@@ -1895,20 +1889,32 @@ function openReportModal(type) {
   _paradeOverrides = {};
   _apptCampOverrides = {};
 
-  // The borderline checklist is only meaningful for FP/LP. MED/MSK/CONDUCT
-  // reports skip the section + date onchange wiring entirely.
+  // FP/LP now use the Braves §8–9 generator (js/braves-parade.js), which derives
+  // every category from stored data — so the parade modal just re-runs the
+  // generator on any date/time/scope change (no live checklists to re-render).
   const isParade = type === "FP" || type === "LP";
   const isConduct = type === "CONDUCT";
   const dateExtra = isParade
-    ? `value="${defaultDate}" required onchange="onParadeDateChange('${type}')"`
+    ? `value="${defaultDate}" required onchange="regenerateReport('${type}')"`
     : isConduct
       ? `value="${defaultDate}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
       : `value="${defaultDate}" required`;
   const timeExtra = isConduct
     ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
     : isParade
-      ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="onParadeTimeChange('${type}')"`
+      ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="regenerateReport('${type}')"`
       : `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required`;
+
+  // Company / per-platoon (incl. HQ) scope selector for the parade state.
+  // Value "company" → whole-company combined message; "platoon:<code>" → just
+  // that platoon's standalone block. Options derive from activePlatoons() so the
+  // list tracks the org structure (spec §9.1/§9.2, addendum A6).
+  const scopeOptions = isParade
+    ? [`<option value="company">Company (full parade state)</option>`]
+        .concat(activePlatoons().map(p =>
+          `<option value="platoon:${escapeAttr(p.code)}">${escapeAttr(p.displayName || p.code)}</option>`))
+        .join("")
+    : "";
 
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
@@ -1922,8 +1928,12 @@ function openReportModal(type) {
           ${formField("rep-date", "Date", "date", "", dateExtra)}
           ${formField("rep-time", "Time (HHMM)", "text", "0700", timeExtra)}
         </div>
-        ${isParade ? `<div id="borderline-section"></div>` : ""}
-        ${isParade ? `<div id="appt-camp-section"></div>` : ""}
+        ${isParade ? `<div class="form-group">
+          <label>Scope</label>
+          <select id="rep-scope" onchange="regenerateReport('${type}')" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:100%">
+            ${scopeOptions}
+          </select>
+        </div>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
         <textarea id="rep-text" rows="20" spellcheck="false" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre"></textarea>
@@ -1934,8 +1944,6 @@ function openReportModal(type) {
   // Stash the report type so regenerate from the date/time onchange knows
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
-  if (isParade) renderBorderlineSection(defaultDate, type);
-  if (isParade) renderApptCampSection(defaultDate, defaultTime, type);
   if (isConduct) renderConductPicker();
   regenerateReport(type);
 }
@@ -2047,7 +2055,15 @@ function regenerateReport(type) {
   else if (type === "CONDUCT") {
     const id = +gv("rep-conduct-id") || null;
     text = id ? buildConductChatFormat(id) : "Pick a conduct from the dropdown above.";
-  } else text = generateParadeStateText(type, dateIso, time);
+  } else {
+    // FP / LP → Braves §8–9 parade state (js/braves-parade.js). The scope
+    // selector picks company vs a single platoon/HQ block.
+    const sv = gv("rep-scope") || "company";
+    const scope = sv === "company"
+      ? { level: "company" }
+      : { level: "platoon", platoon: sv.split(":")[1] };
+    text = generateBravesParadeState(scope, type, dateIso, time);
+  }
   document.getElementById("rep-text").value = text;
 }
 
