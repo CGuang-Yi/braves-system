@@ -871,7 +871,7 @@ function renderDashAppointments(visible, todayIso) {
       <td style="text-align:left">${a.reason || ""}</td>
       <td style="white-space:nowrap">${a.date || ""} ${dayLabel}</td>
       <td class="mono" style="white-space:nowrap">${fmtHrs(a.time)}</td>
-      <td style="text-align:left;font-size:11px;color:var(--muted)">${a.location || ""}</td>
+      <td style="text-align:left;font-size:11px;color:var(--muted)">${a.location || ""}${a.outOfCamp ? ` <span class="badge badge-pink" style="font-size:9px">OUTSIDE</span>` : ""}</td>
       <td style="white-space:nowrap"><button class="btn btn-icon" style="color:var(--green)" onclick="event.stopPropagation(); toggleAppointmentResolved(${a.id})" title="Mark as resolved (hides from dashboard + parade state)">✓</button> <button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button></td>
     </tr>`;
   }).join("");
