@@ -109,11 +109,14 @@
  *                Aggregates in the Attendance sheet should match the
  *                per-conduct totals of these rows.)
  *
- *   Appointments: id | d4 | reason | date | time | location
+ *   Appointments: id | d4 | reason | date | time | location | outOfCamp | resolved
  *               (Booked future events — medical specialist visits, IPPT
  *                retakes, board appearances, etc. Sheet keeps full history;
  *                dashboard only shows entries where date >= today. date is
- *                display-format ("16 May 2026"); time is free text ("0930").)
+ *                display-format ("16 May 2026"); time is free text ("0930").
+ *                outOfCamp = TRUE when the recruit leaves camp for the appt
+ *                (shown in the parade state's MEDICAL APPT "Camp:" line);
+ *                resolved = TRUE hides it from the dashboard + parade state.)
  *
  *   Leave:      id | d4 | type | startDate | endDate | days | reason
  *               (Personnel absences. type ∈ {Leave, Compassionate,
