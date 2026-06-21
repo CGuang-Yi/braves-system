@@ -158,70 +158,109 @@ document.addEventListener("click", (e) => {
   if (wrapper && !wrapper.contains(e.target)) menu.classList.add("hidden");
 });
 
-// Redeems ?token=… from the URL if present. Returns true if an attempt was
-// made (regardless of success); the URL param is scrubbed either way so a
-// failed redemption can't sit in the address bar.
-async function tryRedeemInviteFromURL() {
-  const params = new URLSearchParams(window.location.search);
-  const inviteToken = params.get("token");
-  if (!inviteToken) return false;
+// ── Login screen + session control ───────────────────────
 
-  // Scrub immediately so a refresh doesn't retry a doomed redemption.
-  history.replaceState({}, document.title, window.location.pathname);
+function showLogin() { document.getElementById("login-overlay")?.classList.remove("hidden"); }
+function showApp() { document.getElementById("login-overlay")?.classList.add("hidden"); }
 
-  try {
-    const res = await API.redeemInvite(inviteToken);
-    if (res && res.ok && res.authToken) {
-      setAuthToken(res.authToken);
-      return true;
-    }
-    alert("Invite link rejected: " + (res?.error || "unknown error") + "\n\nAsk your admin for a new link.");
-  } catch (e) {
-    alert("Failed to redeem invite: " + e.message);
+// Reflect the signed-in account on the chrome: a body class drives the soft
+// read-only styling for viewers / admin-only visibility, and the sidebar footer
+// shows who's logged in (name when the personId links to a Roster row).
+function applyRoleUI() {
+  document.body.classList.toggle("role-viewer", STATE.role === "viewer");
+  document.body.classList.toggle("role-admin", STATE.role === "admin");
+  // A viewer can never legitimately have unsynced edits. Scrub any stale dirty
+  // markers (e.g. left by a write attempt before this guard existed, or by a
+  // commander who previously used this device) so the launch "push now?" prompt
+  // never offers a viewer's phantom edit for approval.
+  if (STATE.role === "viewer" && STATE.dirty && STATE.dirty.size) {
+    STATE.dirty.clear();
+    if (typeof saveDirty === "function") saveDirty();
   }
-  return true;
+  const el = document.getElementById("account-identity");
+  if (el) {
+    const who = (STATE.personId && typeof displayPersonLabel === "function") ? displayPersonLabel(STATE.personId) : "";
+    const name = (who && who !== STATE.personId) ? who + " · " : "";
+    el.textContent = STATE.email ? `${name}${STATE.email} (${STATE.role})` : "";
+  }
+}
+
+// Called whenever any API call reports the session is gone (401 / session_expired):
+// drop the local session and return to the login screen.
+function handleAuthFailure() {
+  clearSession();
+  applyRoleUI();
+  showLogin();
+  setSyncIndicator("● Not authenticated", "var(--red)");
+}
+
+function initLoginForm() {
+  document.getElementById("login-form")?.addEventListener("submit", doLogin);
+}
+
+async function doLogin(e) {
+  e?.preventDefault();
+  const email = document.getElementById("login-email").value.trim();
+  const password = document.getElementById("login-password").value;
+  const errEl = document.getElementById("login-error");
+  const btn = document.getElementById("login-submit");
+  errEl.textContent = "";
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    const res = await API.login(email, password);
+    if (res && res.ok && res.authToken) {
+      setSession(res.authToken, res.role, res.personId, res.email);
+      showApp();
+      await pullAndRender();
+    } else {
+      errEl.textContent = (res && res.error) || "Login failed.";
+    }
+  } catch (err) {
+    errEl.textContent = "Network error: " + err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign In";
+  }
+}
+
+// Shared pull-then-render path used by both launch and post-login. Resolves the
+// role UI first (so displayPersonLabel works once the roster lands) and surfaces
+// auth failures to the login screen.
+async function pullAndRender() {
+  applyRoleUI();
+  setSyncIndicator("● Loading data…", "var(--orange)");
+  try {
+    const pullPromise = API.pullAll();
+    if (typeof setPullInFlight === "function") setPullInFlight(pullPromise);
+    const data = await pullPromise;
+    if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
+    syncLog(`Auto-sync on launch: pulled from ${data.sheetName}`, "var(--green)");
+    applyRoleUI();   // re-run now the roster is loaded → name resolves
+    render();
+    maybeRunConductMigration();
+    maybeRestoreDirty();
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); }
+    else {
+      setSyncIndicator("● Sync failed", "var(--red)");
+      syncLog(`Auto-sync failed: ${e.message}`, "var(--red)");
+      render();
+    }
+  }
 }
 
 (async function bootstrap() {
-  const justRedeemed = await tryRedeemInviteFromURL();
   loadLocal();
   loadFilter();
   initFilterControls();
+  initLoginForm();
 
-  // Auto-pull on every launch (and right after invite redemption). For users
-  // with an empty cache — first launch on this device, or right after
-  // redeeming an invite link — block the first render on the pull so they
-  // see real data immediately instead of an empty-state flash. For returning
-  // users with cached data, render cached now and refresh in the background.
-  const cacheEmpty = STATE.roster.length === 0;
-  if (STATE.authToken && (cacheEmpty || justRedeemed)) {
-    setSyncIndicator("● Loading data…", "var(--orange)");
-    try {
-      // Mark the pull in-flight so any writes triggered during render
-      // (e.g. a migration auto-push) wait until STATE is fresh.
-      const pullPromise = API.pullAll();
-      if (typeof setPullInFlight === "function") setPullInFlight(pullPromise);
-      const data = await pullPromise;
-      if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
-      else setSyncIndicator(`● Synced ${new Date().toLocaleTimeString()}`, "var(--green)");
-      syncLog(`Auto-sync on launch: pulled from ${data.sheetName}`, "var(--green)");
-    } catch (e) {
-      if (e.name === "AuthError") {
-        setSyncIndicator("● Not authenticated", "var(--red)");
-      } else {
-        setSyncIndicator("● Sync failed", "var(--red)");
-        syncLog(`Auto-sync failed: ${e.message}`, "var(--red)");
-      }
-    }
-    render();
-    maybeRunConductMigration();
-    maybeRestoreDirty();
-  } else {
-    render();
-    autoSyncOnLaunch();
-    maybeRunConductMigration();
-    maybeRestoreDirty();
-  }
+  // No token on this device → straight to login (synchronous, before any await,
+  // so there's no flash of the app for an unauthenticated user).
+  if (!STATE.authToken) { showLogin(); return; }
+
+  // Have a token — try to use it. A 401/expired response bounces to login.
+  showApp();
+  await pullAndRender();
 })();
 
 // On launch, if previous session(s) left dirty tabs (pushes failed offline
