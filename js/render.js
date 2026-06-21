@@ -83,6 +83,16 @@ function renderDashboard(el) {
   const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a, c) => a + (c.participating / c.total * 100), 0) / STATE.attendance.length) : 0;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — Attendance figures remain company-wide.</div>` : "";
 
+  // Braves §16 additions, computed via the §8 classifier (braves-parade.js,
+  // loaded after render.js — resolved at this runtime call). "Not Available
+  // (in camp)" = MR + REPORTING SICK today (present but not available — STATUS/
+  // LD/excuse deliberately excluded per §16; resolves open §20.7, DECISIONS #42).
+  // Strength-by-rank-group replaces Cougar's platoon-by-platoon breakdown (§16).
+  const naClassify = r => bpClassifyPerson(r, today);
+  const notAvailable = scoped.filter(r => { const c = naClassify(r); return c.sections.mr.length > 0 || c.sections.reportingSick.length > 0; }).length;
+  const grpStrength = bpStrength(scoped, today);
+  const grpLine = g => `${grpStrength.groups[g].cur}/${grpStrength.groups[g].tot}`;
+
   // R/C breakdown — only shown when scope is "All". Helps reproduce the
   // parade-state-style "PLATOON x: y/z … COMMANDERS: a/b" split in one
   // glance without forcing a separate Commanders card.
@@ -126,7 +136,16 @@ function renderDashboard(el) {
       <div class="stat"><label>Active today</label><div class="val" style="color:var(--green)">${active}${inlineBreakdown(recActive, cmdActive)}</div></div>
       <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}${inlineBreakdown(recLive.length, cmdLive.length)}</div></div>
       <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}${inlineBreakdown(recInCamp, cmdInCamp)}</div></div>
+      <div class="stat" title="MR + Reporting Sick today — physically in camp but not available for normal activities (§16)"><label>Not Available</label><div class="val" style="color:var(--purple)">${notAvailable}</div></div>
       <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
+    </div>
+    <div class="card" style="padding:10px 16px;margin-top:10px">
+      <h3 style="font-size:13px;color:var(--muted);margin-bottom:6px">Strength by Rank Group <span style="font-weight:400;color:var(--dim)">(current/total in scope — §16)</span></h3>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:13px">
+        <div>[OFFICER] <strong style="color:var(--text)">${grpLine("Officer")}</strong></div>
+        <div>[WOSPEC] <strong style="color:var(--text)">${grpLine("WOSPEC")}</strong></div>
+        <div>[ENLISTEE] <strong style="color:var(--text)">${grpLine("Enlistee")}</strong></div>
+      </div>
     </div>
     ${renderDashAppointments(visible, today)}
     <div class="grid-2">
