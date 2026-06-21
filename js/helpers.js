@@ -58,6 +58,97 @@ function filterLabel() {
   return parts.join(" ");
 }
 
+// ── Braves org model helpers (spec §2/§5/§8, addendum A6) ─
+// These read the new explicit roster columns (platoon/section/rankGroup) added
+// in Step 2. They are the forward-looking accessors; the legacy getPlt/getSect
+// above still back the current topbar filter until the Step-5 scope rewrite.
+
+// A person's platoon code ("HQ"/"PLT1"…). Prefers the explicit column; falls
+// back to "PLT" + the 4D-derived digit so parade state still groups sensibly
+// before the roster is fully populated with the new column.
+function personPlatoon(r) {
+  if (!r) return "";
+  if (r.platoon) return String(r.platoon).trim();
+  const p = getPlt(r);
+  return p ? "PLT" + p : "";
+}
+
+// A person's section ("1".."N", "Command", or "" for HQ-flat). Prefers the
+// explicit column; falls back to the 4D-derived section digit.
+function personSection(r) {
+  if (!r) return "";
+  if (r.section != null && r.section !== "") return String(r.section).trim();
+  return getSect(r) || "";
+}
+
+// Strength-breakdown bucket for a person: "Officer" / "WOSPEC" / "Enlistee"
+// (spec §8). Prefers the explicit rankGroup column; otherwise derives from the
+// free-text rank. Officer = 2LT and above (the commissioned ranks); WOSPEC =
+// the specialist/warrant track (3SG..MWO and 1WO/2WO etc.); everything else
+// (recruits, REC/PTE/LCP/CPL/CFC) = Enlistee.
+function rankGroupOf(r) {
+  if (!r) return "Enlistee";
+  if (r.rankGroup) {
+    const g = String(r.rankGroup).trim().toLowerCase();
+    if (g.startsWith("off")) return "Officer";
+    if (g.startsWith("wo") || g.startsWith("spec")) return "WOSPEC";
+    if (g.startsWith("enl")) return "Enlistee";
+  }
+  const rank = String(r.rank || "").trim().toUpperCase();
+  if (!rank) return "Enlistee";
+  const OFFICER = ["2LT", "LTA", "CPT", "MAJ", "LTC", "SLTC", "COL", "BG", "MG", "LG"];
+  const WOSPEC = ["3SG", "2SG", "1SG", "SSG", "MSG", "SWO", "MWO", "1WO", "2WO", "3WO", "WO"];
+  if (OFFICER.includes(rank)) return "Officer";
+  if (WOSPEC.includes(rank)) return "WOSPEC";
+  return "Enlistee";
+}
+
+// Active platoons (addendum A6.1) for dropdowns / scope options. Falls back to a
+// derived list from the roster's distinct platoon values when the Platoons tab
+// hasn't been populated yet, so the UI is never empty.
+function activePlatoons() {
+  const fromTab = (STATE.platoons || []).filter(p => p.active);
+  if (fromTab.length) return fromTab;
+  const seen = new Set();
+  const derived = [];
+  (STATE.roster || []).forEach(r => {
+    const code = personPlatoon(r);
+    if (code && !seen.has(code)) { seen.add(code); derived.push({ code, displayName: code, active: true }); }
+  });
+  // Stable order: HQ last, platoons numerically.
+  derived.sort((a, b) => {
+    if (a.code === "HQ") return 1;
+    if (b.code === "HQ") return -1;
+    return a.code.localeCompare(b.code, undefined, { numeric: true });
+  });
+  return derived;
+}
+
+// Distinct sections present in a platoon (spec §2 — section count is variable,
+// never hardcoded). "Command" (PC/PS) sorts first, then numbered sections.
+function sectionsInPlatoon(platoonCode) {
+  const seen = new Set();
+  (STATE.roster || []).forEach(r => {
+    if (personPlatoon(r) !== platoonCode) return;
+    const s = personSection(r);
+    if (s) seen.add(s);
+  });
+  return [...seen].sort((a, b) => {
+    if (a === "Command") return -1;
+    if (b === "Command") return 1;
+    return String(a).localeCompare(String(b), undefined, { numeric: true });
+  });
+}
+
+// URTI auto-classification from PURPOSE keywords (spec §10.3). Pre-fills the
+// medical form's urtiType; always commander-overridable.
+function classifyURTI(purpose) {
+  const p = (purpose || "").toLowerCase();
+  const urti = ["urti", "cough", "cold", "flu", "fever", "runny nose", "sore throat",
+                "throat", "phlegm", "blocked nose", "rhinitis", "sinusitis", "sneez"];
+  return urti.some(k => p.indexOf(k) !== -1) ? "URTI" : "NON-URTI";
+}
+
 // ── Commander-aware display helpers ───────────────────────
 // 00xx IDs are administrative only — the user never wants to see them in
 // the UI. These wrappers centralize the rule so tables can keep their

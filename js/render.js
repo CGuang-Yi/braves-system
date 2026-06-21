@@ -929,19 +929,24 @@ function renderRoster(el) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:18px;font-weight:700">Master Roster${titleSuffix}</h2>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px" class="write-only">
         <button class="btn" onclick="exportCSV(STATE.roster,'roster.csv')">Export CSV</button>
         <button class="btn btn-success" onclick="pushTab('Roster',STATE.roster)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
       </div>
     </div>
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Role</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
+    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Plt · Sect</th><th>Role</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
     ${scoped.map(r => {
       const bmi = calcBMI(r);
       const isCmd = r.role === "Commander";
       const nameCell = isCmd ? `${r.rank ? r.rank + " " : ""}${r.name}` : r.name;
       const idCell = isCmd ? "" : r.id;
       const roleCell = isCmd ? `<span class="badge badge-purple">Commander</span>` : `<span style="color:var(--muted);font-size:11px">Recruit</span>`;
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td>${roleCell}</td><td>${statusBadge(r.status)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
+      // Braves org columns (spec §5). Show the explicit platoon/section when
+      // present; em-dash when the roster row hasn't been populated yet.
+      const plt = personPlatoon(r);
+      const sect = personSection(r);
+      const orgCell = (plt || sect) ? `${plt || "—"}${sect ? " · " + sect : ""}` : "—";
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td style="font-size:11px;color:var(--muted)">${orgCell}</td><td>${roleCell}</td><td>${statusBadge(r.status)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No personnel in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "No invite redeemed on this device yet.")}</div>`}`;
 }
@@ -1189,7 +1194,7 @@ function renderMedical(el) {
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Reported</th><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Status</th><th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.reason || ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${m.reason || ""}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${m.urtiType}</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
         </tbody></table></div>` : `<div class="empty-state">${STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet."}</div>`}
       </div>
       <div class="card">
