@@ -1766,6 +1766,8 @@ function openReportModal(type) {
   const defaultTime = `${pad(now.getHours())}${pad(now.getMinutes())}`;
   const titleLabel = type === "FP" ? "First Parade State"
     : type === "LP" ? "Last Parade State"
+    : type === "RS" ? "RS Format (Sick Report)"
+    : type === "RSIP" ? "RSI Personnel (by Platoon)"
     : type === "MSK" ? "MSK Report"
     : type === "CONDUCT" ? "Per-Conduct Chat Format"
     : "Medical Status List";
@@ -1938,6 +1940,8 @@ function regenerateReport(type) {
   let text;
   if (type === "MED") text = generateMedicalStatusText(dateIso, time);
   else if (type === "MSK") text = generateMSKReportText(dateIso, time);
+  else if (type === "RS") text = generateRSFormat(dateIso, time);
+  else if (type === "RSIP") text = generateRSIPersonnel(dateIso, time);
   else if (type === "CONDUCT") {
     const id = +gv("rep-conduct-id") || null;
     text = id ? buildConductChatFormat(id) : "Pick a conduct from the dropdown above.";

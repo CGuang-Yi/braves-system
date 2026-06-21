@@ -331,16 +331,104 @@ function generateBravesParadeState(scope, type, dateIso, time) {
   return parts.join("\n");
 }
 
-// ── INTEGRATION NOTES (openReportModal / regenerateReport) ──────────────────
-// The current modal (forms.js openReportModal) has no scope selector. To wire
-// Braves parade state:
-//   • Add a <select id="rep-scope"> to the FP/LP modal: "Company" + one option
-//     per activePlatoons() entry (value "company" or "platoon:PLT1").
-//   • In regenerateReport, for FP/LP:
-//       const sv = gv("rep-scope") || "company";
-//       const scope = sv === "company" ? {level:"company"}
-//                     : {level:"platoon", platoon: sv.split(":")[1]};
-//       text = generateBravesParadeState(scope, type, dateIso, time);
-//   • The §6 "live presence tick" design ideas (bidirectional left/returned)
-//     map onto the existing _paradeOverrides borderline mechanism — generalise
-//     it to toggle a person's notInCamp for OTHERS/appointments, not just MC.
+// ════════════════════════════════════════════════════════════════════════════
+// SICK MESSAGES (spec §10)
+// ════════════════════════════════════════════════════════════════════════════
+// Two formats, both validated against `Message Formats.md`. Source = Medical rows
+// with type RSI/RSO reported on the given date (the day's sick parade). URTI vs
+// NON-URTI split by `urtiType`, falling back to classifyURTI(reason) for rows that
+// predate the field. The sample is DOUBLE-SPACED (a blank line after every field
+// line, WhatsApp-friendly) — so each builder produces a flat line array and joins
+// with "\n\n". R/N uses sickRN (name + B<4D>, no rank prefix — spec §10/§7 note).
+
+// "0700" → "0700H" (battalion time suffix). Pads to 4 digits defensively.
+function bpTimeH(time) {
+  return String(time || "").trim().padStart(4, "0").slice(0, 4) + "H";
+}
+// key/value field line — omits the trailing space when the value is blank, so an
+// unfilled field renders exactly "R/N:" (not "R/N: ") as in the sample.
+function bpKV(key, val) {
+  return val ? `${key}: ${val}` : `${key}:`;
+}
+// Report-sick rows for the day: type RSI/RSO reported on dateIso.
+function bpSickReports(dateIso) {
+  return (STATE.medical || []).filter(m =>
+    (m.type === "RSI" || m.type === "RSO") && displayDateToISO(m.date) === dateIso
+  );
+}
+// URTI / NON-URTI bucket for a report-sick row.
+function bpUrtiOf(m) {
+  const t = m.urtiType || classifyURTI(m.reason || "");
+  return t === "URTI" ? "URTI" : "NON-URTI";
+}
+// "FOLLOW UP STATUS FROM MO" value = the MO outcome from the medical record's
+// status (spec §10.4 — no separate field). Pending / blank → blank line (MO not
+// seen yet). MC/LD render with the inclusive day count ("9D MC").
+function bpSickFollowUp(m) {
+  if (!m.status || m.status === "Pending") return "";
+  if (m.status === "MC" || m.status === "LD") {
+    const days = bpInclusiveDays(m);
+    return days ? `${days}D ${m.status}` : m.status;
+  }
+  return m.status;
+}
+// The six field lines for one report-sick entry (S/N supplied by the caller,
+// which restarts numbering per URTI/NON-URTI sub-section — spec §10.2).
+function bpSickEntryLines(m, sn) {
+  return [
+    bpKV("S/N", bp2(sn)),
+    bpKV("R/N", sickRN(m.d4)),
+    bpKV("DATE", bpDDMMYY(displayDateToISO(m.date))),
+    bpKV("LOCATION", m.location || configGet("defaultSickLocation")),
+    bpKV("PURPOSE", m.reason || ""),
+    bpKV("FOLLOW UP STATUS FROM MO", bpSickFollowUp(m))
+  ];
+}
+// Emit a URTI block then a NON-URTI block (both always shown with counts), S/N
+// restarting in each. Returns a line array.
+function bpSickUrtiBlocks(reports) {
+  const urti = reports.filter(m => bpUrtiOf(m) === "URTI");
+  const nonUrti = reports.filter(m => bpUrtiOf(m) === "NON-URTI");
+  const lines = [`URTI: ${bp2(urti.length)}`];
+  urti.forEach((m, i) => lines.push(...bpSickEntryLines(m, i + 1)));
+  lines.push(`NON-URTI: ${bp2(nonUrti.length)}`);
+  nonUrti.forEach((m, i) => lines.push(...bpSickEntryLines(m, i + 1)));
+  return lines;
+}
+
+// §10.1 — single report-sick message: header → URTI block → NON-URTI block.
+function generateRSFormat(dateIso, time) {
+  const reports = bpSickReports(dateIso);
+  const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
+  lines.push(...bpSickUrtiBlocks(reports));
+  return lines.join("\n\n");
+}
+
+// §10.2 — company-wide RSI personnel, broken by platoon. Only platoons (and HQ)
+// with ≥1 report-sick entry are shown; TOTAL = sum across them.
+function generateRSIPersonnel(dateIso, time) {
+  const reports = bpSickReports(dateIso);
+  const platoonOf = d4 => {
+    const r = STATE.roster.find(x => x.id == d4);
+    return r ? personPlatoon(r) : "";
+  };
+  // Group by platoon code.
+  const byPlt = {};
+  reports.forEach(m => { (byPlt[platoonOf(m.d4)] = byPlt[platoonOf(m.d4)] || []).push(m); });
+
+  const lines = [`RSI PERSONNEL ${bpDDMMYY(dateIso)} ${bpTimeH(time)}`, `TOTAL: ${bp2(reports.length)} PAX`];
+  // Natural order: platoons numeric, HQ last (activePlatoons order); only those
+  // with entries. Any code not in activePlatoons (e.g. blank) appended at the end.
+  const known = activePlatoons().map(p => p.code);
+  const codes = Object.keys(byPlt);
+  const ordered = known.filter(c => byPlt[c]).concat(codes.filter(c => !known.includes(c)));
+  ordered.forEach(code => {
+    const members = byPlt[code];
+    if (!members || !members.length) return;
+    const label = code === "HQ" ? configGet("hqLabel")
+      : code ? `PLATOON ${String(code).replace(/^PLT/i, "")}` : "UNASSIGNED";
+    lines.push(`${label}: ${bp2(members.length)} PAX`);
+    lines.push(...bpSickUrtiBlocks(members));
+  });
+  return lines.join("\n\n");
+}

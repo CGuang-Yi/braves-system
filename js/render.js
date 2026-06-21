@@ -112,6 +112,8 @@ function renderDashboard(el) {
         <div id="report-menu" class="dropdown-menu hidden">
           <button type="button" onclick="openReportModal('FP'); closeReportMenu()">📋 First Parade State</button>
           <button type="button" onclick="openReportModal('LP'); closeReportMenu()">📋 Last Parade State</button>
+          <button type="button" onclick="openReportModal('RS'); closeReportMenu()">🤒 RS Format (Sick Report)</button>
+          <button type="button" onclick="openReportModal('RSIP'); closeReportMenu()">🤒 RSI Personnel (by Platoon)</button>
           <button type="button" onclick="openReportModal('MED'); closeReportMenu()">🏥 Medical Status List</button>
           <button type="button" onclick="openReportModal('MSK'); closeReportMenu()">🦵 MSK Report</button>
           <button type="button" onclick="openReportModal('CONDUCT'); closeReportMenu()">📊 Per-Conduct Chat Format</button>
