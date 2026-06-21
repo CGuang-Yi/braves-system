@@ -43,15 +43,18 @@ function refreshFilterUI() {
   const clearBtn = document.getElementById("filter-clear");
   if (!pltSel || !sectSel) return;
 
-  const platoons = [...new Set(STATE.roster.map(getPlt).filter(v => v !== ""))].sort();
-  pltSel.innerHTML = `<option value="">All plts</option>` + platoons.map(p => `<option value="${p}" ${p === String(STATE.filterPlt) ? "selected" : ""}>P${p}</option>`).join("");
+  // Braves scope (§11): platoons are CODES ("PLT1"/"HQ") from activePlatoons()
+  // (which reads the Platoons tab, falling back to roster-derived codes).
+  const platoons = activePlatoons();
+  pltSel.innerHTML = `<option value="">All plts</option>` + platoons.map(p => `<option value="${p.code}" ${p.code === String(STATE.filterPlt) ? "selected" : ""}>${p.displayName || p.code}</option>`).join("");
 
   // Sections depend on platoon selection — "section 2" is ambiguous across
   // platoons, so the section dropdown is disabled until a platoon is picked.
+  // Sections come from sectionsInPlatoon() (variable count; "Command" first).
   if (STATE.filterPlt) {
-    const sections = [...new Set(STATE.roster.filter(r => getPlt(r) === String(STATE.filterPlt)).map(getSect).filter(v => v !== ""))].sort();
+    const sections = sectionsInPlatoon(STATE.filterPlt);
     sectSel.disabled = false;
-    sectSel.innerHTML = `<option value="">All sects</option>` + sections.map(s => `<option value="${s}" ${s === String(STATE.filterSect) ? "selected" : ""}>S${s}</option>`).join("");
+    sectSel.innerHTML = `<option value="">All sects</option>` + sections.map(s => `<option value="${s}" ${s === String(STATE.filterSect) ? "selected" : ""}>${s === "Command" ? "Command" : "Sect " + s}</option>`).join("");
   } else {
     sectSel.disabled = true;
     sectSel.innerHTML = `<option value="">All sects</option>`;
@@ -90,7 +93,7 @@ function initFilterControls() {
     // Drop section if it doesn't exist in the new platoon (or platoon cleared).
     if (!STATE.filterPlt) STATE.filterSect = "";
     else {
-      const valid = STATE.roster.some(r => getPlt(r) === String(STATE.filterPlt) && getSect(r) === String(STATE.filterSect));
+      const valid = STATE.roster.some(r => personPlatoon(r) === String(STATE.filterPlt) && personSection(r) === String(STATE.filterSect));
       if (!valid) STATE.filterSect = "";
     }
     saveFilter();

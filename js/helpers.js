@@ -33,10 +33,26 @@ function filteredRoster() {
   if (!isFilterActive()) return STATE.roster;
   return STATE.roster.filter(r => {
     if (STATE.filterRole && r.role !== STATE.filterRole) return false;
-    if (STATE.filterPlt && getPlt(r) !== String(STATE.filterPlt)) return false;
-    if (STATE.filterSect && getSect(r) !== String(STATE.filterSect)) return false;
+    // Braves scope (§11): platoon CODE ("PLT1"/"HQ") + section value via the
+    // explicit roster columns (personPlatoon/personSection fall back to the
+    // 4D-derived value, so this also works before the columns are populated).
+    if (STATE.filterPlt && personPlatoon(r) !== String(STATE.filterPlt)) return false;
+    if (STATE.filterSect && personSection(r) !== String(STATE.filterSect)) return false;
     return true;
   });
+}
+
+// Is a person (by id/4D) within the active global scope (spec §11.3)? Used by
+// views that filter non-roster records (Medical/Leave/IPPT/…) directly by d4
+// rather than going through filteredRoster(). Mirrors filteredRoster's logic.
+function inScope(personId) {
+  if (!isFilterActive()) return true;
+  const r = STATE.roster.find(x => x.id == personId);
+  if (!r) return false;
+  if (STATE.filterRole && r.role !== STATE.filterRole) return false;
+  if (STATE.filterPlt && personPlatoon(r) !== String(STATE.filterPlt)) return false;
+  if (STATE.filterSect && personSection(r) !== String(STATE.filterSect)) return false;
+  return true;
 }
 
 // Returns null when no filter is active so callers can skip the Set lookup
@@ -53,9 +69,11 @@ function filterLabel() {
   const parts = [];
   if (STATE.filterRole === "Commander") parts.push("Cmdrs");
   else if (STATE.filterRole === "Recruit") parts.push("Recs");
-  if (STATE.filterPlt) parts.push("P" + STATE.filterPlt);
-  if (STATE.filterSect) parts.push("S" + STATE.filterSect);
-  return parts.join(" ");
+  // filterPlt is a platoon code ("PLT1"/"HQ"); show it as-is. Section shows
+  // "Command" verbatim, numbered sections as "Sect N".
+  if (STATE.filterPlt) parts.push(STATE.filterPlt);
+  if (STATE.filterSect) parts.push(STATE.filterSect === "Command" ? "Command" : "Sect " + STATE.filterSect);
+  return parts.join(" · ");
 }
 
 // ── Braves org model helpers (spec §2/§5/§8, addendum A6) ─

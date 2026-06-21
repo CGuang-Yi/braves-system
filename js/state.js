@@ -456,8 +456,12 @@ function loadFilter() {
     const raw = localStorage.getItem(FILTER_KEY);
     if (!raw) return;
     const d = JSON.parse(raw);
-    STATE.filterPlt = d.plt || "";
-    STATE.filterSect = d.sect || "";
+    // Step 5 (§11) switched filterPlt from a bare digit ("1") to a platoon CODE
+    // ("PLT1"/"HQ"). A legacy bare-numeric persisted value would now match no
+    // platoon and blank every view — so discard it (and its section) on load.
+    const legacyNumericPlt = d.plt && /^\d+$/.test(String(d.plt));
+    STATE.filterPlt = legacyNumericPlt ? "" : (d.plt || "");
+    STATE.filterSect = legacyNumericPlt ? "" : (d.sect || "");
     STATE.filterRole = d.role || "";
   } catch { /* keep defaults */ }
 }
