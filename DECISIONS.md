@@ -79,6 +79,18 @@ this repo forked) and decided how each maps onto the Braves build.
 Note: #1 and #2 were ported at the user's explicit direction even though #2 nominally belongs to
 Step 2 — they don't touch the auth surface and are additive.
 
+**Reconciliation update (Step 0.5, merge `f5adcd3`):** these 3 upstream commits were later actually
+merged into `overnight-build` via `git merge origin/master` (they had landed on `origin/master` of the
+`braves-system` repo). Resolution applied the decisions above:
+- **#1/#2** deduped (already in HEAD → single copy each).
+- **#3** multi-status UI **kept** and integrated into the Step-2 medical form (sibling rows now also carry
+  the per-visit `type`/`urtiType`/`mrTiming` and a shared `visitId`).
+- **#4** appointment out-of-camp + per-parade presence-tick **kept** (Step 3 reuses it for §6).
+- **#5 reverted out of `origin/master`** — the rename had been pulled in by the full coon-hound merge;
+  `normalizeLeave` removed, all sites back to `Leave`/`padD4OnLayer` (user-confirmed).
+- `PRESENTATION.md` excluded.
+`overnight-build` now fully contains `origin/master` and can fast-forward into `braves-system` master.
+
 ---
 
 ## Session 2026-06-21 (overnight) — autonomous build, Steps 2→8

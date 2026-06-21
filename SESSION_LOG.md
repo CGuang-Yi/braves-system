@@ -176,3 +176,24 @@ literal output line stays (required by `Message Formats.md`). Recorded as DECISI
 **not** create a `followUpMO` Medical column in the Sheet. Medical columns to add are now
 `type / urtiType / mrTiming / visitId` (+ `location`, already present). All touched JS still passes
 `node --check`.
+
+---
+
+## Step 0.5 (added later) — reconcile with `origin/master` (merge `f5adcd3`)
+
+`overnight-build` had branched off the old `master`; `origin/master` (the `braves-system` repo) was 3
+commits ahead with the reviewed CougarMasterChanges. An earlier *hand*-merge corrupted `apps-script-Code.gs`
++ `forms.js` (hunks pasted twice — incl. functional double-`setValues`); that was unwound (files restored to
+clean `HEAD`, `git merge --abort`), then a clean `git merge origin/master` was run and resolved per
+DECISIONS #1–5:
+- #1 `ensureColumnsForKeys` / #2 `location` — deduped (already in HEAD).
+- #3 multi-status UI (`medStatusOptionsHtml`/`addMedStatusRow`) — kept + integrated with the Step-2 visit
+  fields; sibling rows share `visitId` and carry per-visit `type`/`urtiType`/`mrTiming`; MR needs no end date.
+- #4 appointment out-of-camp + presence-tick (`outOfCamp`/`_apptCampOverrides`/`toggleApptCamp`/`Camp:` line/
+  OUTSIDE badge) — kept (Step 3 reuses it).
+- #5 "Annual Leave" rename — **reverted** (kept `Leave`); `normalizeLeave` removed.
+- `PRESENTATION.md` — excluded.
+
+All JS + apps-script pass `node --check`; no conflict markers; every key function defined exactly once.
+Branch now fully contains `origin/master`. The Cougar parade generators remain (now with the upstream
+out-of-camp/presence-tick) and get replaced by the Braves §8–9 rewrite in Step 3, building on this base.
