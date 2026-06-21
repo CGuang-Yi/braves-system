@@ -192,48 +192,51 @@ function openPerson(d4) {
   // ── Heat Acclimatisation section ─────────────────────
   if (p.role === "Recruit" || p.role === "") {
     const ha = computeHA(d4);
-    let badgeColor = "var(--muted)";
-    if (ha.status === "Acclimatised") badgeColor = "var(--green)";
-    else if (ha.status === "In Progress") badgeColor = "var(--orange)";
-    else if (ha.status === "Lapsed") badgeColor = "var(--red)";
+    const badgeColor = haStatusColor(ha.overallStatus);
 
-    const haPct = Math.min(100, Math.round((ha.days / 10) * 100));
-
-    const timelineHtml = (ha.history || []).map(h => {
-      let icon = "📋";
-      let color = "var(--text)";
-      if (h.type === "achieved") { icon = "🎉"; color = "var(--green)"; }
-      else if (h.type === "lapsed") { icon = "⚠️"; color = "var(--red)"; }
-      else if (h.type === "reset") { icon = "🔄"; color = "var(--orange)"; }
-      return `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:8px">
-        <span class="mono" style="color:var(--muted);white-space:nowrap">${h.date}</span>
-        <span>${icon}</span>
-        <span style="color:${color}">${h.text}</span>
+    // Three parallel programme bars (§13): Single (teal), Expanded (amber),
+    // Double (blue, only when eligible). Each shows periods/target + breaks used.
+    const bar = (label, track, target, color, extra) => {
+      const periods = track ? track.periods : 0;
+      const pct = Math.min(100, Math.round((periods / target) * 100));
+      return `<div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+          <span style="color:${color};font-weight:600">${label}</span>
+          <span style="color:var(--muted)">${periods}/${target} periods${extra || ""}</span>
+        </div>
+        <div style="width:100%;height:7px;background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${color};transition:width .4s ease"></div>
+        </div>
       </div>`;
-    }).join("");
+    };
+
+    // Activity timeline from the day map (green cell = period day; value = Σ B5).
+    const days = ha.activeDays || [];
+    const timelineHtml = days.length
+      ? days.map(iso => `<span title="${isoToDisplayDate(iso)}" style="display:inline-block;min-width:30px;text-align:center;font-size:9px;padding:2px 4px;margin:2px;background:var(--green)22;border:1px solid var(--green)44;border-radius:3px;color:var(--green)">${isoToDisplayDate(iso).split(" ").slice(0,2).join(" ")}${ha.dayMap[iso] > 1 ? " ·" + ha.dayMap[iso] : ""}</span>`).join("")
+      : "";
+
+    const currLine = ha.currency && ha.currency.lapsed
+      ? `<div style="font-size:11px;color:var(--red);margin-top:6px">⚠ Currency lapsed${ha.currency.lapseDateIso ? " (deadline " + isoToDisplayDate(ha.currency.lapseDateIso) + ")" : ""} — re-qualify via any programme.</div>`
+      : (ha.currency && ha.currency.deadlineIso ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Currency deadline: ${isoToDisplayDate(ha.currency.deadlineIso)}</div>` : "");
 
     html += `
       <h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">🌡️ Heat Acclimatisation (HA)</h4>
       <div class="card" style="padding:14px;background:var(--surface2);margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div>
-            Status: <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600">${ha.status}</span>
-          </div>
-          <div style="font-size:12px;color:var(--muted)">
-            Streak: <strong>${ha.days}</strong>/10 Days (${ha.periods} Periods)
-          </div>
+        <div style="margin-bottom:10px">
+          Status: <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span>
+          ${ha.singleTrack ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">(via ${ha.singleTrack})</span>` : ""}
         </div>
-        
-        <div style="width:100%;height:8px;background:var(--surface);border-radius:4px;overflow:hidden;margin-bottom:12px;border:1px solid var(--border)">
-          <div style="width:${haPct}%;height:100%;background:${badgeColor};border-radius:4px;transition:width .4s ease"></div>
-        </div>
-
+        ${bar("Single", ha.single, 10, "#2DD4BF", ha.single ? `, ${ha.single.breaksUsed} breaks` : "")}
+        ${bar("Expanded", ha.expanded, 14, "#D29922", ha.expanded ? `, ${ha.expanded.breaksUsed} breaks / ${ha.expanded.consecutiveBreak || 0} consec` : "")}
+        ${ha.doubleEligible
+          ? bar("Double", ha.doubleTrack, 13, "#388BFD", ha.doubleTrack ? `, ${ha.doubleTrack.breaksUsed} breaks` : "")
+          : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Double: 🔒 ${ha.singleStatus === "Single HA Complete" ? "not eligible (needs VocFit or ≥3SG/≥2LT)" : "locked until Single HA complete"}</div>`}
+        ${currLine}
         ${timelineHtml ? `
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Acclimatisation History</div>
-          <div style="max-height:150px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px;display:flex;flex-direction:column">
-            ${timelineHtml}
-          </div>
-        ` : `<div style="font-size:11px;color:var(--muted);text-align:center">No HA sessions logged yet.</div>`}
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">Activity Days (period = green; ·n = ${"Σ"} B5)</div>
+          <div style="max-height:120px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;line-height:1.6">${timelineHtml}</div>
+        ` : `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px">No HA participation logged yet (CSV import).</div>`}
       </div>
     `;
   }

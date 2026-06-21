@@ -1584,36 +1584,44 @@ function promptRenameConduct(id) {
   if (newName == null) return;
   renameConduct(id, newName);
 }
+// Render the Heat Acclimatisation (HA) tab (Braves §13 — three programmes).
+// Status set (§12.6): Not Started / In Progress / Single HA Complete /
+// In Progress (Double) / Double HA Complete / Lapsed. Track colours: Single=teal,
+// Expanded=amber, Double=blue.
+function haStatusColor(status) {
+  switch (status) {
+    case "Double HA Complete": return "#388BFD";   // blue
+    case "Single HA Complete": return "#3FB950";    // green
+    case "In Progress (Double)": return "#58A6FF";  // light blue
+    case "In Progress": return "#D29922";           // amber
+    case "Lapsed": return "#F85149";                // red
+    default: return "#8B949E";                      // muted (Not Started)
+  }
+}
+const HA_STATUSES = ["Not Started", "In Progress", "Single HA Complete", "In Progress (Double)", "Double HA Complete", "Lapsed"];
 
-// Render the Heat Acclimatisation (HA) tab
 function renderHA(el) {
   const scoped = filteredRoster().filter(r => r.role === "Recruit" || r.role === "");
-  const haResults = scoped.map(r => {
-    return {
-      recruit: r,
-      ha: computeHA(r.id)
-    };
-  });
+  const haResults = scoped.map(r => ({ recruit: r, ha: computeHA(r.id) }));
 
-  // Sort: Lapsed first, then Not Started, then In Progress, then Acclimatised.
-  // Within same status, sort by active days ascending.
-  const statusPriority = {
-    "Lapsed": 0,
-    "Not Started": 1,
-    "In Progress": 2,
-    "Acclimatised": 3
-  };
+  // Sort by status priority (worst first) then Single progress ascending.
+  const prio = { "Lapsed": 0, "Not Started": 1, "In Progress": 2, "Single HA Complete": 3, "In Progress (Double)": 4, "Double HA Complete": 5 };
   haResults.sort((a, b) => {
-    const pa = statusPriority[a.ha.status] ?? 4;
-    const pb = statusPriority[b.ha.status] ?? 4;
+    const pa = prio[a.ha.overallStatus] ?? 9, pb = prio[b.ha.overallStatus] ?? 9;
     if (pa !== pb) return pa - pb;
-    return a.ha.days - b.ha.days;
+    return (a.ha.single?.periods || 0) - (b.ha.single?.periods || 0);
   });
 
-  const acclimatisedCount = haResults.filter(x => x.ha.status === "Acclimatised").length;
-  const inProgressCount = haResults.filter(x => x.ha.status === "In Progress").length;
-  const lapsedCount = haResults.filter(x => x.ha.status === "Lapsed").length;
-  const notStartedCount = haResults.filter(x => x.ha.status === "Not Started").length;
+  const count = s => haResults.filter(x => x.ha.overallStatus === s).length;
+  const counts = HA_STATUSES.map(count);
+
+  const cell = (val, target, color) => {
+    const pct = Math.min(100, Math.round((val / target) * 100));
+    return `<div style="min-width:84px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">${val}/${target}</div>
+      <div style="height:6px;background:var(--surface);border:1px solid var(--border);border-radius:3px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div>
+    </div>`;
+  };
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -1621,108 +1629,70 @@ function renderHA(el) {
     </div>
 
     <div class="stats-row">
-      <div class="stat"><label>Total Recruits</label><div class="val">${scoped.length}</div></div>
-      <div class="stat" style="border-left: 3px solid var(--green)"><label>Acclimatised</label><div class="val" style="color:var(--green)">${acclimatisedCount}</div></div>
-      <div class="stat" style="border-left: 3px solid var(--orange)"><label>In Progress</label><div class="val" style="color:var(--orange)">${inProgressCount}</div></div>
-      <div class="stat" style="border-left: 3px solid var(--red)"><label>Lapsed</label><div class="val" style="color:var(--red)">${lapsedCount}</div></div>
-      <div class="stat" style="border-left: 3px solid var(--muted)"><label>Not Started</label><div class="val" style="color:var(--muted)">${notStartedCount}</div></div>
+      <div class="stat"><label>Recruits</label><div class="val">${scoped.length}</div></div>
+      ${HA_STATUSES.map((s, i) => `<div class="stat" style="border-left:3px solid ${haStatusColor(s)}"><label>${s}</label><div class="val" style="color:${haStatusColor(s)}">${counts[i]}</div></div>`).join("")}
     </div>
 
-    <div class="grid-2" style="margin-bottom: 20px">
-      <div class="card" style="padding:16px; min-height: 280px">
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card" style="padding:16px;min-height:280px">
         <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Status Breakdown</h3>
-        <div style="height: 200px; position: relative; width: 100%; overflow: hidden;">
-          <canvas id="chart-ha-distribution" style="width: 100% !important; height: 100% !important;"></canvas>
-        </div>
+        <div style="height:200px;position:relative;width:100%;overflow:hidden"><canvas id="chart-ha-distribution" style="width:100% !important;height:100% !important"></canvas></div>
       </div>
-      <div class="card" style="padding:16px; min-height: 280px">
-        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Recruit Streak Progress (Active Days)</h3>
-        <div style="height: 200px; overflow-y: auto; overflow-x: hidden; position: relative; width: 100%">
-          <canvas id="chart-ha-streaks" style="width: 100% !important; display: block;"></canvas>
-        </div>
+      <div class="card" style="padding:16px;min-height:280px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Single HA Progress (periods /10)</h3>
+        <div style="height:200px;overflow-y:auto;overflow-x:hidden;position:relative;width:100%"><canvas id="chart-ha-streaks" style="width:100% !important;display:block"></canvas></div>
       </div>
     </div>
 
     <div class="card" style="padding:16px">
       <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Acclimatisation Status Roster</h3>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>4D</th>
-              <th style="text-align:left">Name</th>
-              <th>Plt/Sect</th>
-              <th>Status</th>
-              <th>Active Days</th>
-              <th>Active Periods</th>
-              <th>Last 14d Sessions</th>
-              <th style="text-align:left">Active Streak Dates</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${haResults.map(r => {
-              let badgeColor = "var(--muted)";
-              if (r.ha.status === "Acclimatised") badgeColor = "var(--green)";
-              else if (r.ha.status === "In Progress") badgeColor = "var(--orange)";
-              else if (r.ha.status === "Lapsed") badgeColor = "var(--red)";
-
-              // Calculate sessions in the last 14 days
-              const today = todayISO();
-              const end = new Date(today + "T00:00:00");
-              const start = new Date(end);
-              start.setDate(start.getDate() - 13);
-              const sessionsInLast14d = (r.ha.history || [])
-                .filter(h => h.type === "session")
-                .map(h => h.isoDate)
-                .filter(d => {
-                  const dateVal = new Date(d + "T00:00:00");
-                  return dateVal >= start && dateVal <= end;
-                }).length;
-
-              const dateBadges = r.ha.dates.map(d => {
-                const parts = isoToDisplayDate(d).split(" ");
-                return `<span style="font-size:10px;padding:2px 5px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);margin-right:4px">${parts[0]} ${parts[1]}</span>`;
-              }).join("");
-
-              return `
-                <tr onclick="openPerson('${r.recruit.id}')" style="cursor:pointer">
-                  <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(r.recruit.id)}</td>
-                  <td style="text-align:left">${displayPersonLabel(r.recruit.id)}</td>
-                  <td>P${getPlt(r.recruit)}S${getSect(r.recruit)}</td>
-                  <td>
-                    <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">
-                      ${r.ha.status}
-                    </span>
-                  </td>
-                  <td class="mono">${r.ha.days}</td>
-                  <td class="mono">${r.ha.periods}</td>
-                  <td class="mono" style="font-weight:700;color:${sessionsInLast14d >= 2 ? "var(--green)" : r.ha.status === "Acclimatised" ? "var(--red)" : "var(--muted)"}">
-                    ${sessionsInLast14d}
-                  </td>
-                  <td style="text-align:left;line-height:1.8">${dateBadges || '<span style="color:var(--muted)">—</span>'}</td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>4D</th><th style="text-align:left">Name</th><th>Plt/Sect</th><th>Status</th>
+          <th style="text-align:left">Single (/10)</th><th style="text-align:left">Expanded (/14)</th><th style="text-align:left">Double (/13)</th>
+          <th>Last Activity</th><th>Currency</th>
+        </tr></thead>
+        <tbody>
+          ${haResults.map(({ recruit: r, ha }) => {
+            const c = haStatusColor(ha.overallStatus);
+            const dbl = !ha.doubleEligible
+              ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
+              : cell(ha.doubleTrack?.periods || 0, 13, "#388BFD");
+            const last = ha.lastActivity ? isoToDisplayDate(ha.lastActivity) : '<span style="color:var(--muted)">—</span>';
+            const curr = ha.currency && ha.currency.lapsed
+              ? `<span style="color:var(--red)">lapsed ${ha.currency.lapseDateIso ? isoToDisplayDate(ha.currency.lapseDateIso) : ""}</span>`
+              : (ha.currency && ha.currency.deadlineIso ? `<span style="color:var(--muted)">by ${isoToDisplayDate(ha.currency.deadlineIso)}</span>` : "—");
+            return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer">
+              <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(r.id)}</td>
+              <td style="text-align:left">${displayPersonLabel(r.id)}</td>
+              <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
+              <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
+              <td style="text-align:left">${cell(ha.single?.periods || 0, 10, "#2DD4BF")}</td>
+              <td style="text-align:left">${cell(ha.expanded?.periods || 0, 14, "#D29922")}</td>
+              <td style="text-align:left">${dbl}</td>
+              <td>${last}</td>
+              <td style="font-size:11px">${curr}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table></div>
     </div>
   `;
 
-  buildHADistributionChart(acclimatisedCount, inProgressCount, lapsedCount, notStartedCount);
+  buildHADistributionChart(counts);
   buildHAStreaksChart(haResults);
 }
 
-function buildHADistributionChart(acclimatised, inProgress, lapsed, notStarted) {
+function buildHADistributionChart(counts) {
   const canvas = document.getElementById("chart-ha-distribution");
   if (!canvas) return;
   STATE.charts.haDistribution = new Chart(canvas, {
     type: "doughnut",
     data: {
-      labels: ["Acclimatised", "In Progress", "Lapsed", "Not Started"],
+      labels: HA_STATUSES,
       datasets: [{
-        data: [acclimatised, inProgress, lapsed, notStarted],
-        backgroundColor: ["#3FB950", "#D29922", "#F85149", "#8B949E"],
+        data: counts,
+        backgroundColor: HA_STATUSES.map(haStatusColor),
         borderColor: "#161B22",
         borderWidth: 2
       }]
@@ -1730,17 +1700,7 @@ function buildHADistributionChart(acclimatised, inProgress, lapsed, notStarted) 
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: "right",
-          labels: {
-            color: "#8B949E",
-            font: {
-              size: 11
-            }
-          }
-        }
-      }
+      plugins: { legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } } }
     }
   });
 }
@@ -1748,66 +1708,24 @@ function buildHADistributionChart(acclimatised, inProgress, lapsed, notStarted) 
 function buildHAStreaksChart(haResults) {
   const canvas = document.getElementById("chart-ha-streaks");
   if (!canvas) return;
-
-  const chartResults = [...haResults].sort((a, b) => a.ha.days - b.ha.days);
-
-  const labels = chartResults.map(r => r.recruit.name || r.recruit.id);
-  const data = chartResults.map(r => r.ha.days);
-  const colors = chartResults.map(r => {
-    if (r.ha.status === "Acclimatised") return "#3FB950";
-    if (r.ha.status === "In Progress") return "#D29922";
-    if (r.ha.status === "Lapsed") return "#F85149";
-    return "#8B949E";
-  });
-
-  const chartHeight = Math.max(200, chartResults.length * 18);
+  const sorted = [...haResults].sort((a, b) => (a.ha.single?.periods || 0) - (b.ha.single?.periods || 0));
+  const labels = sorted.map(r => r.recruit.name || r.recruit.id);
+  const data = sorted.map(r => r.ha.single?.periods || 0);
+  const colors = sorted.map(r => haStatusColor(r.ha.overallStatus));
+  const chartHeight = Math.max(200, sorted.length * 18);
   canvas.style.height = chartHeight + "px";
   canvas.style.width = "100%";
-
   STATE.charts.haStreaks = new Chart(canvas, {
     type: "bar",
-    data: {
-      labels: labels,
-      datasets: [{
-        label: "Active Days (Streak)",
-        data: data,
-        backgroundColor: colors,
-        borderWidth: 0,
-        borderRadius: 4
-      }]
-    },
+    data: { labels, datasets: [{ label: "Single HA periods", data, backgroundColor: colors, borderWidth: 0, borderRadius: 4 }] },
     options: {
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: false
-        }
-      },
+      plugins: { legend: { display: false } },
       scales: {
-        x: {
-          min: 0,
-          max: 10,
-          ticks: {
-            stepSize: 1,
-            color: "#8B949E"
-          },
-          grid: {
-            color: "#30363D"
-          }
-        },
-        y: {
-          ticks: {
-            color: "#8B949E",
-            font: {
-              size: 10
-            }
-          },
-          grid: {
-            display: false
-          }
-        }
+        x: { min: 0, max: 10, ticks: { stepSize: 1, color: "#8B949E" }, grid: { color: "#30363D" } },
+        y: { ticks: { color: "#8B949E", font: { size: 10 } }, grid: { display: false } }
       }
     }
   });
