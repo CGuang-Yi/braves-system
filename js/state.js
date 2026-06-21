@@ -386,6 +386,23 @@ function normalizePlatoons(rows) {
   }).filter(r => r.code);
 }
 
+// Attendance normalizer (Braves §14 CSV import). The CSV import adds four fields
+// to attendance rows — `participants` (comma-joined Present 4Ds, the HA
+// participation source), `periods` (the B5 1h-period count for Double HA),
+// `currencyTags` (e.g. "HA", an HA-eligibility signal), and `source` ("csv" vs
+// "" for wizard rows). Defaulting them on EVERY row here is essential: writeTab
+// derives sheet headers from Object.keys(data[0]), so if the first row lacked
+// these keys a full-sheet push would silently strip the columns for all rows.
+function normalizeAttendance(rows) {
+  return (rows || []).map(r => ({
+    ...r,
+    participants: r.participants || "",
+    periods: (r.periods === 0 || r.periods) ? r.periods : "",
+    currencyTags: r.currencyTags || "",
+    source: r.source || ""
+  }));
+}
+
 function saveLocal() {
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
@@ -407,7 +424,7 @@ function loadLocal() {
     const d = JSON.parse(raw);
     STATE.roster = normalizeRoster(d.roster);
     STATE.medical = normalizeMedical(d.medical);
-    STATE.attendance = d.attendance || [];
+    STATE.attendance = normalizeAttendance(d.attendance);
     STATE.ippt = padD4OnLayer(d.ippt);
     STATE.rm = padD4OnLayer(d.rm);
     STATE.soc = padD4OnLayer(d.soc);

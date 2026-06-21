@@ -61,7 +61,7 @@ const API = {
     if (data.error) throw new Error(data.error);
     if (data.roster?.length) STATE.roster = normalizeRoster(data.roster);
     if (data.medical?.length) STATE.medical = normalizeMedical(data.medical);
-    if (data.attendance?.length) STATE.attendance = data.attendance;
+    if (data.attendance?.length) STATE.attendance = normalizeAttendance(data.attendance);
     if (data.ippt?.length) STATE.ippt = padD4OnLayer(data.ippt);
     if (data.rm?.length) STATE.rm = padD4OnLayer(data.rm);
     if (data.soc?.length) STATE.soc = padD4OnLayer(data.soc);

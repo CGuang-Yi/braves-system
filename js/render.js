@@ -960,6 +960,9 @@ function renderAttendance(el) {
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" onclick="refreshLmsFromPolar()" title="Recount LMS participants for every conduct from STATE.polar (the Polar class summary photo is the LMS roster) and write into the attendance rows">🔄 Recompute LMS</button>
         <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
+        <label class="btn" title="Import an attendance CSV export (Activity metadata + User/Unit/Status/Remarks). Present rows feed HA participation.">📥 Import CSV
+          <input type="file" accept=".csv" onchange="importConductCSV(this)" style="display:none">
+        </label>
         <button class="btn btn-primary" onclick="openLogConductWizard()" title="One-shot wizard: date + time + conduct + Status Personnel checklist + bulk Report Sick / Fallout / RSI rows + auto totals + chat-format copy">+ Log Conduct</button>
       </div>
     </div>

@@ -1179,6 +1179,215 @@ function finalizePolarImport(keyResolutions) {
   }
   alert(`Imported ${insertedRows.length} Polar rows${lmsChanged ? `\nUpdated LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"}.` : ""}\n\nSyncing to sheet — check the sidebar indicator for status.`);
 }
+// ════════════════════════════════════════════════════════════════════════════
+// CSV CONDUCT IMPORT (spec §14)
+// ════════════════════════════════════════════════════════════════════════════
+// Imports the attendance CSV (the "Attendance_-_Endurance_Run_5" format) into
+// the conduct log and feeds HA participation. The Present roll is stored as a
+// comma-joined `participants` 4D list on the ATTENDANCE row (the §12 HA source),
+// not as per-person ConductDetail rows — that keeps ConductDetail's "absentees
+// only" semantics intact and the Detail view uncluttered. Non-present statuses
+// become ConductDetail rows (PX / Fallout) + review-panel follow-up flags.
+let _conductImportPending = null;
+
+// Map the six CSV status values (§14.1) to canonical labels. Unknown → "Other".
+function normConductStatus(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "present") return "Present";
+  if (s === "fall out" || s === "fallout") return "Fall Out";
+  if (s === "mc") return "MC";
+  if (s === "leave") return "Leave";
+  if (s === "off") return "Off";
+  return "Other";
+}
+// Loose name match for the conditional split (§14.2): case/space-insensitive.
+function _normName(s) { return String(s || "").trim().toLowerCase().replace(/\s+/g, " "); }
+
+function importConductCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  Papa.parse(file, { header: false, skipEmptyLines: false, complete: r => {
+    const rows = r.data || [];
+    // Scan the leading metadata block (key=col A, value=col B) until the data
+    // header row (col A === "User"). Do NOT assume fixed row positions (§14.1).
+    const meta = {};
+    let headerIdx = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const c0 = String((rows[i] && rows[i][0]) || "").trim();
+      if (/^user$/i.test(c0)) { headerIdx = i; break; }
+      if (c0) meta[c0.toLowerCase()] = String((rows[i][1] || "")).trim();
+    }
+    if (headerIdx < 0) {
+      alert("Couldn't find the 'User | Unit | Status | Remarks' header row — is this the attendance CSV?");
+      input.value = ""; return;
+    }
+    // Map header columns to indices (robust to reordering).
+    const header = rows[headerIdx].map(h => String(h || "").trim().toLowerCase());
+    const iUser = header.indexOf("user") < 0 ? 0 : header.indexOf("user");
+    const iStatus = header.indexOf("status") < 0 ? 2 : header.indexOf("status");
+    const iRemarks = header.indexOf("remarks") < 0 ? 3 : header.indexOf("remarks");
+
+    const activityName = meta["activity name"] || "";
+    const currencyTags = meta["currency tags"] || "";
+    const dateDisplay = normalizeDateToDisplay(meta["date"] || "");
+    const periods = parseInt(meta["periods"], 10) || 0;
+
+    // Parse + resolve each data row.
+    const parsed = [];
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const userCell = String(row[iUser] || "").trim();
+      if (!userCell) continue; // trailing blank rows
+      const statusRaw = String(row[iStatus] || "").trim();
+      const remarks = String(row[iRemarks] || "").trim();
+      // Conditional split: a leading 3-5 digit token → 4D + name; else all name.
+      const m = userCell.match(/^(\d{3,5})\s+(.*)$/);
+      let resolved = null, matchType = "Not found", fourD = "", name = userCell;
+      if (m) {
+        fourD = padD4(m[1]); name = m[2].trim();
+        resolved = STATE.roster.find(p => p.id === fourD || padD4(p.fourD) === fourD) || null;
+        if (resolved) matchType = "4D";
+      } else {
+        resolved = STATE.roster.find(p => _normName(p.name) === _normName(name)) || null;
+        if (resolved) matchType = "Name match";
+      }
+      parsed.push({ userCell, fourD, name, statusRaw, status: normConductStatus(statusRaw), remarks, resolvedId: resolved ? resolved.id : "", matchType });
+    }
+
+    _conductImportPending = {
+      activityName, currencyTags, dateDisplay, periods, parsed,
+      knownConductId: conductIdByName(activityName)
+    };
+    openConductImportModal();
+  }});
+  input.value = "";
+}
+
+function openConductImportModal() {
+  const p = _conductImportPending;
+  if (!p) return;
+  const by = s => p.parsed.filter(x => x.status === s);
+  const present = by("Present"), fallout = by("Fall Out"), mc = by("MC"), leave = by("Leave"), off = by("Off"), other = by("Other");
+  const matched4D = p.parsed.filter(x => x.matchType === "4D").length;
+  const matchedName = p.parsed.filter(x => x.matchType === "Name match").length;
+  const notFound = p.parsed.filter(x => x.matchType === "Not found");
+  const haEligible = (configGet("haEligibilitySource") === "currencyTag")
+    ? /\bha\b/i.test(p.currencyTags)
+    : !(/(ippt|sports & games|swim)/i.test(p.activityName)); // mirror isHAExcluded on the name
+  const isNewConduct = !p.knownConductId;
+
+  // Conduct resolution control: matched → static; new → create-or-merge select.
+  const opts = getAllConducts();
+  const conductCtl = isNewConduct
+    ? `<select id="ci-conduct" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
+         <option value="__new__" selected>+ Create new conduct: "${escapeAttr(p.activityName)}"</option>
+         ${opts.map(c => `<option value="${c.id}">→ Merge into "${escapeAttr(c.name)}"</option>`).join("")}
+       </select>`
+    : `<div style="font-size:12px;color:var(--green)">✓ Matches existing conduct "${escapeAttr(conductName(p.knownConductId))}"</div>`;
+
+  const flagList = (label, arr, color) => arr.length
+    ? `<div style="margin-top:6px"><strong style="color:${color}">${label} (${arr.length})</strong> — action manually:
+        <div style="font-size:11px;color:var(--muted)">${arr.map(x => escapeAttr((x.fourD ? x.fourD + " " : "") + x.name) + (x.remarks ? ` (${escapeAttr(x.remarks)})` : "")).join(", ")}</div></div>`
+    : "";
+
+  openModal(`Import Attendance CSV — ${escapeAttr(p.activityName || "(unnamed)")}`, `
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+        <div><strong>Date:</strong> ${escapeAttr(p.dateDisplay || "(none)")} &nbsp; <strong>Periods (B5):</strong> ${p.periods || 0} &nbsp; <strong>Currency Tags:</strong> ${escapeAttr(p.currencyTags || "—")}</div>
+        <div style="margin-top:4px"><strong>HA-eligible:</strong> ${haEligible ? `<span style="color:var(--green)">Yes</span>` : `<span style="color:var(--muted)">No</span>`} <span style="color:var(--muted)">(source: ${escapeAttr(configGet("haEligibilitySource"))})</span></div>
+      </div>
+      <div><strong>Conduct:</strong> ${conductCtl}</div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+        <div><strong>Rows:</strong> ${p.parsed.length} &nbsp;·&nbsp; matched 4D: ${matched4D} &nbsp;·&nbsp; name-matched: ${matchedName} &nbsp;·&nbsp; <span style="color:${notFound.length ? "var(--orange)" : "var(--muted)"}">not found: ${notFound.length}</span></div>
+        <div style="margin-top:4px"><strong>Status:</strong> Present ${present.length} · Fall Out ${fallout.length} · MC ${mc.length} · Leave ${leave.length} · Off ${off.length} · Other ${other.length}</div>
+        <div style="margin-top:4px;color:var(--muted)">Will record: <strong>${present.length}</strong> participating, <strong>${fallout.length + mc.length + leave.length + off.length + other.length}</strong> non-participating (${fallout.length} fallout + ${mc.length + leave.length + off.length + other.length} status).</div>
+      </div>
+      ${notFound.length ? `<div style="background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:8px 10px">
+        <strong style="color:var(--orange)">⚠ ${notFound.length} not matched to the roster — will be SKIPPED (not silently dropped: listed here)</strong>
+        <div style="font-size:11px;color:var(--muted);max-height:120px;overflow:auto">${notFound.map(x => escapeAttr(x.userCell)).join(", ")}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Fix the roster (add/rename) and re-import to include them.</div>
+      </div>` : ""}
+      ${(mc.length || leave.length || off.length || other.length) ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+        <strong>Follow-up flags</strong> <span style="color:var(--muted)">(import writes the conduct log only — action these in the Medical/Leave tabs)</span>
+        ${flagList("MC → Medical tab", mc, "var(--red)")}
+        ${flagList("Leave → Leave tab", leave, "var(--accent)")}
+        ${flagList("Off (OIL) → Leave tab", off, "var(--accent)")}
+        ${flagList("Other", other, "var(--muted)")}
+      </div>` : ""}
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--border)">
+        <button class="btn" onclick="cancelConductImport()">Cancel</button>
+        <button class="btn btn-success" onclick="confirmConductImport()">Import ${present.length + fallout.length + mc.length + leave.length + off.length + other.length} rows</button>
+      </div>
+    </div>
+  `);
+}
+
+function cancelConductImport() { _conductImportPending = null; closeModal(); }
+
+function confirmConductImport() {
+  const p = _conductImportPending;
+  if (!p) return;
+  // Resolve the conduct id (create new / merge / existing).
+  let conductId = p.knownConductId;
+  if (!conductId) {
+    const sel = document.getElementById("ci-conduct");
+    const v = sel ? sel.value : "__new__";
+    conductId = (v === "__new__") ? createConduct(p.activityName || "Imported Conduct") : v;
+  }
+  const date = p.dateDisplay;
+  const time = ""; // CSV carries no time-of-day; attendance time stays blank.
+
+  // Present 4Ds (resolved only) → participants list (the HA source). Dedupe by
+  // person so a CSV that lists someone twice doesn't double-count them.
+  const matched = p.parsed.filter(x => x.resolvedId);
+  const presentIds = [...new Set(matched.filter(x => x.status === "Present").map(x => x.resolvedId))];
+  const fallout = matched.filter(x => x.status === "Fall Out");
+  const statusAbsent = matched.filter(x => ["MC", "Leave", "Off", "Other"].includes(x.status));
+
+  const attendanceEntry = {
+    id: nextId(),
+    date, time, conductId,
+    total: presentIds.length + fallout.length + statusAbsent.length,
+    participating: presentIds.length,
+    lms: 0,
+    px: statusAbsent.length,
+    fallout: fallout.length,
+    remarks: p.activityName || "",
+    participants: presentIds.join(","),
+    periods: p.periods || 0,
+    currencyTags: p.currencyTags || "",
+    source: "csv"
+  };
+
+  // ConductDetail rows for the absentees (Present people live in `participants`).
+  const detailRows = [];
+  fallout.forEach(x => detailRows.push({ id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Fallout", reason: x.remarks || "" }));
+  statusAbsent.forEach(x => detailRows.push({
+    id: nextId(), date, time, conductId, d4: x.resolvedId, type: "PX",
+    reason: x.status === "Other" ? (x.remarks || "Other") : x.status + (x.remarks ? ` — ${x.remarks}` : "")
+  }));
+
+  // De-dupe: drop any prior import for this (conductId, date) so a re-import
+  // replaces rather than doubles the row (which would inflate HA periods).
+  STATE.attendance = STATE.attendance.filter(a => !(a.conductId === conductId && a.date === date && (a.time || "") === time));
+  STATE.conductDetail = STATE.conductDetail.filter(d => !(d.conductId === conductId && d.date === date && (d.time || "") === time));
+  STATE.attendance.push(attendanceEntry);
+  STATE.conductDetail.push(...detailRows);
+
+  saveLocal();
+  _conductImportPending = null;
+  closeModal();
+  render();
+
+  // Full-tab replace (safe: normalizeAttendance guarantees every row carries the
+  // new columns, so writeTab won't strip them).
+  if (STATE.apiUrl) {
+    autoSync("Attendance", { type: "replace", data: STATE.attendance });
+    autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
+  }
+  alert(`Imported "${p.activityName}" (${date}):\n  • ${presentIds.length} present, ${fallout.length} fallout, ${statusAbsent.length} status\n  • ${p.parsed.filter(x => !x.resolvedId).length} unmatched rows skipped\nSyncing to sheet — check the sidebar indicator.`);
+}
+
 function openConductDetailForm(id) {
   const e = id ? STATE.conductDetail.find(x => x.id === id) : null;
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();

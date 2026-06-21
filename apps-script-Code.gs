@@ -83,6 +83,12 @@
  *                The "follow up status from MO" in sick messages is derived
  *                from `status` (the MO outcome) — there is no separate field.)
  *   Attendance: id | date | time | conductId | total | participating | lms | px | fallout | remarks
+ *               | participants | periods | currencyTags | source
+ *               (Braves §14 CSV-import columns: participants = comma-joined
+ *                Present 4Ds [the HA participation source]; periods = CSV cell
+ *                B5 [Double-HA time-period count]; currencyTags = CSV row 2
+ *                [HA-eligibility signal, e.g. "HA"]; source = "csv" for imported
+ *                rows, "" for wizard rows. See HA_DATA_SHAPE.md.)
  *               (time = "0730"/"1630" — same conduct on the same day at
  *                different times produces distinct rows. The Log Conduct
  *                wizard writes it directly; the legacy form leaves it blank.)
