@@ -591,9 +591,28 @@ function openMedicalForm(id) {
       <div style="display:flex;flex-direction:column;gap:10px">
         ${e ? editHint : ""}
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
+        <div class="form-group">
+          <label>Visit type</label>
+          <select id="f-type" onchange="medTypeChanged(this.value)">
+            ${[["", "— (status only / pre-existing)"], ["RSI", "RSI — Report Sick In-camp"], ["RSO", "RSO — Report Sick Out-of-camp"], ["MR", "MR — Medical Review"]]
+              .map(([v, l]) => `<option value="${v}" ${v === (e?.type || "") ? "selected" : ""}>${l}</option>`).join("")}
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">RSI/RSO drive the REPORTING SICK section &amp; URTI split; MR is its own parade-state section (person stays in camp).</div>
+        </div>
         ${formField("f-date", "Date Reported Sick", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
-        ${formField("f-reason", "Reason", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
-        ${formField("f-location", "Location (only if reported sick outside)", "text", "e.g. Lim Clinic and Surgery", `maxlength="200" value="${escapeAttr(e?.location)}"`)}
+        ${formField("f-reason", "Reason / Purpose", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}" oninput="medReasonChanged(this.value)"`)}
+        <div id="f-mr-timing-wrap" style="${(e?.type === "MR") ? "" : "display:none"}">
+          ${formField("f-mr-timing", "MR timing (optional)", "text", "e.g. PM / 1400", `maxlength="40" value="${escapeAttr(e?.mrTiming)}"`)}
+        </div>
+        ${formField("f-location", "Location (clinic/hospital if outside)", "text", "e.g. Lim Clinic and Surgery", `maxlength="200" value="${escapeAttr(e?.location)}"`)}
+        <div class="form-group" id="f-urti-wrap" style="${(e?.type === "RSI" || e?.type === "RSO") ? "" : "display:none"}">
+          <label>URTI classification</label>
+          <select id="f-urti">
+            ${[["", "Auto-suggest from reason"], ["URTI", "URTI"], ["NON-URTI", "NON-URTI"]]
+              .map(([v, l]) => `<option value="${v}" ${v === (e?.urtiType || "") ? "selected" : ""}>${l}</option>`).join("")}
+          </select>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">The MO outcome (the parade-state / sick-message "follow up status from MO") is the <strong>Status</strong> below — update it after the MO visit.</div>
+        </div>
         <div class="form-group">
           <label>Status</label>
           <select id="f-status" required onchange="medStatusSelChanged(this.value)">
@@ -624,6 +643,26 @@ function medStatusSelChanged(v) {
   const wrap = document.getElementById("f-custom-wrap");
   if (wrap) wrap.style.display = v === "__new__" ? "flex" : "none";
 }
+// Visit-type toggle: MR reveals the timing field; RSI/RSO reveal the URTI +
+// follow-up fields and default the location to the configured sick location
+// (PTMC) when it's still blank — RSO leaves it for manual entry.
+function medTypeChanged(v) {
+  const mr = document.getElementById("f-mr-timing-wrap");
+  const urti = document.getElementById("f-urti-wrap");
+  if (mr) mr.style.display = v === "MR" ? "" : "none";
+  if (urti) urti.style.display = (v === "RSI" || v === "RSO") ? "" : "none";
+  if (v === "RSI") {
+    const loc = document.getElementById("f-location");
+    if (loc && !loc.value.trim()) loc.value = (typeof configGet === "function" ? configGet("defaultSickLocation") : "PTMC") || "PTMC";
+  }
+}
+// Live URTI auto-suggest: while the URTI dropdown is on "Auto", mirror the
+// classifier's guess into a hint so the commander sees what will be stored.
+function medReasonChanged(v) {
+  const sel = document.getElementById("f-urti");
+  if (!sel || sel.value) return; // only when still on Auto
+  // No DOM hint element to update right now; classification is applied at submit.
+}
 
 function submitMedical() {
   const editId = +gv("f-entry-id");
@@ -637,8 +676,18 @@ function submitMedical() {
     if (document.getElementById("f-custom-save")?.checked) addCustomStatus(name, participates);
     status = name;
   }
+  // Visit-level fields, shared across every sibling status row of this visit
+  // (spec §6: type/urtiType/mrTiming are per-visit, not per-status).
+  const type = gv("f-type");
+  // URTI auto-classification (spec §10.3): only meaningful for RSI/RSO. When the
+  // dropdown is left on "Auto", derive from the reason; else honour the choice.
+  let urtiType = gv("f-urti");
+  if ((type === "RSI" || type === "RSO") && !urtiType) urtiType = classifyURTI(gv("f-reason"));
+  if (type !== "RSI" && type !== "RSO") urtiType = "";
+  const mrTiming = type === "MR" ? gv("f-mr-timing").trim() : "";
+
   // Gather the main status plus any "additional status" rows. Each carries its
-  // own status + duration; they share the recruit/date/reason/location below.
+  // own status + duration; they share the recruit/date/reason/location/type below.
   const statuses = [{ status, startIso: gv("f-start"), endIso: gv("f-end") }];
   for (const row of document.querySelectorAll("#f-extra-statuses .med-extra-row")) {
     let s = row.querySelector(".f-extra-status")?.value || "";
@@ -661,7 +710,8 @@ function submitMedical() {
   const noDurationStatuses = ["Pending", "NIL"];
   for (const st of statuses) {
     if (!st.status) { alert("Select a status for every row (or remove the empty one)."); return; }
-    if (!noDurationStatuses.includes(st.status) && !st.endIso) { alert(`End date is required for "${st.status}" (only Pending and NIL may be left blank).`); return; }
+    // MR is a same-day in-camp visit — no duration window required.
+    if (!noDurationStatuses.includes(st.status) && type !== "MR" && !st.endIso) { alert(`End date is required for "${st.status}" (only Pending and NIL may be left blank).`); return; }
     if (st.endIso && st.startIso && st.endIso < st.startIso) { alert(`End date cannot be before start date for "${st.status}".`); return; }
   }
 
@@ -670,14 +720,20 @@ function submitMedical() {
   const reason = gv("f-reason");
   const location = gv("f-location").trim();
 
+  // Sibling rows of one multi-status visit share a visitId (spec §6); a single-
+  // status visit leaves it blank, preserving any existing group id on edit.
+  const prev = editId ? STATE.medical.find(m => m.id === editId) : null;
+  const visitId = statuses.length > 1 ? (prev?.visitId || ("v" + nextId())) : (prev?.visitId || "");
+
   // First status reuses the edited row's id; each extra status becomes a new
-  // sibling row. Siblings group automatically per-recruit in the reports.
+  // sibling row. type/urtiType/mrTiming/visitId are per-visit (shared across siblings).
   const records = statuses.map((st, i) => ({
     id: (i === 0 && editId) ? editId : nextId(),
     d4, date, reason, location,
     status: st.status,
     startDate: isoToDisplayDate(st.startIso),
-    endDate: st.endIso ? isoToDisplayDate(st.endIso) : ""
+    endDate: st.endIso ? isoToDisplayDate(st.endIso) : "",
+    type, urtiType, mrTiming, visitId
   }));
 
   records.forEach((rec, i) => {
@@ -1319,6 +1375,17 @@ function openCommanderForm(id) {
           ${formField("f-rank", "Rank", "text", "3SG / 2LT / CPT…", `required maxlength="10" value="${escapeAttr(e?.rank)}"`)}
         </div>
         ${formField("f-name", "Name", "text", "Nicholas Eng", `required maxlength="100" value="${escapeAttr(e?.name)}"`)}
+        <div class="form-row">
+          ${formField("f-platoon", "Platoon", "text", "HQ / PLT1", `maxlength="10" list="platoon-codes" value="${escapeAttr(e?.platoon)}"`)}
+          ${formField("f-section", "Section", "text", "Command / 1", `maxlength="12" value="${escapeAttr(e?.section)}"`)}
+        </div>
+        <datalist id="platoon-codes">${activePlatoons().map(p => `<option value="${escapeAttr(p.code)}">`).join("")}</datalist>
+        <div class="form-group">
+          <label>Rank group</label>
+          <select id="f-rankgroup">
+            ${["", "Officer", "WOSPEC", "Enlistee"].map(g => `<option value="${g}" ${g === (e?.rankGroup || "") ? "selected" : ""}>${g || "Auto from rank"}</option>`).join("")}
+          </select>
+        </div>
         ${formField("f-quota", "Off-in-Lieu Quota (days)", "number", "14", `min="0" max="365" step="1" value="${e?.leaveQuota ?? 14}"`)}
         ${formField("f-phone", "Phone (optional)", "text", "9123 4567", `maxlength="20" value="${escapeAttr(e?.phone)}"`)}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Add Commander"}</button>
@@ -1337,7 +1404,15 @@ function submitCommander() {
     role: "Commander",
     leaveQuota: +gv("f-quota") || 0,
     phone: gv("f-phone") || "",
-    status: "",
+    status: "Active",
+    // Braves org model (spec §5). Commanders have no 4D to parse, so these
+    // explicit fields are what places them in a platoon/section for parade state.
+    platoon: gv("f-platoon").trim(),
+    section: gv("f-section").trim(),
+    rankGroup: gv("f-rankgroup"),
+    fourD: "",
+    // Legacy parse-fallback fields kept blank (the old topbar filter still reads
+    // these until the Step-5 scope rewrite switches to platoon/section).
     plt: "",
     sect: ""
   };
@@ -1366,7 +1441,7 @@ function openLeaveForm(id) {
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
         <div class="form-group"><label>Person</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Annual Leave", "Annual Leave"], ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Leave", "Leave"], ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
         <div class="form-row">
           ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
           ${formField("f-end", "End date", "date", "", `required value="${endVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
@@ -3880,4 +3955,145 @@ function importBackup(input) {
     saveLocal(); render();
   } catch (err) { alert("Import failed: " + err.message); } };
   reader.readAsText(input.files[0]); input.value = "";
+}
+
+// ═══════════════════════════════════════════════════════
+// ACCOUNT / AUTH FORMS  (Step 1 — addendum A1)
+// ═══════════════════════════════════════════════════════
+// All of these talk to the role-gated backend; the server is the real authority.
+// The admin-only forms still appear behind .admin-only + isAdminRole() so a
+// non-admin never sees them, but the backend rejects them regardless.
+
+// ── Change own password (any signed-in role) ─────────────
+function openChangePasswordForm() {
+  openModal("Change Password", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <label class="form-label">Current password<input type="password" id="cp-current" class="form-input" autocomplete="current-password"></label>
+      <label class="form-label">New password (min 6)<input type="password" id="cp-new" class="form-input" autocomplete="new-password"></label>
+      <label class="form-label">Confirm new password<input type="password" id="cp-confirm" class="form-input" autocomplete="new-password"></label>
+      <div id="cp-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
+      <button class="btn btn-primary" onclick="submitChangePassword()">Update Password</button>
+    </div>`);
+}
+async function submitChangePassword() {
+  const cur = document.getElementById("cp-current").value;
+  const nw = document.getElementById("cp-new").value;
+  const cf = document.getElementById("cp-confirm").value;
+  const err = document.getElementById("cp-error");
+  err.textContent = "";
+  if (nw.length < 6) { err.textContent = "New password must be at least 6 characters."; return; }
+  if (nw !== cf) { err.textContent = "New passwords do not match."; return; }
+  try {
+    const res = await API.changePassword(cur, nw);
+    if (res && res.ok) { closeModal(); alert("Password updated."); }
+    else err.textContent = (res && res.error) || "Could not change password.";
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    err.textContent = "Network error: " + e.message;
+  }
+}
+
+// ── Add account (admin) ──────────────────────────────────
+function openAddAccountForm() {
+  openModal("Add Account", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <label class="form-label">Email<input type="email" id="aa-email" class="form-input" placeholder="pc1@unit.mil"></label>
+      <label class="form-label">PersonID (Roster 4D, optional)<input type="text" id="aa-personid" class="form-input" placeholder="e.g. 0012"></label>
+      <label class="form-label">Role
+        <select id="aa-role" class="form-input">
+          <option value="viewer">viewer — read-only</option>
+          <option value="commander" selected>commander — can edit</option>
+          <option value="admin">admin — full control</option>
+        </select>
+      </label>
+      <label class="form-label">Temporary password (min 6)<input type="text" id="aa-password" class="form-input" placeholder="they change it after first login"></label>
+      <div id="aa-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
+      <button class="btn btn-primary" onclick="submitAddAccount()">Create Account</button>
+    </div>`);
+}
+async function submitAddAccount() {
+  const email = document.getElementById("aa-email").value.trim();
+  const personId = document.getElementById("aa-personid").value.trim();
+  const role = document.getElementById("aa-role").value;
+  const pw = document.getElementById("aa-password").value;
+  const err = document.getElementById("aa-error");
+  err.textContent = "";
+  if (!email || pw.length < 6) { err.textContent = "Email and a 6+ char password are required."; return; }
+  try {
+    const res = await API.addAccount(email, personId, role, pw);
+    if (res && res.ok) {
+      closeModal();
+      if (res.warning) alert("Account created.\n\nNote: " + res.warning);
+      refreshAdminData();
+    } else err.textContent = (res && res.error) || "Could not create account.";
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    err.textContent = "Network error: " + e.message;
+  }
+}
+
+// ── Remove account (admin) ───────────────────────────────
+async function doRemoveAccount(emailEnc) {
+  const email = decodeURIComponent(emailEnc);
+  if (!confirm(`Remove the account for ${email}?\n\nThis deletes the account and signs out all of their devices.`)) return;
+  try {
+    const res = await API.removeAccount(email);
+    if (res && res.ok) refreshAdminData();
+    else alert((res && res.error) || "Could not remove account.");
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    alert("Network error: " + e.message);
+  }
+}
+
+// ── Admin reset another account's password ───────────────
+function openResetPasswordForm(emailEnc) {
+  const email = decodeURIComponent(emailEnc);
+  openModal("Reset Password", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <p style="font-size:12px;color:var(--muted)">Set a temporary password for <strong>${email}</strong>. They should change it after logging in.</p>
+      <label class="form-label">Temporary password (min 6)<input type="text" id="rp-password" class="form-input"></label>
+      <div id="rp-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
+      <button class="btn btn-primary" onclick="submitResetPassword('${encodeURIComponent(email)}')">Set Password</button>
+    </div>`);
+}
+async function submitResetPassword(emailEnc) {
+  const email = decodeURIComponent(emailEnc);
+  const pw = document.getElementById("rp-password").value;
+  const err = document.getElementById("rp-error");
+  err.textContent = "";
+  if (pw.length < 6) { err.textContent = "Password must be at least 6 characters."; return; }
+  try {
+    const res = await API.adminResetPassword(email, pw);
+    if (res && res.ok) { closeModal(); alert(`Password reset for ${email}.`); }
+    else err.textContent = (res && res.error) || "Could not reset password.";
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    err.textContent = "Network error: " + e.message;
+  }
+}
+
+// ── Token / session revocation (admin) ───────────────────
+async function doRevokeToken(token, emailEnc) {
+  const email = decodeURIComponent(emailEnc || "");
+  if (!confirm(`Revoke this session${email ? " for " + email : ""}? That device will be signed out.`)) return;
+  try {
+    const res = await API.revokeToken(token, email);
+    if (res && res.ok) refreshAdminData();
+    else alert((res && res.error) || "Could not revoke session.");
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    alert("Network error: " + e.message);
+  }
+}
+async function doRevokeAllTokens() {
+  if (!confirm("Revoke ALL sessions, including your own? Everyone (you included) will have to log in again.")) return;
+  try {
+    const res = await API.revokeAllTokens();
+    if (res && res.ok) { alert(`Revoked ${res.revoked} session(s). You will be signed out.`); handleAuthFailure(); }
+    else alert((res && res.error) || "Could not revoke sessions.");
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    alert("Network error: " + e.message);
+  }
 }

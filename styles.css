@@ -304,3 +304,39 @@ tr:hover{background:var(--surface2)}
   #content,.card{overflow-x:hidden}
   .table-wrap{overflow-x:auto}  /* re-assert — explicit > inherited */
 }
+
+/* ── Login overlay (Step 1 auth) ──────────────────────────
+   Fixed full-screen layer above everything. .hidden removes it once a session
+   exists. Matches the app's dark surface palette. */
+.login-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
+.login-overlay.hidden{display:none}
+.login-card{width:100%;max-width:340px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:26px 24px;display:flex;flex-direction:column;gap:14px}
+.login-brand small{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:2px;font-weight:700}
+.login-brand h1{font-size:20px;margin-top:2px}
+.login-sub{font-size:12px;color:var(--muted);margin-top:-6px}
+.login-field{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.login-field input{padding:9px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit;font-size:13px;outline:none;text-transform:none;letter-spacing:0;font-weight:400}
+.login-field input:focus{border-color:var(--accent)}
+.login-error{color:var(--red);font-size:12px;min-height:16px}
+.login-submit{padding:9px;font-size:13px}
+
+/* Account identity in the sidebar footer. */
+#account-identity{color:var(--muted);font-size:10px;margin-bottom:6px;word-break:break-word}
+
+/* ── Viewer soft read-only (server is the real gate) ──────
+   Elements tagged .write-only are hidden for a signed-in viewer; the read-only
+   banner appears only for viewers. Per Step-1 scope this is coarse — the
+   authoritative enforcement is server-side. */
+body.role-viewer .write-only{display:none !important}
+.readonly-banner{display:none;background:#D2992222;border:1px solid #D2992244;color:var(--orange);border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:14px}
+body.role-viewer .readonly-banner{display:block}
+
+/* Admin-only blocks are hidden unless the body carries .role-admin. */
+.admin-only{display:none}
+body.role-admin .admin-only{display:block}
+
+/* Label-wraps-input pattern used by the account/auth modals (mirrors the
+   existing .form-group styling so they look native). */
+.form-label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.form-input{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;outline:none;text-transform:none;letter-spacing:0}
+.form-input:focus{border-color:var(--accent)}

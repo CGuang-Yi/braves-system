@@ -2,23 +2,30 @@
  * COUGAR COMPANY DATA SYSTEM — Google Apps Script Backend
  * ═══════════════════════════════════════════════════════
  *
- * AUTH MODEL
+ * AUTH MODEL  (Build-order Step 1 — addendum A1/A2)
  * ──────────
- * The script enforces token-based auth for all data operations. Two token types
- * live in PropertiesService:
+ * Per-account email + password login. State lives in the Accounts/AuditLog tabs
+ * and in PropertiesService:
  *
- *   invite:<token>  →  Two shapes:
- *     SINGLE-USE: {used, createdAt, usedAt?, issuedAuthToken?}
- *       • Mint via generateInvite(). Consumed on first click.
- *     BULK (multi-use): {maxUses, usedCount, redemptions[], createdAt, expiresAt?}
- *       • Mint via generateBulkInvite(maxUses, expiresInDays). Share ONE link
- *         with a whole team — each click issues a separate per-device auth
- *         token. Self-disables when cap or expiry is hit. Audit with
- *         bulkInviteStatus(token); kill with revokeInvite(token).
+ *   Accounts tab    →  email | personId | role | passwordHash | salt | addedBy | addedAt
+ *     • role ∈ {admin, commander, viewer}. Passwords are SHA-256(salt+password)
+ *       with a per-account UUID salt. Bootstrap the first admin from the editor
+ *       with seedFirstAdmin(email, password); run setupAuthTabs() once to create
+ *       the Accounts + AuditLog tabs.
  *
- *   auth:<token>    →  {issuedAt, fromInvite}
- *     • Long-lived. Stored in the user's browser localStorage. Sent with every
- *       data request. Revoke with revokeAuthToken().
+ *   auth:<token>    →  {email, personId, role, issuedAt}  (in ScriptProperties)
+ *     • Issued by the `login` action, stored in the browser, sent with every
+ *       request. 30-day expiry (isTokenExpired). Role gates every write: viewers
+ *       are read-only; account/token management is admin-only. Revoke from the
+ *       admin panel or revokeAllTokensForEmail()/handleRevokeAllTokens.
+ *
+ *   failed:<email>  →  {count, since, lastAttempt}
+ *     • Failed-login throttle: 5 attempts → 15-minute lockout (isLockedOut).
+ *
+ * LEGACY (dormant, removed after Step 1 is verified):
+ *   invite:<token> / the redeemInvite flow / generate(Bulk)Invite. Tokens these
+ *   issue carry no `role`, so getAuthContext() rejects them — they can neither
+ *   read nor write under the new model.
  *
  * SETUP (first deploy or after pulling these changes)
  * ───────────────────────────────────────────────────
@@ -38,7 +45,7 @@
  *   Roster:     4d | name | age | status | notes | phone | email |
  *               ration | allergies | msk | highest education level |
  *               motorcycle license | height | weight | role | rank |
- *               leaveQuota
+ *               leaveQuota | platoon | section | rankGroup | fourD
  *               (the column may be named "4d" or "id" — the frontend mirrors
  *                whichever is present into r.id at pull time. height in cm,
  *                weight in kg — BMI is computed client-side. role ∈
@@ -46,8 +53,15 @@
  *                Commanders use 4D 0001–0099, are never displayed in the
  *                UI by id — their rank+name shows instead. rank is free
  *                text ("3SG", "2LT", "CPT", "MSG"); leaveQuota is the
- *                off-in-lieu day cap (numeric, optional for recruits).)
- *   Medical:    id | d4 | date | reason | location | status | startDate | endDate
+ *                off-in-lieu day cap (numeric, optional for recruits).
+ *                BRAVES org model (spec §5): platoon ∈ {HQ, PLT1..PLTn};
+ *                section ∈ {1..N, "Command" for PC/PS, blank for HQ-flat};
+ *                rankGroup ∈ {Officer, WOSPEC, Enlistee} (strength split);
+ *                fourD = display 4D (e.g. 1411), blank for no-4D personnel —
+ *                separate from `id`, which stays the primary key and may be a
+ *                short text code (OC, PC1…) for no-4D personnel.)
+ *   Medical:    id | d4 | date | reason | location | status | startDate | endDate |
+ *               type | urtiType | mrTiming | visitId
  *               (Each row represents a "report sick" event — `date` is the
  *                date the recruit reported sick. `location` is optional —
  *                the clinic/hospital where the recruit reported sick OUTSIDE;
@@ -61,7 +75,13 @@
  *                and BOTH ENDS ARE INCLUSIVE. Pending and NIL may have no
  *                startDate/endDate. After endDate, MC and LD get a 2-day
  *                "ghost" tag (MC+1, MC+2, LD+1, LD+2) computed client-side
- *                — not stored.)
+ *                — not stored.
+ *                BRAVES §6: `type` = visit type ∈ {RSI, RSO, MR, …} (distinct
+ *                from `status`, the MO outcome); urtiType ∈ {URTI, NON-URTI}
+ *                (meaningful for RSI/RSO); mrTiming = optional free-text MR
+ *                timing; visitId groups sibling rows of one multi-status visit.
+ *                The "follow up status from MO" in sick messages is derived
+ *                from `status` (the MO outcome) — there is no separate field.)
  *   Attendance: id | date | time | conductId | total | participating | lms | px | fallout | remarks
  *               (time = "0730"/"1630" — same conduct on the same day at
  *                different times produces distinct rows. The Log Conduct
@@ -117,6 +137,25 @@
  *                dashboard's "Mark Cleared" action writes TRUE; runs
  *                via the standard pushTab so cleared bits round-trip on
  *                the next Push All.)
+ *
+ *   ── BRAVES reference tabs (optional; absent tab → [] on the frontend) ──
+ *   Config:     key | value
+ *               (Transferability layer, spec §4. Each row is one setting:
+ *                companyName, companyPrefix (4D display prefix, e.g. "B"),
+ *                companyCoyCode ("B COY"), unitCode ("40SAR"), hqLabel
+ *                ("BRAVES HQ"), defaultSickLocation ("PTMC"),
+ *                polarCompanyName, haEligibilitySource
+ *                ("isHAExcluded" | "currencyTag"). Missing keys fall back to
+ *                DEFAULT_CONFIG in js/state.js. Admin-only to edit.)
+ *   VocFit:     personId | completionDate | certifyingUnit
+ *               (Vocational Fitness Training completions, spec §12.3 — gates
+ *                Double-HA eligibility together with rank ≥ 3SG/2LT.
+ *                certifyingUnit optional.)
+ *   Platoons:   code | displayName | active | createdAt
+ *               (Managed platoon list, addendum A6.1 — replaces the hardcoded
+ *                HQ+PLT1–4 assumption. code ∈ {HQ, PLT1, …}; active=FALSE
+ *                retires a platoon without deleting history. Scope selector +
+ *                Roster platoon dropdown derive options from active rows.)
  */
 
 var FRONTEND_BASE_URL = "https://coon-hound.github.io/cougar-system/";
@@ -133,14 +172,29 @@ function doGet(e) {
     // Public action: ping (used by the frontend to verify the URL is reachable).
     if (action === "ping") {
       output = { ok: true, sheets: getTabNames(), timestamp: new Date().toISOString() };
-    } else if (!isValidAuth(auth)) {
-      output = { error: "Unauthorized — invite required", code: 401 };
-    } else if (action === "readAll") {
-      output = readAllTabs();
-    } else if (action === "read" && tab) {
-      output = readTab(tab);
     } else {
-      output = { error: "Unknown action. Use: readAll, read&tab=TabName, or ping" };
+      // Every other read resolves the account context behind the token. Any valid
+      // role (admin/commander/viewer) may read — read-only enforcement only bites
+      // on writes (doPost). Expired sessions return session_expired so the frontend
+      // can bounce the user to the login screen.
+      var ctx = getAuthContext(auth);
+      if (!ctx) {
+        output = { error: "Unauthorized — please log in", code: 401 };
+      } else if (isTokenExpired(ctx)) {
+        output = { error: "session_expired", code: 401 };
+      } else if (action === "readAll") {
+        output = readAllTabs(ctx);              // ctx → AuditLog included only for admins
+      } else if (action === "read" && tab) {
+        if (tab === "AuditLog" && ctx.role !== "admin") {
+          output = { error: "Not authorised", code: 403 };
+        } else if (tab === "Accounts") {
+          output = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+        } else {
+          output = readTab(tab);
+        }
+      } else {
+        output = { error: "Unknown action. Use: readAll, read&tab=TabName, or ping" };
+      }
     }
   } catch (err) {
     output = { error: err.message };
@@ -166,61 +220,25 @@ function doPost(e) {
     var tab = body.tab || "";
     var auth = body.auth || "";
 
-    // Public action: redeem a single-use invite token in exchange for an auth token.
-    if (action === "redeemInvite") {
+    // Public action: log in with email + password → returns a per-device auth token.
+    if (action === "login") {
+      output = handleLogin(body);
+    } else if (action === "redeemInvite") {
+      // DORMANT — legacy invite flow. Tokens it issues carry no role, so they
+      // fail getAuthContext() and can't read or write. Retained only until the
+      // new auth is verified, then deleted (see CLAUDE.md Step 1 / DECISIONS C).
       output = redeemInvite(body.token);
-    } else if (!isValidAuth(auth)) {
-      output = { error: "Unauthorized — invite required", code: 401 };
-    } else if (action === "write" && tab && body.data) {
-      output = writeTab(tab, body.data);
-    } else if (action === "append" && tab && body.row) {
-      output = appendRow(tab, body.row);
-    } else if (action === "appendMany" && tab && body.rows) {
-      output = appendMany(tab, body.rows);
-    } else if (action === "upsertRow" && tab && body.row) {
-      // ID-based upsert — finds by `id` column, updates in place, appends if missing.
-      // Designed to be the default write path so two devices editing different
-      // rows of the same tab don't clobber each other (no full-table replace).
-      output = upsertRow(tab, body.row);
-    } else if (action === "deleteRowById" && tab && body.id !== undefined) {
-      // ID-based row delete — finds by `id` column. Safer than the legacy
-      // rowIndex-based deleteRow (frontend doesn't track sheet indices).
-      output = deleteRowById(tab, body.id);
-    } else if (action === "rowCount" && tab) {
-      // Lightweight pre-write staleness check. Returns the sheet's current
-      // data-row count so the frontend can warn before a bulk pushTab if
-      // another device added rows since the last pull.
-      output = rowCount(tab);
-    } else if (action === "deleteRow" && tab && body.rowIndex !== undefined) {
-      output = deleteRow(tab, body.rowIndex);
-    } else if (action === "updateRow" && tab && body.rowIndex !== undefined && body.row) {
-      output = updateRow(tab, body.rowIndex, body.row);
-    } else if (action === "sendEmail") {
-      output = sendEmailHelper(body);
-    } else if (action === "getEmailInfo") {
-      // All three Apps Script calls below require OAuth scopes that aren't
-      // granted by default. Wrap each so the missing-scope case shows a
-      // clear, actionable message instead of crashing the whole modal.
-      var senderEmail = "";
-      try { senderEmail = Session.getEffectiveUser().getEmail(); } catch (e) { /* no userinfo.email scope */ }
-      if (!senderEmail) {
-        try { senderEmail = Session.getActiveUser().getEmail(); } catch (e) { /* no userinfo.email scope */ }
-      }
-      var remainingQuota = null, quotaError = null;
-      try {
-        remainingQuota = MailApp.getRemainingDailyQuota();
-      } catch (e) {
-        quotaError = "Email scope not granted yet — grant the script.send_mail permission to enable sending.";
-      }
-      output = {
-        senderEmail: senderEmail || "",
-        remainingQuota: remainingQuota,
-        quotaError: quotaError
-      };
-    } else if (action === "analyzePhoto") {
-      output = analyzePhotoHelper(body);
     } else {
-      output = { error: "Invalid request" };
+      // Everything else requires a valid, unexpired account session. Role-gating
+      // (viewer read-only; admin-only management) happens inside routeAuthedPost.
+      var ctx = getAuthContext(auth);
+      if (!ctx) {
+        output = { error: "Unauthorized — please log in", code: 401 };
+      } else if (isTokenExpired(ctx)) {
+        output = { error: "session_expired", code: 401 };
+      } else {
+        output = routeAuthedPost(action, tab, body, ctx);
+      }
     }
   } catch (err) {
     output = { error: err.message };
@@ -555,6 +573,461 @@ function revokeAllAuthTokens() {
   Logger.log("Revoked " + count + " auth token(s). Every device must redeem a new invite.");
 }
 
+// ═══════════════════════════════════════════════════════
+// ACCOUNT / PASSWORD AUTH  (Build-order Step 1 — addendum A1 & A2)
+// ═══════════════════════════════════════════════════════
+//
+// Replaces the invite-token model above with per-account email+password login.
+//   Accounts tab : email | personId | role | passwordHash | salt | addedBy | addedAt
+//                  role ∈ {admin, commander, viewer}. personId → Roster id (4D);
+//                  stored + returned but the Roster link is soft (not required to
+//                  log in) — name/platoon/etc. are derived downstream (Step 2/3).
+//   AuditLog tab : timestamp | email | personId | role | action | target | detail | tokenPrefix
+//   auth:<token> : { email, personId, role, issuedAt } in ScriptProperties.
+//                  Legacy invite tokens (no `role`) are treated as invalid so every
+//                  device is forced through the new login.
+//
+// No bcrypt in Apps Script → SHA-256(salt + password) with a per-account UUID salt.
+// Adequate for a small, trusted user base behind an MFA-protected Sheet owner.
+
+var SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30-day session expiry
+var LOCKOUT_THRESHOLD = 5;                       // failed attempts before lockout
+var LOCKOUT_WINDOW_MS = 15 * 60 * 1000;          // 15-minute lockout
+
+function hashPassword(plaintext, salt) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + plaintext)
+    .map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); })
+    .join('');
+}
+function verifyPassword(plaintext, salt, storedHash) {
+  return hashPassword(plaintext, salt) === storedHash;
+}
+function generateSalt() { return Utilities.getUuid(); }
+
+// Find an Accounts row by email (case-insensitive). Returns the row object
+// (incl. passwordHash + salt) or null. Reads via readTab so it benefits from
+// the same Date/blank-row handling as everything else.
+function findAccountByEmail(email) {
+  if (!email) return null;
+  var rows = readTab("Accounts");
+  if (!Array.isArray(rows)) return null;
+  var target = String(email).trim().toLowerCase();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].email || "").trim().toLowerCase() === target) return rows[i];
+  }
+  return null;
+}
+
+// Resolve an auth token to its stored {email, personId, role, issuedAt} context,
+// or null if the token is missing, malformed, or role-less (legacy invite token).
+function getAuthContext(token) {
+  if (!token) return null;
+  var raw = PropertiesService.getScriptProperties().getProperty("auth:" + token);
+  if (!raw) return null;
+  var ctx;
+  try { ctx = JSON.parse(raw); } catch (e) { return null; }
+  if (!ctx || !ctx.role) return null;  // legacy/role-less token → invalid under new auth
+  return ctx;
+}
+
+function isTokenExpired(context) {
+  if (!context || !context.issuedAt) return true;
+  return (new Date() - new Date(context.issuedAt)) > SESSION_TTL_MS;
+}
+
+function canWrite(ctx) { return !!ctx && (ctx.role === "commander" || ctx.role === "admin"); }
+function isAdmin(ctx) { return !!ctx && ctx.role === "admin"; }
+
+// ── Login + failed-attempt throttling ────────────────────
+
+function handleLogin(body) {
+  var email = body && body.email ? String(body.email).trim() : "";
+  var password = body && body.password ? String(body.password) : "";
+  if (!email || !password) return { error: "Email and password required." };
+
+  if (isLockedOut(email)) {
+    return { error: "Account locked — too many failed attempts. Try again in 15 minutes." };
+  }
+  var account = findAccountByEmail(email);
+  if (!account) return logFailedAttempt(email, "Email not found");
+  if (!verifyPassword(password, account.salt, account.passwordHash)) {
+    return logFailedAttempt(email, "Wrong password");
+  }
+  clearFailedAttempts(email);
+
+  var token = Utilities.getUuid();
+  var ctx = {
+    email: account.email,
+    personId: account.personId || "",
+    role: account.role || "viewer",
+    issuedAt: new Date().toISOString()
+  };
+  PropertiesService.getScriptProperties().setProperty("auth:" + token, JSON.stringify(ctx));
+  writeAuditLog(account.email, account.personId, "login", null, null, token);
+  return { ok: true, authToken: token, role: ctx.role, personId: ctx.personId, email: ctx.email };
+}
+
+function logFailedAttempt(email, reason) {
+  var key = "failed:" + String(email).toLowerCase();
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty(key);
+  var record = raw ? JSON.parse(raw) : { count: 0, since: new Date().toISOString() };
+  record.count++;
+  record.lastAttempt = new Date().toISOString();
+  props.setProperty(key, JSON.stringify(record));
+  writeAuditLog(email, null, "login_failed", null, reason, null);
+  // Deliberately generic so we don't reveal whether the email exists.
+  return { error: "Wrong email or password." };
+}
+
+function isLockedOut(email) {
+  var raw = PropertiesService.getScriptProperties().getProperty("failed:" + String(email).toLowerCase());
+  if (!raw) return false;
+  var record = JSON.parse(raw);
+  if (record.count < LOCKOUT_THRESHOLD) return false;
+  return (new Date() - new Date(record.lastAttempt)) < LOCKOUT_WINDOW_MS;
+}
+
+function clearFailedAttempts(email) {
+  PropertiesService.getScriptProperties().deleteProperty("failed:" + String(email).toLowerCase());
+}
+
+// ── Authenticated POST dispatch (role-gated) ─────────────
+
+function routeAuthedPost(action, tab, body, ctx) {
+  // Available to any signed-in role:
+  if (action === "logout")          return handleLogout(body, ctx);
+  if (action === "changePassword")  return handleChangePassword(body, ctx);
+  if (action === "rowCount" && tab) return rowCount(tab);  // read-only staleness probe
+
+  // Admin-only account & token management:
+  if (action === "listAccounts")      return handleListAccounts(body, ctx);
+  if (action === "addAccount")        return handleAddAccount(body, ctx);
+  if (action === "removeAccount")     return handleRemoveAccount(body, ctx);
+  if (action === "adminResetPassword")return handleAdminResetPassword(body, ctx);
+  if (action === "listTokens")        return handleListTokens(body, ctx);
+  if (action === "revokeToken")       return handleRevokeToken(body, ctx);
+  if (action === "revokeAllForEmail") return handleRevokeAllForEmail(body, ctx);
+  if (action === "revokeAllTokens")   return handleRevokeAllTokens(body, ctx);
+
+  // Everything below mutates data or spends quota → commander/admin only.
+  // This single gate is the authoritative "viewer is read-only" enforcement.
+  if (!canWrite(ctx)) return { error: "Read-only access — your account cannot make changes.", code: 403 };
+
+  var res;
+  if (action === "write" && tab && body.data)                    res = writeTab(tab, body.data);
+  else if (action === "append" && tab && body.row)               res = appendRow(tab, body.row);
+  else if (action === "appendMany" && tab && body.rows)          res = appendMany(tab, body.rows);
+  else if (action === "upsertRow" && tab && body.row)            res = upsertRow(tab, body.row);
+  else if (action === "deleteRowById" && tab && body.id !== undefined) res = deleteRowById(tab, body.id);
+  else if (action === "deleteRow" && tab && body.rowIndex !== undefined) res = deleteRow(tab, body.rowIndex);
+  else if (action === "updateRow" && tab && body.rowIndex !== undefined && body.row) res = updateRow(tab, body.rowIndex, body.row);
+  else if (action === "sendEmail")                               res = sendEmailHelper(body);
+  else if (action === "getEmailInfo")                            res = getEmailInfoHelper();
+  else if (action === "analyzePhoto")                            res = analyzePhotoHelper(body);
+  else return { error: "Invalid request" };
+
+  // Best-effort audit of data writes to the tabs called out in A2.3.
+  if (res && !res.error && tab &&
+      ["write", "append", "appendMany", "upsertRow", "updateRow", "deleteRowById", "deleteRow"].indexOf(action) >= 0) {
+    writeAuditLog(ctx.email, ctx.personId, auditActionForTab(tab), tab, action, body.auth);
+  }
+  return res;
+}
+
+function auditActionForTab(tab) {
+  var map = {
+    Medical: "write_medical", Leave: "write_leave", IPPT: "write_ippt",
+    Roster: "write_roster", Config: "write_config", ConductDetail: "write_conduct_import"
+  };
+  return map[tab] || ("write_" + String(tab).toLowerCase());
+}
+
+function handleLogout(body, ctx) {
+  PropertiesService.getScriptProperties().deleteProperty("auth:" + body.auth);
+  writeAuditLog(ctx.email, ctx.personId, "logout", null, null, null);
+  return { ok: true };
+}
+
+// ── Password management ──────────────────────────────────
+
+function handleChangePassword(body, ctx) {
+  var account = findAccountByEmail(ctx.email);
+  if (!account) return { error: "Account not found." };
+  if (!verifyPassword(body.currentPassword || "", account.salt, account.passwordHash)) {
+    return { error: "Current password is wrong." };
+  }
+  if (!body.newPassword || String(body.newPassword).length < 6) {
+    return { error: "New password must be at least 6 characters." };
+  }
+  var newSalt = generateSalt();
+  updateAccountPassword(ctx.email, hashPassword(body.newPassword, newSalt), newSalt);
+  writeAuditLog(ctx.email, ctx.personId, "change_password", ctx.email, null, body.auth);
+  return { ok: true };
+}
+
+function handleAdminResetPassword(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  if (!findAccountByEmail(body.targetEmail)) return { error: "Target account not found." };
+  if (!body.tempPassword || String(body.tempPassword).length < 6) {
+    return { error: "Temporary password must be at least 6 characters." };
+  }
+  var newSalt = generateSalt();
+  updateAccountPassword(body.targetEmail, hashPassword(body.tempPassword, newSalt), newSalt);
+  writeAuditLog(ctx.email, ctx.personId, "admin_reset_password", body.targetEmail, null, body.auth);
+  return { ok: true };
+}
+
+// Surgically rewrite one account's passwordHash + salt cells in place.
+function updateAccountPassword(email, newHash, newSalt) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Accounts");
+  if (!sheet) return { error: "Accounts tab not found" };
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0].map(function (h) { return String(h).trim(); });
+  var emailCol = headers.indexOf("email"), hashCol = headers.indexOf("passwordHash"), saltCol = headers.indexOf("salt");
+  if (emailCol < 0 || hashCol < 0 || saltCol < 0) return { error: "Accounts tab missing columns" };
+  var target = String(email).trim().toLowerCase();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][emailCol]).trim().toLowerCase() === target) {
+      sheet.getRange(i + 1, hashCol + 1).setValue(newHash);
+      sheet.getRange(i + 1, saltCol + 1).setValue(newSalt);
+      return { ok: true };
+    }
+  }
+  return { error: "Account row not found" };
+}
+
+// ── Account management (admin) ───────────────────────────
+
+function handleListAccounts(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  var rows = readTab("Accounts");
+  if (!Array.isArray(rows)) rows = [];
+  // Never return passwordHash / salt to the client.
+  var accounts = rows.map(function (r) {
+    return { email: r.email || "", personId: r.personId || "", role: r.role || "",
+             addedBy: r.addedBy || "", addedAt: r.addedAt || "" };
+  });
+  return { ok: true, accounts: accounts };
+}
+
+function handleAddAccount(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  var email = body.newEmail ? String(body.newEmail).trim() : "";
+  var role = body.newRole || "viewer";
+  var personId = body.newPersonId ? String(body.newPersonId).trim() : "";
+  var password = body.newPassword || "";
+  if (!email || !password) return { error: "Email and password required." };
+  if (String(password).length < 6) return { error: "Password must be at least 6 characters." };
+  if (["admin", "commander", "viewer"].indexOf(role) < 0) return { error: "Invalid role." };
+  if (findAccountByEmail(email)) return { error: "An account with that email already exists." };
+
+  var salt = generateSalt();
+  // Soft validation (b): warn if personId isn't in the Roster, but still create.
+  var warning = (personId && !rosterHasId(personId))
+    ? "personId '" + personId + "' not found in Roster — account created anyway." : "";
+  appendRow("Accounts", {
+    email: email, personId: personId, role: role,
+    passwordHash: hashPassword(password, salt), salt: salt,
+    addedBy: ctx.email, addedAt: new Date().toISOString()
+  });
+  writeAuditLog(ctx.email, ctx.personId, "add_account", email, role, body.auth);
+  return { ok: true, warning: warning };
+}
+
+function handleRemoveAccount(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  var email = body.targetEmail ? String(body.targetEmail).trim() : "";
+  if (!email) return { error: "targetEmail required." };
+  if (email.toLowerCase() === String(ctx.email).toLowerCase()) return { error: "You cannot remove your own account." };
+  var removed = removeAccountRow(email);
+  var revoked = revokeAllTokensForEmail(email);  // also kick any live sessions
+  writeAuditLog(ctx.email, ctx.personId, "remove_account", email, revoked + " token(s) revoked", body.auth);
+  return { ok: true, removed: removed, revoked: revoked };
+}
+
+function removeAccountRow(email) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Accounts");
+  if (!sheet) return false;
+  var data = sheet.getDataRange().getValues();
+  var emailCol = data[0].map(function (h) { return String(h).trim(); }).indexOf("email");
+  if (emailCol < 0) return false;
+  var target = String(email).trim().toLowerCase();
+  for (var i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][emailCol]).trim().toLowerCase() === target) { sheet.deleteRow(i + 1); return true; }
+  }
+  return false;
+}
+
+// Loose Roster membership check for the soft account-creation warning. Compares
+// trimmed strings and a leading-C-stripped form so a "0001"/"C0001" mismatch
+// (Sheets quirks) doesn't trigger a false warning.
+function rosterHasId(personId) {
+  var rows = readTab("Roster");
+  if (!Array.isArray(rows)) return false;
+  var t = String(personId).trim().replace(/^C/i, "");
+  for (var i = 0; i < rows.length; i++) {
+    var id = String(rows[i].id || rows[i]["4d"] || rows[i]["4D"] || "").trim().replace(/^C/i, "");
+    if (id === t || (+id && +id === +t)) return true;
+  }
+  return false;
+}
+
+// ── Token / session management (admin) ───────────────────
+
+function handleListTokens(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  var props = PropertiesService.getScriptProperties();
+  var tokens = [];
+  props.getKeys().forEach(function (k) {
+    if (k.indexOf("auth:") !== 0) return;
+    try {
+      var c = JSON.parse(props.getProperty(k));
+      if (c && c.role) {
+        tokens.push({
+          token: k.slice(5), tokenPrefix: k.slice(5, 13),
+          email: c.email || "", role: c.role || "",
+          issuedAt: c.issuedAt || "", expired: isTokenExpired(c)
+        });
+      }
+    } catch (e) { /* skip malformed */ }
+  });
+  return { ok: true, tokens: tokens };
+}
+
+function handleRevokeToken(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  if (!body.targetToken) return { error: "targetToken required." };
+  PropertiesService.getScriptProperties().deleteProperty("auth:" + body.targetToken);
+  writeAuditLog(ctx.email, ctx.personId, "revoke_token", body.targetEmail || "", "specific token", body.auth);
+  return { ok: true };
+}
+
+function handleRevokeAllForEmail(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  if (!body.targetEmail) return { error: "targetEmail required." };
+  var n = revokeAllTokensForEmail(body.targetEmail);
+  writeAuditLog(ctx.email, ctx.personId, "revoke_all_for_email", body.targetEmail, n + " token(s)", body.auth);
+  return { ok: true, revoked: n };
+}
+
+function handleRevokeAllTokens(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  var props = PropertiesService.getScriptProperties();
+  var n = 0;
+  props.getKeys().forEach(function (k) { if (k.indexOf("auth:") === 0) { props.deleteProperty(k); n++; } });
+  writeAuditLog(ctx.email, ctx.personId, "revoke_all_tokens", null, n + " token(s)", body.auth);
+  return { ok: true, revoked: n };  // note: this also revokes the caller's own token
+}
+
+function revokeAllTokensForEmail(email) {
+  var props = PropertiesService.getScriptProperties();
+  var target = String(email).trim().toLowerCase();
+  var count = 0;
+  props.getKeys().forEach(function (k) {
+    if (k.indexOf("auth:") !== 0) return;
+    try {
+      var stored = JSON.parse(props.getProperty(k));
+      if (stored && String(stored.email || "").toLowerCase() === target) { props.deleteProperty(k); count++; }
+    } catch (e) { /* skip */ }
+  });
+  return count;
+}
+
+// ── Audit log (A2) ───────────────────────────────────────
+
+function writeAuditLog(email, personId, action, target, detail, token) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("AuditLog");
+    if (!sheet) return;  // tab not created yet — never let logging break the action
+    var ctx = token ? getAuthContext(token) : null;
+    sheet.appendRow([
+      new Date().toISOString(),
+      email || "", personId || "",
+      ctx ? ctx.role : "",
+      action || "", target || "", detail || "",
+      token ? String(token).slice(0, 8) : ""
+    ]);
+  } catch (e) {
+    Logger.log("AuditLog write failed: " + e.message);
+  }
+}
+
+// Extracted so routeAuthedPost can reuse the email-info probe (same logic that
+// used to live inline in doPost).
+function getEmailInfoHelper() {
+  var senderEmail = "";
+  try { senderEmail = Session.getEffectiveUser().getEmail(); } catch (e) { /* no userinfo.email scope */ }
+  if (!senderEmail) { try { senderEmail = Session.getActiveUser().getEmail(); } catch (e) { /* idem */ } }
+  var remainingQuota = null, quotaError = null;
+  try { remainingQuota = MailApp.getRemainingDailyQuota(); }
+  catch (e) { quotaError = "Email scope not granted yet — grant the script.send_mail permission to enable sending."; }
+  return { senderEmail: senderEmail || "", remainingQuota: remainingQuota, quotaError: quotaError };
+}
+
+// ── Editor-run setup (run these once from the Apps Script editor) ──
+
+// Creates the Accounts + AuditLog tabs with the right headers, or repairs the
+// headers non-destructively if the tabs already exist. Safe to re-run.
+function setupAuthTabs() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureTabWithHeaders_(ss, "Accounts", ["email", "personId", "role", "passwordHash", "salt", "addedBy", "addedAt"]);
+  ensureTabWithHeaders_(ss, "AuditLog", ["timestamp", "email", "personId", "role", "action", "target", "detail", "tokenPrefix"]);
+  Logger.log("Accounts and AuditLog tabs are ready.");
+}
+
+function ensureTabWithHeaders_(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    return;
+  }
+  // Append any missing headers to the end of row 1 (leaves existing data intact).
+  var lastCol = sheet.getLastColumn() || 0;
+  var existing = lastCol ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var have = {};
+  existing.forEach(function (h) { if (h) have[String(h).trim()] = true; });
+  var missing = headers.filter(function (h) { return !have[h]; });
+  if (missing.length) {
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]).setFontWeight("bold");
+  }
+  sheet.setFrozenRows(1);
+}
+
+// Bootstrap the very first admin account. Run once from the editor:
+//   seedFirstAdmin("you@example.com", "your-strong-password")
+// Then log in via the web app and create the rest from the admin panel.
+function seedFirstAdmin(email, password) {
+  if (!email || !password) { Logger.log("Usage: seedFirstAdmin('you@example.com','password')"); return; }
+  setupAuthTabs();
+  if (findAccountByEmail(email)) { Logger.log("An account with that email already exists."); return; }
+  var salt = generateSalt();
+  appendRow("Accounts", {
+    email: String(email).trim(), personId: "", role: "admin",
+    passwordHash: hashPassword(password, salt), salt: salt,
+    addedBy: "seedFirstAdmin", addedAt: new Date().toISOString()
+  });
+  Logger.log("Admin account created for " + email + ". Log in via the web app.");
+}
+
+// General editor helper to add any account without the UI.
+//   createAccount("pc1@unit.mil", "0012", "commander", "password")
+function createAccount(email, personId, role, password) {
+  if (!email || !password) { Logger.log("Usage: createAccount('email','personId','role','password')"); return; }
+  if (["admin", "commander", "viewer"].indexOf(role) < 0) { Logger.log("role must be admin | commander | viewer"); return; }
+  setupAuthTabs();
+  if (findAccountByEmail(email)) { Logger.log("Account already exists."); return; }
+  var salt = generateSalt();
+  appendRow("Accounts", {
+    email: String(email).trim(), personId: personId || "", role: role,
+    passwordHash: hashPassword(password, salt), salt: salt,
+    addedBy: "createAccount(editor)", addedAt: new Date().toISOString()
+  });
+  Logger.log(role + " account created for " + email);
+}
+
 // ─── READ OPERATIONS ───────────────────────────────────
 
 function getTabNames() {
@@ -602,7 +1075,7 @@ function readTab(tabName) {
   return rows;
 }
 
-function readAllTabs() {
+function readAllTabs(ctx) {
   var tabMap = {
     "Roster": "roster",
     "Medical": "medical",
@@ -615,7 +1088,13 @@ function readAllTabs() {
     "Appointments": "appointments",
     "Leave": "leave",
     "MSK": "msk",
-    "Conducts": "conducts"
+    "Conducts": "conducts",
+    // Braves reference tabs (spec §4/§12/A6). Config is key/value — the frontend
+    // collapses it to an object. All three are optional: a missing tab yields []
+    // and the frontend falls back to defaults/derivation.
+    "Config": "config",
+    "VocFit": "vocfit",
+    "Platoons": "platoons"
   };
 
   var result = {};
@@ -628,6 +1107,13 @@ function readAllTabs() {
     } else {
       result[tabMap[tabName]] = [];
     }
+  }
+
+  // Admin-only: include the audit log in the pull (A2.5). The Accounts tab is
+  // never included here — it carries password hashes and is reached only via the
+  // dedicated, hash-stripping listAccounts action.
+  if (ctx && ctx.role === "admin") {
+    result.auditLog = ss.getSheetByName("AuditLog") ? readTab("AuditLog") : [];
   }
 
   result.timestamp = new Date().toISOString();

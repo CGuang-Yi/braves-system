@@ -3,37 +3,45 @@
 
 function renderSync(el) {
   const authed = !!STATE.authToken;
+  const who = (STATE.personId && typeof displayPersonLabel === "function") ? displayPersonLabel(STATE.personId) : "";
+  const whoLabel = (who && who !== STATE.personId) ? who : "";
+
   const authStatusHtml = authed
-    ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-         <span style="color:var(--green);font-weight:600">✓ Authenticated</span>
-         <span class="mono" style="font-size:10px;color:var(--dim)">${STATE.authToken.slice(0, 8)}…</span>
-         <button class="btn btn-danger" onclick="signOut()" style="margin-left:auto">Sign Out</button>
+    ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+         <span style="color:var(--green);font-weight:600">✓ Signed in</span>
+         <span style="font-size:12px;color:var(--muted)">${whoLabel ? whoLabel + " · " : ""}${STATE.email || ""}</span>
+         <span class="badge badge-accent">${STATE.role || "?"}</span>
+         <span style="margin-left:auto;display:flex;gap:8px">
+           <button class="btn" onclick="openChangePasswordForm()">Change Password</button>
+           <button class="btn btn-danger" onclick="signOut()">Sign Out</button>
+         </span>
        </div>`
     : `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:10px;margin-bottom:12px;color:var(--red);font-size:12px">
-         <strong>Not authenticated.</strong> Ask your admin for an invite link, then open it on this device.
+         <strong>Not signed in.</strong> Use the login screen to sign in with your account.
        </div>`;
 
   el.innerHTML = `
-    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Sync &amp; Import / Export</h2>
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Account · Sync · Import / Export</h2>
+    <div class="readonly-banner">👁 Read-only access — you can view and export, but not make changes. Ask an admin if you need edit access.</div>
     <div class="sync-panel">
-      <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">🔐 Access</h3>
+      <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">🔐 Account</h3>
       ${authStatusHtml}
       <h3 style="font-size:14px;color:var(--accent);margin:16px 0 12px">🔄 Sheet Sync</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="btn btn-primary" onclick="doPull()" id="pull-btn" ${authed ? "" : "disabled"}>⬇ Pull from Sheet</button>
-        <button class="btn btn-success" onclick="doPushAll()" id="push-btn" ${authed ? "" : "disabled"}>⬆ Push All to Sheet</button>
+        <button class="btn btn-success write-only" onclick="doPushAll()" id="push-btn" ${authed ? "" : "disabled"}>⬆ Push All to Sheet</button>
         <button class="btn" onclick="doPing()">🏓 Test Connection</button>
       </div>
       <div id="sync-log" class="sync-log card" style="padding:10px"></div>
     </div>
     <div class="grid-2">
-      <div class="card">
+      <div class="card write-only">
         <h3 style="color:var(--green)">📥 Import</h3>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label class="btn" style="cursor:pointer;text-align:center">Full Backup (JSON)<input type="file" accept=".json" onchange="importBackup(this)" style="display:none"></label>
         </div>
       </div>
-      <div class="card">
+      <div class="card write-only">
         <h3 style="color:var(--accent)">📤 Export</h3>
         <button class="btn" onclick="exportJSON({roster:STATE.roster,medical:STATE.medical,attendance:STATE.attendance,ippt:STATE.ippt,rm:STATE.rm,soc:STATE.soc,polar:STATE.polar,conductDetail:STATE.conductDetail,appointments:STATE.appointments,leave:STATE.leave,msk:STATE.msk},'cougar_backup.json')" style="margin-bottom:8px;width:100%">Full Backup (JSON)</button>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -48,14 +56,117 @@ function renderSync(el) {
         </div>
       </div>
     </div>
-    <div class="card" style="margin-top:16px">
+    <div class="card write-only" style="margin-top:16px">
       <h3 style="color:var(--pink)">📊 Email Fitness Reports</h3>
       <p style="font-size:12px;color:var(--muted);margin:6px 0 12px;line-height:1.55">
         Send each recruit a personalized HTML email with their Polar fitness trends, conduct attendance, and an encouragement note tailored to their data. Respects the topbar scope filter. Recruits never see anyone else's data.
       </p>
       <button class="btn btn-primary" onclick="openFitnessReportModal()" ${authed ? "" : "disabled"}>📨 Open Report Sender →</button>
-    </div>`;
+    </div>
+    <div class="admin-only" id="admin-panel" style="margin-top:16px"></div>`;
+
+  // Admin panel renders into #admin-panel and lazy-loads accounts/sessions.
+  if (isAdminRole()) renderAdminPanel();
 }
+
+// ── Admin panel (accounts · sessions · audit log) ────────
+// Visible only to admins (also CSS-gated via .admin-only). Account + session
+// lists are fetched on demand; the audit log arrives with the admin pull.
+let _adminLoaded = false;
+let _auditLimit = 50;
+
+function renderAdminPanel() {
+  const host = document.getElementById("admin-panel");
+  if (!host) return;
+
+  const accountsRows = (STATE.accounts || []).map(a => `
+    <tr>
+      <td>${a.email || ""}</td>
+      <td><span class="badge badge-accent">${a.role || ""}</span></td>
+      <td class="mono" style="font-size:10px">${a.personId || "—"}</td>
+      <td style="font-size:10px;color:var(--muted)">${a.addedBy || ""}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn" style="font-size:10px" onclick="openResetPasswordForm('${encodeURIComponent(a.email)}')">Reset PW</button>
+        <button class="btn btn-danger" style="font-size:10px" onclick="doRemoveAccount('${encodeURIComponent(a.email)}')">Remove</button>
+      </td>
+    </tr>`).join("");
+
+  const tokenRows = (STATE.tokens || []).map(t => `
+    <tr>
+      <td>${t.email || ""}</td>
+      <td><span class="badge badge-accent">${t.role || ""}</span></td>
+      <td class="mono" style="font-size:10px">${t.tokenPrefix || ""}…</td>
+      <td style="font-size:10px;color:var(--muted)">${t.issuedAt ? new Date(t.issuedAt).toLocaleString() : ""}${t.expired ? ' <span style="color:var(--red)">expired</span>' : ""}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-danger" style="font-size:10px" onclick="doRevokeToken('${t.token}','${encodeURIComponent(t.email || "")}')">Revoke</button>
+      </td>
+    </tr>`).join("");
+
+  const audit = (STATE.auditLog || []).slice().reverse();   // newest first
+  const auditRows = audit.slice(0, _auditLimit).map(r => `
+    <tr>
+      <td style="font-size:10px;color:var(--muted);white-space:nowrap">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ""}</td>
+      <td style="font-size:11px">${r.email || ""}</td>
+      <td><span class="badge" style="font-size:9px">${r.role || ""}</span></td>
+      <td class="mono" style="font-size:10px">${r.action || ""}</td>
+      <td style="font-size:11px">${r.target || ""}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.detail || ""}</td>
+    </tr>`).join("");
+
+  host.innerHTML = `
+    <h3 style="font-size:14px;color:var(--purple);margin-bottom:10px">🛡 Admin</h3>
+
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;margin-bottom:10px">
+        <h4 style="font-size:13px">Accounts (${(STATE.accounts || []).length})</h4>
+        <span style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn" onclick="refreshAdminData()">↻ Refresh</button>
+          <button class="btn btn-primary" onclick="openAddAccountForm()">+ Add Account</button>
+        </span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Email</th><th>Role</th><th>PersonID</th><th>Added by</th><th></th></tr></thead>
+        <tbody>${accountsRows || `<tr><td colspan="5" style="color:var(--dim)">No accounts loaded — click Refresh.</td></tr>`}</tbody>
+      </table></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;margin-bottom:10px">
+        <h4 style="font-size:13px">Active sessions (${(STATE.tokens || []).length})</h4>
+        <button class="btn btn-danger" style="margin-left:auto" onclick="doRevokeAllTokens()">Revoke ALL sessions</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Email</th><th>Role</th><th>Token</th><th>Issued</th><th></th></tr></thead>
+        <tbody>${tokenRows || `<tr><td colspan="5" style="color:var(--dim)">No sessions loaded — click Refresh.</td></tr>`}</tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h4 style="font-size:13px;margin-bottom:10px">Audit log (${(STATE.auditLog || []).length} entries)</h4>
+      <div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Email</th><th>Role</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+        <tbody>${auditRows || `<tr><td colspan="6" style="color:var(--dim)">No audit entries.</td></tr>`}</tbody>
+      </table></div>
+      ${audit.length > _auditLimit ? `<button class="btn" style="margin-top:8px" onclick="showMoreAudit()">Show more (${audit.length - _auditLimit} hidden)</button>` : ""}
+    </div>`;
+
+  // Lazy-load accounts + sessions the first time the admin opens this tab.
+  if (!_adminLoaded) { _adminLoaded = true; refreshAdminData(); }
+}
+
+async function refreshAdminData() {
+  try {
+    const [acc, tok] = await Promise.all([API.listAccounts(), API.listTokens()]);
+    if (acc && acc.accounts) STATE.accounts = acc.accounts;
+    if (tok && tok.tokens) STATE.tokens = tok.tokens;
+    renderAdminPanel();
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    syncLog(`Admin data load failed: ${e.message}`, "var(--red)");
+  }
+}
+
+function showMoreAudit() { _auditLimit += 50; renderAdminPanel(); }
 
 function syncLog(msg, color) {
   const el = document.getElementById("sync-log");
@@ -117,6 +228,34 @@ function clearDirty(tabName) {
   if (!STATE.dirty) return;
   STATE.dirty.delete(tabName);
   saveDirty();
+}
+
+// ── Read-only (viewer) write rejection ───────────────────
+// Surfaced when a viewer's edit is blocked at the autoSync chokepoint. Throttled
+// so a bulk action (which fires several autoSync calls) shows a single alert.
+let _readOnlyNoticeAt = 0;
+function notifyReadOnly() {
+  syncLog("Read-only account — change not saved.", "var(--orange)");
+  setSyncIndicator("● Read-only — changes not saved", "var(--orange)");
+  const now = Date.now();
+  if (now - _readOnlyNoticeAt > 1500) {
+    _readOnlyNoticeAt = now;
+    // Defer so the in-progress render/closeModal finishes before the alert.
+    setTimeout(() => alert("Your account is read-only — that change was not saved."), 0);
+  }
+}
+
+// Debounced re-pull that discards a viewer's optimistic local edit (the form
+// mutates STATE + saveLocal() before autoSync runs). One pull covers a burst of
+// blocked writes from a single submit. Safe from recursion: pullAll never calls
+// autoSync.
+let _viewerRevertTimer = null;
+function scheduleViewerRevert() {
+  if (_viewerRevertTimer) clearTimeout(_viewerRevertTimer);
+  _viewerRevertTimer = setTimeout(() => {
+    _viewerRevertTimer = null;
+    if (typeof doPull === "function") doPull();
+  }, 400);
 }
 
 // ── Pull/push mutex + per-tab in-flight queue ────────────
@@ -194,6 +333,19 @@ async function enqueueWrite(tabName, runner) {
 // response here and throw on `{error}`, otherwise enqueueWrite's try/catch
 // treats it as success and clears the dirty marker — silent data loss.
 async function autoSync(tabName, mode) {
+  // ── Read-only guard (viewers) ─────────────────────────
+  // Block BEFORE enqueueWrite so no dirty marker is ever set. A dirty tab is the
+  // ONLY thing that later prompts a commander to push (launch restore prompt /
+  // sidebar retry) — so refusing to mark dirty is what prevents a viewer's
+  // phantom edit from being accidentally approved. We also scrub any stale marker
+  // for this tab and schedule a silent re-pull to discard the optimistic local
+  // edit the form already applied, so phantom data doesn't linger in the UI/cache.
+  if (typeof canWrite === "function" && !canWrite()) {
+    clearDirty(tabName);
+    notifyReadOnly();
+    scheduleViewerRevert();
+    return { ok: false, readOnly: true };
+  }
   return enqueueWrite(tabName, async () => {
     if (!STATE.authToken) throw new Error("Not authenticated");
     let res;
@@ -236,12 +388,16 @@ async function confirmStaleness(tabName, localCount) {
   } catch { return true; }
 }
 
-function signOut() {
-  if (!confirm("Sign out from this device? You'll need a new invite link from your admin to access the sheet again.")) return;
-  setAuthToken("");
-  syncLog("Signed out — auth token cleared", "var(--orange)");
+async function signOut() {
+  if (!confirm("Sign out from this device? You'll need to log in again with your account.")) return;
+  // Best-effort server-side token invalidation, then clear the local session and
+  // return to the login screen regardless of the network result.
+  try { await API.logout(); } catch (e) { /* clear locally anyway */ }
+  _adminLoaded = false;
+  clearSession();
+  if (typeof applyRoleUI === "function") applyRoleUI();
+  showLogin();
   setSyncIndicator("● Not authenticated", "var(--red)");
-  render();
 }
 
 async function doPing() {
