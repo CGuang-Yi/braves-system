@@ -3,6 +3,11 @@
 *.txt
 *.md.bak
 *.csv
+# Spreadsheet data exports (sanitised sample sick-history sheets, etc.) — like the
+# CSVs above, these are local test fixtures, kept out of the repo.
+*.xlsx
+*.ods
+*.xls
 
 # ── Secrets & local config ─────────────────────────
 # Anything that could carry a real API key or per-machine config.

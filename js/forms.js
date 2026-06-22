@@ -1391,6 +1391,132 @@ function confirmConductImport() {
   alert(`Imported "${p.activityName}" (${date}):\n  • ${presentIds.length} present, ${fallout.length} fallout, ${statusAbsent.length} status\n  • ${p.parsed.filter(x => !x.resolvedId).length} unmatched rows skipped\nSyncing to sheet — check the sidebar indicator.`);
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// SICK-HISTORY xlsx IMPORT (Item 5, admin-only) — colour-coded REC sheet → Medical
+// ════════════════════════════════════════════════════════════════════════════
+// Drives the parser in sick-history-import.js (shParseWorkbook/shEpisodesToRows):
+// reads the workbook with ExcelJS (loaded from CDN), previews the decoded episodes,
+// and on confirm appends Medical rows (+ AL/OIL → Leave), deduped against existing
+// rows so a re-import doesn't double up. Status is encoded by cell fill colour; the
+// colour→status legend is read from the sheet's own legend block.
+let _sickHistoryPending = null;
+
+async function importSickHistoryXLSX(input) {
+  const file = input.files[0];
+  input.value = "";
+  if (!file) return;
+  if (typeof ExcelJS === "undefined") {
+    alert("The ExcelJS library hasn't loaded (it comes from a CDN). Check your connection and reload.");
+    return;
+  }
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    const ws = wb.worksheets[0];
+    if (!ws) { alert("No worksheet found in that file."); return; }
+
+    const parsed = shParseWorkbook(ws);
+    if (!parsed.persons.length) {
+      alert("No personnel rows with coloured status cells were found.\nIs this the RSI/RSO REC sheet (S/N · FULL NAME · 4D · day columns)?");
+      return;
+    }
+    // Resolve each sheet 4D against the roster (same matching as the CSV import).
+    const ctx = {
+      resolveD4: raw => { const d = padD4(raw); const r = STATE.roster.find(p => p.id === d || padD4(p.fourD) === d); return r ? r.id : null; },
+      makeMedId: () => nextId(),
+      makeLeaveId: () => nextId(),
+      toDisplay: iso => isoToDisplayDate(iso)
+    };
+    _sickHistoryPending = { parsed, rows: shEpisodesToRows(parsed.persons, ctx) };
+    openSickHistoryModal();
+  } catch (e) {
+    alert("Failed to read the xlsx: " + e.message);
+  }
+}
+
+function cancelSickHistoryImport() { _sickHistoryPending = null; closeModal(); }
+
+function openSickHistoryModal() {
+  const p = _sickHistoryPending;
+  if (!p) return;
+  const { parsed, rows } = p;
+
+  // Date range across the parsed day columns.
+  const isos = Object.values(parsed.dateMap).sort();
+  const rangeStr = isos.length ? `${isoToDisplayDate(isos[0])} → ${isoToDisplayDate(isos[isos.length - 1])}` : "—";
+  const episodeCount = parsed.persons.reduce((s, x) => s + x.episodes.length, 0);
+
+  // Derived legend swatches (colour → human status).
+  const SWATCH = { "FF0000": "#FF0000", "FFFF00": "#FFFF00", "00FF00": "#00FF00", "00FFFF": "#00FFFF", "9900FF": "#9900FF", "FF00FF": "#FF00FF" };
+  const legendHtml = Object.entries(parsed.legend).map(([hex, tok]) =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:11px">
+       <span style="width:12px;height:12px;border:1px solid var(--border);border-radius:2px;background:${SWATCH[hex] || ("#" + hex)}"></span>
+       ${escapeAttr(SH_TOKEN_LABEL[tok] || tok)}</span>`).join("");
+
+  // Per-person episode breakdown (scrollable).
+  const personHtml = parsed.persons.map(person => {
+    const d4 = person.fourD;
+    const matched = rows.unmatched.indexOf(person) < 0;
+    const eps = person.episodes.map(e =>
+      `<div style="font-size:10px;color:var(--muted);padding-left:10px">• ${escapeAttr(SH_TOKEN_LABEL[e.status] || e.status)} ${isoToDisplayDate(e.startDate)}${e.endDate !== e.startDate ? "–" + isoToDisplayDate(e.endDate) : ""}${e.reason ? " — " + escapeAttr(e.reason) : ""}${e.source === "text" ? ' <span style="color:var(--dim)">(text)</span>' : ""}</div>`).join("");
+    return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:11px"><span class="mono" style="color:${matched ? "var(--accent)" : "var(--orange)"};font-weight:700">${escapeAttr(d4)}</span> ${escapeAttr(person.name)} ${matched ? "" : '<span style="color:var(--orange)">⚠ not in roster — skipped</span>'} <span style="color:var(--dim)">(${person.episodes.length})</span></div>
+      ${eps}</div>`;
+  }).join("");
+
+  openModal("Import Sick History (xlsx)", `
+    <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+        <div><strong>Date range:</strong> ${rangeStr} &nbsp;·&nbsp; <strong>People:</strong> ${parsed.persons.length} &nbsp;·&nbsp; <strong>Episodes:</strong> ${episodeCount}</div>
+        <div style="margin-top:6px"><strong>Legend (from sheet):</strong> ${legendHtml || "<span style='color:var(--muted)'>defaults</span>"}</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+        Will create <strong style="color:var(--green)">${rows.medical.length}</strong> Medical rows
+        ${rows.leave.length ? `+ <strong style="color:var(--accent)">${rows.leave.length}</strong> AL/OIL Leave rows` : ""}
+        ${rows.unmatched.length ? ` &nbsp;·&nbsp; <span style="color:var(--orange)">${rows.unmatched.length} people not in roster (skipped)</span>` : ""}.
+        <div style="color:var(--muted);margin-top:4px">Re-importing is safe — rows already present (same person · start date · status) are skipped.</div>
+      </div>
+      <div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:6px 10px">${personHtml}</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--border)">
+        <button class="btn" onclick="cancelSickHistoryImport()">Cancel</button>
+        <button class="btn btn-success" onclick="confirmSickHistoryImport()">Import ${rows.medical.length + rows.leave.length} rows</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmSickHistoryImport() {
+  const p = _sickHistoryPending;
+  if (!p) return;
+  const { medical, leave } = p.rows;
+
+  // Dedup against what's already stored so a re-import doesn't double up. Key by
+  // (d4 | startDate | type | status) — the natural identity of an episode.
+  const medKey = m => `${m.d4}|${m.startDate}|${m.type}|${m.status}`;
+  const lvKey = l => `${l.d4}|${l.startDate}|${l.type}`;
+  const existingMed = new Set(STATE.medical.map(medKey));
+  const existingLv = new Set((STATE.leave || []).map(lvKey));
+
+  const newMed = medical.filter(m => !existingMed.has(medKey(m)));
+  const newLv = leave.filter(l => !existingLv.has(lvKey(l)));
+  const skipped = (medical.length - newMed.length) + (leave.length - newLv.length);
+
+  newMed.forEach(m => STATE.medical.push(m));
+  if (newLv.length) STATE.leave = (STATE.leave || []).concat(newLv);
+
+  saveLocal();
+  _sickHistoryPending = null;
+  closeModal();
+  render();
+
+  if (STATE.apiUrl) {
+    newMed.forEach(m => autoSync("Medical", { type: "upsert", row: m }));
+    newLv.forEach(l => autoSync("Leave", { type: "upsert", row: l }));
+  }
+  alert(`Imported sick history:\n  • ${newMed.length} Medical rows${newLv.length ? `, ${newLv.length} AL/OIL Leave rows` : ""}\n  • ${skipped} duplicate(s) skipped\n  • ${p.rows.unmatched.length} unmatched person(s) skipped${STATE.apiUrl ? "\nSyncing to sheet — check the sidebar indicator." : ""}`);
+}
+
 function openConductDetailForm(id) {
   const e = id ? STATE.conductDetail.find(x => x.id === id) : null;
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
