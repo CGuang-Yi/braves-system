@@ -216,8 +216,19 @@ function bpClassifyPerson(r, dateIso) {
     if (outOfCamp) notInCamp = true;
   });
 
-  // Dedupe each section by exact line (collapses multi-status sibling rows).
+  // Dedupe each section by exact line first.
   BP_SECTIONS.forEach(k => { out[k] = [...new Set(out[k])]; });
+  // STATUS multi-status collapse (DECISIONS #44): a recruit on several restricted
+  // statuses from one visit (e.g. LD + Excuse RMJ) produced one line per row, so
+  // they showed up as separate numbered entries. Since this classifier is per-
+  // person, every out.status line belongs to the same recruit — fold them into a
+  // single "RN - desc1, desc2" entry (descriptors joined, rn shown once). Only
+  // STATUS is collapsed: other sections carry per-entry "(OTHERS (…))"-style
+  // suffixes that don't read sensibly comma-joined, and a person rarely has >1.
+  if (out.status.length > 1) {
+    const descs = out.status.map(line => bpStripRN(line, rn));
+    out.status = [`${rn} - ${descs.join(", ")}`];
+  }
   return { rn, sections: out, notInCamp };
 }
 
@@ -374,9 +385,11 @@ function generateBravesParadeState(scope, type, dateIso, time) {
 // Two formats, both validated against `Message Formats.md`. Source = Medical rows
 // with type RSI/RSO reported on the given date (the day's sick parade). URTI vs
 // NON-URTI split by `urtiType`, falling back to classifyURTI(reason) for rows that
-// predate the field. The sample is DOUBLE-SPACED (a blank line after every field
-// line, WhatsApp-friendly) — so each builder produces a flat line array and joins
-// with "\n\n". R/N uses sickRN (name + B<4D>, no rank prefix — spec §10/§7 note).
+// predate the field. Layout (updated Message Formats.md, DECISIONS #45): the six
+// field lines of an entry are SINGLE-spaced (joined "\n" into one chunk); builders
+// then join chunks (header, count headers, per-platoon labels, entries) with
+// "\n\n", so blank lines fall only between entries / around the count headers — not
+// between fields. R/N uses sickRN (name + B<4D>, no rank prefix — spec §10/§7 note).
 
 // "0700" → "0700H" (battalion time suffix). Pads to 4 digits defensively.
 function bpTimeH(time) {
@@ -426,10 +439,15 @@ function bpSickEntryLines(m, sn) {
 function bpSickUrtiBlocks(reports) {
   const urti = reports.filter(m => bpUrtiOf(m) === "URTI");
   const nonUrti = reports.filter(m => bpUrtiOf(m) === "NON-URTI");
+  // Each entry is ONE chunk (its 6 field lines single-spaced, joined by "\n").
+  // The callers join chunks with "\n\n", so blank lines fall only between
+  // entries and around the URTI/NON-URTI count headers — matching the updated
+  // Message Formats.md (DECISIONS #45). Field lines within an entry are no
+  // longer double-spaced.
   const lines = [`URTI: ${bp2(urti.length)}`];
-  urti.forEach((m, i) => lines.push(...bpSickEntryLines(m, i + 1)));
+  urti.forEach((m, i) => lines.push(bpSickEntryLines(m, i + 1).join("\n")));
   lines.push(`NON-URTI: ${bp2(nonUrti.length)}`);
-  nonUrti.forEach((m, i) => lines.push(...bpSickEntryLines(m, i + 1)));
+  nonUrti.forEach((m, i) => lines.push(bpSickEntryLines(m, i + 1).join("\n")));
   return lines;
 }
 
