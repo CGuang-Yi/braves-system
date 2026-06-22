@@ -27,6 +27,7 @@ function render() {
     case "attendance": renderAttendance(el); break;
     case "detail": renderConductDetail(el); break;
     case "medical": renderMedical(el); break;
+    case "statusboard": renderStatusBoard(el); break;
     case "ippt": renderIPPT(el); break;
     case "rm": renderRM(el); break;
     case "soc": renderSOC(el); break;
@@ -1749,3 +1750,254 @@ function buildHAStreaksChart(haResults) {
     }
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// STATUS BOARD (addendum A3 Leaderboard + A7 Roster Status List + A4 Status Grid)
+// ════════════════════════════════════════════════════════════════════════════
+let _sbSort = (() => { try { return localStorage.getItem("braves-sb-sort") || "Total"; } catch { return "Total"; } })();
+let _sbCollapsed = (() => { try { return localStorage.getItem("braves-sb-collapsed") === "1"; } catch { return false; } })();
+let _sbShowAll = false;
+let _sbWeekOffset = 0;     // grid paging, in 5-week windows (0 = current)
+let _sbSearch = "";
+
+// Grid cell palette (A4.2).
+const SB_CELL = {
+  RSI: { bg: "#EF9F27", fg: "#633806" }, RSO: { bg: "#378ADD", fg: "#042C53" },
+  MC:  { bg: "#E24B4A", fg: "#501313" }, MR:  { bg: "#7F77DD", fg: "#26215C" },
+  LD:  { bg: "#B4B2A9", fg: "#2C2C2A" }, LV:  { bg: "#1D9E75", fg: "#04342C" }
+};
+function _sbKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+
+// Section-grouped ordering (A4.3/A7.4): platoon (HQ last), section (Command first,
+// then numeric), then name.
+function sbOrdered(rows) {
+  const plRank = c => c === "HQ" ? 9999 : (parseInt(String(c).replace(/\D/g, ""), 10) || 9000);
+  const secRank = s => s === "Command" ? -1 : (parseInt(s, 10) || 9000);
+  return [...rows].sort((a, b) => {
+    const pa = plRank(personPlatoon(a)), pb = plRank(personPlatoon(b));
+    if (pa !== pb) return pa - pb;
+    const sa = secRank(personSection(a)), sb = secRank(personSection(b));
+    if (sa !== sb) return sa - sb;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  }).map(r => ({ r, group: `${personPlatoon(r) || "—"}${personSection(r) ? " · " + (personSection(r) === "Command" ? "Command" : "Sect " + personSection(r)) : ""}` }));
+}
+
+// RSI/RSO counts per person from the Medical tab (A3.1 / A4.6).
+function sbRSCounts() {
+  const map = {};
+  (STATE.medical || []).forEach(m => {
+    if (m.type !== "RSI" && m.type !== "RSO") return;
+    const e = map[m.d4] = map[m.d4] || { rsi: 0, rso: 0 };
+    if (m.type === "RSI") e.rsi++; else e.rso++;
+  });
+  return map;
+}
+
+function renderStatusBoard(el) {
+  const scopeLabel = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}]</span>` : "";
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <h2 style="font-size:18px;font-weight:700">🗓️ Status Board${scopeLabel}</h2>
+    </div>
+    <div id="sb-leaderboard" class="card" style="padding:14px;margin-bottom:14px"></div>
+    <div id="sb-rosterlist" class="card" style="padding:14px;margin-bottom:14px"></div>
+    <div id="sb-grid" class="card" style="padding:14px"></div>
+    <div id="sb-popover"></div>
+  `;
+  renderSBLeaderboard();
+  renderSBRosterList();
+  renderSBGrid();
+}
+
+// ── A3. Report Sick Leaderboard ─────────────────────────────────────────────
+function renderSBLeaderboard() {
+  const host = document.getElementById("sb-leaderboard");
+  if (!host) return;
+  const counts = sbRSCounts();
+  const scoped = filteredRoster();
+  let rows = scoped.map(r => {
+    const c = counts[r.id] || { rsi: 0, rso: 0 };
+    return { r, rsi: c.rsi, rso: c.rso, total: c.rsi + c.rso };
+  });
+  const byName = (a, b) => String(a.r.name || "").localeCompare(String(b.r.name || ""));
+  const fourDNum = x => { const n = parseInt(String(x.r.fourD || x.r.id || ""), 10); return Number.isFinite(n) ? n : Infinity; };
+  if (_sbSort === "Total") rows = rows.filter(x => x.total > 0).sort((a, b) => b.total - a.total || byName(a, b));
+  else if (_sbSort === "RSI") rows = rows.filter(x => x.total > 0).sort((a, b) => b.rsi - a.rsi || b.total - a.total);
+  else if (_sbSort === "RSO") rows = rows.filter(x => x.total > 0).sort((a, b) => b.rso - a.rso || b.total - a.total);
+  else rows = rows.sort((a, b) => fourDNum(a) - fourDNum(b) || byName(a, b)); // 4D
+
+  const shown = _sbCollapsed ? [] : (_sbShowAll ? rows : rows.slice(0, 3));
+  const tab = m => `<button onclick="sbSetSort('${m}')" style="padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:${_sbSort === m ? "var(--accent)" : "var(--surface)"};color:${_sbSort === m ? "#fff" : "var(--text)"};font-size:11px;cursor:pointer">${m}</button>`;
+  const row = (x, i) => `<div onclick="openPerson('${x.r.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px">
+      <span class="mono" style="color:var(--muted);min-width:20px">${i + 1}.</span>
+      <span style="flex:1">${escapeAttr(x.r.name || "")} ${x.r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${x.r.fourD}</span>` : ""}</span>
+      <span style="background:#EF9F2722;color:#EF9F27;border:1px solid #EF9F2744;border-radius:4px;padding:1px 6px;font-size:10px">RSI ${x.rsi}</span>
+      <span style="background:#378ADD22;color:#378ADD;border:1px solid #378ADD44;border-radius:4px;padding:1px 6px;font-size:10px">RSO ${x.rso}</span>
+      <strong style="min-width:24px;text-align:right">${x.total}</strong>
+    </div>`;
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <h3 style="font-size:14px;font-weight:600;cursor:pointer" onclick="sbToggleCollapse()">${_sbCollapsed ? "▸" : "▾"} Report Sick Leaderboard <span style="font-weight:400;color:var(--muted);font-size:11px">(${rows.length} pax with RS)</span></h3>
+      <div style="display:flex;gap:6px">${["Total", "4D", "RSI", "RSO"].map(tab).join("")}</div>
+    </div>
+    ${_sbCollapsed ? "" : `<div style="margin-top:8px">
+      ${shown.length ? shown.map(row).join("") : `<div style="font-size:12px;color:var(--muted);padding:6px">No report-sick records in scope.</div>`}
+      ${!_sbShowAll && rows.length > 3 ? `<button class="btn" style="margin-top:8px;font-size:11px" onclick="sbShowAllLeaderboard()">Show all ${rows.length} personnel</button>` : ""}
+    </div>`}
+  `;
+}
+function sbSetSort(m) { _sbSort = m; _sbShowAll = false; try { localStorage.setItem("braves-sb-sort", m); } catch {} renderSBLeaderboard(); }
+function sbToggleCollapse() { _sbCollapsed = !_sbCollapsed; try { localStorage.setItem("braves-sb-collapsed", _sbCollapsed ? "1" : "0"); } catch {} renderSBLeaderboard(); }
+function sbShowAllLeaderboard() { _sbShowAll = true; renderSBLeaderboard(); }
+
+// ── A7. Roster Status List (live snapshot) ──────────────────────────────────
+function renderSBRosterList() {
+  const host = document.getElementById("sb-rosterlist");
+  if (!host) return;
+  const today = todayISO();
+  let scoped = filteredRoster();
+  const q = _sbSearch.trim().toLowerCase();
+  if (q) scoped = scoped.filter(r => String(r.name || "").toLowerCase().includes(q) || String(r.id || "").toLowerCase().includes(q) || String(r.fourD || "").includes(q));
+  const ordered = sbOrdered(scoped);
+
+  const catColor = key => ({ reportingSick: SB_CELL.RSI, attC: SB_CELL.MC, alOil: SB_CELL.LV, status: SB_CELL.LD, others: { bg: "#8B949E", fg: "#1c1c1c" } }[key] || { bg: "#8B949E", fg: "#1c1c1c" });
+  let lastGroup = null, body = "";
+  ordered.forEach(({ r, group }) => {
+    if (group !== lastGroup) { body += `<tr><td colspan="4" style="background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:4px 8px;font-weight:700">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
+    const p = bpPrimaryForDay(r, today);
+    const ghostInfo = (() => {
+      // most-severe ghost tag among this person's medical rows today
+      let best = null;
+      (STATE.medical || []).filter(m => m.d4 === r.id).forEach(m => {
+        const t = medStatusTag(m, today);
+        if (t && t.ghostDay > 0 && (!best || t.ghostDay < best.ghostDay)) best = t;
+      });
+      return best;
+    })();
+    const catBadge = p.primary
+      ? `<span style="background:${catColor(p.primary.key).bg}33;color:${catColor(p.primary.key).bg};border:1px solid ${catColor(p.primary.key).bg}66;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.label}</span>`
+      : `<span style="color:var(--green);font-size:11px">Present</span>`;
+    const mrBadge = p.mr ? ` <span style="background:#7F77DD33;color:#7F77DD;border:1px solid #7F77DD66;border-radius:4px;padding:2px 6px;font-size:9px">MR</span>` : "";
+    const ghostBadge = ghostInfo ? ` <span title="recovering" style="color:var(--muted);font-size:9px;border:1px solid var(--border);border-radius:3px;padding:1px 4px">${ghostInfo.tag}</span>` : "";
+    const reason = p.primary ? p.primary.reason : (p.mr || "");
+    body += `<tr onclick="openSBCellDetail('${r.id}','${today}')" style="cursor:pointer">
+      <td style="text-align:left">${escapeAttr(paradeRN(r.id))}</td>
+      <td style="font-size:11px;color:var(--muted)">${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
+      <td>${catBadge}${mrBadge}${ghostBadge}</td>
+      <td style="text-align:left;font-size:11px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(reason)}">${escapeAttr(reason) || "—"}</td>
+    </tr>`;
+  });
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <h3 style="font-size:14px;font-weight:600">Roster Status List <span style="font-weight:400;color:var(--muted);font-size:11px">(live — ${isoToDisplayDate(today)})</span></h3>
+      <input id="sb-search" placeholder="Filter name / 4D…" value="${escapeAttr(_sbSearch)}" oninput="sbSearchInput(this.value)" style="padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+    </div>
+    <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr>
+      <th style="text-align:left">R/N</th><th>Plt · Sect</th><th>Today</th><th style="text-align:left">Reason</th>
+    </tr></thead><tbody>${body || `<tr><td colspan="4" style="color:var(--muted);padding:10px">No personnel in scope${q ? " match the filter" : ""}.</td></tr>`}</tbody></table></div>
+  `;
+  const inp = document.getElementById("sb-search");
+  if (inp && q) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+}
+function sbSearchInput(v) { _sbSearch = v; renderSBRosterList(); }
+
+// ── A4. Status Grid (calendar) ──────────────────────────────────────────────
+function sbWeeks(offset) {
+  const today = new Date(todayISO() + "T00:00:00");
+  const dow = (today.getDay() + 6) % 7;            // 0 = Monday
+  const monThis = new Date(today); monThis.setDate(today.getDate() - dow);
+  const startMon = new Date(monThis); startMon.setDate(monThis.getDate() - 4 * 7 + offset * 5 * 7);
+  const weeks = [];
+  for (let w = 0; w < 5; w++) {
+    const wkMon = new Date(startMon); wkMon.setDate(startMon.getDate() + w * 7);
+    const days = [];
+    for (let d = 0; d < 7; d++) { const dd = new Date(wkMon); dd.setDate(wkMon.getDate() + d); days.push(_sbKey(dd)); }
+    weeks.push({ monIso: _sbKey(wkMon), days });
+  }
+  return weeks;
+}
+function renderSBGrid() {
+  const host = document.getElementById("sb-grid");
+  if (!host) return;
+  const scoped = filteredRoster();
+  const companyWide = !STATE.filterPlt;     // no platoon picked → whole company
+  const weeks = sbWeeks(_sbWeekOffset);
+  const todayKey = todayISO();
+  const counts = sbRSCounts();
+  const ordered = sbOrdered(scoped);
+
+  const legend = Object.entries({ RSI: "RSI", RSO: "RSO", MC: "MC/ATTC", MR: "MR", LD: "LD/Excuse", LV: "Leave" })
+    .map(([k, lbl]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px"><span style="width:11px;height:11px;border-radius:2px;background:${SB_CELL[k].bg};display:inline-block"></span>${lbl}</span>`).join("");
+
+  const dows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekHead = weeks.map(w => `<th colspan="7" style="border-left:2px solid var(--border);font-size:10px;color:var(--muted)">Wk of ${isoToDisplayDate(w.monIso).split(" ").slice(0, 2).join(" ")}</th>`).join("");
+  const dowHead = weeks.map(() => dows.map((d, i) => `<th style="font-size:9px;${i === 0 ? "border-left:2px solid var(--border);" : ""}${i >= 5 ? "color:var(--dim);" : "color:var(--muted);"}min-width:30px">${d}</th>`).join("")).join("");
+
+  let lastGroup = null, body = "";
+  ordered.forEach(({ r, group }) => {
+    if (group !== lastGroup) { body += `<tr><td colspan="${weeks.length * 7 + 2}" style="background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:3px 8px;font-weight:700;position:sticky;left:0">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
+    const c = counts[r.id] || { rsi: 0, rso: 0 };
+    let cells = "";
+    weeks.forEach(w => w.days.forEach((iso, i) => {
+      const future = iso > todayKey;
+      let inner = "";
+      if (!future) {
+        const cell = bpGridCell(r, iso);
+        if (cell.any) {
+          const pal = SB_CELL[cell.primary] || { bg: "#8B949E", fg: "#111" };
+          const sec = (cell.hasRSI && cell.primary !== "RSI") ? "#EF9F27" : (cell.hasRSO && cell.primary !== "RSO") ? "#378ADD" : "";
+          inner = `<div onclick="openSBCellDetail('${r.id}','${iso}')" style="cursor:pointer;background:${pal.bg};color:${pal.fg};font-size:8px;font-weight:700;border-radius:2px;padding:1px 0;position:relative">${cell.primary}${sec ? `<span style="position:absolute;top:0;right:0;width:0;height:0;border-top:5px solid ${sec};border-left:5px solid transparent"></span>` : ""}</div>`;
+        }
+      }
+      cells += `<td style="${i === 0 ? "border-left:2px solid var(--border);" : ""}padding:1px;text-align:center;${i >= 5 ? "background:rgba(255,255,255,0.02);" : ""}">${inner}</td>`;
+    }));
+    body += `<tr>
+      <td style="text-align:left;position:sticky;left:0;background:var(--surface);white-space:nowrap;font-size:11px;z-index:1">${escapeAttr(r.name || r.id)} ${r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${r.fourD}</span>` : ""}</td>
+      ${cells}
+      <td style="font-weight:700;text-align:center">${c.rsi + c.rso}</td>
+    </tr>`;
+  });
+
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <h3 style="font-size:14px;font-weight:600">Status Grid <span style="font-weight:400;color:var(--muted);font-size:11px">(calendar — weekly patterns)</span></h3>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn" style="font-size:11px" onclick="sbGridNav(-1)">← earlier</button>
+        <button class="btn" style="font-size:11px" onclick="sbGridNav(0)">current</button>
+        <button class="btn" style="font-size:11px" onclick="sbGridNav(1)">later →</button>
+      </div>
+    </div>
+    <div style="margin-bottom:8px">${legend}</div>
+    ${companyWide ? `<div style="font-size:11px;color:var(--orange);background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:6px 10px;margin-bottom:8px">Company scope shows all ${scoped.length} rows — pick a platoon in the scope filter for a more readable grid.</div>` : ""}
+    <div class="table-wrap" style="max-height:520px;overflow:auto"><table style="border-collapse:collapse">
+      <thead>
+        <tr><th style="position:sticky;left:0;background:var(--surface);text-align:left">Name</th>${weekHead}<th rowspan="2" style="text-align:center">Total<br>RS</th></tr>
+        <tr><th style="position:sticky;left:0;background:var(--surface)"></th>${dowHead}</tr>
+      </thead>
+      <tbody>${body || `<tr><td style="color:var(--muted);padding:10px">No personnel in scope.</td></tr>`}</tbody>
+    </table></div>
+  `;
+}
+function sbGridNav(delta) { _sbWeekOffset = delta === 0 ? 0 : _sbWeekOffset + delta; renderSBGrid(); }
+
+// ── A4.4 lightweight cell-detail popover (reused by A7 rows) ─────────────────
+function openSBCellDetail(d4, iso) {
+  const host = document.getElementById("sb-popover");
+  if (!host) return;
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r) return;
+  const c = bpClassifyPerson(r, iso);
+  const order = [["reportingSick", "REPORTING SICK"], ["attC", "ATT C"], ["alOil", "AL/OIL"], ["status", "STATUS"], ["mr", "MR"], ["others", "OTHERS"]];
+  const lines = [];
+  order.forEach(([k, label]) => c.sections[k].forEach(line => lines.push(`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><strong style="font-size:10px;color:var(--muted)">${label}</strong><br>${escapeAttr(bpStripRN(line, c.rn))}</div>`)));
+  host.innerHTML = `
+    <div onclick="closeSBPopover()" style="position:fixed;inset:0;z-index:60"></div>
+    <div style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:61;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;min-width:260px;max-width:90vw;box-shadow:0 8px 28px rgba(0,0,0,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="font-size:13px">${escapeAttr(paradeRN(d4))} — ${isoToDisplayDate(iso)}</strong>
+        <button onclick="closeSBPopover()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer">✕</button>
+      </div>
+      ${lines.length ? lines.join("") : `<div style="font-size:12px;color:var(--green)">Present / no status this day.</div>`}
+    </div>`;
+}
+function closeSBPopover() { const h = document.getElementById("sb-popover"); if (h) h.innerHTML = ""; }

@@ -221,6 +221,43 @@ function bpClassifyPerson(r, dateIso) {
   return { rn, sections: out, notInCamp };
 }
 
+// ── Status Board helpers (addendum A4/A7) — reuse the §8 classifier ──────────
+// A7.3 "today's category": the single-label §8 priority chain
+// (REPORTING SICK > ATT C > AL/OIL > STATUS > OTHERS); MR is independent.
+// Returns { primary:{key,label,reason}|null, mr:reason|null, sections, rn }.
+const BP_PRIMARY_CHAIN = [
+  ["reportingSick", "REPORTING SICK"], ["attC", "ATT C"], ["alOil", "AL/OIL"],
+  ["status", "STATUS"], ["others", "OTHERS"]
+];
+function bpStripRN(line, rn) {
+  // "Martin Tan B1411 - FEVER (RSI)" → "FEVER (RSI)" (best-effort reason text).
+  const pre = rn + " - ";
+  return line.startsWith(pre) ? line.slice(pre.length) : line;
+}
+function bpPrimaryForDay(r, dateIso) {
+  const c = bpClassifyPerson(r, dateIso);
+  let primary = null;
+  for (const [k, label] of BP_PRIMARY_CHAIN) {
+    if (c.sections[k].length) { primary = { key: k, label, reason: bpStripRN(c.sections[k][0], c.rn) }; break; }
+  }
+  const mr = c.sections.mr.length ? bpStripRN(c.sections.mr[0], c.rn) : null;
+  return { primary, mr, sections: c.sections, rn: c.rn, notInCamp: c.notInCamp };
+}
+// A4.2 grid cell: fill priority Leave > MC > LD/Excuse > RSI/RSO > MR, plus
+// secondary RSI/RSO markers. Returns { primary, hasRSI, hasRSO, hasMR, any }.
+function bpGridCell(r, dateIso) {
+  const s = bpClassifyPerson(r, dateIso).sections;
+  const hasRSO = s.reportingSick.some(x => /\(RSO\)$/.test(x));
+  const hasRSI = s.reportingSick.some(x => /\(RSI\)$/.test(x));
+  let primary = null;
+  if (s.alOil.length) primary = "LV";
+  else if (s.attC.length) primary = "MC";
+  else if (s.status.length) primary = "LD";
+  else if (s.reportingSick.length) primary = hasRSO ? "RSO" : "RSI";
+  else if (s.mr.length) primary = "MR";
+  return { primary, hasRSI, hasRSO, hasMR: s.mr.length > 0, any: !!primary };
+}
+
 // ── Strength (spec §8) ──────────────────────────────────────────────────────
 function bpIsActive(r) {
   return r.status === "Active" || !r.status; // DECISIONS #33
