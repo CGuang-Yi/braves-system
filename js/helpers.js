@@ -696,6 +696,99 @@ function exportJSON(data, filename) {
   URL.revokeObjectURL(url);
 }
 
+// ── Admin statistics exports (CSV) ──────────────────────────────────────────
+// One row per person with ≥1 report-sick record in scope. Like the Report Sick
+// leaderboard, multiple medical rows on the same day collapse to ONE event per
+// (d4, date) — a recruit logged twice for the same illness shouldn't double-count.
+// Respects the topbar scope (visibleD4Set), so "what you see is what you export".
+// rangeStartIso/rangeEndIso ("YYYY-MM-DD", inclusive) are optional bounds.
+function buildSickStats(rangeStartIso, rangeEndIso) {
+  const visible = visibleD4Set();
+  const inRange = iso => (!rangeStartIso || iso >= rangeStartIso) && (!rangeEndIso || iso <= rangeEndIso);
+  const hasRange = !!(rangeStartIso || rangeEndIso);
+  const per = {};
+  (STATE.medical || []).forEach(m => {
+    if (!passesFilter(m.d4, visible)) return;
+    const iso = displayDateToISO(m.date) || "";
+    if (hasRange && (!iso || !inRange(iso))) return;
+    const p = per[m.d4] || (per[m.d4] = {
+      days: new Set(), rsi: new Set(), rso: new Set(), mr: new Set(),
+      urti: new Set(), nonUrti: new Set(), mc: new Set(), ld: new Set(), last: ""
+    });
+    const key = m.date || iso;        // one event per calendar day (display string)
+    p.days.add(key);
+    if (iso && iso > p.last) p.last = iso;
+    const t = String(m.type || "").toUpperCase();
+    if (t === "RSI") p.rsi.add(key);
+    if (t === "RSO") p.rso.add(key);
+    if (t === "MR") p.mr.add(key);
+    // URTI / NON-URTI split is meaningful only for actual report-sick rows.
+    if (t === "RSI" || t === "RSO") {
+      (( m.urtiType || classifyURTI(m.reason || "")) === "URTI" ? p.urti : p.nonUrti).add(key);
+    }
+    const st = String(m.status || "").toUpperCase();
+    if (st === "MC") p.mc.add(key);
+    if (st === "LD") p.ld.add(key);
+  });
+  return Object.entries(per).map(([d4, p]) => {
+    const r = STATE.roster.find(x => x.id === d4);
+    return {
+      "4D": displayId(d4) || d4,
+      Name: r ? (r.name || "") : "",
+      Platoon: r ? personPlatoon(r) : "",
+      Section: r ? personSection(r) : "",
+      TotalRSDays: p.days.size,
+      RSI: p.rsi.size,
+      RSO: p.rso.size,
+      MR: p.mr.size,
+      URTI: p.urti.size,
+      NonURTI: p.nonUrti.size,
+      MCDays: p.mc.size,
+      LDDays: p.ld.size,
+      LastRS: p.last ? isoToDisplayDate(p.last) : ""
+    };
+  }).sort((a, b) => b.TotalRSDays - a.TotalRSDays || String(a["4D"]).localeCompare(String(b["4D"])));
+}
+
+function exportSickStats(rangeStartIso, rangeEndIso) {
+  const rows = buildSickStats(rangeStartIso, rangeEndIso);
+  if (!rows.length) { alert("No report-sick records in the current scope/range to export."); return; }
+  exportCSV(rows, `sick_stats_${todayISO()}.csv`);
+}
+
+// HA statistics — one row per person in the topbar scope, derived from
+// computeHA(d4) (§12.5). Reports both Single (target 10) and Expanded (target 14)
+// progress, Double eligibility/progress (target 13 time-periods), and the
+// rolling-14-day currency deadline / lapse so the admin can see who is at risk.
+function buildHAStats() {
+  return filteredRoster().map(r => {
+    const h = computeHA(r.id);
+    return {
+      "4D": displayId(r.id) || r.id,
+      Name: r.name || "",
+      Platoon: personPlatoon(r),
+      Section: personSection(r),
+      OverallStatus: h.overallStatus,
+      SingleStatus: h.singleStatus,
+      SinglePeriods: h.single ? h.single.periods : 0,    // /10
+      ExpandedPeriods: h.expanded ? h.expanded.periods : 0, // /14
+      DoubleEligible: h.doubleEligible ? "Yes" : "No",
+      DoubleStatus: h.doubleStatus || "",
+      DoublePeriods: h.doubleTrack ? h.doubleTrack.periods : "", // /13 time-periods
+      CurrencyLapsed: h.currency && h.currency.lapsed ? "Yes" : "No",
+      CurrencyDeadline: h.currency && h.currency.deadlineIso ? isoToDisplayDate(h.currency.deadlineIso) : "",
+      ActiveDays: (h.activeDays || []).length,
+      LastActivity: h.lastActivity ? isoToDisplayDate(h.lastActivity) : ""
+    };
+  }).sort((a, b) => String(a["4D"]).localeCompare(String(b["4D"]), undefined, { numeric: true }));
+}
+
+function exportHAStats() {
+  const rows = buildHAStats();
+  if (!rows.length) { alert("No personnel in the current scope to export."); return; }
+  exportCSV(rows, `ha_stats_${todayISO()}.csv`);
+}
+
 // `roleFilter` is optional — pass "Commander" or "Recruit" to restrict the
 // dropdown (e.g. the Leave form picks commanders only). Commander options
 // render as "rank name" without the administrative 00xx prefix.
