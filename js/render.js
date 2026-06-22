@@ -36,9 +36,102 @@ function render() {
     case "leave": renderLeave(el); break;
     case "mskAnalytics": renderMSKAnalytics(el); break;
     case "conducts": renderConducts(el); break;
+    case "archive": renderArchive(el); break;
     case "sync": renderSync(el); break;
     default: el.innerHTML = "";
   }
+}
+
+// ── Archive (Item 1, admin-only) — view logged parade-state / report-sick msgs ──
+// The archive tabs are pulled only for admins (api.js), and the backend blocks the
+// raw read for non-admins; this view adds a client-side guard on top so a stale
+// non-admin STATE never renders them.
+let _archiveTab = "parade";   // "parade" | "sick"
+let _archiveQuery = "";
+function setArchiveTab(t) { _archiveTab = t; render(); }
+function setArchiveQuery(q) { _archiveQuery = q; renderArchiveList(); }
+
+async function doArchiveNow(kind) {
+  if (!STATE.apiUrl || !STATE.authToken) { alert("Not connected to the sheet — can't archive."); return; }
+  try {
+    const res = await API.archiveNow(kind);
+    if (res && res.error) { alert("Archive failed: " + res.error); return; }
+    await doPull();            // refresh STATE.paradeArchive / sickArchive
+    render();
+    const a = (res && res.archived) || {};
+    const made = [a.parade ? "parade" : null, a.sick ? "sick" : null].filter(Boolean);
+    alert(made.length
+      ? `Archived ${made.join(" + ")} for ${res.date} ${res.slot}.`
+      : `Nothing new for ${res.date} ${res.slot} — that slot is already archived.`);
+  } catch (e) {
+    if (e.name === "AuthError" && typeof handleAuthFailure === "function") { handleAuthFailure(); return; }
+    alert("Archive error: " + e.message);
+  }
+}
+
+function renderArchive(el) {
+  if (!isAdminRole()) {
+    el.innerHTML = `<div class="card empty-state"><h2 style="font-size:18px;margin-bottom:8px">🗄️ Archive</h2>
+      <p>This area is restricted to <strong>admin</strong> accounts.</p></div>`;
+    return;
+  }
+  const pTimes = configGet("archiveParadeTimes");
+  const sTimes = configGet("archiveSickTimes");
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <h2 style="font-size:18px;font-weight:700">🗄️ Message Archive <span style="font-size:12px;color:var(--muted);font-weight:400">(admin only)</span></h2>
+      <div style="display:flex;gap:6px">
+        <button class="btn" onclick="doArchiveNow('parade')" title="Snapshot the current company parade state now">＋ Archive Parade now</button>
+        <button class="btn" onclick="doArchiveNow('sick')" title="Snapshot the current report-sick message now">＋ Archive Sick now</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px;font-size:12px;color:var(--muted)">
+      <strong>Scheduled archiving</strong> (server-side, unattended) — set <code>archiveParadeTimes</code> / <code>archiveSickTimes</code> (comma-separated <code>HHMM</code>) in the Config tab, then run <code>setupBravesArchive()</code> once in Apps Script to install the trigger.<br>
+      Parade times: <strong>${escapeAttr(pTimes || "(not set)")}</strong> &nbsp;·&nbsp; Sick times: <strong>${escapeAttr(sTimes || "(not set)")}</strong>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:4px">
+        <button class="btn ${_archiveTab === "parade" ? "btn-primary" : ""}" onclick="setArchiveTab('parade')">Parade State (${(STATE.paradeArchive || []).length})</button>
+        <button class="btn ${_archiveTab === "sick" ? "btn-primary" : ""}" onclick="setArchiveTab('sick')">Report Sick (${(STATE.sickArchive || []).length})</button>
+      </div>
+      <input id="archive-search" placeholder="Filter by date / slot / text…" value="${escapeAttr(_archiveQuery)}" oninput="setArchiveQuery(this.value)"
+        style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
+    </div>
+    <div id="archive-list"></div>`;
+  renderArchiveList();
+}
+
+function renderArchiveList() {
+  const host = document.getElementById("archive-list");
+  if (!host) return;
+  const rows = (_archiveTab === "parade" ? STATE.paradeArchive : STATE.sickArchive) || [];
+  const q = _archiveQuery.trim().toLowerCase();
+  // Newest first by timestamp (ISO); fall back to insertion order.
+  const sorted = rows.slice().sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
+  const filtered = q
+    ? sorted.filter(r => `${r.date} ${r.slot} ${r.type || r.format || ""} ${r.message || ""}`.toLowerCase().includes(q))
+    : sorted;
+
+  if (!filtered.length) {
+    host.innerHTML = `<div class="empty-state">${rows.length ? "No entries match the filter." : "No archived messages yet. Use “Archive … now”, or set up scheduled archiving."}</div>`;
+    return;
+  }
+  host.innerHTML = filtered.map((r, i) => {
+    const label = _archiveTab === "parade" ? (r.type || "") : (r.format || "RS");
+    const id = `arc-${_archiveTab}-${i}`;
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="font-size:12px"><strong class="mono" style="color:var(--accent)">${escapeAttr(r.date || "")}</strong>
+          <span style="color:var(--muted)">slot ${escapeAttr(r.slot || "—")}</span>
+          <span class="badge badge-accent" style="font-size:9px">${escapeAttr(label)}</span>
+          ${r.scope ? `<span style="font-size:10px;color:var(--dim)">${escapeAttr(r.scope)}</span>` : ""}
+          ${r.timestamp ? `<span style="font-size:10px;color:var(--dim)">· ${new Date(r.timestamp).toLocaleString()}</span>` : ""}
+        </div>
+        <button class="btn" style="font-size:10px" onclick="(function(){const t=document.getElementById('${id}').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
+      </div>
+      <pre id="${id}" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;max-height:320px;overflow:auto">${escapeAttr(r.message || "")}</pre>
+    </div>`;
+  }).join("");
 }
 
 function renderDashboard(el) {

@@ -170,6 +170,7 @@ const STATE = {
   accounts: [],   // [{email, personId, role, addedBy, addedAt}] — no secrets
   tokens: [],     // active sessions [{token, tokenPrefix, email, role, issuedAt, expired}]
   auditLog: [],   // audit rows — only populated for admin pulls
+  paradeArchive: [], sickArchive: [], // archived parade/sick messages — admin-only pulls (Item 1)
   roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [], conductDetail: [], appointments: [], leave: [], msk: [],
   // Braves reference data (spec §4/§12/A6). config is an object keyed by Config
   // `key`; vocfit/platoons are row arrays. All empty until pulled — every reader

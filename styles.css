@@ -334,6 +334,8 @@ body.role-viewer .readonly-banner{display:block}
 /* Admin-only blocks are hidden unless the body carries .role-admin. */
 .admin-only{display:none}
 body.role-admin .admin-only{display:block}
+/* Admin-only nav buttons must keep the flex icon+label layout (not block). */
+body.role-admin .nav-btn.admin-only{display:flex}
 
 /* Label-wraps-input pattern used by the account/auth modals (mirrors the
    existing .form-group styling so they look native). */

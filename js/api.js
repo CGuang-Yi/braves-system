@@ -56,6 +56,8 @@ const API = {
   },
   async revokeAllForEmail(targetEmail) { return this.post({ action: "revokeAllForEmail", targetEmail }); },
   async revokeAllTokens() { return this.post({ action: "revokeAllTokens" }); },
+  // ── Archive (Item 1): manual snapshot. kind: "parade"|"sick"|"both". ──
+  async archiveNow(kind, opts) { return this.post({ action: "archiveNow", kind, ...(opts || {}) }); },
   async pullAll() {
     const data = await this.get("readAll");
     if (data.error) throw new Error(data.error);
@@ -80,6 +82,12 @@ const API = {
     // Admin pulls include the audit log; non-admins never receive it. Assign
     // unconditionally to the admin-provided value so it clears if absent.
     if (STATE.role === "admin") STATE.auditLog = Array.isArray(data.auditLog) ? data.auditLog : [];
+    // Archived parade-state / report-sick messages (Item 1) — admin-only, same as
+    // the audit log. The backend only returns these to admins.
+    if (STATE.role === "admin") {
+      STATE.paradeArchive = Array.isArray(data.paradeArchive) ? data.paradeArchive : [];
+      STATE.sickArchive = Array.isArray(data.sickArchive) ? data.sickArchive : [];
+    }
     // Re-sync LMS counts from polar after every pull. Polar entries are the
     // source of truth for "who wore the watch" = LMS participation; this
     // keeps the attendance LMS column auto-correct without manual button
