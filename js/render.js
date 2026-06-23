@@ -86,8 +86,10 @@ function renderArchive(el) {
       </div>
     </div>
     <div class="card" style="margin-bottom:14px;font-size:12px;color:var(--muted)">
-      <strong>Scheduled archiving</strong> (server-side, unattended) — set <code>archiveParadeTimes</code> / <code>archiveSickTimes</code> (comma-separated <code>HHMM</code>) in the Config tab, then run <code>setupBravesArchive()</code> once in Apps Script to install the trigger.<br>
-      Parade times: <strong>${escapeAttr(pTimes || "(not set)")}</strong> &nbsp;·&nbsp; Sick times: <strong>${escapeAttr(sTimes || "(not set)")}</strong>
+      <strong>Scheduled archiving</strong> (server-side, unattended) — set <code>archiveParadeTimes</code> in the Config tab, then run <code>setupBravesArchive()</code> once in Apps Script to install the trigger.<br>
+      Each parade time is <code>HHMM</code>, optionally tagged <code>:FP</code>/<code>:LP</code> — e.g. <code>0730:FP,1300:FP,2130:LP</code>. Untagged: the latest time of the day is <strong>LP</strong> (night/last parade), all earlier ones are <strong>FP</strong> (morning + midday).<br>
+      <strong>Report sick</strong> is archived at <code>archiveSickTimes</code> if set, otherwise automatically at the <strong>FP (morning + midday)</strong> parade times — never at the night/LP slot.<br>
+      Parade times: <strong>${escapeAttr(pTimes || "(not set)")}</strong> &nbsp;·&nbsp; Sick times: <strong>${escapeAttr(sTimes || "(auto: FP slots)")}</strong>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
       <div style="display:flex;gap:4px">

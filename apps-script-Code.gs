@@ -2960,9 +2960,11 @@ function bravesLoadState_() {
 
 function bravesTodayISO_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd"); }
 function bravesNowHHMM_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "HHmm"); }
-// Slot before noon → First Parade, else Last Parade.
+// Slot before noon → First Parade, else Last Parade. Fallback heuristic for ad-hoc
+// manual snapshots at an unconfigured time; the scheduled poll uses the typed
+// parser below (which treats midday as FP, only the night/last slot as LP).
 function bravesSlotType_(slot) { var n = parseInt(String(slot).slice(0, 2), 10) || 0; return n < 12 ? "FP" : "LP"; }
-// "0730,1730" → ["0730","1730"] (4-digit, zero-padded).
+// "0730,1730" → ["0730","1730"] (4-digit, zero-padded; drops any ":FP"/":LP" tag).
 function bravesParseSlots_(cfg) {
   if (!cfg) return [];
   return String(cfg).split(",").map(function (s) {
@@ -2970,6 +2972,34 @@ function bravesParseSlots_(cfg) {
     while (d.length < 4) d = "0" + d;
     return d.slice(0, 4);
   }).filter(function (s) { return s.length === 4; });
+}
+// Parse the parade schedule into TYPED slots → [{slot:"HHMM", type:"FP"|"LP"}].
+// Each entry may carry an explicit type, "0730:FP, 1300:FP, 2130:LP" (case-
+// insensitive) — explicit always wins. Untyped entries default by time-of-day:
+// the LATEST slot is LP (the night / last parade), every earlier slot is FP
+// (morning + midday). So a midday parade is FP, not LP.
+function bravesParseParadeSlots_(cfg) {
+  if (!cfg) return [];
+  var parsed = String(cfg).split(",").map(function (s) {
+    var raw = String(s);
+    var tag = (raw.match(/(FP|LP)/i) || [])[1];
+    var d = raw.replace(/[^\d]/g, "");
+    while (d.length < 4) d = "0" + d;
+    return { slot: d.slice(0, 4), type: tag ? tag.toUpperCase() : null };
+  }).filter(function (x) { return x.slot.length === 4; });
+  var latest = parsed.reduce(function (m, x) { return x.slot > m ? x.slot : m; }, "");
+  parsed.forEach(function (x) { if (!x.type) x.type = (x.slot === latest) ? "LP" : "FP"; });
+  return parsed;
+}
+// Report-sick archive slots: explicit archiveSickTimes if set, ELSE the FP
+// (morning + midday) parade slots — so report-sick is archived only in the
+// morning and midday and NEVER at the LP/night slot.
+function bravesSickSlots_(cfg) {
+  var explicit = bravesParseSlots_(cfg.archiveSickTimes);
+  if (explicit.length) return explicit;
+  return bravesParseParadeSlots_(cfg.archiveParadeTimes)
+    .filter(function (x) { return x.type === "FP"; })
+    .map(function (x) { return x.slot; });
 }
 
 function bravesEnsureArchiveTabs_() {
@@ -3011,7 +3041,17 @@ function bravesArchiveNow(body, ctx) {
   var slot = body.slot || bravesNowHHMM_();
   var kind = body.kind || "both";
   var out = {};
-  if (kind === "parade" || kind === "both") out.parade = bravesArchiveParade_(dateIso, slot, body.type || bravesSlotType_(slot));
+  if (kind === "parade" || kind === "both") {
+    var type = body.type;
+    if (!type) {
+      // Use the configured slot's FP/LP if this time is on the schedule; otherwise
+      // fall back to the noon heuristic for a truly ad-hoc snapshot.
+      var cfg = bravesNormalizeConfig_(bravesArr_(readTab("Config")));
+      var match = bravesParseParadeSlots_(cfg.archiveParadeTimes).filter(function (p) { return p.slot === slot; })[0];
+      type = match ? match.type : bravesSlotType_(slot);
+    }
+    out.parade = bravesArchiveParade_(dateIso, slot, type);
+  }
   if (kind === "sick" || kind === "both") out.sick = bravesArchiveSick_(dateIso, slot);
   return { ok: true, archived: out, date: dateIso, slot: slot };
 }
@@ -3021,10 +3061,13 @@ function bravesArchiveNow(body, ctx) {
 function archivePoll() {
   bravesEnsureArchiveTabs_();
   var now = bravesNowHHMM_(), dateIso = bravesTodayISO_();
-  bravesParseSlots_(bravesNormalizeConfig_(bravesArr_(readTab("Config")))["archiveParadeTimes"]).forEach(function (slot) {
-    if (slot <= now) bravesArchiveParade_(dateIso, slot, bravesSlotType_(slot));
+  var cfg = bravesNormalizeConfig_(bravesArr_(readTab("Config")));
+  // Parade: each configured slot, typed FP/LP (midday = FP, night/last = LP).
+  bravesParseParadeSlots_(cfg.archiveParadeTimes).forEach(function (p) {
+    if (p.slot <= now) bravesArchiveParade_(dateIso, p.slot, p.type);
   });
-  bravesParseSlots_(bravesNormalizeConfig_(bravesArr_(readTab("Config")))["archiveSickTimes"]).forEach(function (slot) {
+  // Report sick: morning + midday only (the FP slots, unless overridden).
+  bravesSickSlots_(cfg).forEach(function (slot) {
     if (slot <= now) bravesArchiveSick_(dateIso, slot);
   });
 }
