@@ -27,113 +27,16 @@ function render() {
     case "attendance": renderAttendance(el); break;
     case "detail": renderConductDetail(el); break;
     case "medical": renderMedical(el); break;
-    case "statusboard": renderStatusBoard(el); break;
     case "ippt": renderIPPT(el); break;
     case "rm": renderRM(el); break;
     case "soc": renderSOC(el); break;
-    case "ha": renderHA(el); break;
     case "polar": renderPolar(el); break;
     case "leave": renderLeave(el); break;
     case "mskAnalytics": renderMSKAnalytics(el); break;
     case "conducts": renderConducts(el); break;
-    case "archive": renderArchive(el); break;
     case "sync": renderSync(el); break;
     default: el.innerHTML = "";
   }
-}
-
-// ── Archive (Item 1, admin-only) — view logged parade-state / report-sick msgs ──
-// The archive tabs are pulled only for admins (api.js), and the backend blocks the
-// raw read for non-admins; this view adds a client-side guard on top so a stale
-// non-admin STATE never renders them.
-let _archiveTab = "parade";   // "parade" | "sick"
-let _archiveQuery = "";
-function setArchiveTab(t) { _archiveTab = t; render(); }
-function setArchiveQuery(q) { _archiveQuery = q; renderArchiveList(); }
-
-async function doArchiveNow(kind) {
-  if (!STATE.apiUrl || !STATE.authToken) { alert("Not connected to the sheet — can't archive."); return; }
-  try {
-    const res = await API.archiveNow(kind);
-    if (res && res.error) { alert("Archive failed: " + res.error); return; }
-    await doPull();            // refresh STATE.paradeArchive / sickArchive
-    render();
-    const a = (res && res.archived) || {};
-    const made = [a.parade ? "parade" : null, a.sick ? "sick" : null].filter(Boolean);
-    alert(made.length
-      ? `Archived ${made.join(" + ")} for ${res.date} ${res.slot}.`
-      : `Nothing new for ${res.date} ${res.slot} — that slot is already archived.`);
-  } catch (e) {
-    if (e.name === "AuthError" && typeof handleAuthFailure === "function") { handleAuthFailure(); return; }
-    alert("Archive error: " + e.message);
-  }
-}
-
-function renderArchive(el) {
-  if (!isAdminRole()) {
-    el.innerHTML = `<div class="card empty-state"><h2 style="font-size:18px;margin-bottom:8px">🗄️ Archive</h2>
-      <p>This area is restricted to <strong>admin</strong> accounts.</p></div>`;
-    return;
-  }
-  const pTimes = configGet("archiveParadeTimes");
-  const sTimes = configGet("archiveSickTimes");
-  el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <h2 style="font-size:18px;font-weight:700">🗄️ Message Archive <span style="font-size:12px;color:var(--muted);font-weight:400">(admin only)</span></h2>
-      <div style="display:flex;gap:6px">
-        <button class="btn" onclick="doArchiveNow('parade')" title="Snapshot the current company parade state now">＋ Archive Parade now</button>
-        <button class="btn" onclick="doArchiveNow('sick')" title="Snapshot the current report-sick message now">＋ Archive Sick now</button>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:14px;font-size:12px;color:var(--muted)">
-      <strong>Scheduled archiving</strong> (server-side, unattended) — set <code>archiveParadeTimes</code> in the Config tab, then run <code>setupBravesArchive()</code> once in Apps Script to install the trigger.<br>
-      Each parade time is <code>HHMM</code>, optionally tagged <code>:FP</code>/<code>:LP</code> — e.g. <code>0730:FP,1300:FP,2130:LP</code>. Untagged: the latest time of the day is <strong>LP</strong> (night/last parade), all earlier ones are <strong>FP</strong> (morning + midday).<br>
-      <strong>Report sick</strong> is archived at <code>archiveSickTimes</code> if set, otherwise automatically at the <strong>FP (morning + midday)</strong> parade times — never at the night/LP slot.<br>
-      Parade times: <strong>${escapeAttr(pTimes || "(not set)")}</strong> &nbsp;·&nbsp; Sick times: <strong>${escapeAttr(sTimes || "(auto: FP slots)")}</strong>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
-      <div style="display:flex;gap:4px">
-        <button class="btn ${_archiveTab === "parade" ? "btn-primary" : ""}" onclick="setArchiveTab('parade')">Parade State (${(STATE.paradeArchive || []).length})</button>
-        <button class="btn ${_archiveTab === "sick" ? "btn-primary" : ""}" onclick="setArchiveTab('sick')">Report Sick (${(STATE.sickArchive || []).length})</button>
-      </div>
-      <input id="archive-search" placeholder="Filter by date / slot / text…" value="${escapeAttr(_archiveQuery)}" oninput="setArchiveQuery(this.value)"
-        style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
-    </div>
-    <div id="archive-list"></div>`;
-  renderArchiveList();
-}
-
-function renderArchiveList() {
-  const host = document.getElementById("archive-list");
-  if (!host) return;
-  const rows = (_archiveTab === "parade" ? STATE.paradeArchive : STATE.sickArchive) || [];
-  const q = _archiveQuery.trim().toLowerCase();
-  // Newest first by timestamp (ISO); fall back to insertion order.
-  const sorted = rows.slice().sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
-  const filtered = q
-    ? sorted.filter(r => `${r.date} ${r.slot} ${r.type || r.format || ""} ${r.message || ""}`.toLowerCase().includes(q))
-    : sorted;
-
-  if (!filtered.length) {
-    host.innerHTML = `<div class="empty-state">${rows.length ? "No entries match the filter." : "No archived messages yet. Use “Archive … now”, or set up scheduled archiving."}</div>`;
-    return;
-  }
-  host.innerHTML = filtered.map((r, i) => {
-    const label = _archiveTab === "parade" ? (r.type || "") : (r.format || "RS");
-    const id = `arc-${_archiveTab}-${i}`;
-    return `<div class="card" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
-        <div style="font-size:12px"><strong class="mono" style="color:var(--accent)">${escapeAttr(r.date || "")}</strong>
-          <span style="color:var(--muted)">slot ${escapeAttr(r.slot || "—")}</span>
-          <span class="badge badge-accent" style="font-size:9px">${escapeAttr(label)}</span>
-          ${r.scope ? `<span style="font-size:10px;color:var(--dim)">${escapeAttr(r.scope)}</span>` : ""}
-          ${r.timestamp ? `<span style="font-size:10px;color:var(--dim)">· ${new Date(r.timestamp).toLocaleString()}</span>` : ""}
-        </div>
-        <button class="btn" style="font-size:10px" onclick="(function(){const t=document.getElementById('${id}').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
-      </div>
-      <pre id="${id}" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;max-height:320px;overflow:auto">${escapeAttr(r.message || "")}</pre>
-    </div>`;
-  }).join("");
 }
 
 function renderDashboard(el) {
@@ -179,16 +82,6 @@ function renderDashboard(el) {
   const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a, c) => a + (c.participating / c.total * 100), 0) / STATE.attendance.length) : 0;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — Attendance figures remain company-wide.</div>` : "";
 
-  // Braves §16 additions, computed via the §8 classifier (braves-parade.js,
-  // loaded after render.js — resolved at this runtime call). "Not Available
-  // (in camp)" = MR + REPORTING SICK today (present but not available — STATUS/
-  // LD/excuse deliberately excluded per §16; resolves open §20.7, DECISIONS #42).
-  // Strength-by-rank-group replaces Cougar's platoon-by-platoon breakdown (§16).
-  const naClassify = r => bpClassifyPerson(r, today);
-  const notAvailable = scoped.filter(r => { const c = naClassify(r); return c.sections.mr.length > 0 || c.sections.reportingSick.length > 0; }).length;
-  const grpStrength = bpStrength(scoped, today);
-  const grpLine = g => `${grpStrength.groups[g].cur}/${grpStrength.groups[g].tot}`;
-
   // R/C breakdown — only shown when scope is "All". Helps reproduce the
   // parade-state-style "PLATOON x: y/z … COMMANDERS: a/b" split in one
   // glance without forcing a separate Commanders card.
@@ -218,8 +111,6 @@ function renderDashboard(el) {
         <div id="report-menu" class="dropdown-menu hidden">
           <button type="button" onclick="openReportModal('FP'); closeReportMenu()">📋 First Parade State</button>
           <button type="button" onclick="openReportModal('LP'); closeReportMenu()">📋 Last Parade State</button>
-          <button type="button" onclick="openReportModal('RS'); closeReportMenu()">🤒 RS Format (Sick Report)</button>
-          <button type="button" onclick="openReportModal('RSIP'); closeReportMenu()">🤒 RSI Personnel (by Platoon)</button>
           <button type="button" onclick="openReportModal('MED'); closeReportMenu()">🏥 Medical Status List</button>
           <button type="button" onclick="openReportModal('MSK'); closeReportMenu()">🦵 MSK Report</button>
           <button type="button" onclick="openReportModal('CONDUCT'); closeReportMenu()">📊 Per-Conduct Chat Format</button>
@@ -232,16 +123,7 @@ function renderDashboard(el) {
       <div class="stat"><label>Active today</label><div class="val" style="color:var(--green)">${active}${inlineBreakdown(recActive, cmdActive)}</div></div>
       <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}${inlineBreakdown(recLive.length, cmdLive.length)}</div></div>
       <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}${inlineBreakdown(recInCamp, cmdInCamp)}</div></div>
-      <div class="stat" title="MR + Reporting Sick today — physically in camp but not available for normal activities (§16)"><label>Not Available</label><div class="val" style="color:var(--purple)">${notAvailable}</div></div>
       <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
-    </div>
-    <div class="card" style="padding:10px 16px;margin-top:10px">
-      <h3 style="font-size:13px;color:var(--muted);margin-bottom:6px">Strength by Rank Group <span style="font-weight:400;color:var(--dim)">(current/total in scope — §16)</span></h3>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:13px">
-        <div>[OFFICER] <strong style="color:var(--text)">${grpLine("Officer")}</strong></div>
-        <div>[WOSPEC] <strong style="color:var(--text)">${grpLine("WOSPEC")}</strong></div>
-        <div>[ENLISTEE] <strong style="color:var(--text)">${grpLine("Enlistee")}</strong></div>
-      </div>
     </div>
     ${renderDashAppointments(visible, today)}
     <div class="grid-2">
@@ -818,7 +700,7 @@ function renderDashLeaveOut(visible, todayIso) {
   const onToday = scoped.filter(l => l.startIso <= todayIso && todayIso <= l.endIso);
   const upcoming = scoped.filter(l => l.startIso > todayIso && l.startIso <= sevenDaysOut);
 
-  const typeColor = t => t === "Off-in-Lieu" ? "accent" : t === "Leave" ? "teal" : t === "Compassionate" ? "red" : t === "Weekend" ? "green" : t === "Night's Out" ? "pink" : t === "Course" ? "purple" : t === "Guard Duty" ? "orange" : t === "NDP" ? "yellow" : "muted";
+  const typeColor = t => t === "Off-in-Lieu" ? "accent" : t === "Annual Leave" ? "teal" : t === "Compassionate" ? "red" : t === "Weekend" ? "green" : t === "Night's Out" ? "pink" : t === "Course" ? "purple" : t === "Guard Duty" ? "orange" : t === "NDP" ? "yellow" : "muted";
 
   const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
     <h3 style="font-size:13px;color:var(--muted);margin:0">🪖 Out today / This week <span style="color:var(--dim);font-weight:400">(${onToday.length} now · ${upcoming.length} upcoming)</span></h3>
@@ -859,7 +741,7 @@ function renderLeave(el) {
   const onTodayCount = scoped.filter(l => l.startIso <= today && today <= l.endIso).length;
   const titleSuffix = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.leave.length}]</span>` : ` (${STATE.leave.length})`;
 
-  const typeColor = t => t === "Off-in-Lieu" ? "accent" : t === "Leave" ? "teal" : t === "Compassionate" ? "red" : t === "Weekend" ? "green" : t === "Night's Out" ? "pink" : t === "Course" ? "purple" : t === "Guard Duty" ? "orange" : t === "NDP" ? "yellow" : "muted";
+  const typeColor = t => t === "Off-in-Lieu" ? "accent" : t === "Annual Leave" ? "teal" : t === "Compassionate" ? "red" : t === "Weekend" ? "green" : t === "Night's Out" ? "pink" : t === "Course" ? "purple" : t === "Guard Duty" ? "orange" : t === "NDP" ? "yellow" : "muted";
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -908,7 +790,7 @@ function renderLeaveTimeline(scoped, todayIso) {
   });
 
   const typeBg = t => ({
-    "Off-in-Lieu": "#58A6FF", "Leave": "#39D2C0", "Compassionate": "#F85149", "Weekend": "#3FB950", "Night's Out": "#F778BA",
+    "Off-in-Lieu": "#58A6FF", "Annual Leave": "#39D2C0", "Compassionate": "#F85149", "Weekend": "#3FB950", "Night's Out": "#F778BA",
     "Course": "#BC8CFF", "Guard Duty": "#D29922", "NDP": "#E3B341", "Other": "#8B949E"
   })[t] || "#8B949E";
 
@@ -940,7 +822,7 @@ function renderLeaveTimeline(scoped, todayIso) {
   }).join("");
 
   // Legend mirrors the type-color palette so users can decode the bars.
-  const legend = ["Off-in-Lieu", "Leave", "Compassionate", "Weekend", "Night's Out", "Course", "Guard Duty", "NDP", "Other"]
+  const legend = ["Off-in-Lieu", "Annual Leave", "Compassionate", "Weekend", "Night's Out", "Course", "Guard Duty", "NDP", "Other"]
     .map(t => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)"><span style="width:10px;height:10px;background:${typeBg(t)};border-radius:2px;opacity:.85"></span>${t}</span>`)
     .join(" ");
 
@@ -1046,24 +928,19 @@ function renderRoster(el) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:18px;font-weight:700">Master Roster${titleSuffix}</h2>
-      <div style="display:flex;gap:8px" class="write-only">
+      <div style="display:flex;gap:8px">
         <button class="btn" onclick="exportCSV(STATE.roster,'roster.csv')">Export CSV</button>
         <button class="btn btn-success" onclick="pushTab('Roster',STATE.roster)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
       </div>
     </div>
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Plt · Sect</th><th>Role</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
+    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Role</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
     ${scoped.map(r => {
       const bmi = calcBMI(r);
       const isCmd = r.role === "Commander";
       const nameCell = isCmd ? `${r.rank ? r.rank + " " : ""}${r.name}` : r.name;
       const idCell = isCmd ? "" : r.id;
       const roleCell = isCmd ? `<span class="badge badge-purple">Commander</span>` : `<span style="color:var(--muted);font-size:11px">Recruit</span>`;
-      // Braves org columns (spec §5). Show the explicit platoon/section when
-      // present; em-dash when the roster row hasn't been populated yet.
-      const plt = personPlatoon(r);
-      const sect = personSection(r);
-      const orgCell = (plt || sect) ? `${plt || "—"}${sect ? " · " + sect : ""}` : "—";
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td style="font-size:11px;color:var(--muted)">${orgCell}</td><td>${roleCell}</td><td>${statusBadge(r.status)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td>${roleCell}</td><td>${statusBadge(r.status)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No personnel in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "No invite redeemed on this device yet.")}</div>`}`;
 }
@@ -1075,9 +952,6 @@ function renderAttendance(el) {
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" onclick="refreshLmsFromPolar()" title="Recount LMS participants for every conduct from STATE.polar (the Polar class summary photo is the LMS roster) and write into the attendance rows">🔄 Recompute LMS</button>
         <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
-        <label class="btn" title="Import an attendance CSV export (Activity metadata + User/Unit/Status/Remarks). Present rows feed HA participation.">📥 Import CSV
-          <input type="file" accept=".csv" onchange="importConductCSV(this)" style="display:none">
-        </label>
         <button class="btn btn-primary" onclick="openLogConductWizard()" title="One-shot wizard: date + time + conduct + Status Personnel checklist + bulk Report Sick / Fallout / RSI rows + auto totals + chat-format copy">+ Log Conduct</button>
       </div>
     </div>
@@ -1302,7 +1176,6 @@ function renderMedical(el) {
       <h2 style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
         <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
-        <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥 Import Sick History (xlsx)<input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
         <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Report Sick</button>
       </div>
     </div>
@@ -1315,7 +1188,7 @@ function renderMedical(el) {
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Reported</th><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Status</th><th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${m.reason || ""}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${m.urtiType}</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.reason || ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
         </tbody></table></div>` : `<div class="empty-state">${STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet."}</div>`}
       </div>
       <div class="card">
@@ -1700,406 +1573,3 @@ function promptRenameConduct(id) {
   if (newName == null) return;
   renameConduct(id, newName);
 }
-// Render the Heat Acclimatisation (HA) tab (Braves §13 — three programmes).
-// Status set (§12.6): Not Started / In Progress / Single HA Complete /
-// In Progress (Double) / Double HA Complete / Lapsed. Track colours: Single=teal,
-// Expanded=amber, Double=blue.
-function haStatusColor(status) {
-  switch (status) {
-    case "Double HA Complete": return "#388BFD";   // blue
-    case "Single HA Complete": return "#3FB950";    // green
-    case "In Progress (Double)": return "#58A6FF";  // light blue
-    case "In Progress": return "#D29922";           // amber
-    case "Lapsed": return "#F85149";                // red
-    default: return "#8B949E";                      // muted (Not Started)
-  }
-}
-const HA_STATUSES = ["Not Started", "In Progress", "Single HA Complete", "In Progress (Double)", "Double HA Complete", "Lapsed"];
-
-function renderHA(el) {
-  const scoped = filteredRoster().filter(r => r.role === "Recruit" || r.role === "");
-  const haResults = scoped.map(r => ({ recruit: r, ha: computeHA(r.id) }));
-
-  // Sort by status priority (worst first) then Single progress ascending.
-  const prio = { "Lapsed": 0, "Not Started": 1, "In Progress": 2, "Single HA Complete": 3, "In Progress (Double)": 4, "Double HA Complete": 5 };
-  haResults.sort((a, b) => {
-    const pa = prio[a.ha.overallStatus] ?? 9, pb = prio[b.ha.overallStatus] ?? 9;
-    if (pa !== pb) return pa - pb;
-    return (a.ha.single?.periods || 0) - (b.ha.single?.periods || 0);
-  });
-
-  const count = s => haResults.filter(x => x.ha.overallStatus === s).length;
-  const counts = HA_STATUSES.map(count);
-
-  const cell = (val, target, color) => {
-    const pct = Math.min(100, Math.round((val / target) * 100));
-    return `<div style="min-width:84px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">${val}/${target}</div>
-      <div style="height:6px;background:var(--surface);border:1px solid var(--border);border-radius:3px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div>
-    </div>`;
-  };
-
-  el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-      <h2 style="font-size:18px;font-weight:700">Heat Acclimatisation (HA) Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}]</span>` : ""}</h2>
-    </div>
-
-    <div class="stats-row">
-      <div class="stat"><label>Recruits</label><div class="val">${scoped.length}</div></div>
-      ${HA_STATUSES.map((s, i) => `<div class="stat" style="border-left:3px solid ${haStatusColor(s)}"><label>${s}</label><div class="val" style="color:${haStatusColor(s)}">${counts[i]}</div></div>`).join("")}
-    </div>
-
-    <div class="grid-2" style="margin-bottom:20px">
-      <div class="card" style="padding:16px;min-height:280px">
-        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Status Breakdown</h3>
-        <div style="height:200px;position:relative;width:100%;overflow:hidden"><canvas id="chart-ha-distribution" style="width:100% !important;height:100% !important"></canvas></div>
-      </div>
-      <div class="card" style="padding:16px;min-height:280px">
-        <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Single HA Progress (periods /10)</h3>
-        <div style="height:200px;overflow-y:auto;overflow-x:hidden;position:relative;width:100%"><canvas id="chart-ha-streaks" style="width:100% !important;display:block"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card" style="padding:16px">
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Acclimatisation Status Roster</h3>
-      <div class="table-wrap"><table>
-        <thead><tr>
-          <th>4D</th><th style="text-align:left">Name</th><th>Plt/Sect</th><th>Status</th>
-          <th style="text-align:left">Single (/10)</th><th style="text-align:left">Expanded (/14)</th><th style="text-align:left">Double (/13)</th>
-          <th>Last Activity</th><th>Currency</th>
-        </tr></thead>
-        <tbody>
-          ${haResults.map(({ recruit: r, ha }) => {
-            const c = haStatusColor(ha.overallStatus);
-            const dbl = !ha.doubleEligible
-              ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
-              : cell(ha.doubleTrack?.periods || 0, 13, "#388BFD");
-            const last = ha.lastActivity ? isoToDisplayDate(ha.lastActivity) : '<span style="color:var(--muted)">—</span>';
-            const curr = ha.currency && ha.currency.lapsed
-              ? `<span style="color:var(--red)">lapsed ${ha.currency.lapseDateIso ? isoToDisplayDate(ha.currency.lapseDateIso) : ""}</span>`
-              : (ha.currency && ha.currency.deadlineIso ? `<span style="color:var(--muted)">by ${isoToDisplayDate(ha.currency.deadlineIso)}</span>` : "—");
-            return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer">
-              <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(r.id)}</td>
-              <td style="text-align:left">${displayPersonLabel(r.id)}</td>
-              <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
-              <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
-              <td style="text-align:left">${cell(ha.single?.periods || 0, 10, "#2DD4BF")}</td>
-              <td style="text-align:left">${cell(ha.expanded?.periods || 0, 14, "#D29922")}</td>
-              <td style="text-align:left">${dbl}</td>
-              <td>${last}</td>
-              <td style="font-size:11px">${curr}</td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-      </table></div>
-    </div>
-  `;
-
-  buildHADistributionChart(counts);
-  buildHAStreaksChart(haResults);
-}
-
-function buildHADistributionChart(counts) {
-  const canvas = document.getElementById("chart-ha-distribution");
-  if (!canvas) return;
-  STATE.charts.haDistribution = new Chart(canvas, {
-    type: "doughnut",
-    data: {
-      labels: HA_STATUSES,
-      datasets: [{
-        data: counts,
-        backgroundColor: HA_STATUSES.map(haStatusColor),
-        borderColor: "#161B22",
-        borderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } } }
-    }
-  });
-}
-
-function buildHAStreaksChart(haResults) {
-  const canvas = document.getElementById("chart-ha-streaks");
-  if (!canvas) return;
-  const sorted = [...haResults].sort((a, b) => (a.ha.single?.periods || 0) - (b.ha.single?.periods || 0));
-  const labels = sorted.map(r => r.recruit.name || r.recruit.id);
-  const data = sorted.map(r => r.ha.single?.periods || 0);
-  const colors = sorted.map(r => haStatusColor(r.ha.overallStatus));
-  const chartHeight = Math.max(200, sorted.length * 18);
-  canvas.style.height = chartHeight + "px";
-  canvas.style.width = "100%";
-  STATE.charts.haStreaks = new Chart(canvas, {
-    type: "bar",
-    data: { labels, datasets: [{ label: "Single HA periods", data, backgroundColor: colors, borderWidth: 0, borderRadius: 4 }] },
-    options: {
-      indexAxis: "y",
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { min: 0, max: 10, ticks: { stepSize: 1, color: "#8B949E" }, grid: { color: "#30363D" } },
-        y: { ticks: { color: "#8B949E", font: { size: 10 } }, grid: { display: false } }
-      }
-    }
-  });
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// STATUS BOARD (addendum A3 Leaderboard + A7 Roster Status List + A4 Status Grid)
-// ════════════════════════════════════════════════════════════════════════════
-let _sbSort = (() => { try { return localStorage.getItem("braves-sb-sort") || "Total"; } catch { return "Total"; } })();
-let _sbCollapsed = (() => { try { return localStorage.getItem("braves-sb-collapsed") === "1"; } catch { return false; } })();
-let _sbShowAll = false;
-let _sbWeekOffset = 0;     // grid paging, in 5-week windows (0 = current)
-let _sbSearch = "";
-
-// Grid cell palette (A4.2).
-const SB_CELL = {
-  RSI: { bg: "#EF9F27", fg: "#633806" }, RSO: { bg: "#378ADD", fg: "#042C53" },
-  MC:  { bg: "#E24B4A", fg: "#501313" }, MR:  { bg: "#7F77DD", fg: "#26215C" },
-  LD:  { bg: "#B4B2A9", fg: "#2C2C2A" }, LV:  { bg: "#1D9E75", fg: "#04342C" }
-};
-function _sbKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
-
-// Section-grouped ordering (A4.3/A7.4): platoon (HQ last), section (Command first,
-// then numeric), then name.
-function sbOrdered(rows) {
-  const plRank = c => c === "HQ" ? 9999 : (parseInt(String(c).replace(/\D/g, ""), 10) || 9000);
-  const secRank = s => s === "Command" ? -1 : (parseInt(s, 10) || 9000);
-  return [...rows].sort((a, b) => {
-    const pa = plRank(personPlatoon(a)), pb = plRank(personPlatoon(b));
-    if (pa !== pb) return pa - pb;
-    const sa = secRank(personSection(a)), sb = secRank(personSection(b));
-    if (sa !== sb) return sa - sb;
-    return String(a.name || "").localeCompare(String(b.name || ""));
-  }).map(r => ({ r, group: `${personPlatoon(r) || "—"}${personSection(r) ? " · " + (personSection(r) === "Command" ? "Command" : "Sect " + personSection(r)) : ""}` }));
-}
-
-// RSI/RSO counts per person from the Medical tab (A3.1 / A4.6).
-function sbRSCounts() {
-  const map = {};
-  (STATE.medical || []).forEach(m => {
-    if (m.type !== "RSI" && m.type !== "RSO") return;
-    const e = map[m.d4] = map[m.d4] || { rsi: 0, rso: 0 };
-    if (m.type === "RSI") e.rsi++; else e.rso++;
-  });
-  return map;
-}
-
-function renderStatusBoard(el) {
-  const scopeLabel = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}]</span>` : "";
-  el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-      <h2 style="font-size:18px;font-weight:700">🗓️ Status Board${scopeLabel}</h2>
-    </div>
-    <div id="sb-leaderboard" class="card" style="padding:14px;margin-bottom:14px"></div>
-    <div id="sb-rosterlist" class="card" style="padding:14px;margin-bottom:14px"></div>
-    <div id="sb-grid" class="card" style="padding:14px"></div>
-    <div id="sb-popover"></div>
-  `;
-  renderSBLeaderboard();
-  renderSBRosterList();
-  renderSBGrid();
-}
-
-// ── A3. Report Sick Leaderboard ─────────────────────────────────────────────
-function renderSBLeaderboard() {
-  const host = document.getElementById("sb-leaderboard");
-  if (!host) return;
-  const counts = sbRSCounts();
-  const scoped = filteredRoster();
-  let rows = scoped.map(r => {
-    const c = counts[r.id] || { rsi: 0, rso: 0 };
-    return { r, rsi: c.rsi, rso: c.rso, total: c.rsi + c.rso };
-  });
-  const byName = (a, b) => String(a.r.name || "").localeCompare(String(b.r.name || ""));
-  const fourDNum = x => { const n = parseInt(String(x.r.fourD || x.r.id || ""), 10); return Number.isFinite(n) ? n : Infinity; };
-  if (_sbSort === "Total") rows = rows.filter(x => x.total > 0).sort((a, b) => b.total - a.total || byName(a, b));
-  else if (_sbSort === "RSI") rows = rows.filter(x => x.total > 0).sort((a, b) => b.rsi - a.rsi || b.total - a.total);
-  else if (_sbSort === "RSO") rows = rows.filter(x => x.total > 0).sort((a, b) => b.rso - a.rso || b.total - a.total);
-  else rows = rows.sort((a, b) => fourDNum(a) - fourDNum(b) || byName(a, b)); // 4D
-
-  const shown = _sbCollapsed ? [] : (_sbShowAll ? rows : rows.slice(0, 3));
-  const tab = m => `<button onclick="sbSetSort('${m}')" style="padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:${_sbSort === m ? "var(--accent)" : "var(--surface)"};color:${_sbSort === m ? "#fff" : "var(--text)"};font-size:11px;cursor:pointer">${m}</button>`;
-  const row = (x, i) => `<div onclick="openPerson('${x.r.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px">
-      <span class="mono" style="color:var(--muted);min-width:20px">${i + 1}.</span>
-      <span style="flex:1">${escapeAttr(x.r.name || "")} ${x.r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${x.r.fourD}</span>` : ""}</span>
-      <span style="background:#EF9F2722;color:#EF9F27;border:1px solid #EF9F2744;border-radius:4px;padding:1px 6px;font-size:10px">RSI ${x.rsi}</span>
-      <span style="background:#378ADD22;color:#378ADD;border:1px solid #378ADD44;border-radius:4px;padding:1px 6px;font-size:10px">RSO ${x.rso}</span>
-      <strong style="min-width:24px;text-align:right">${x.total}</strong>
-    </div>`;
-  host.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-      <h3 style="font-size:14px;font-weight:600;cursor:pointer" onclick="sbToggleCollapse()">${_sbCollapsed ? "▸" : "▾"} Report Sick Leaderboard <span style="font-weight:400;color:var(--muted);font-size:11px">(${rows.length} pax with RS)</span></h3>
-      <div style="display:flex;gap:6px">${["Total", "4D", "RSI", "RSO"].map(tab).join("")}</div>
-    </div>
-    ${_sbCollapsed ? "" : `<div style="margin-top:8px">
-      ${shown.length ? shown.map(row).join("") : `<div style="font-size:12px;color:var(--muted);padding:6px">No report-sick records in scope.</div>`}
-      ${!_sbShowAll && rows.length > 3 ? `<button class="btn" style="margin-top:8px;font-size:11px" onclick="sbShowAllLeaderboard()">Show all ${rows.length} personnel</button>` : ""}
-    </div>`}
-  `;
-}
-function sbSetSort(m) { _sbSort = m; _sbShowAll = false; try { localStorage.setItem("braves-sb-sort", m); } catch {} renderSBLeaderboard(); }
-function sbToggleCollapse() { _sbCollapsed = !_sbCollapsed; try { localStorage.setItem("braves-sb-collapsed", _sbCollapsed ? "1" : "0"); } catch {} renderSBLeaderboard(); }
-function sbShowAllLeaderboard() { _sbShowAll = true; renderSBLeaderboard(); }
-
-// ── A7. Roster Status List (live snapshot) ──────────────────────────────────
-function renderSBRosterList() {
-  const host = document.getElementById("sb-rosterlist");
-  if (!host) return;
-  const today = todayISO();
-  let scoped = filteredRoster();
-  const q = _sbSearch.trim().toLowerCase();
-  if (q) scoped = scoped.filter(r => String(r.name || "").toLowerCase().includes(q) || String(r.id || "").toLowerCase().includes(q) || String(r.fourD || "").includes(q));
-  const ordered = sbOrdered(scoped);
-  // Index once; both bpPrimaryForDay and the per-row ghost-tag scan below would
-  // otherwise re-scan STATE.medical/leave/appointments for every person.
-  const idx = bpBuildIndex();
-
-  const catColor = key => ({ reportingSick: SB_CELL.RSI, attC: SB_CELL.MC, alOil: SB_CELL.LV, status: SB_CELL.LD, others: { bg: "#8B949E", fg: "#1c1c1c" } }[key] || { bg: "#8B949E", fg: "#1c1c1c" });
-  let lastGroup = null, body = "";
-  ordered.forEach(({ r, group }) => {
-    if (group !== lastGroup) { body += `<tr><td colspan="4" style="background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:4px 8px;font-weight:700">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
-    const p = bpPrimaryForDay(r, today, idx);
-    const ghostInfo = (() => {
-      // most-severe ghost tag among this person's medical rows today
-      let best = null;
-      (idx.medical[r.id] || []).forEach(m => {
-        const t = medStatusTag(m, today);
-        if (t && t.ghostDay > 0 && (!best || t.ghostDay < best.ghostDay)) best = t;
-      });
-      return best;
-    })();
-    const catBadge = p.primary
-      ? `<span style="background:${catColor(p.primary.key).bg}33;color:${catColor(p.primary.key).bg};border:1px solid ${catColor(p.primary.key).bg}66;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.label}</span>`
-      : `<span style="color:var(--green);font-size:11px">Present</span>`;
-    const mrBadge = p.mr ? ` <span style="background:#7F77DD33;color:#7F77DD;border:1px solid #7F77DD66;border-radius:4px;padding:2px 6px;font-size:9px">MR</span>` : "";
-    const ghostBadge = ghostInfo ? ` <span title="recovering" style="color:var(--muted);font-size:9px;border:1px solid var(--border);border-radius:3px;padding:1px 4px">${ghostInfo.tag}</span>` : "";
-    const reason = p.primary ? p.primary.reason : (p.mr || "");
-    body += `<tr onclick="openSBCellDetail('${r.id}','${today}')" style="cursor:pointer">
-      <td style="text-align:left">${escapeAttr(paradeRN(r.id))}</td>
-      <td style="font-size:11px;color:var(--muted)">${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
-      <td>${catBadge}${mrBadge}${ghostBadge}</td>
-      <td style="text-align:left;font-size:11px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(reason)}">${escapeAttr(reason) || "—"}</td>
-    </tr>`;
-  });
-  host.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <h3 style="font-size:14px;font-weight:600">Roster Status List <span style="font-weight:400;color:var(--muted);font-size:11px">(live — ${isoToDisplayDate(today)})</span></h3>
-      <input id="sb-search" placeholder="Filter name / 4D…" value="${escapeAttr(_sbSearch)}" oninput="sbSearchInput(this.value)" style="padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
-    </div>
-    <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr>
-      <th style="text-align:left">R/N</th><th>Plt · Sect</th><th>Today</th><th style="text-align:left">Reason</th>
-    </tr></thead><tbody>${body || `<tr><td colspan="4" style="color:var(--muted);padding:10px">No personnel in scope${q ? " match the filter" : ""}.</td></tr>`}</tbody></table></div>
-  `;
-  const inp = document.getElementById("sb-search");
-  if (inp && q) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
-}
-function sbSearchInput(v) { _sbSearch = v; renderSBRosterList(); }
-
-// ── A4. Status Grid (calendar) ──────────────────────────────────────────────
-function sbWeeks(offset) {
-  const today = new Date(todayISO() + "T00:00:00");
-  const dow = (today.getDay() + 6) % 7;            // 0 = Monday
-  const monThis = new Date(today); monThis.setDate(today.getDate() - dow);
-  const startMon = new Date(monThis); startMon.setDate(monThis.getDate() - 4 * 7 + offset * 5 * 7);
-  const weeks = [];
-  for (let w = 0; w < 5; w++) {
-    const wkMon = new Date(startMon); wkMon.setDate(startMon.getDate() + w * 7);
-    const days = [];
-    for (let d = 0; d < 7; d++) { const dd = new Date(wkMon); dd.setDate(wkMon.getDate() + d); days.push(_sbKey(dd)); }
-    weeks.push({ monIso: _sbKey(wkMon), days });
-  }
-  return weeks;
-}
-function renderSBGrid() {
-  const host = document.getElementById("sb-grid");
-  if (!host) return;
-  const scoped = filteredRoster();
-  const companyWide = !STATE.filterPlt;     // no platoon picked → whole company
-  const weeks = sbWeeks(_sbWeekOffset);
-  const todayKey = todayISO();
-  const counts = sbRSCounts();
-  const ordered = sbOrdered(scoped);
-  // Index leave/medical/appointments by d4 once; the grid classifies every person
-  // across ~35 day-cells and would otherwise re-scan all three STATE arrays per cell.
-  const idx = bpBuildIndex();
-
-  const legend = Object.entries({ RSI: "RSI", RSO: "RSO", MC: "MC/ATTC", MR: "MR", LD: "LD/Excuse", LV: "Leave" })
-    .map(([k, lbl]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px"><span style="width:11px;height:11px;border-radius:2px;background:${SB_CELL[k].bg};display:inline-block"></span>${lbl}</span>`).join("");
-
-  const dows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const weekHead = weeks.map(w => `<th colspan="7" style="border-left:2px solid var(--border);font-size:10px;color:var(--muted)">Wk of ${isoToDisplayDate(w.monIso).split(" ").slice(0, 2).join(" ")}</th>`).join("");
-  const dowHead = weeks.map(() => dows.map((d, i) => `<th style="font-size:9px;${i === 0 ? "border-left:2px solid var(--border);" : ""}${i >= 5 ? "color:var(--dim);" : "color:var(--muted);"}min-width:30px">${d}</th>`).join("")).join("");
-
-  let lastGroup = null, body = "";
-  ordered.forEach(({ r, group }) => {
-    if (group !== lastGroup) { body += `<tr><td colspan="${weeks.length * 7 + 2}" style="background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:3px 8px;font-weight:700;position:sticky;left:0">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
-    const c = counts[r.id] || { rsi: 0, rso: 0 };
-    let cells = "";
-    weeks.forEach(w => w.days.forEach((iso, i) => {
-      const future = iso > todayKey;
-      let inner = "";
-      if (!future) {
-        const cell = bpGridCell(r, iso, idx);
-        if (cell.any) {
-          const pal = SB_CELL[cell.primary] || { bg: "#8B949E", fg: "#111" };
-          const sec = (cell.hasRSI && cell.primary !== "RSI") ? "#EF9F27" : (cell.hasRSO && cell.primary !== "RSO") ? "#378ADD" : "";
-          inner = `<div onclick="openSBCellDetail('${r.id}','${iso}')" style="cursor:pointer;background:${pal.bg};color:${pal.fg};font-size:8px;font-weight:700;border-radius:2px;padding:1px 0;position:relative">${cell.primary}${sec ? `<span style="position:absolute;top:0;right:0;width:0;height:0;border-top:5px solid ${sec};border-left:5px solid transparent"></span>` : ""}</div>`;
-        }
-      }
-      cells += `<td style="${i === 0 ? "border-left:2px solid var(--border);" : ""}padding:1px;text-align:center;${i >= 5 ? "background:rgba(255,255,255,0.02);" : ""}">${inner}</td>`;
-    }));
-    body += `<tr>
-      <td style="text-align:left;position:sticky;left:0;background:var(--surface);white-space:nowrap;font-size:11px;z-index:1">${escapeAttr(r.name || r.id)} ${r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${r.fourD}</span>` : ""}</td>
-      ${cells}
-      <td style="font-weight:700;text-align:center">${c.rsi + c.rso}</td>
-    </tr>`;
-  });
-
-  host.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <h3 style="font-size:14px;font-weight:600">Status Grid <span style="font-weight:400;color:var(--muted);font-size:11px">(calendar — weekly patterns)</span></h3>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn" style="font-size:11px" onclick="sbGridNav(-1)">← earlier</button>
-        <button class="btn" style="font-size:11px" onclick="sbGridNav(0)">current</button>
-        <button class="btn" style="font-size:11px" onclick="sbGridNav(1)">later →</button>
-      </div>
-    </div>
-    <div style="margin-bottom:8px">${legend}</div>
-    ${companyWide ? `<div style="font-size:11px;color:var(--orange);background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:6px 10px;margin-bottom:8px">Company scope shows all ${scoped.length} rows — pick a platoon in the scope filter for a more readable grid.</div>` : ""}
-    <div class="table-wrap" style="max-height:520px;overflow:auto"><table style="border-collapse:collapse">
-      <thead>
-        <tr><th style="position:sticky;left:0;background:var(--surface);text-align:left">Name</th>${weekHead}<th rowspan="2" style="text-align:center">Total<br>RS</th></tr>
-        <tr><th style="position:sticky;left:0;background:var(--surface)"></th>${dowHead}</tr>
-      </thead>
-      <tbody>${body || `<tr><td style="color:var(--muted);padding:10px">No personnel in scope.</td></tr>`}</tbody>
-    </table></div>
-  `;
-}
-function sbGridNav(delta) { _sbWeekOffset = delta === 0 ? 0 : _sbWeekOffset + delta; renderSBGrid(); }
-
-// ── A4.4 lightweight cell-detail popover (reused by A7 rows) ─────────────────
-function openSBCellDetail(d4, iso) {
-  const host = document.getElementById("sb-popover");
-  if (!host) return;
-  const r = STATE.roster.find(x => x.id === d4);
-  if (!r) return;
-  const c = bpClassifyPerson(r, iso);
-  const order = [["reportingSick", "REPORTING SICK"], ["attC", "ATT C"], ["alOil", "AL/OIL"], ["status", "STATUS"], ["mr", "MR"], ["others", "OTHERS"]];
-  const lines = [];
-  order.forEach(([k, label]) => c.meta[k].forEach(x => lines.push(`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><strong style="font-size:10px;color:var(--muted)">${label}</strong><br>${escapeAttr(x.reason)}</div>`)));
-  host.innerHTML = `
-    <div onclick="closeSBPopover()" style="position:fixed;inset:0;z-index:60"></div>
-    <div style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:61;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;min-width:260px;max-width:90vw;box-shadow:0 8px 28px rgba(0,0,0,.5)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong style="font-size:13px">${escapeAttr(paradeRN(d4))} — ${isoToDisplayDate(iso)}</strong>
-        <button onclick="closeSBPopover()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer">✕</button>
-      </div>
-      ${lines.length ? lines.join("") : `<div style="font-size:12px;color:var(--green)">Present / no status this day.</div>`}
-    </div>`;
-}
-function closeSBPopover() { const h = document.getElementById("sb-popover"); if (h) h.innerHTML = ""; }

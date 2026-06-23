@@ -33,10 +33,26 @@ function filteredRoster() {
   if (!isFilterActive()) return STATE.roster;
   return STATE.roster.filter(r => {
     if (STATE.filterRole && r.role !== STATE.filterRole) return false;
-    if (STATE.filterPlt && getPlt(r) !== String(STATE.filterPlt)) return false;
-    if (STATE.filterSect && getSect(r) !== String(STATE.filterSect)) return false;
+    // Braves scope (§11): platoon CODE ("PLT1"/"HQ") + section value via the
+    // explicit roster columns (personPlatoon/personSection fall back to the
+    // 4D-derived value, so this also works before the columns are populated).
+    if (STATE.filterPlt && personPlatoon(r) !== String(STATE.filterPlt)) return false;
+    if (STATE.filterSect && personSection(r) !== String(STATE.filterSect)) return false;
     return true;
   });
+}
+
+// Is a person (by id/4D) within the active global scope (spec §11.3)? Used by
+// views that filter non-roster records (Medical/Leave/IPPT/…) directly by d4
+// rather than going through filteredRoster(). Mirrors filteredRoster's logic.
+function inScope(personId) {
+  if (!isFilterActive()) return true;
+  const r = STATE.roster.find(x => x.id == personId);
+  if (!r) return false;
+  if (STATE.filterRole && r.role !== STATE.filterRole) return false;
+  if (STATE.filterPlt && personPlatoon(r) !== String(STATE.filterPlt)) return false;
+  if (STATE.filterSect && personSection(r) !== String(STATE.filterSect)) return false;
+  return true;
 }
 
 // Returns null when no filter is active so callers can skip the Set lookup
@@ -53,9 +69,11 @@ function filterLabel() {
   const parts = [];
   if (STATE.filterRole === "Commander") parts.push("Cmdrs");
   else if (STATE.filterRole === "Recruit") parts.push("Recs");
-  if (STATE.filterPlt) parts.push("P" + STATE.filterPlt);
-  if (STATE.filterSect) parts.push("S" + STATE.filterSect);
-  return parts.join(" ");
+  // filterPlt is a platoon code ("PLT1"/"HQ"); show it as-is. Section shows
+  // "Command" verbatim, numbered sections as "Sect N".
+  if (STATE.filterPlt) parts.push(STATE.filterPlt);
+  if (STATE.filterSect) parts.push(STATE.filterSect === "Command" ? "Command" : "Sect " + STATE.filterSect);
+  return parts.join(" · ");
 }
 
 // ── Braves org model helpers (spec §2/§5/§8, addendum A6) ─
@@ -678,6 +696,99 @@ function exportJSON(data, filename) {
   URL.revokeObjectURL(url);
 }
 
+// ── Admin statistics exports (CSV) ──────────────────────────────────────────
+// One row per person with ≥1 report-sick record in scope. Like the Report Sick
+// leaderboard, multiple medical rows on the same day collapse to ONE event per
+// (d4, date) — a recruit logged twice for the same illness shouldn't double-count.
+// Respects the topbar scope (visibleD4Set), so "what you see is what you export".
+// rangeStartIso/rangeEndIso ("YYYY-MM-DD", inclusive) are optional bounds.
+function buildSickStats(rangeStartIso, rangeEndIso) {
+  const visible = visibleD4Set();
+  const inRange = iso => (!rangeStartIso || iso >= rangeStartIso) && (!rangeEndIso || iso <= rangeEndIso);
+  const hasRange = !!(rangeStartIso || rangeEndIso);
+  const per = {};
+  (STATE.medical || []).forEach(m => {
+    if (!passesFilter(m.d4, visible)) return;
+    const iso = displayDateToISO(m.date) || "";
+    if (hasRange && (!iso || !inRange(iso))) return;
+    const p = per[m.d4] || (per[m.d4] = {
+      days: new Set(), rsi: new Set(), rso: new Set(), mr: new Set(),
+      urti: new Set(), nonUrti: new Set(), mc: new Set(), ld: new Set(), last: ""
+    });
+    const key = m.date || iso;        // one event per calendar day (display string)
+    p.days.add(key);
+    if (iso && iso > p.last) p.last = iso;
+    const t = String(m.type || "").toUpperCase();
+    if (t === "RSI") p.rsi.add(key);
+    if (t === "RSO") p.rso.add(key);
+    if (t === "MR") p.mr.add(key);
+    // URTI / NON-URTI split is meaningful only for actual report-sick rows.
+    if (t === "RSI" || t === "RSO") {
+      (( m.urtiType || classifyURTI(m.reason || "")) === "URTI" ? p.urti : p.nonUrti).add(key);
+    }
+    const st = String(m.status || "").toUpperCase();
+    if (st === "MC") p.mc.add(key);
+    if (st === "LD") p.ld.add(key);
+  });
+  return Object.entries(per).map(([d4, p]) => {
+    const r = STATE.roster.find(x => x.id === d4);
+    return {
+      "4D": displayId(d4) || d4,
+      Name: r ? (r.name || "") : "",
+      Platoon: r ? personPlatoon(r) : "",
+      Section: r ? personSection(r) : "",
+      TotalRSDays: p.days.size,
+      RSI: p.rsi.size,
+      RSO: p.rso.size,
+      MR: p.mr.size,
+      URTI: p.urti.size,
+      NonURTI: p.nonUrti.size,
+      MCDays: p.mc.size,
+      LDDays: p.ld.size,
+      LastRS: p.last ? isoToDisplayDate(p.last) : ""
+    };
+  }).sort((a, b) => b.TotalRSDays - a.TotalRSDays || String(a["4D"]).localeCompare(String(b["4D"])));
+}
+
+function exportSickStats(rangeStartIso, rangeEndIso) {
+  const rows = buildSickStats(rangeStartIso, rangeEndIso);
+  if (!rows.length) { alert("No report-sick records in the current scope/range to export."); return; }
+  exportCSV(rows, `sick_stats_${todayISO()}.csv`);
+}
+
+// HA statistics — one row per person in the topbar scope, derived from
+// computeHA(d4) (§12.5). Reports both Single (target 10) and Expanded (target 14)
+// progress, Double eligibility/progress (target 13 time-periods), and the
+// rolling-14-day currency deadline / lapse so the admin can see who is at risk.
+function buildHAStats() {
+  return filteredRoster().map(r => {
+    const h = computeHA(r.id);
+    return {
+      "4D": displayId(r.id) || r.id,
+      Name: r.name || "",
+      Platoon: personPlatoon(r),
+      Section: personSection(r),
+      OverallStatus: h.overallStatus,
+      SingleStatus: h.singleStatus,
+      SinglePeriods: h.single ? h.single.periods : 0,    // /10
+      ExpandedPeriods: h.expanded ? h.expanded.periods : 0, // /14
+      DoubleEligible: h.doubleEligible ? "Yes" : "No",
+      DoubleStatus: h.doubleStatus || "",
+      DoublePeriods: h.doubleTrack ? h.doubleTrack.periods : "", // /13 time-periods
+      CurrencyLapsed: h.currency && h.currency.lapsed ? "Yes" : "No",
+      CurrencyDeadline: h.currency && h.currency.deadlineIso ? isoToDisplayDate(h.currency.deadlineIso) : "",
+      ActiveDays: (h.activeDays || []).length,
+      LastActivity: h.lastActivity ? isoToDisplayDate(h.lastActivity) : ""
+    };
+  }).sort((a, b) => String(a["4D"]).localeCompare(String(b["4D"]), undefined, { numeric: true }));
+}
+
+function exportHAStats() {
+  const rows = buildHAStats();
+  if (!rows.length) { alert("No personnel in the current scope to export."); return; }
+  exportCSV(rows, `ha_stats_${todayISO()}.csv`);
+}
+
 // `roleFilter` is optional — pass "Commander" or "Recruit" to restrict the
 // dropdown (e.g. the Leave form picks commanders only). Commander options
 // render as "rank name" without the administrative 00xx prefix.
@@ -875,232 +986,146 @@ function isHAExcluded(conductId) {
   return name.includes("ippt") || name.includes("sports & games") || name.includes("swim");
 }
 
-// Compute Heat Acclimatisation status and streak details for a recruit
-function computeHA(d4) {
-  // Get all qualifying sessions (PT sessions, excluding IPPT, Sports & Games, Swim)
-  const nonParticipationTypes = new Set(["PX", "RSI", "Fallout"]);
-  const sessions = [];
-  
-  for (const a of (STATE.attendance || [])) {
-    if (!a.conductId || isHAExcluded(a.conductId)) continue;
-    
-    // Check if recruit d4 was absent (PX, RSI, Fallout)
-    const isAbsent = (STATE.conductDetail || []).some(d => 
-      d.d4 === d4 &&
-      d.date === a.date &&
-      (d.time || "") === (a.time || "") &&
-      d.conductId === a.conductId &&
-      nonParticipationTypes.has(d.type)
-    );
-    
-    if (!isAbsent) {
-      const isoDate = displayDateToISO(a.date);
-      if (isoDate) {
-        sessions.push({
-          date: a.date,
-          isoDate: isoDate,
-          time: a.time || "",
-          conductId: a.conductId,
-          name: conductName(a.conductId)
-        });
-      }
-    }
-  }
-  
-  if (sessions.length === 0) {
-    return {
-      status: "Not Started",
-      periods: 0,
-      days: 0,
-      dates: [],
-      acclimatised: false,
-      history: []
-    };
-  }
-
-  // Sort chronologically (ascending)
-  sessions.sort((a, b) => {
-    if (a.isoDate !== b.isoDate) return a.isoDate.localeCompare(b.isoDate);
-    return a.time.localeCompare(b.time);
+// ── Heat Acclimatisation (Braves §12 + HA.md — authoritative) ───────────────
+// Participation comes ONLY from CSV-imported conducts (§12.2): see
+// HA_DATA_SHAPE.md. haDayMap builds {isoDay: Σ B5 periods} for HA-eligible
+// conducts where the person is in the Present `participants` list.
+function conductHAEligible(att) {
+  if (configGet("haEligibilitySource") === "currencyTag") return /\bha\b/i.test(att.currencyTags || "");
+  return !isHAExcluded(att.conductId);          // default: existing name logic
+}
+function haDayMap(d4) {
+  const map = {};
+  (STATE.attendance || []).forEach(a => {
+    if (a.source !== "csv") return;             // only CSV imports establish HA
+    if (!conductHAEligible(a)) return;
+    const ids = String(a.participants || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (!ids.includes(String(d4))) return;
+    const iso = displayDateToISO(a.date);
+    if (!iso) return;
+    map[iso] = (map[iso] || 0) + (Number(a.periods) || 1);   // Σ B5 periods that day
   });
+  return map;
+}
 
-  const firstDate = sessions[0].isoDate;
-  const today = todayISO();
-  const lastDate = today > sessions[sessions.length - 1].isoDate ? today : sessions[sessions.length - 1].isoDate;
+// Local (tz-safe) yyyy-mm-dd key + day arithmetic. Using toISOString() here would
+// shift the date under a +ve UTC offset; build the key from local fields instead.
+function _haKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function _haAddDays(iso, n) { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return _haKey(d); }
 
-  let isAcclimatised = false;
-  let streakDates = [];
-  let streakPeriodsCount = 0;
-  const history = [];
-
-  // Group sessions by ISO date for O(1) lookup
-  const sessionsByDate = {};
-  for (const s of sessions) {
-    if (!sessionsByDate[s.isoDate]) {
-      sessionsByDate[s.isoDate] = [];
-    }
-    sessionsByDate[s.isoDate].push(s);
-  }
-
-  // Helper to get sessions in rolling 14-day window ending on dateStr
-  function getSessionsInWindow(dateStr) {
-    const end = new Date(dateStr + "T00:00:00");
-    const start = new Date(end);
-    start.setDate(start.getDate() - 13); // 14-day window [t-13, t]
-    
-    return sessions.filter(s => {
-      const d = new Date(s.isoDate + "T00:00:00");
-      return d >= start && d <= end;
-    });
-  }
-
-  // Check rolling maintenance rule
-  function checkMaintenance(sessionsIn14Days) {
-    if (sessionsIn14Days.length < 2) return false;
-    for (let i = 0; i < sessionsIn14Days.length; i++) {
-      for (let j = i + 1; j < sessionsIn14Days.length; j++) {
-        const d1 = new Date(sessionsIn14Days[i].isoDate + "T00:00:00");
-        const d2 = new Date(sessionsIn14Days[j].isoDate + "T00:00:00");
-        const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-        if (Math.abs(diffDays) <= 7) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  // Run simulation day-by-day
-  const cur = new Date(firstDate + "T00:00:00");
-  const end = new Date(lastDate + "T00:00:00");
-
-  while (cur <= end) {
-    const t = cur.toISOString().slice(0, 10);
-    const daySessions = sessionsByDate[t] || [];
-    const periodsOnDay = daySessions.length;
-
-    if (isAcclimatised) {
-      // Check maintenance
-      const windowSessions = getSessionsInWindow(t);
-      const maintained = checkMaintenance(windowSessions);
-      
-      if (!maintained) {
-        isAcclimatised = false;
-        streakDates = [];
-        streakPeriodsCount = 0;
-        history.push({
-          date: isoToDisplayDate(t),
-          isoDate: t,
-          type: "lapsed",
-          text: `HA status lapsed (failed rolling maintenance; only ${windowSessions.length} session(s) in last 14 days)`
-        });
-
-        // If they had a session today, start new streak
-        if (periodsOnDay > 0) {
-          streakDates = [t];
-          streakPeriodsCount = periodsOnDay;
-          daySessions.forEach(s => {
-            history.push({
-              date: s.date,
-              isoDate: t,
-              type: "session",
-              text: `PT Session: ${s.name} (${fmtHrs(s.time) || "—"})`
-            });
-          });
-        }
-      } else {
-        // Maintained
-        daySessions.forEach(s => {
-          history.push({
-            date: s.date,
-            isoDate: t,
-            type: "session",
-            text: `PT Session: ${s.name} (${fmtHrs(s.time) || "—"})`
-          });
-        });
-      }
+// §12.4 state machine. dateMap[iso] = periodSum (>0 ⇒ active day). mode "day" adds
+// 1 per active day (Single/Expanded, capped 1/day); "time" adds the periodSum
+// (Double — sums B5 time-periods, HA.md). Resets on break-limit breach.
+function runHAStateMachine(dateMap, startIso, endIso, params) {
+  let periods = 0, breaksUsed = 0, consec = 0, windowStart = null;
+  const d = new Date(startIso + "T00:00:00"), end = new Date(endIso + "T00:00:00");
+  while (d <= end) {
+    const key = _haKey(d);
+    const inc = dateMap[key] || 0;
+    const active = inc > 0;
+    const step = params.mode === "time" ? inc : 1;
+    if (windowStart === null) {
+      if (active) { windowStart = key; periods = step; }
+    } else if (active) {
+      periods += step; consec = 0;
     } else {
-      // Not acclimatised
-      if (periodsOnDay > 0) {
-        // Check break limit
-        if (streakDates.length > 0) {
-          const prev = streakDates[streakDates.length - 1];
-          const d1 = new Date(prev + "T00:00:00");
-          const d2 = new Date(t + "T00:00:00");
-          const gap = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-          
-          if (gap >= 4) {
-            streakDates = [t];
-            streakPeriodsCount = periodsOnDay;
-            history.push({
-              date: isoToDisplayDate(t),
-              isoDate: t,
-              type: "reset",
-              text: `Streak reset: break of ${gap - 1} days exceeded the 2-day limit`
-            });
-          } else {
-            streakDates.push(t);
-            streakPeriodsCount += periodsOnDay;
-          }
-        } else {
-          streakDates = [t];
-          streakPeriodsCount = periodsOnDay;
-        }
-
-        daySessions.forEach(s => {
-          history.push({
-            date: s.date,
-            isoDate: t,
-            type: "session",
-            text: `PT Session: ${s.name} (${fmtHrs(s.time) || "—"})`
-          });
-        });
-
-        if (streakDates.length >= 10 && streakPeriodsCount >= 10) {
-          isAcclimatised = true;
-          history.push({
-            date: isoToDisplayDate(t),
-            isoDate: t,
-            type: "achieved",
-            text: `Achieved HA status: Completed 10 periods across 10 days!`
-          });
-        }
-      } else {
-        // No session today. Check if current streak is broken by gap to current day
-        if (streakDates.length > 0) {
-          const prev = streakDates[streakDates.length - 1];
-          const d1 = new Date(prev + "T00:00:00");
-          const d2 = new Date(t + "T00:00:00");
-          const gap = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-          if (gap >= 4) {
-            streakDates = [];
-            streakPeriodsCount = 0;
-          }
-        }
+      breaksUsed++; consec++;
+      if (breaksUsed > params.maxBreak || (params.maxConsec !== undefined && consec > params.maxConsec)) {
+        periods = 0; breaksUsed = 0; consec = 0; windowStart = null;
       }
     }
-
-    cur.setDate(cur.getDate() + 1);
+    if (periods >= params.target) return { status: "Completed", completionDate: key, periods, breaksUsed, windowStart };
+    d.setDate(d.getDate() + 1);
   }
+  return { status: windowStart ? "In Progress" : "Not Started", periods, breaksUsed, consecutiveBreak: consec, windowStart, completionDate: null };
+}
 
-  let status = "In Progress";
-  if (isAcclimatised) {
-    status = "Acclimatised";
-  } else if (streakDates.length > 0) {
-    status = "In Progress";
-  } else if (history.some(h => h.type === "lapsed")) {
-    status = "Lapsed";
+// HA currency (HA.md "Clarifications" / DECISIONS #3,#4 — authoritative over the
+// spec §12.5 ">14 days" shorthand). From qualification, each activity pairs with
+// the most recent prior activity; a ≤7-day pair resets Day 1 to the day after the
+// later activity (deadline = later + 14 days). An activity (or today) past the
+// Day-14 deadline with no intervening reset ⇒ lapsed. The deadline check precedes
+// the reset so a partner that lands past Day 14 still lapses (HA.md Example 1).
+function computeHACurrency(dayKeys, qualIso) {
+  if (!qualIso) return { lapsed: false, deadlineIso: null };
+  let deadline = _haAddDays(qualIso, 14);
+  let prev = qualIso;
+  for (const a of dayKeys) {
+    if (a <= qualIso) continue;
+    if (a > deadline) return { lapsed: true, lapseDateIso: deadline };
+    if (daysBetween(prev, a) <= 7) deadline = _haAddDays(a, 14);
+    prev = a;
+  }
+  if (todayISO() > deadline) return { lapsed: true, lapseDateIso: deadline };
+  return { lapsed: false, deadlineIso: deadline };
+}
+
+// Double-HA rank gate (HA.md: ≥3SG / ≥2LT ⇒ Foundation/Service Term done).
+// rankGroupOf already buckets those as WOSPEC/Officer; Enlistee = not eligible.
+function rankQualifiesDoubleHA(r) { return rankGroupOf(r) !== "Enlistee"; }
+function hasVocFit(d4) {
+  return (STATE.vocfit || []).some(v => String(v.personId || v.d4 || "") === String(d4) && (v.completionDate || v.completed || v.done));
+}
+
+// computeHA(personId) — §12.5. Returns both Single/Expanded tracks (same outcome,
+// parallel paths) and the Double track when eligible, plus an overall single-label
+// `overallStatus` for badges/charts and the raw `dayMap` for the activity timeline.
+function computeHA(d4) {
+  const dayMap = haDayMap(d4);
+  const keys = Object.keys(dayMap).sort();
+  const base = {
+    dayMap, activeDays: keys, single: null, expanded: null, doubleTrack: null,
+    singleStatus: "Not Started", singleTrack: null, doubleEligible: false, doubleStatus: null,
+    overallStatus: "Not Started", currency: { lapsed: false, deadlineIso: null },
+    lastActivity: keys.length ? keys[keys.length - 1] : null
+  };
+  if (!keys.length) return base;
+
+  const start = keys[0];
+  const today = todayISO();
+  const endIso = today > start ? today : keys[keys.length - 1];
+
+  const single = runHAStateMachine(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
+  const expanded = runHAStateMachine(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
+  const singleComplete = single.status === "Completed" || expanded.status === "Completed";
+
+  let singleStatus, singleTrack = null;
+  if (singleComplete) {
+    singleStatus = "Single HA Complete";
+    singleTrack = single.status === "Completed" ? "Single" : "Expanded";
   } else {
-    status = "Not Started";
+    singleStatus = (single.status === "In Progress" || expanded.status === "In Progress") ? "In Progress" : "Not Started";
   }
+
+  // Currency / lapse — only meaningful once qualified.
+  let currency = { lapsed: false, deadlineIso: null };
+  if (singleComplete) {
+    const comps = [single.completionDate, expanded.completionDate].filter(Boolean).sort();
+    currency = computeHACurrency(keys, comps[0]);
+    if (currency.lapsed) singleStatus = "Lapsed";
+  }
+
+  // Double track (gated on a live Single qualification + eligibility).
+  let doubleEligible = false, doubleStatus = null, doubleTrack = null;
+  if (singleComplete && singleStatus !== "Lapsed") {
+    const r = STATE.roster.find(x => x.id == d4);
+    doubleEligible = hasVocFit(d4) || (r && rankQualifiesDoubleHA(r));
+    if (doubleEligible) {
+      doubleTrack = runHAStateMachine(dayMap, start, endIso, { target: 13, maxBreak: 2, mode: "time" });
+      doubleStatus = doubleTrack.status === "Completed" ? "Double HA Complete" : doubleTrack.status;
+    }
+  }
+
+  let overallStatus;
+  if (singleStatus === "Lapsed") overallStatus = "Lapsed";
+  else if (doubleStatus === "Double HA Complete") overallStatus = "Double HA Complete";
+  else if (singleComplete && doubleEligible && doubleStatus === "In Progress") overallStatus = "In Progress (Double)";
+  else if (singleComplete) overallStatus = "Single HA Complete";
+  else overallStatus = singleStatus; // "In Progress" | "Not Started"
 
   return {
-    status: status,
-    periods: streakPeriodsCount,
-    days: streakDates.length,
-    dates: streakDates,
-    acclimatised: isAcclimatised,
-    history: history
+    ...base, single, expanded, doubleTrack, singleStatus, singleTrack,
+    doubleEligible, doubleStatus, overallStatus, currency, lastActivity: keys[keys.length - 1]
   };
 }
 

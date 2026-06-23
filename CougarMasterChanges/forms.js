@@ -189,58 +189,6 @@ function openPerson(d4) {
     }
   }
 
-  // ── Heat Acclimatisation section ─────────────────────
-  if (p.role === "Recruit" || p.role === "") {
-    const ha = computeHA(d4);
-    const badgeColor = haStatusColor(ha.overallStatus);
-
-    // Three parallel programme bars (§13): Single (teal), Expanded (amber),
-    // Double (blue, only when eligible). Each shows periods/target + breaks used.
-    const bar = (label, track, target, color, extra) => {
-      const periods = track ? track.periods : 0;
-      const pct = Math.min(100, Math.round((periods / target) * 100));
-      return `<div style="margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
-          <span style="color:${color};font-weight:600">${label}</span>
-          <span style="color:var(--muted)">${periods}/${target} periods${extra || ""}</span>
-        </div>
-        <div style="width:100%;height:7px;background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:${color};transition:width .4s ease"></div>
-        </div>
-      </div>`;
-    };
-
-    // Activity timeline from the day map (green cell = period day; value = Σ B5).
-    const days = ha.activeDays || [];
-    const timelineHtml = days.length
-      ? days.map(iso => `<span title="${isoToDisplayDate(iso)}" style="display:inline-block;min-width:30px;text-align:center;font-size:9px;padding:2px 4px;margin:2px;background:var(--green)22;border:1px solid var(--green)44;border-radius:3px;color:var(--green)">${isoToDisplayDate(iso).split(" ").slice(0,2).join(" ")}${ha.dayMap[iso] > 1 ? " ·" + ha.dayMap[iso] : ""}</span>`).join("")
-      : "";
-
-    const currLine = ha.currency && ha.currency.lapsed
-      ? `<div style="font-size:11px;color:var(--red);margin-top:6px">⚠ Currency lapsed${ha.currency.lapseDateIso ? " (deadline " + isoToDisplayDate(ha.currency.lapseDateIso) + ")" : ""} — re-qualify via any programme.</div>`
-      : (ha.currency && ha.currency.deadlineIso ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Currency deadline: ${isoToDisplayDate(ha.currency.deadlineIso)}</div>` : "");
-
-    html += `
-      <h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">🌡️ Heat Acclimatisation (HA)</h4>
-      <div class="card" style="padding:14px;background:var(--surface2);margin-bottom:12px">
-        <div style="margin-bottom:10px">
-          Status: <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span>
-          ${ha.singleTrack ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">(via ${ha.singleTrack})</span>` : ""}
-        </div>
-        ${bar("Single", ha.single, 10, "#2DD4BF", ha.single ? `, ${ha.single.breaksUsed} breaks` : "")}
-        ${bar("Expanded", ha.expanded, 14, "#D29922", ha.expanded ? `, ${ha.expanded.breaksUsed} breaks / ${ha.expanded.consecutiveBreak || 0} consec` : "")}
-        ${ha.doubleEligible
-          ? bar("Double", ha.doubleTrack, 13, "#388BFD", ha.doubleTrack ? `, ${ha.doubleTrack.breaksUsed} breaks` : "")
-          : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Double: 🔒 ${ha.singleStatus === "Single HA Complete" ? "not eligible (needs VocFit or ≥3SG/≥2LT)" : "locked until Single HA complete"}</div>`}
-        ${currLine}
-        ${timelineHtml ? `
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">Activity Days (period = green; ·n = ${"Σ"} B5)</div>
-          <div style="max-height:120px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;line-height:1.6">${timelineHtml}</div>
-        ` : `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px">No HA participation logged yet (CSV import).</div>`}
-      </div>
-    `;
-  }
-
   // ── Polar metrics section ────────────────────────────
   if (computed.length) {
     // Color thresholds: HR ranges follow the existing Polar table convention.
@@ -594,28 +542,9 @@ function openMedicalForm(id) {
       <div style="display:flex;flex-direction:column;gap:10px">
         ${e ? editHint : ""}
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        <div class="form-group">
-          <label>Visit type</label>
-          <select id="f-type" onchange="medTypeChanged(this.value)">
-            ${[["", "— (status only / pre-existing)"], ["RSI", "RSI — Report Sick In-camp"], ["RSO", "RSO — Report Sick Out-of-camp"], ["MR", "MR — Medical Review"]]
-              .map(([v, l]) => `<option value="${v}" ${v === (e?.type || "") ? "selected" : ""}>${l}</option>`).join("")}
-          </select>
-          <div style="font-size:10px;color:var(--muted);margin-top:4px">RSI/RSO drive the REPORTING SICK section &amp; URTI split; MR is its own parade-state section (person stays in camp).</div>
-        </div>
         ${formField("f-date", "Date Reported Sick", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
-        ${formField("f-reason", "Reason / Purpose", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}" oninput="medReasonChanged(this.value)"`)}
-        <div id="f-mr-timing-wrap" style="${(e?.type === "MR") ? "" : "display:none"}">
-          ${formField("f-mr-timing", "MR timing (optional)", "text", "e.g. PM / 1400", `maxlength="40" value="${escapeAttr(e?.mrTiming)}"`)}
-        </div>
-        ${formField("f-location", "Location (clinic/hospital if outside)", "text", "e.g. Lim Clinic and Surgery", `maxlength="200" value="${escapeAttr(e?.location)}"`)}
-        <div class="form-group" id="f-urti-wrap" style="${(e?.type === "RSI" || e?.type === "RSO") ? "" : "display:none"}">
-          <label>URTI classification</label>
-          <select id="f-urti">
-            ${[["", "Auto-suggest from reason"], ["URTI", "URTI"], ["NON-URTI", "NON-URTI"]]
-              .map(([v, l]) => `<option value="${v}" ${v === (e?.urtiType || "") ? "selected" : ""}>${l}</option>`).join("")}
-          </select>
-          <div style="font-size:10px;color:var(--muted);margin-top:4px">The MO outcome (the parade-state / sick-message "follow up status from MO") is the <strong>Status</strong> below — update it after the MO visit.</div>
-        </div>
+        ${formField("f-reason", "Reason", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
+        ${formField("f-location", "Location (only if reported sick outside)", "text", "e.g. Lim Clinic and Surgery", `maxlength="200" value="${escapeAttr(e?.location)}"`)}
         <div class="form-group">
           <label>Status</label>
           <select id="f-status" required onchange="medStatusSelChanged(this.value)">
@@ -646,26 +575,6 @@ function medStatusSelChanged(v) {
   const wrap = document.getElementById("f-custom-wrap");
   if (wrap) wrap.style.display = v === "__new__" ? "flex" : "none";
 }
-// Visit-type toggle: MR reveals the timing field; RSI/RSO reveal the URTI +
-// follow-up fields and default the location to the configured sick location
-// (PTMC) when it's still blank — RSO leaves it for manual entry.
-function medTypeChanged(v) {
-  const mr = document.getElementById("f-mr-timing-wrap");
-  const urti = document.getElementById("f-urti-wrap");
-  if (mr) mr.style.display = v === "MR" ? "" : "none";
-  if (urti) urti.style.display = (v === "RSI" || v === "RSO") ? "" : "none";
-  if (v === "RSI") {
-    const loc = document.getElementById("f-location");
-    if (loc && !loc.value.trim()) loc.value = (typeof configGet === "function" ? configGet("defaultSickLocation") : "PTMC") || "PTMC";
-  }
-}
-// Live URTI auto-suggest: while the URTI dropdown is on "Auto", mirror the
-// classifier's guess into a hint so the commander sees what will be stored.
-function medReasonChanged(v) {
-  const sel = document.getElementById("f-urti");
-  if (!sel || sel.value) return; // only when still on Auto
-  // No DOM hint element to update right now; classification is applied at submit.
-}
 
 function submitMedical() {
   const editId = +gv("f-entry-id");
@@ -679,18 +588,8 @@ function submitMedical() {
     if (document.getElementById("f-custom-save")?.checked) addCustomStatus(name, participates);
     status = name;
   }
-  // Visit-level fields, shared across every sibling status row of this visit
-  // (spec §6: type/urtiType/mrTiming are per-visit, not per-status).
-  const type = gv("f-type");
-  // URTI auto-classification (spec §10.3): only meaningful for RSI/RSO. When the
-  // dropdown is left on "Auto", derive from the reason; else honour the choice.
-  let urtiType = gv("f-urti");
-  if ((type === "RSI" || type === "RSO") && !urtiType) urtiType = classifyURTI(gv("f-reason"));
-  if (type !== "RSI" && type !== "RSO") urtiType = "";
-  const mrTiming = type === "MR" ? gv("f-mr-timing").trim() : "";
-
   // Gather the main status plus any "additional status" rows. Each carries its
-  // own status + duration; they share the recruit/date/reason/location/type below.
+  // own status + duration; they share the recruit/date/reason/location below.
   const statuses = [{ status, startIso: gv("f-start"), endIso: gv("f-end") }];
   for (const row of document.querySelectorAll("#f-extra-statuses .med-extra-row")) {
     let s = row.querySelector(".f-extra-status")?.value || "";
@@ -713,8 +612,7 @@ function submitMedical() {
   const noDurationStatuses = ["Pending", "NIL"];
   for (const st of statuses) {
     if (!st.status) { alert("Select a status for every row (or remove the empty one)."); return; }
-    // MR is a same-day in-camp visit — no duration window required.
-    if (!noDurationStatuses.includes(st.status) && type !== "MR" && !st.endIso) { alert(`End date is required for "${st.status}" (only Pending and NIL may be left blank).`); return; }
+    if (!noDurationStatuses.includes(st.status) && !st.endIso) { alert(`End date is required for "${st.status}" (only Pending and NIL may be left blank).`); return; }
     if (st.endIso && st.startIso && st.endIso < st.startIso) { alert(`End date cannot be before start date for "${st.status}".`); return; }
   }
 
@@ -723,20 +621,14 @@ function submitMedical() {
   const reason = gv("f-reason");
   const location = gv("f-location").trim();
 
-  // Sibling rows of one multi-status visit share a visitId (spec §6); a single-
-  // status visit leaves it blank, preserving any existing group id on edit.
-  const prev = editId ? STATE.medical.find(m => m.id === editId) : null;
-  const visitId = statuses.length > 1 ? (prev?.visitId || ("v" + nextId())) : (prev?.visitId || "");
-
   // First status reuses the edited row's id; each extra status becomes a new
-  // sibling row. type/urtiType/mrTiming/visitId are per-visit (shared across siblings).
+  // sibling row. Siblings group automatically per-recruit in the reports.
   const records = statuses.map((st, i) => ({
     id: (i === 0 && editId) ? editId : nextId(),
     d4, date, reason, location,
     status: st.status,
     startDate: isoToDisplayDate(st.startIso),
-    endDate: st.endIso ? isoToDisplayDate(st.endIso) : "",
-    type, urtiType, mrTiming, visitId
+    endDate: st.endIso ? isoToDisplayDate(st.endIso) : ""
   }));
 
   records.forEach((rec, i) => {
@@ -800,18 +692,13 @@ function submitAttendance() {
   if (part > total) { alert("Participating cannot exceed total."); return; }
   if (px + fallout > total) { alert("Status + Fallout cannot exceed total."); return; }
   if (lms > part) { alert("LMS Participation cannot exceed Participating."); return; }
-  // Run the row through normalizeAttendance so it carries the four HA columns
-  // (participants/periods/currencyTags/source) as empty strings. Without them, if
-  // this bare row ever sat at index 0 of a full-tab `replace` push, writeTab would
-  // derive the sheet headers from Object.keys(data[0]) and silently strip those
-  // columns sheet-wide — wiping the CSV-import HA participation source.
-  const entry = normalizeAttendance([{
+  const entry = {
     id: editId || nextId(),
     date: isoToDisplayDate(gv("f-date")),
     conductId,
     total, participating: part, lms, px, fallout,
     remarks: gv("f-remarks")
-  }])[0];
+  };
   if (editId) {
     const idx = STATE.attendance.findIndex(a => a.id === editId);
     if (idx >= 0) STATE.attendance[idx] = entry;
@@ -1187,341 +1074,6 @@ function finalizePolarImport(keyResolutions) {
   }
   alert(`Imported ${insertedRows.length} Polar rows${lmsChanged ? `\nUpdated LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"}.` : ""}\n\nSyncing to sheet — check the sidebar indicator for status.`);
 }
-// ════════════════════════════════════════════════════════════════════════════
-// CSV CONDUCT IMPORT (spec §14)
-// ════════════════════════════════════════════════════════════════════════════
-// Imports the attendance CSV (the "Attendance_-_Endurance_Run_5" format) into
-// the conduct log and feeds HA participation. The Present roll is stored as a
-// comma-joined `participants` 4D list on the ATTENDANCE row (the §12 HA source),
-// not as per-person ConductDetail rows — that keeps ConductDetail's "absentees
-// only" semantics intact and the Detail view uncluttered. Non-present statuses
-// become ConductDetail rows (PX / Fallout) + review-panel follow-up flags.
-let _conductImportPending = null;
-
-// Map the six CSV status values (§14.1) to canonical labels. Unknown → "Other".
-function normConductStatus(raw) {
-  const s = String(raw || "").trim().toLowerCase();
-  if (s === "present") return "Present";
-  if (s === "fall out" || s === "fallout") return "Fall Out";
-  if (s === "mc") return "MC";
-  if (s === "leave") return "Leave";
-  if (s === "off") return "Off";
-  return "Other";
-}
-// Loose name match for the conditional split (§14.2): case/space-insensitive.
-function _normName(s) { return String(s || "").trim().toLowerCase().replace(/\s+/g, " "); }
-
-function importConductCSV(input) {
-  const file = input.files[0];
-  if (!file) return;
-  Papa.parse(file, { header: false, skipEmptyLines: false, complete: r => {
-    const rows = r.data || [];
-    // Scan the leading metadata block (key=col A, value=col B) until the data
-    // header row (col A === "User"). Do NOT assume fixed row positions (§14.1).
-    const meta = {};
-    let headerIdx = -1;
-    for (let i = 0; i < rows.length; i++) {
-      const c0 = String((rows[i] && rows[i][0]) || "").trim();
-      if (/^user$/i.test(c0)) { headerIdx = i; break; }
-      if (c0) meta[c0.toLowerCase()] = String((rows[i][1] || "")).trim();
-    }
-    if (headerIdx < 0) {
-      alert("Couldn't find the 'User | Unit | Status | Remarks' header row — is this the attendance CSV?");
-      input.value = ""; return;
-    }
-    // Map header columns to indices (robust to reordering).
-    const header = rows[headerIdx].map(h => String(h || "").trim().toLowerCase());
-    const iUser = header.indexOf("user") < 0 ? 0 : header.indexOf("user");
-    const iStatus = header.indexOf("status") < 0 ? 2 : header.indexOf("status");
-    const iRemarks = header.indexOf("remarks") < 0 ? 3 : header.indexOf("remarks");
-
-    const activityName = meta["activity name"] || "";
-    const currencyTags = meta["currency tags"] || "";
-    const dateDisplay = normalizeDateToDisplay(meta["date"] || "");
-    const periods = parseInt(meta["periods"], 10) || 0;
-
-    // Parse + resolve each data row.
-    const parsed = [];
-    for (let i = headerIdx + 1; i < rows.length; i++) {
-      const row = rows[i] || [];
-      const userCell = String(row[iUser] || "").trim();
-      if (!userCell) continue; // trailing blank rows
-      const statusRaw = String(row[iStatus] || "").trim();
-      const remarks = String(row[iRemarks] || "").trim();
-      // Conditional split: a leading 3-5 digit token → 4D + name; else all name.
-      const m = userCell.match(/^(\d{3,5})\s+(.*)$/);
-      let resolved = null, matchType = "Not found", fourD = "", name = userCell;
-      if (m) {
-        fourD = padD4(m[1]); name = m[2].trim();
-        resolved = STATE.roster.find(p => p.id === fourD || padD4(p.fourD) === fourD) || null;
-        if (resolved) matchType = "4D";
-      } else {
-        resolved = STATE.roster.find(p => _normName(p.name) === _normName(name)) || null;
-        if (resolved) matchType = "Name match";
-      }
-      parsed.push({ userCell, fourD, name, statusRaw, status: normConductStatus(statusRaw), remarks, resolvedId: resolved ? resolved.id : "", matchType });
-    }
-
-    _conductImportPending = {
-      activityName, currencyTags, dateDisplay, periods, parsed,
-      knownConductId: conductIdByName(activityName)
-    };
-    openConductImportModal();
-  }});
-  input.value = "";
-}
-
-function openConductImportModal() {
-  const p = _conductImportPending;
-  if (!p) return;
-  const by = s => p.parsed.filter(x => x.status === s);
-  const present = by("Present"), fallout = by("Fall Out"), mc = by("MC"), leave = by("Leave"), off = by("Off"), other = by("Other");
-  const matched4D = p.parsed.filter(x => x.matchType === "4D").length;
-  const matchedName = p.parsed.filter(x => x.matchType === "Name match").length;
-  const notFound = p.parsed.filter(x => x.matchType === "Not found");
-  const haEligible = (configGet("haEligibilitySource") === "currencyTag")
-    ? /\bha\b/i.test(p.currencyTags)
-    : !(/(ippt|sports & games|swim)/i.test(p.activityName)); // mirror isHAExcluded on the name
-  const isNewConduct = !p.knownConductId;
-
-  // Conduct resolution control: matched → static; new → create-or-merge select.
-  const opts = getAllConducts();
-  const conductCtl = isNewConduct
-    ? `<select id="ci-conduct" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
-         <option value="__new__" selected>+ Create new conduct: "${escapeAttr(p.activityName)}"</option>
-         ${opts.map(c => `<option value="${c.id}">→ Merge into "${escapeAttr(c.name)}"</option>`).join("")}
-       </select>`
-    : `<div style="font-size:12px;color:var(--green)">✓ Matches existing conduct "${escapeAttr(conductName(p.knownConductId))}"</div>`;
-
-  const flagList = (label, arr, color) => arr.length
-    ? `<div style="margin-top:6px"><strong style="color:${color}">${label} (${arr.length})</strong> — action manually:
-        <div style="font-size:11px;color:var(--muted)">${arr.map(x => escapeAttr((x.fourD ? x.fourD + " " : "") + x.name) + (x.remarks ? ` (${escapeAttr(x.remarks)})` : "")).join(", ")}</div></div>`
-    : "";
-
-  openModal(`Import Attendance CSV — ${escapeAttr(p.activityName || "(unnamed)")}`, `
-    <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
-        <div><strong>Date:</strong> ${escapeAttr(p.dateDisplay || "(none)")} &nbsp; <strong>Periods (B5):</strong> ${p.periods || 0} &nbsp; <strong>Currency Tags:</strong> ${escapeAttr(p.currencyTags || "—")}</div>
-        <div style="margin-top:4px"><strong>HA-eligible:</strong> ${haEligible ? `<span style="color:var(--green)">Yes</span>` : `<span style="color:var(--muted)">No</span>`} <span style="color:var(--muted)">(source: ${escapeAttr(configGet("haEligibilitySource"))})</span></div>
-      </div>
-      <div><strong>Conduct:</strong> ${conductCtl}</div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
-        <div><strong>Rows:</strong> ${p.parsed.length} &nbsp;·&nbsp; matched 4D: ${matched4D} &nbsp;·&nbsp; name-matched: ${matchedName} &nbsp;·&nbsp; <span style="color:${notFound.length ? "var(--orange)" : "var(--muted)"}">not found: ${notFound.length}</span></div>
-        <div style="margin-top:4px"><strong>Status:</strong> Present ${present.length} · Fall Out ${fallout.length} · MC ${mc.length} · Leave ${leave.length} · Off ${off.length} · Other ${other.length}</div>
-        <div style="margin-top:4px;color:var(--muted)">Will record: <strong>${present.length}</strong> participating, <strong>${fallout.length + mc.length + leave.length + off.length + other.length}</strong> non-participating (${fallout.length} fallout + ${mc.length + leave.length + off.length + other.length} status).</div>
-      </div>
-      ${notFound.length ? `<div style="background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:8px 10px">
-        <strong style="color:var(--orange)">⚠ ${notFound.length} not matched to the roster — will be SKIPPED (not silently dropped: listed here)</strong>
-        <div style="font-size:11px;color:var(--muted);max-height:120px;overflow:auto">${notFound.map(x => escapeAttr(x.userCell)).join(", ")}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">Fix the roster (add/rename) and re-import to include them.</div>
-      </div>` : ""}
-      ${(mc.length || leave.length || off.length || other.length) ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
-        <strong>Follow-up flags</strong> <span style="color:var(--muted)">(import writes the conduct log only — action these in the Medical/Leave tabs)</span>
-        ${flagList("MC → Medical tab", mc, "var(--red)")}
-        ${flagList("Leave → Leave tab", leave, "var(--accent)")}
-        ${flagList("Off (OIL) → Leave tab", off, "var(--accent)")}
-        ${flagList("Other", other, "var(--muted)")}
-      </div>` : ""}
-      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--border)">
-        <button class="btn" onclick="cancelConductImport()">Cancel</button>
-        <button class="btn btn-success" onclick="confirmConductImport()">Import ${present.length + fallout.length + mc.length + leave.length + off.length + other.length} rows</button>
-      </div>
-    </div>
-  `);
-}
-
-function cancelConductImport() { _conductImportPending = null; closeModal(); }
-
-function confirmConductImport() {
-  const p = _conductImportPending;
-  if (!p) return;
-  // Resolve the conduct id (create new / merge / existing).
-  let conductId = p.knownConductId;
-  if (!conductId) {
-    const sel = document.getElementById("ci-conduct");
-    const v = sel ? sel.value : "__new__";
-    conductId = (v === "__new__") ? createConduct(p.activityName || "Imported Conduct") : v;
-  }
-  const date = p.dateDisplay;
-  const time = ""; // CSV carries no time-of-day; attendance time stays blank.
-
-  // Present 4Ds (resolved only) → participants list (the HA source). Dedupe by
-  // person so a CSV that lists someone twice doesn't double-count them.
-  const matched = p.parsed.filter(x => x.resolvedId);
-  const presentIds = [...new Set(matched.filter(x => x.status === "Present").map(x => x.resolvedId))];
-  const fallout = matched.filter(x => x.status === "Fall Out");
-  const statusAbsent = matched.filter(x => ["MC", "Leave", "Off", "Other"].includes(x.status));
-
-  const attendanceEntry = {
-    id: nextId(),
-    date, time, conductId,
-    total: presentIds.length + fallout.length + statusAbsent.length,
-    participating: presentIds.length,
-    lms: 0,
-    px: statusAbsent.length,
-    fallout: fallout.length,
-    remarks: p.activityName || "",
-    participants: presentIds.join(","),
-    periods: p.periods || 0,
-    currencyTags: p.currencyTags || "",
-    source: "csv"
-  };
-
-  // ConductDetail rows for the absentees (Present people live in `participants`).
-  const detailRows = [];
-  fallout.forEach(x => detailRows.push({ id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Fallout", reason: x.remarks || "" }));
-  statusAbsent.forEach(x => detailRows.push({
-    id: nextId(), date, time, conductId, d4: x.resolvedId, type: "PX",
-    reason: x.status === "Other" ? (x.remarks || "Other") : x.status + (x.remarks ? ` — ${x.remarks}` : "")
-  }));
-
-  // De-dupe: drop any prior import for this (conductId, date) so a re-import
-  // replaces rather than doubles the row (which would inflate HA periods).
-  STATE.attendance = STATE.attendance.filter(a => !(a.conductId === conductId && a.date === date && (a.time || "") === time));
-  STATE.conductDetail = STATE.conductDetail.filter(d => !(d.conductId === conductId && d.date === date && (d.time || "") === time));
-  STATE.attendance.push(attendanceEntry);
-  STATE.conductDetail.push(...detailRows);
-
-  saveLocal();
-  _conductImportPending = null;
-  closeModal();
-  render();
-
-  // Full-tab replace (safe: normalizeAttendance guarantees every row carries the
-  // new columns, so writeTab won't strip them).
-  if (STATE.apiUrl) {
-    autoSync("Attendance", { type: "replace", data: STATE.attendance });
-    autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
-  }
-  alert(`Imported "${p.activityName}" (${date}):\n  • ${presentIds.length} present, ${fallout.length} fallout, ${statusAbsent.length} status\n  • ${p.parsed.filter(x => !x.resolvedId).length} unmatched rows skipped\nSyncing to sheet — check the sidebar indicator.`);
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// SICK-HISTORY xlsx IMPORT (Item 5, admin-only) — colour-coded REC sheet → Medical
-// ════════════════════════════════════════════════════════════════════════════
-// Drives the parser in sick-history-import.js (shParseWorkbook/shEpisodesToRows):
-// reads the workbook with ExcelJS (loaded from CDN), previews the decoded episodes,
-// and on confirm appends Medical rows (+ AL/OIL → Leave), deduped against existing
-// rows so a re-import doesn't double up. Status is encoded by cell fill colour; the
-// colour→status legend is read from the sheet's own legend block.
-let _sickHistoryPending = null;
-
-async function importSickHistoryXLSX(input) {
-  const file = input.files[0];
-  input.value = "";
-  if (!file) return;
-  if (typeof ExcelJS === "undefined") {
-    alert("The ExcelJS library hasn't loaded (it comes from a CDN). Check your connection and reload.");
-    return;
-  }
-  try {
-    const buf = await file.arrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
-    const ws = wb.worksheets[0];
-    if (!ws) { alert("No worksheet found in that file."); return; }
-
-    const parsed = shParseWorkbook(ws);
-    if (!parsed.persons.length) {
-      alert("No personnel rows with coloured status cells were found.\nIs this the RSI/RSO REC sheet (S/N · FULL NAME · 4D · day columns)?");
-      return;
-    }
-    // Resolve each sheet 4D against the roster (same matching as the CSV import).
-    const ctx = {
-      resolveD4: raw => { const d = padD4(raw); const r = STATE.roster.find(p => p.id === d || padD4(p.fourD) === d); return r ? r.id : null; },
-      makeMedId: () => nextId(),
-      makeLeaveId: () => nextId(),
-      toDisplay: iso => isoToDisplayDate(iso)
-    };
-    _sickHistoryPending = { parsed, rows: shEpisodesToRows(parsed.persons, ctx) };
-    openSickHistoryModal();
-  } catch (e) {
-    alert("Failed to read the xlsx: " + e.message);
-  }
-}
-
-function cancelSickHistoryImport() { _sickHistoryPending = null; closeModal(); }
-
-function openSickHistoryModal() {
-  const p = _sickHistoryPending;
-  if (!p) return;
-  const { parsed, rows } = p;
-
-  // Date range across the parsed day columns.
-  const isos = Object.values(parsed.dateMap).sort();
-  const rangeStr = isos.length ? `${isoToDisplayDate(isos[0])} → ${isoToDisplayDate(isos[isos.length - 1])}` : "—";
-  const episodeCount = parsed.persons.reduce((s, x) => s + x.episodes.length, 0);
-
-  // Derived legend swatches (colour → human status).
-  const SWATCH = { "FF0000": "#FF0000", "FFFF00": "#FFFF00", "00FF00": "#00FF00", "00FFFF": "#00FFFF", "9900FF": "#9900FF", "FF00FF": "#FF00FF" };
-  const legendHtml = Object.entries(parsed.legend).map(([hex, tok]) =>
-    `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:11px">
-       <span style="width:12px;height:12px;border:1px solid var(--border);border-radius:2px;background:${SWATCH[hex] || ("#" + hex)}"></span>
-       ${escapeAttr(SH_TOKEN_LABEL[tok] || tok)}</span>`).join("");
-
-  // Per-person episode breakdown (scrollable).
-  const personHtml = parsed.persons.map(person => {
-    const d4 = person.fourD;
-    const matched = rows.unmatched.indexOf(person) < 0;
-    const eps = person.episodes.map(e =>
-      `<div style="font-size:10px;color:var(--muted);padding-left:10px">• ${escapeAttr(SH_TOKEN_LABEL[e.status] || e.status)} ${isoToDisplayDate(e.startDate)}${e.endDate !== e.startDate ? "–" + isoToDisplayDate(e.endDate) : ""}${e.reason ? " — " + escapeAttr(e.reason) : ""}${e.source === "text" ? ' <span style="color:var(--dim)">(text)</span>' : ""}</div>`).join("");
-    return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">
-      <div style="font-size:11px"><span class="mono" style="color:${matched ? "var(--accent)" : "var(--orange)"};font-weight:700">${escapeAttr(d4)}</span> ${escapeAttr(person.name)} ${matched ? "" : '<span style="color:var(--orange)">⚠ not in roster — skipped</span>'} <span style="color:var(--dim)">(${person.episodes.length})</span></div>
-      ${eps}</div>`;
-  }).join("");
-
-  openModal("Import Sick History (xlsx)", `
-    <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
-        <div><strong>Date range:</strong> ${rangeStr} &nbsp;·&nbsp; <strong>People:</strong> ${parsed.persons.length} &nbsp;·&nbsp; <strong>Episodes:</strong> ${episodeCount}</div>
-        <div style="margin-top:6px"><strong>Legend (from sheet):</strong> ${legendHtml || "<span style='color:var(--muted)'>defaults</span>"}</div>
-      </div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
-        Will create <strong style="color:var(--green)">${rows.medical.length}</strong> Medical rows
-        ${rows.leave.length ? `+ <strong style="color:var(--accent)">${rows.leave.length}</strong> AL/OIL Leave rows` : ""}
-        ${rows.unmatched.length ? ` &nbsp;·&nbsp; <span style="color:var(--orange)">${rows.unmatched.length} people not in roster (skipped)</span>` : ""}.
-        <div style="color:var(--muted);margin-top:4px">Re-importing is safe — rows already present (same person · start date · status) are skipped.</div>
-      </div>
-      <div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:6px 10px">${personHtml}</div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--border)">
-        <button class="btn" onclick="cancelSickHistoryImport()">Cancel</button>
-        <button class="btn btn-success" onclick="confirmSickHistoryImport()">Import ${rows.medical.length + rows.leave.length} rows</button>
-      </div>
-    </div>
-  `);
-}
-
-function confirmSickHistoryImport() {
-  const p = _sickHistoryPending;
-  if (!p) return;
-  const { medical, leave } = p.rows;
-
-  // Dedup against what's already stored so a re-import doesn't double up. Key by
-  // (d4 | startDate | type | status) — the natural identity of an episode.
-  const medKey = m => `${m.d4}|${m.startDate}|${m.type}|${m.status}`;
-  const lvKey = l => `${l.d4}|${l.startDate}|${l.type}`;
-  const existingMed = new Set(STATE.medical.map(medKey));
-  const existingLv = new Set((STATE.leave || []).map(lvKey));
-
-  const newMed = medical.filter(m => !existingMed.has(medKey(m)));
-  const newLv = leave.filter(l => !existingLv.has(lvKey(l)));
-  const skipped = (medical.length - newMed.length) + (leave.length - newLv.length);
-
-  newMed.forEach(m => STATE.medical.push(m));
-  if (newLv.length) STATE.leave = (STATE.leave || []).concat(newLv);
-
-  saveLocal();
-  _sickHistoryPending = null;
-  closeModal();
-  render();
-
-  if (STATE.apiUrl) {
-    newMed.forEach(m => autoSync("Medical", { type: "upsert", row: m }));
-    newLv.forEach(l => autoSync("Leave", { type: "upsert", row: l }));
-  }
-  alert(`Imported sick history:\n  • ${newMed.length} Medical rows${newLv.length ? `, ${newLv.length} AL/OIL Leave rows` : ""}\n  • ${skipped} duplicate(s) skipped\n  • ${p.rows.unmatched.length} unmatched person(s) skipped${STATE.apiUrl ? "\nSyncing to sheet — check the sidebar indicator." : ""}`);
-}
-
 function openConductDetailForm(id) {
   const e = id ? STATE.conductDetail.find(x => x.id === id) : null;
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
@@ -1718,17 +1270,6 @@ function openCommanderForm(id) {
           ${formField("f-rank", "Rank", "text", "3SG / 2LT / CPT…", `required maxlength="10" value="${escapeAttr(e?.rank)}"`)}
         </div>
         ${formField("f-name", "Name", "text", "Nicholas Eng", `required maxlength="100" value="${escapeAttr(e?.name)}"`)}
-        <div class="form-row">
-          ${formField("f-platoon", "Platoon", "text", "HQ / PLT1", `maxlength="10" list="platoon-codes" value="${escapeAttr(e?.platoon)}"`)}
-          ${formField("f-section", "Section", "text", "Command / 1", `maxlength="12" value="${escapeAttr(e?.section)}"`)}
-        </div>
-        <datalist id="platoon-codes">${activePlatoons().map(p => `<option value="${escapeAttr(p.code)}">`).join("")}</datalist>
-        <div class="form-group">
-          <label>Rank group</label>
-          <select id="f-rankgroup">
-            ${["", "Officer", "WOSPEC", "Enlistee"].map(g => `<option value="${g}" ${g === (e?.rankGroup || "") ? "selected" : ""}>${g || "Auto from rank"}</option>`).join("")}
-          </select>
-        </div>
         ${formField("f-quota", "Off-in-Lieu Quota (days)", "number", "14", `min="0" max="365" step="1" value="${e?.leaveQuota ?? 14}"`)}
         ${formField("f-phone", "Phone (optional)", "text", "9123 4567", `maxlength="20" value="${escapeAttr(e?.phone)}"`)}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Add Commander"}</button>
@@ -1747,15 +1288,7 @@ function submitCommander() {
     role: "Commander",
     leaveQuota: +gv("f-quota") || 0,
     phone: gv("f-phone") || "",
-    status: "Active",
-    // Braves org model (spec §5). Commanders have no 4D to parse, so these
-    // explicit fields are what places them in a platoon/section for parade state.
-    platoon: gv("f-platoon").trim(),
-    section: gv("f-section").trim(),
-    rankGroup: gv("f-rankgroup"),
-    fourD: "",
-    // Legacy parse-fallback fields kept blank (the old topbar filter still reads
-    // these until the Step-5 scope rewrite switches to platoon/section).
+    status: "",
     plt: "",
     sect: ""
   };
@@ -1784,7 +1317,7 @@ function openLeaveForm(id) {
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
         <div class="form-group"><label>Person</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Leave", "Leave"], ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Annual Leave", "Annual Leave"], ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
         <div class="form-row">
           ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
           ${formField("f-end", "End date", "date", "", `required value="${endVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
@@ -1852,13 +1385,19 @@ function toDDMMYY(iso) {
   return m[3] + m[2] + m[1].slice(2);
 }
 
-// R/N formatting (spec §7). Delegates to the Braves implementation in
-// braves-parade.js (loaded after this file, so the global is resolved by the
-// time any UI calls paradeRN). Kept under the old name because the medical-
-// status report + the borderline/appointment checklists still call paradeRN;
-// they now get Braves-format R/N ("MARTIN TAN B1411" / "LCP CALVIN LEE").
+// R/N formatting per chat convention. Commanders are rank+name, no 4D.
+// Recruits are "REC <NAME> C<4D>" — the C prefix marks Cougar in the
+// battalion-wide parade state.
 function paradeRN(d4) {
-  return bravesParadeRN(d4);
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r) return d4;
+  const name = (r.name || "").toUpperCase();
+  if (r.role === "Commander") return [r.rank, name].filter(Boolean).join(" ");
+  // Strip any existing C prefix on the id before re-adding it — some sheets
+  // store the recruit 4D as "C1415" already, which would round-trip to
+  // "CC1415" otherwise.
+  const bareId = String(r.id).replace(/^C/i, "");
+  return `REC ${name} C${bareId}`;
 }
 
 // Duration label per chat samples ("Duration: 180526 - 010626"). Pending /
@@ -2042,12 +1581,126 @@ function outOfCampApptsForParade(dateIso, paradeTime) {
   return outsideApptsForParade(dateIso, paradeTime).filter(apptCurrentlyOut);
 }
 
-// NOTE: the legacy Cougar parade-state builders (buildAppointmentSection,
-// buildOthersSection, buildStrengthBlock, generateParadeStateText) lived here.
-// They were retired in Step 3 — FP/LP now use the Braves §7–9 generator in
-// js/braves-parade.js (generateBravesParadeState, routed from regenerateReport).
-// See DECISIONS #36/#37. The medical-status report (below) and the borderline/
-// appointment helpers above are unaffected and remain in use.
+function buildAppointmentSection(dateIso, paradeTime) {
+  const upcoming = upcomingParadeAppointments(dateIso, paradeTime);
+  if (!upcoming.length) return `MEDICAL APPT:\n\nS/N:\nR/N:\nReason:\nLocation:\nDate:\nTime:\nCamp:`;
+  const blocks = upcoming.map((a, idx) => {
+    const sn = String(idx + 1).padStart(2, "0");
+    // For an in-camp appt: always "In camp". For an outside appt: on the parade
+    // day reflect the live tick (left vs not), else just note it's outside.
+    const isToday = displayDateToISO(a.date) === dateIso;
+    let camp;
+    if (!a.outOfCamp) camp = "In camp";
+    else if (isToday) camp = apptCurrentlyOut(a) ? "Out of camp (left)" : "In camp (not left / returned)";
+    else camp = "Outside camp";
+    return `S/N: ${sn}\nR/N: ${paradeRN(a.d4)}\nReason: ${a.reason || ""}\nLocation: ${a.location || ""}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${fmtHrs(a.time)}\nCamp: ${camp}`;
+  });
+  return `MEDICAL APPT: ${String(upcoming.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
+}
+
+function buildOthersSection(dateIso, paradeTime) {
+  const active = STATE.leave.filter(l => {
+    const s = displayDateToISO(l.startDate);
+    const e = displayDateToISO(l.endDate);
+    return s && e && s <= dateIso && dateIso <= e;
+  });
+  // Reason = leave type + optional free text, so the section reads like the
+  // chat's "Guard Duty" / "APSC in Gedong till 24th April" entries. `extra` is
+  // the trailing line(s): leave shows a Duration range; appts show Date + Time.
+  const entries = active.map(l => {
+    const dur = paradeDuration(l);
+    return {
+      d4: l.d4,
+      reason: [l.type, l.reason].filter(Boolean).join(" — "),
+      extra: dur ? `\nDuration: ${dur}` : ""
+    };
+  });
+  // Recruits currently out of camp for an outside appointment count as away too
+  // — list them on the OTHERS roll, labelled so they're distinct from leave,
+  // with the appointment's Date + Time.
+  outOfCampApptsForParade(dateIso, paradeTime).forEach(a => {
+    const locLine = a.location ? `\nLocation: ${a.location}` : "";
+    entries.push({
+      d4: a.d4,
+      reason: "Medical Appointment" + (a.reason ? ` — ${a.reason}` : ""),
+      extra: `${locLine}\nDate: ${toDDMMYY(displayDateToISO(a.date))}\nTime: ${fmtHrs(a.time)}`
+    });
+  });
+  if (!entries.length) return `OTHERS:\n\nS/N:\nR/N:\nReason:\nDuration:`;
+  const blocks = entries.map((e, idx) => {
+    const sn = String(idx + 1).padStart(2, "0");
+    return `S/N: ${sn}\nR/N: ${paradeRN(e.d4)}\nReason: ${e.reason}${e.extra}`;
+  });
+  return `OTHERS: ${String(entries.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
+}
+
+// Strength block — TOTAL is the entire roster (recruits + commanders);
+// CURRENT is TOTAL minus anyone away today (active MC/Warded + any leave
+// covering the date + out-of-camp medical appts today). Per-platoon and
+// commander lines break the count out.
+function buildStrengthBlock(dateIso, paradeTime) {
+  const all = STATE.roster;
+  const recruits = all.filter(r => r.role !== "Commander");
+  const commanders = all.filter(r => r.role === "Commander");
+
+  // Anyone away from camp today — physically not present. Union in any
+  // borderline returnees the PDS confirmed still-out so CURRENT STRENGTH
+  // matches what the ATTC section shows.
+  const attcD4s = new Set(STATE.medical
+    .filter(m => medStatusActive(m, dateIso) && (m.status === "MC" || m.status === "Warded"))
+    .map(m => m.d4));
+  findBorderlineReturnees(dateIso)
+    .filter(m => _paradeOverrides[m.d4])
+    .forEach(m => attcD4s.add(m.d4));
+  const othersD4s = new Set(STATE.leave
+    .filter(l => {
+      const s = displayDateToISO(l.startDate);
+      const e = displayDateToISO(l.endDate);
+      return s && e && s <= dateIso && dateIso <= e;
+    })
+    .map(l => l.d4));
+  // Out-of-camp medical appts today put the recruit away too — keep this in sync
+  // with what the OTHERS section lists so CURRENT STRENGTH reconciles.
+  outOfCampApptsForParade(dateIso, paradeTime).forEach(a => othersD4s.add(a.d4));
+  const isAway = r => attcD4s.has(r.id) || othersD4s.has(r.id);
+
+  // Per-platoon recruit breakdown.
+  const recruitPlatoons = {};
+  recruits.forEach(r => {
+    const p = getPlt(r) || "?";
+    (recruitPlatoons[p] = recruitPlatoons[p] || { total: 0, away: 0 }).total++;
+    if (isAway(r)) recruitPlatoons[p].away++;
+  });
+  const pltKeys = Object.keys(recruitPlatoons).filter(k => k !== "?").sort();
+  const pltLines = pltKeys.map(p => {
+    const { total, away } = recruitPlatoons[p];
+    return `PLATOON ${p}: ${total - away}/${total}`;
+  }).join("\n");
+
+  const totalAway = all.filter(isAway).length;
+  const cmdAway = commanders.filter(isAway).length;
+
+  return [
+    `TOTAL STRENGTH: ${all.length}`,
+    `CURRENT STRENGTH: ${all.length - totalAway}`,
+    pltLines,
+    `COMMANDERS: ${commanders.length - cmdAway}/${commanders.length}`
+  ].filter(Boolean).join("\n");
+}
+
+function generateParadeStateText(type, dateIso, time) {
+  const dateStr = toDDMMYY(dateIso);
+  const header = (type === "FP" ? "FIRST" : "LAST") + " PARADE STATE";
+  const sections = [
+    buildStrengthBlock(dateIso, time),
+    buildMedicalSection("ATTC", dateIso, ["MC", "Warded"]),
+    buildMedicalSection("REPORT SICK", dateIso, ["Pending"]),
+    buildMedicalSection("MEDICAL STATUS", dateIso, isMedicalStatusCatchAll),
+    buildAppointmentSection(dateIso, time),
+    buildOthersSection(dateIso, time)
+  ];
+  return `COUGAR COMPANY\n${header}\nDATE: ${dateStr} @ ${fmtHrs(time)}\n\n${SEP}\n\n${sections.join(`\n\n${SEP}\n\n`)}\n\n${SEP}`;
+}
 
 function generateMedicalStatusText(dateIso, time) {
   const dateStr = toDDMMYY(dateIso);
@@ -2109,8 +1762,6 @@ function openReportModal(type) {
   const defaultTime = `${pad(now.getHours())}${pad(now.getMinutes())}`;
   const titleLabel = type === "FP" ? "First Parade State"
     : type === "LP" ? "Last Parade State"
-    : type === "RS" ? "RS Format (Sick Report)"
-    : type === "RSIP" ? "RSI Personnel (by Platoon)"
     : type === "MSK" ? "MSK Report"
     : type === "CONDUCT" ? "Per-Conduct Chat Format"
     : "Medical Status List";
@@ -2120,32 +1771,20 @@ function openReportModal(type) {
   _paradeOverrides = {};
   _apptCampOverrides = {};
 
-  // FP/LP now use the Braves §8–9 generator (js/braves-parade.js), which derives
-  // every category from stored data — so the parade modal just re-runs the
-  // generator on any date/time/scope change (no live checklists to re-render).
+  // The borderline checklist is only meaningful for FP/LP. MED/MSK/CONDUCT
+  // reports skip the section + date onchange wiring entirely.
   const isParade = type === "FP" || type === "LP";
   const isConduct = type === "CONDUCT";
   const dateExtra = isParade
-    ? `value="${defaultDate}" required onchange="regenerateReport('${type}')"`
+    ? `value="${defaultDate}" required onchange="onParadeDateChange('${type}')"`
     : isConduct
       ? `value="${defaultDate}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
       : `value="${defaultDate}" required`;
   const timeExtra = isConduct
     ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
     : isParade
-      ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="regenerateReport('${type}')"`
+      ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="onParadeTimeChange('${type}')"`
       : `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required`;
-
-  // Company / per-platoon (incl. HQ) scope selector for the parade state.
-  // Value "company" → whole-company combined message; "platoon:<code>" → just
-  // that platoon's standalone block. Options derive from activePlatoons() so the
-  // list tracks the org structure (spec §9.1/§9.2, addendum A6).
-  const scopeOptions = isParade
-    ? [`<option value="company">Company (full parade state)</option>`]
-        .concat(activePlatoons().map(p =>
-          `<option value="platoon:${escapeAttr(p.code)}">${escapeAttr(p.displayName || p.code)}</option>`))
-        .join("")
-    : "";
 
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
@@ -2159,12 +1798,8 @@ function openReportModal(type) {
           ${formField("rep-date", "Date", "date", "", dateExtra)}
           ${formField("rep-time", "Time (HHMM)", "text", "0700", timeExtra)}
         </div>
-        ${isParade ? `<div class="form-group">
-          <label>Scope</label>
-          <select id="rep-scope" onchange="regenerateReport('${type}')" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:100%">
-            ${scopeOptions}
-          </select>
-        </div>` : ""}
+        ${isParade ? `<div id="borderline-section"></div>` : ""}
+        ${isParade ? `<div id="appt-camp-section"></div>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
         <textarea id="rep-text" rows="20" spellcheck="false" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre"></textarea>
@@ -2175,6 +1810,8 @@ function openReportModal(type) {
   // Stash the report type so regenerate from the date/time onchange knows
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
+  if (isParade) renderBorderlineSection(defaultDate, type);
+  if (isParade) renderApptCampSection(defaultDate, defaultTime, type);
   if (isConduct) renderConductPicker();
   regenerateReport(type);
 }
@@ -2283,20 +1920,10 @@ function regenerateReport(type) {
   let text;
   if (type === "MED") text = generateMedicalStatusText(dateIso, time);
   else if (type === "MSK") text = generateMSKReportText(dateIso, time);
-  else if (type === "RS") text = generateRSFormat(dateIso, time);
-  else if (type === "RSIP") text = generateRSIPersonnel(dateIso, time);
   else if (type === "CONDUCT") {
     const id = +gv("rep-conduct-id") || null;
     text = id ? buildConductChatFormat(id) : "Pick a conduct from the dropdown above.";
-  } else {
-    // FP / LP → Braves §8–9 parade state (js/braves-parade.js). The scope
-    // selector picks company vs a single platoon/HQ block.
-    const sv = gv("rep-scope") || "company";
-    const scope = sv === "company"
-      ? { level: "company" }
-      : { level: "platoon", platoon: sv.split(":")[1] };
-    text = generateBravesParadeState(scope, type, dateIso, time);
-  }
+  } else text = generateParadeStateText(type, dateIso, time);
   document.getElementById("rep-text").value = text;
 }
 
@@ -4204,145 +3831,4 @@ function importBackup(input) {
     saveLocal(); render();
   } catch (err) { alert("Import failed: " + err.message); } };
   reader.readAsText(input.files[0]); input.value = "";
-}
-
-// ═══════════════════════════════════════════════════════
-// ACCOUNT / AUTH FORMS  (Step 1 — addendum A1)
-// ═══════════════════════════════════════════════════════
-// All of these talk to the role-gated backend; the server is the real authority.
-// The admin-only forms still appear behind .admin-only + isAdminRole() so a
-// non-admin never sees them, but the backend rejects them regardless.
-
-// ── Change own password (any signed-in role) ─────────────
-function openChangePasswordForm() {
-  openModal("Change Password", `
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <label class="form-label">Current password<input type="password" id="cp-current" class="form-input" autocomplete="current-password"></label>
-      <label class="form-label">New password (min 6)<input type="password" id="cp-new" class="form-input" autocomplete="new-password"></label>
-      <label class="form-label">Confirm new password<input type="password" id="cp-confirm" class="form-input" autocomplete="new-password"></label>
-      <div id="cp-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
-      <button class="btn btn-primary" onclick="submitChangePassword()">Update Password</button>
-    </div>`);
-}
-async function submitChangePassword() {
-  const cur = document.getElementById("cp-current").value;
-  const nw = document.getElementById("cp-new").value;
-  const cf = document.getElementById("cp-confirm").value;
-  const err = document.getElementById("cp-error");
-  err.textContent = "";
-  if (nw.length < 6) { err.textContent = "New password must be at least 6 characters."; return; }
-  if (nw !== cf) { err.textContent = "New passwords do not match."; return; }
-  try {
-    const res = await API.changePassword(cur, nw);
-    if (res && res.ok) { closeModal(); alert("Password updated."); }
-    else err.textContent = (res && res.error) || "Could not change password.";
-  } catch (e) {
-    if (e.name === "AuthError") { handleAuthFailure(); return; }
-    err.textContent = "Network error: " + e.message;
-  }
-}
-
-// ── Add account (admin) ──────────────────────────────────
-function openAddAccountForm() {
-  openModal("Add Account", `
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <label class="form-label">Email<input type="email" id="aa-email" class="form-input" placeholder="pc1@unit.mil"></label>
-      <label class="form-label">PersonID (Roster 4D, optional)<input type="text" id="aa-personid" class="form-input" placeholder="e.g. 0012"></label>
-      <label class="form-label">Role
-        <select id="aa-role" class="form-input">
-          <option value="viewer">viewer — read-only</option>
-          <option value="commander" selected>commander — can edit</option>
-          <option value="admin">admin — full control</option>
-        </select>
-      </label>
-      <label class="form-label">Temporary password (min 6)<input type="text" id="aa-password" class="form-input" placeholder="they change it after first login"></label>
-      <div id="aa-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
-      <button class="btn btn-primary" onclick="submitAddAccount()">Create Account</button>
-    </div>`);
-}
-async function submitAddAccount() {
-  const email = document.getElementById("aa-email").value.trim();
-  const personId = document.getElementById("aa-personid").value.trim();
-  const role = document.getElementById("aa-role").value;
-  const pw = document.getElementById("aa-password").value;
-  const err = document.getElementById("aa-error");
-  err.textContent = "";
-  if (!email || pw.length < 6) { err.textContent = "Email and a 6+ char password are required."; return; }
-  try {
-    const res = await API.addAccount(email, personId, role, pw);
-    if (res && res.ok) {
-      closeModal();
-      if (res.warning) alert("Account created.\n\nNote: " + res.warning);
-      refreshAdminData();
-    } else err.textContent = (res && res.error) || "Could not create account.";
-  } catch (e) {
-    if (e.name === "AuthError") { handleAuthFailure(); return; }
-    err.textContent = "Network error: " + e.message;
-  }
-}
-
-// ── Remove account (admin) ───────────────────────────────
-async function doRemoveAccount(emailEnc) {
-  const email = decodeURIComponent(emailEnc);
-  if (!confirm(`Remove the account for ${email}?\n\nThis deletes the account and signs out all of their devices.`)) return;
-  try {
-    const res = await API.removeAccount(email);
-    if (res && res.ok) refreshAdminData();
-    else alert((res && res.error) || "Could not remove account.");
-  } catch (e) {
-    if (e.name === "AuthError") { handleAuthFailure(); return; }
-    alert("Network error: " + e.message);
-  }
-}
-
-// ── Admin reset another account's password ───────────────
-function openResetPasswordForm(emailEnc) {
-  const email = decodeURIComponent(emailEnc);
-  openModal("Reset Password", `
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <p style="font-size:12px;color:var(--muted)">Set a temporary password for <strong>${email}</strong>. They should change it after logging in.</p>
-      <label class="form-label">Temporary password (min 6)<input type="text" id="rp-password" class="form-input"></label>
-      <div id="rp-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
-      <button class="btn btn-primary" onclick="submitResetPassword('${encodeURIComponent(email)}')">Set Password</button>
-    </div>`);
-}
-async function submitResetPassword(emailEnc) {
-  const email = decodeURIComponent(emailEnc);
-  const pw = document.getElementById("rp-password").value;
-  const err = document.getElementById("rp-error");
-  err.textContent = "";
-  if (pw.length < 6) { err.textContent = "Password must be at least 6 characters."; return; }
-  try {
-    const res = await API.adminResetPassword(email, pw);
-    if (res && res.ok) { closeModal(); alert(`Password reset for ${email}.`); }
-    else err.textContent = (res && res.error) || "Could not reset password.";
-  } catch (e) {
-    if (e.name === "AuthError") { handleAuthFailure(); return; }
-    err.textContent = "Network error: " + e.message;
-  }
-}
-
-// ── Token / session revocation (admin) ───────────────────
-async function doRevokeToken(token, emailEnc) {
-  const email = decodeURIComponent(emailEnc || "");
-  if (!confirm(`Revoke this session${email ? " for " + email : ""}? That device will be signed out.`)) return;
-  try {
-    const res = await API.revokeToken(token, email);
-    if (res && res.ok) refreshAdminData();
-    else alert((res && res.error) || "Could not revoke session.");
-  } catch (e) {
-    if (e.name === "AuthError") { handleAuthFailure(); return; }
-    alert("Network error: " + e.message);
-  }
-}
-async function doRevokeAllTokens() {
-  if (!confirm("Revoke ALL sessions, including your own? Everyone (you included) will have to log in again.")) return;
-  try {
-    const res = await API.revokeAllTokens();
-    if (res && res.ok) { alert(`Revoked ${res.revoked} session(s). You will be signed out.`); handleAuthFailure(); }
-    else alert((res && res.error) || "Could not revoke sessions.");
-  } catch (e) {
-    if (e.name === "AuthError") { handleAuthFailure(); return; }
-    alert("Network error: " + e.message);
-  }
 }

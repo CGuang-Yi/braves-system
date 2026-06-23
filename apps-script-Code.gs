@@ -83,6 +83,12 @@
  *                The "follow up status from MO" in sick messages is derived
  *                from `status` (the MO outcome) — there is no separate field.)
  *   Attendance: id | date | time | conductId | total | participating | lms | px | fallout | remarks
+ *               | participants | periods | currencyTags | source
+ *               (Braves §14 CSV-import columns: participants = comma-joined
+ *                Present 4Ds [the HA participation source]; periods = CSV cell
+ *                B5 [Double-HA time-period count]; currencyTags = CSV row 2
+ *                [HA-eligibility signal, e.g. "HA"]; source = "csv" for imported
+ *                rows, "" for wizard rows. See HA_DATA_SHAPE.md.)
  *               (time = "0730"/"1630" — same conduct on the same day at
  *                different times produces distinct rows. The Log Conduct
  *                wizard writes it directly; the legacy form leaves it blank.)
@@ -98,8 +104,11 @@
  *   IPPT:       id | d4 | attempt | date | pushups | situps | runTime | score
  *   RouteMarch: id | d4 | rmNum | date | time | avgHr | maxHr | pass
  *   SOC:        id | d4 | socNum | date | time | avgHr | pass
- *   PolarFlow:  id | d4 | conduct | date | avgHr | maxHr | minHr | z1 | z2 | z3 | z4 | z5 | calories | trainingLoad | recovery | duration | distance
- *   ConductDetail: id | date | time | conduct | d4 | type | reason
+ *   PolarFlow:  id | d4 | conductId | date | avgHr | maxHr | minHr | z1 | z2 | z3 | z4 | z5 | calories | trainingLoad | recovery | duration | distance
+ *               (the live sheet keys conducts by `conductId` per the registry
+ *                model; the z1–z5/recovery zone columns are OCR-populated and may
+ *                be absent on sheets that predate them.)
+ *   ConductDetail: id | date | time | conductId | d4 | type | reason
  *               (one row per non-participating recruit per conduct.
  *                type ∈ {PX, RSI, Fallout, ReportSick}:
  *                  PX         = pre-existing status before the conduct (MC/LD/RMJ);
@@ -128,7 +137,7 @@
  *                display-format. `days` is numeric — defaults to
  *                (endDate − startDate + 1) but is editable for half-days.)
  *
- *   MSK:        timestamp | type | d4 | description | physioDate | cleared
+ *   MSK:        timestamp | d4 | type | description | physioDate | exercises | cleared | manualRegions
  *               (Recruit self-reports from a Google Form ("Cougar MSK /
  *                Physio Log") that posts directly here. type ∈
  *                {"Report Injury", "Log Exercises"}. `cleared` is NOT
@@ -139,14 +148,22 @@
  *                the next Push All.)
  *
  *   ── BRAVES reference tabs (optional; absent tab → [] on the frontend) ──
- *   Config:     key | value
- *               (Transferability layer, spec §4. Each row is one setting:
+ *   Config:     (Telegram bot / COS parade config — a single columns-as-keys row:
+ *                botGroupChatId | nextBookInDate | nextBookInTime | outOfCamp |
+ *                cutoffHours | rsoFormUrl | archiveParadeTimes | archiveSickTimes.
+ *                Owned by the bot and read by tgReadConfig — do NOT rename or
+ *                reshape it. readAllTabs merges its row into STATE.config so the
+ *                frontend sees the archive-time keys alongside BravesConfig.)
+ *   BravesConfig: key | value
+ *               (Transferability layer, spec §4 — split out from the bot's Config
+ *                tab so the two schemas never collide. Each row is one setting:
  *                companyName, companyPrefix (4D display prefix, e.g. "B"),
  *                companyCoyCode ("B COY"), unitCode ("40SAR"), hqLabel
  *                ("BRAVES HQ"), defaultSickLocation ("PTMC"),
  *                polarCompanyName, haEligibilitySource
  *                ("isHAExcluded" | "currencyTag"). Missing keys fall back to
- *                DEFAULT_CONFIG in js/state.js. Admin-only to edit.)
+ *                DEFAULT_CONFIG in js/state.js. Seeded by bravesMigrateSchema();
+ *                admin-only to edit.)
  *   VocFit:     personId | completionDate | certifyingUnit
  *               (Vocational Fitness Training completions, spec §12.3 — gates
  *                Double-HA eligibility together with rank ≥ 3SG/2LT.
@@ -171,7 +188,17 @@ function doGet(e) {
 
     // Public action: ping (used by the frontend to verify the URL is reachable).
     if (action === "ping") {
-      output = { ok: true, sheets: getTabNames(), timestamp: new Date().toISOString() };
+      // Filter manual/scratch tabs out of the connectivity list so they don't
+      // read as data tabs in the Sync log. They are never pulled — readAllTabs
+      // uses an explicit allow-list — this is purely cosmetic. "Conduct Master"
+      // is a human planning sheet with a banner in row 1 (real headers in row 2),
+      // so it must never be treated as a data tab regardless.
+      var NON_DATA_TABS = { "notes": 1, "Conduct Master": 1 };
+      output = {
+        ok: true,
+        sheets: getTabNames().filter(function (n) { return !NON_DATA_TABS[n]; }),
+        timestamp: new Date().toISOString()
+      };
     } else {
       // Every other read resolves the account context behind the token. Any valid
       // role (admin/commander/viewer) may read — read-only enforcement only bites
@@ -185,7 +212,7 @@ function doGet(e) {
       } else if (action === "readAll") {
         output = readAllTabs(ctx);              // ctx → AuditLog included only for admins
       } else if (action === "read" && tab) {
-        if (tab === "AuditLog" && ctx.role !== "admin") {
+        if ((tab === "AuditLog" || tab === "ParadeArchive" || tab === "SickArchive") && ctx.role !== "admin") {
           output = { error: "Not authorised", code: 403 };
         } else if (tab === "Accounts") {
           output = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
@@ -725,7 +752,13 @@ function routeAuthedPost(action, tab, body, ctx) {
   else if (action === "sendEmail")                               res = sendEmailHelper(body);
   else if (action === "getEmailInfo")                            res = getEmailInfoHelper();
   else if (action === "analyzePhoto")                            res = analyzePhotoHelper(body);
+  else if (action === "archiveNow")                              res = bravesArchiveNow(body, ctx);
   else return { error: "Invalid request" };
+
+  // Audit manual archive snapshots (A2.3-style).
+  if (action === "archiveNow" && res && !res.error) {
+    writeAuditLog(ctx.email, ctx.personId, "archive_now", "Archive", (body && body.kind) || "both", body.auth);
+  }
 
   // Best-effort audit of data writes to the tabs called out in A2.3.
   if (res && !res.error && tab &&
@@ -996,6 +1029,83 @@ function ensureTabWithHeaders_(ss, name, headers) {
   sheet.setFrozenRows(1);
 }
 
+// One-off schema migration (sheet-audit remediation). Run once from the editor:
+//   bravesMigrateSchema()
+// Brings an existing live sheet up to the schema the frontend already expects.
+// SAFE TO RE-RUN: ensureTabWithHeaders_ only *appends* missing header cells to the
+// end of row 1 and never rewrites data rows, so existing values are untouched and
+// already-present columns are skipped. It does NOT push via writeTab (which would
+// re-derive headers from Object.keys(data[0]) and could strip columns). It also
+// never touches the bot's Config tab, ParadeArchive, or SickArchive.
+//
+// What it does:
+//   • Roster      — adds the Step-2 Braves columns (platoon, section, rankGroup, fourD)
+//   • Medical     — adds the §6 columns (location, type, urtiType, mrTiming, visitId)
+//   • Appointments— adds outOfCamp (parade-state "Camp:" line depends on it)
+//   • BravesConfig— creates the key|value company-identity tab and seeds it from
+//                   DEFAULT_CONFIG (kept in sync with js/state.js)
+//   • Platoons / VocFit / SOC — creates the reference tabs with their headers
+// It does NOT backfill values for the new Roster/Medical columns — that is manual
+// data entry the user owns. rankGroup in particular cannot be derived from a 4D.
+function bravesMigrateSchema() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Append-only column additions to existing tabs (no-ops if the column exists).
+  ensureTabWithHeaders_(ss, "Roster",
+    ["platoon", "section", "rankGroup", "fourD"]);
+  ensureTabWithHeaders_(ss, "Medical",
+    ["location", "type", "urtiType", "mrTiming", "visitId"]);
+  ensureTabWithHeaders_(ss, "Appointments",
+    ["outOfCamp"]);
+
+  // Reference tabs (created with headers if absent; missing tab → [] on frontend).
+  ensureTabWithHeaders_(ss, "Platoons",
+    ["code", "displayName", "active", "createdAt"]);
+  ensureTabWithHeaders_(ss, "VocFit",
+    ["personId", "completionDate", "certifyingUnit"]);
+  ensureTabWithHeaders_(ss, "SOC",
+    ["id", "d4", "socNum", "date", "time", "avgHr", "pass"]);
+
+  // BravesConfig (key|value) — create + seed the company-identity settings the
+  // frontend's DEFAULT_CONFIG defines. Only seeds keys that aren't already present
+  // so re-running never clobbers values an admin has edited.
+  ensureTabWithHeaders_(ss, "BravesConfig", ["key", "value"]);
+  bravesSeedConfig_(ss);
+
+  Logger.log("bravesMigrateSchema complete. Review the new columns/tabs, then " +
+    "redeploy (Manage Deployments → new Version, same URL).");
+}
+
+// Seed BravesConfig with the spec §4 defaults. Mirrors DEFAULT_CONFIG in
+// js/state.js — keep the two in sync. Skips any key already present so an admin's
+// edits and re-runs are both safe.
+function bravesSeedConfig_(ss) {
+  var DEFAULTS = {
+    companyName: "40 SAR BRAVES COMPANY",
+    companyPrefix: "B",
+    companyCoyCode: "B COY",
+    unitCode: "40SAR",
+    hqLabel: "BRAVES HQ",
+    defaultSickLocation: "PTMC",
+    polarCompanyName: "Braves Coy",
+    haEligibilitySource: "isHAExcluded",
+    alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate"
+  };
+  var sheet = ss.getSheetByName("BravesConfig");
+  var last = sheet.getLastRow();
+  var have = {};
+  if (last >= 2) {
+    sheet.getRange(2, 1, last - 1, 1).getValues().forEach(function (r) {
+      if (r[0]) have[String(r[0]).trim()] = true;
+    });
+  }
+  var toAdd = [];
+  Object.keys(DEFAULTS).forEach(function (k) { if (!have[k]) toAdd.push([k, DEFAULTS[k]]); });
+  if (toAdd.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, toAdd.length, 2).setValues(toAdd);
+  }
+}
+
 // Bootstrap the very first admin account. Run once from the editor:
 //   seedFirstAdmin("you@example.com", "your-strong-password")
 // Then log in via the web app and create the rest from the admin panel.
@@ -1089,10 +1199,9 @@ function readAllTabs(ctx) {
     "Leave": "leave",
     "MSK": "msk",
     "Conducts": "conducts",
-    // Braves reference tabs (spec §4/§12/A6). Config is key/value — the frontend
-    // collapses it to an object. All three are optional: a missing tab yields []
-    // and the frontend falls back to defaults/derivation.
-    "Config": "config",
+    // Braves reference tabs (spec §4/§12/A6). Optional: a missing tab yields []
+    // and the frontend falls back to defaults/derivation. Config is handled
+    // separately below (it is merged from two tabs).
     "VocFit": "vocfit",
     "Platoons": "platoons"
   };
@@ -1109,11 +1218,27 @@ function readAllTabs(ctx) {
     }
   }
 
+  // Config is split across two tabs by design (sheet-audit remediation, §4):
+  //   • "Config"       — Telegram bot / COS parade config (columns-as-keys row)
+  //   • "BravesConfig" — Braves company-identity settings (key|value rows)
+  // Read both and concat the rows. The frontend's normalizeConfig collapses the
+  // combined list into one object, so bot keys (archiveParadeTimes, …) and Braves
+  // keys (companyName, …) live side by side without colliding. readTab returns []
+  // for an empty/absent tab, so concat is always safe.
+  var cfgRows = [];
+  if (ss.getSheetByName("Config"))       cfgRows = cfgRows.concat(readTab("Config"));
+  if (ss.getSheetByName("BravesConfig")) cfgRows = cfgRows.concat(readTab("BravesConfig"));
+  result.config = cfgRows;
+
   // Admin-only: include the audit log in the pull (A2.5). The Accounts tab is
   // never included here — it carries password hashes and is reached only via the
   // dedicated, hash-stripping listAccounts action.
   if (ctx && ctx.role === "admin") {
     result.auditLog = ss.getSheetByName("AuditLog") ? readTab("AuditLog") : [];
+    // Archived parade-state / report-sick messages (Item 1) — admin-only, same as
+    // the audit log. Empty arrays when the tabs don't exist yet.
+    result.paradeArchive = ss.getSheetByName("ParadeArchive") ? readTab("ParadeArchive") : [];
+    result.sickArchive = ss.getSheetByName("SickArchive") ? readTab("SickArchive") : [];
   }
 
   result.timestamp = new Date().toISOString();
@@ -2264,4 +2389,901 @@ function tgCompleteNoStatus(chatId, state) {
   tgSend(chatId, "Noted — no status given, you're fit for normal duties. Remember to still book in on time. 💪");
   tgClearState(chatId);
   tgSendMenu(chatId, "What would you like to do?");
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// BRAVES ARCHIVE (Item 1) — scheduled logging of parade-state + report-sick msgs
+// ════════════════════════════════════════════════════════════════════════════
+// The parade/sick generators live client-side (js/braves-parade.js). To archive
+// on an unattended schedule, the EXACT same code is ported here (assembled by
+// concatenating the real source files — helpers subset + braves-parade.js — so it
+// can never silently drift). A Node cross-check harness asserts this block is
+// byte-identical to the client output on the seed. The block runs against a STATE
+// object built from the sheet tabs (readTab already returns dates as "dd MMM yyyy",
+// the same display format the client uses). NOT live-tested on the Sheet — verified
+// by syntax check + the cross-check harness; deploy + trigger creation are manual.
+//
+// ──────────────────────── BRAVES-ARCHIVE-PORT BEGIN ────────────────────────
+// (auto-generated copy — do not hand-edit; regenerate via /tmp/assemble-gas.js)
+var STATE = {};  // populated per-request by bravesLoadState_()
+
+const DEFAULT_CONFIG = {
+  companyName: "40 SAR BRAVES COMPANY",
+  companyPrefix: "B",
+  companyCoyCode: "B COY",
+  unitCode: "40SAR",
+  hqLabel: "BRAVES HQ",
+  defaultSickLocation: "PTMC",
+  polarCompanyName: "Braves Coy",
+  // Which signal decides whether a conduct earns an HA period (spec §14.3):
+  // "isHAExcluded" = existing conduct-name logic; "currencyTag" = the CSV
+  // "Currency Tags: HA" metadata. Switchable without code changes.
+  haEligibilitySource: "isHAExcluded",
+  // Leave types that classify as AL/OIL in parade state (spec §8, DECISIONS
+  // #32/#35). Any leave type NOT in this comma-separated list falls to OTHERS,
+  // sub-typed in/out of camp by reason keywords. Edit here (or override via the
+  // Config tab) to retune the split without touching code.
+  alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate"
+};
+
+function configGet(key) {
+  const v = STATE.config && STATE.config[key];
+  return (v !== undefined && v !== null && v !== "") ? v : DEFAULT_CONFIG[key];
+}
+
+function todayISO() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function isoToDisplayDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d)) return iso;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function displayDateToISO(s) {
+  if (!s) return "";
+  const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+  const m = String(s).match(/^(\d{1,2})\s+(\w{3})(?:\s+(\d{4}))?/);
+  if (!m) return "";
+  const mon = months[m[2]];
+  if (!mon) return "";
+  const day = m[1].padStart(2, "0");
+  const year = m[3] || String(new Date().getFullYear());
+  return `${year}-${mon}-${day}`;
+}
+
+function getPlt(r) {
+  // Commanders are coy-level — they have no platoon by default. Forcing
+  // empty here ensures the 4D parser doesn't extract "0" from a 00xx id.
+  if (r.role === "Commander") return r.plt != null && r.plt !== "" ? String(r.plt) : "";
+  if (r.plt !== "" && r.plt != null) return String(r.plt);
+  const m = String(r.id || "").match(/(\d)/);
+  return m ? m[1] : "";
+}
+
+function getSect(r) {
+  if (r.role === "Commander") return r.sect != null && r.sect !== "" ? String(r.sect) : "";
+  if (r.sect !== "" && r.sect != null) return String(r.sect);
+  const m = String(r.id || "").match(/\d(\d)/);
+  return m ? m[1] : "";
+}
+
+function medStatusActive(record, todayIso) {
+  todayIso = todayIso || todayISO();
+  if (record.status === "NIL") return false;
+  const start = displayDateToISO(record.startDate || record.date || "");
+  if (!start) return false;
+  if (record.status === "Pending") return todayIso === start;
+  const end = displayDateToISO(record.endDate || "");
+  if (!end) return false;
+  return todayIso >= start && todayIso <= end;
+}
+
+function personPlatoon(r) {
+  if (!r) return "";
+  if (r.platoon) return String(r.platoon).trim();
+  const p = getPlt(r);
+  return p ? "PLT" + p : "";
+}
+
+function personSection(r) {
+  if (!r) return "";
+  if (r.section != null && r.section !== "") return String(r.section).trim();
+  return getSect(r) || "";
+}
+
+function rankGroupOf(r) {
+  if (!r) return "Enlistee";
+  if (r.rankGroup) {
+    const g = String(r.rankGroup).trim().toLowerCase();
+    if (g.startsWith("off")) return "Officer";
+    if (g.startsWith("wo") || g.startsWith("spec")) return "WOSPEC";
+    if (g.startsWith("enl")) return "Enlistee";
+  }
+  const rank = String(r.rank || "").trim().toUpperCase();
+  if (!rank) return "Enlistee";
+  const OFFICER = ["2LT", "LTA", "CPT", "MAJ", "LTC", "SLTC", "COL", "BG", "MG", "LG"];
+  const WOSPEC = ["3SG", "2SG", "1SG", "SSG", "MSG", "SWO", "MWO", "1WO", "2WO", "3WO", "WO"];
+  if (OFFICER.includes(rank)) return "Officer";
+  if (WOSPEC.includes(rank)) return "WOSPEC";
+  return "Enlistee";
+}
+
+function activePlatoons() {
+  const fromTab = (STATE.platoons || []).filter(p => p.active);
+  if (fromTab.length) return fromTab;
+  const seen = new Set();
+  const derived = [];
+  (STATE.roster || []).forEach(r => {
+    const code = personPlatoon(r);
+    if (code && !seen.has(code)) { seen.add(code); derived.push({ code, displayName: code, active: true }); }
+  });
+  // Stable order: HQ last, platoons numerically.
+  derived.sort((a, b) => {
+    if (a.code === "HQ") return 1;
+    if (b.code === "HQ") return -1;
+    return a.code.localeCompare(b.code, undefined, { numeric: true });
+  });
+  return derived;
+}
+
+function classifyURTI(purpose) {
+  const p = (purpose || "").toLowerCase();
+  const urti = ["urti", "cough", "cold", "flu", "fever", "runny nose", "sore throat",
+                "throat", "phlegm", "blocked nose", "rhinitis", "sinusitis", "sneez"];
+  return urti.some(k => p.indexOf(k) !== -1) ? "URTI" : "NON-URTI";
+}
+
+// ============================================================================
+// BRAVES PARADE STATE — Step 3 (spec §7–9)
+// ============================================================================
+// The Braves §7–9 parade-state generator. Loaded after forms.js / before sync.js
+// (it leans on globals defined in earlier files). Replaces the legacy Cougar
+// parade builders; `regenerateReport()` routes FP/LP here via
+// generateBravesParadeState(scope, type, dateIso, time), and `paradeRN` delegates
+// to bravesParadeRN (so the borderline/appointment checklist sections still work).
+//
+// Byte-validated 2026-06-21 against `Message Formats.md` with a Node fixture
+// harness (structural match + literal helper assertions). The sample is an
+// internally date-inconsistent montage and can't be reproduced verbatim end-to-
+// end (no source data; it even mis-counts one section and renders one person two
+// ways) — so the validation is structural + per-helper, not literal 279-pax.
+// Format decisions: DECISIONS #26–33 + #35 (this session). The sample's incidental
+// double-spaces are dropped (#26); names are NOT force-uppercased (#30).
+//
+// DEPENDENCIES (globals from earlier files; present once loaded after forms.js):
+//   STATE, configGet, displayDateToISO, medStatusActive, personPlatoon,
+//   personSection, rankGroupOf, activePlatoons.
+// ============================================================================
+
+// ── Separators (DECISIONS #27) ──────────────────────────────────────────────
+// Reproduced verbatim from the sample. The platoon/HQ block uses a per-section
+// dash count; the company aggregate block uses 80 dashes before every category.
+const BP_BIG_SEP = "-".repeat(80);                 // inter-block + company-block category sep
+const BP_EQ_SEP = "=".repeat(30);                  // company aggregate ↔ HQ block
+// Dash counts BEFORE [AL/OIL, MR, REPORTING SICK, ATT C, STATUS, OTHERS]:
+const BP_PLT_SECTION_SEPS = [30, 30, 30, 28, 29, 29];
+
+// Section order is fixed across all blocks.
+const BP_SECTIONS = ["alOil", "mr", "reportingSick", "attC", "status", "others"];
+const BP_SECTION_LABELS = {
+  alOil: "AL/OIL",
+  mr: "MR",
+  reportingSick: "REPORTING SICK",
+  attC: "ATT C",
+  status: "STATUS",
+  others: "OTHERS"
+};
+
+// Leave types that count as AL/OIL vs OTHERS (DECISIONS #32, resolved #35 this
+// session). Config-driven: configGet("alOilLeaveTypes") supplies the list
+// (comma-separated string or array); the hardcoded set below is the fallback if
+// Config is absent. Everything NOT in the set falls to OTHERS, sub-typed in/out
+// of camp by the reason-keyword derivation (bpOthersNotInCamp), per spec §8.
+const BP_ALOIL_TYPES_DEFAULT =
+  ["leave", "off-in-lieu", "oil", "al", "annual leave", "weekend", "night's out", "nights out", "compassionate"];
+function bpAlOilTypeSet() {
+  const cfg = configGet("alOilLeaveTypes");
+  if (cfg) {
+    const arr = Array.isArray(cfg) ? cfg : String(cfg).split(",");
+    const cleaned = arr.map(s => String(s).trim().toLowerCase()).filter(Boolean);
+    if (cleaned.length) return new Set(cleaned);
+  }
+  return new Set(BP_ALOIL_TYPES_DEFAULT);
+}
+function bpIsAlOilType(type) {
+  return bpAlOilTypeSet().has(String(type || "").trim().toLowerCase());
+}
+
+// ── Date helpers ────────────────────────────────────────────────────────────
+// "2026-05-20" → "200526" (battalion DDMMYY). Local, so this file doesn't depend
+// on forms.js's toDDMMYY load order.
+function bpDDMMYY(iso) {
+  if (!iso) return "";
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(iso);
+  return m[3] + m[2] + m[1].slice(2);
+}
+function bp2(n) { return String(n).padStart(2, "0"); }
+
+// Inclusive day count between two display dates, e.g. 13–21 May = 9.
+function bpInclusiveDays(record) {
+  const s = displayDateToISO(record.startDate || record.date || "");
+  const e = displayDateToISO(record.endDate || "");
+  if (!s || !e) return null;
+  const days = Math.round((new Date(e + "T00:00:00") - new Date(s + "T00:00:00")) / 86400000) + 1;
+  return days > 0 ? days : null;
+}
+// Spaced "(210526 - 220526)" for AL/OIL & STATUS-LD; unspaced "(130526-210526)"
+// for ATT C & OTHERS (DECISIONS #28).
+function bpRange(record, spaced) {
+  const s = displayDateToISO(record.startDate || record.date || "");
+  const e = displayDateToISO(record.endDate || "");
+  if (!s || !e) return "";
+  return spaced ? `(${bpDDMMYY(s)} - ${bpDDMMYY(e)})` : `(${bpDDMMYY(s)}-${bpDDMMYY(e)})`;
+}
+
+// ── R/N formatting (spec §7, DECISIONS #30) ─────────────────────────────────
+// 4D personnel: "MARTIN TAN B1411" (name + prefix + 4D). No-4D personnel:
+// "LCP CALVIN LEE" (rank + name) or just "TREVOR LEE". Names rendered as stored
+// (not force-uppercased) per the sample.
+function bravesParadeRN(personId) {
+  const r = STATE.roster.find(x => x.id == personId);
+  if (!r) return String(personId);
+  const name = r.name || "";
+  const prefix = configGet("companyPrefix") || "B";
+  if (r.fourD && String(r.fourD).trim() !== "") {
+    return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
+  }
+  return [r.rank, name].filter(Boolean).join(" ").trim();
+}
+
+// Sick-message R/N (spec §10): name (+ B<4D>) with NO rank prefix.
+function sickRN(personId) {
+  const r = STATE.roster.find(x => x.id == personId);
+  if (!r) return String(personId);
+  const name = r.name || "";
+  const prefix = configGet("companyPrefix") || "B";
+  if (r.fourD && String(r.fourD).trim() !== "") {
+    return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
+  }
+  return name.trim();
+}
+
+// ── OTHERS sub-type (spec §8) ───────────────────────────────────────────────
+function bpOthersNotInCamp(reasonText, override) {
+  if (override === true) return false;   // othersInCamp = true → in camp
+  if (override === false) return true;
+  const t = String(reasonText || "").toLowerCase();
+  if (/book\s*out|booked out|out of camp|\bma\b|appointment/.test(t)) return true;
+  return false; // default IN CAMP
+}
+
+// ── Per-person classification (spec §8) ─────────────────────────────────────
+// Multi-section: a person may appear under several sections. Returns the section
+// → entry-line map for this one person, plus a binary notInCamp flag (counted
+// once). Dedupe within a section is by exact line text.
+function bpClassifyPerson(r, dateIso) {
+  const rn = bravesParadeRN(r.id);
+  const out = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
+  let notInCamp = false;
+
+  // Leave → AL/OIL (in the AL/OIL type set) or OTHERS (not in camp).
+  STATE.leave.forEach(l => {
+    if (l.d4 !== r.id) return;
+    const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
+    if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
+    // The entry text is the free-text reason ("48HR BO"), falling back to the
+    // leave type when no reason was recorded. (NOT "type — reason" — the sample
+    // shows a single clean label.)
+    const reason = l.reason || l.type || "";
+    if (bpIsAlOilType(l.type)) {
+      out.alOil.push(`${rn} - ${reason} ${bpRange(l, true)}`.trim());
+      notInCamp = true;  // AL/OIL is always not in camp
+    } else {
+      // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
+      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP).
+      const nic = bpOthersNotInCamp(reason);
+      const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      const rng = bpRange(l, false);
+      out.others.push(`${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim());
+      if (nic) notInCamp = true;
+    }
+  });
+
+  // Medical rows for this person.
+  STATE.medical.forEach(m => {
+    if (m.d4 !== r.id) return;
+    const reportedToday = displayDateToISO(m.date) === dateIso;
+
+    // MR — own section, independent of everything else (spec §6/§8).
+    if (m.type === "MR" && reportedToday) {
+      const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
+      out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
+    }
+
+    // REPORTING SICK — RSI/RSO reported today, or a Pending status active today.
+    const isRS = ((m.type === "RSI" || m.type === "RSO") && reportedToday)
+      || (m.status === "Pending" && medStatusActive(m, dateIso));
+    if (isRS) {
+      const label = m.type === "RSO" ? "RSO" : "RSI"; // Pending→RSI (DECISIONS #31)
+      out.reportingSick.push(`${rn} - ${m.reason || ""} (${label})`.trim());
+    }
+
+    // ATT C — active MC (not-in-camp). Warded handled as OTHERS below.
+    if (m.status === "MC" && medStatusActive(m, dateIso)) {
+      const days = bpInclusiveDays(m);
+      const label = days ? `${days}D MC` : "MC";
+      out.attC.push(`${rn} - ${label} ${bpRange(m, false)}`.trim());
+      notInCamp = true;
+    }
+
+    // STATUS — active LD or any Excuse-* (in camp, restricted). Requires a non-
+    // empty status: an imported RS/SENT_OUT episode carries status:"" with an
+    // active date range, which would otherwise emit a blank "RN - " STATUS line
+    // (and double-list someone already in REPORTING SICK).
+    if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
+        && m.status !== "Pending" && m.status !== "NIL") {
+      if (m.status === "LD") {
+        const days = bpInclusiveDays(m);
+        const label = days ? `${days}D LD` : "LD";
+        out.status.push(`${rn} - ${label} ${bpRange(m, true)}`.trim());
+      } else {
+        // Excuse-* / custom: show the status text + range when dated.
+        const range = bpRange(m, true);
+        out.status.push(`${rn} - ${m.status}${range ? " " + range : ""}`.trim());
+      }
+    }
+
+    // Warded → OTHERS (NOT IN CAMP).
+    if (m.status === "Warded" && medStatusActive(m, dateIso)) {
+      out.others.push(`${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim());
+      notInCamp = true;
+    }
+  });
+
+  // Medical appointments (MA) dated today → OTHERS. The stored `outOfCamp` bit
+  // (set when booking, toggled live by the parade presence-tick) drives the
+  // sub-type: out of camp → NOT IN CAMP (and subtracts from current strength);
+  // in camp → OTHERS (IN CAMP), still present. Resolved appointments drop out.
+  (STATE.appointments || []).forEach(a => {
+    if (a.d4 !== r.id || a.resolved) return;
+    if (displayDateToISO(a.date) !== dateIso) return;
+    const outOfCamp = !!a.outOfCamp;
+    const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+    out.others.push(`${rn} - ${a.reason || "Appointment"} (${label})`.trim());
+    if (outOfCamp) notInCamp = true;
+  });
+
+  // Dedupe each section by exact line first.
+  BP_SECTIONS.forEach(k => { out[k] = [...new Set(out[k])]; });
+  // STATUS multi-status collapse (DECISIONS #44): a recruit on several restricted
+  // statuses from one visit (e.g. LD + Excuse RMJ) produced one line per row, so
+  // they showed up as separate numbered entries. Since this classifier is per-
+  // person, every out.status line belongs to the same recruit — fold them into a
+  // single "RN - desc1, desc2" entry (descriptors joined, rn shown once). Only
+  // STATUS is collapsed: other sections carry per-entry "(OTHERS (…))"-style
+  // suffixes that don't read sensibly comma-joined, and a person rarely has >1.
+  if (out.status.length > 1) {
+    const descs = out.status.map(line => bpStripRN(line, rn));
+    out.status = [`${rn} - ${descs.join(", ")}`];
+  }
+  return { rn, sections: out, notInCamp };
+}
+
+// ── Status Board helpers (addendum A4/A7) — reuse the §8 classifier ──────────
+// A7.3 "today's category": the single-label §8 priority chain
+// (REPORTING SICK > ATT C > AL/OIL > STATUS > OTHERS); MR is independent.
+// Returns { primary:{key,label,reason}|null, mr:reason|null, sections, rn }.
+const BP_PRIMARY_CHAIN = [
+  ["reportingSick", "REPORTING SICK"], ["attC", "ATT C"], ["alOil", "AL/OIL"],
+  ["status", "STATUS"], ["others", "OTHERS"]
+];
+function bpStripRN(line, rn) {
+  // "Martin Tan B1411 - FEVER (RSI)" → "FEVER (RSI)" (best-effort reason text).
+  const pre = rn + " - ";
+  return line.startsWith(pre) ? line.slice(pre.length) : line;
+}
+function bpPrimaryForDay(r, dateIso) {
+  const c = bpClassifyPerson(r, dateIso);
+  let primary = null;
+  for (const [k, label] of BP_PRIMARY_CHAIN) {
+    if (c.sections[k].length) { primary = { key: k, label, reason: bpStripRN(c.sections[k][0], c.rn) }; break; }
+  }
+  const mr = c.sections.mr.length ? bpStripRN(c.sections.mr[0], c.rn) : null;
+  return { primary, mr, sections: c.sections, rn: c.rn, notInCamp: c.notInCamp };
+}
+// A4.2 grid cell: fill priority Leave > MC > LD/Excuse > RSI/RSO > MR, plus
+// secondary RSI/RSO markers. Returns { primary, hasRSI, hasRSO, hasMR, any }.
+function bpGridCell(r, dateIso) {
+  const s = bpClassifyPerson(r, dateIso).sections;
+  const hasRSO = s.reportingSick.some(x => /\(RSO\)$/.test(x));
+  const hasRSI = s.reportingSick.some(x => /\(RSI\)$/.test(x));
+  let primary = null;
+  if (s.alOil.length) primary = "LV";
+  else if (s.attC.length) primary = "MC";
+  else if (s.status.length) primary = "LD";
+  else if (s.reportingSick.length) primary = hasRSO ? "RSO" : "RSI";
+  else if (s.mr.length) primary = "MR";
+  return { primary, hasRSI, hasRSO, hasMR: s.mr.length > 0, any: !!primary };
+}
+
+// ── Strength (spec §8) ──────────────────────────────────────────────────────
+function bpIsActive(r) {
+  return r.status === "Active" || !r.status; // DECISIONS #33
+}
+// people: array of in-scope roster rows. Returns totals + per-rankGroup ratios.
+function bpStrength(people, dateIso) {
+  const active = people.filter(bpIsActive);
+  const groups = { Officer: { cur: 0, tot: 0 }, WOSPEC: { cur: 0, tot: 0 }, Enlistee: { cur: 0, tot: 0 } };
+  let total = 0, current = 0;
+  active.forEach(r => {
+    const g = rankGroupOf(r);
+    const bucket = groups[g] || groups.Enlistee;
+    const inCamp = !bpClassifyPerson(r, dateIso).notInCamp;
+    total++; bucket.tot++;
+    if (inCamp) { current++; bucket.cur++; }
+  });
+  return { total, current, groups };
+}
+
+// ── Block assembly ──────────────────────────────────────────────────────────
+// Build one platoon/HQ block (or the company aggregate block). `aggregate` =
+// true uses 80-dash separators + 2-pad rankGroup ratios (DECISIONS #27/#29).
+function bpBuildBlock(people, dateIso, type, opts) {
+  opts = opts || {};
+  const aggregate = !!opts.aggregate;
+  const headerLabel = opts.headerLabel || "";
+  const dateStr = bpDDMMYY(dateIso);
+
+  // Collect entries per section across all people.
+  const buckets = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
+  people.forEach(r => {
+    if (!bpIsActive(r)) return;
+    const c = bpClassifyPerson(r, dateIso);
+    BP_SECTIONS.forEach(k => { c.sections[k].forEach(line => buckets[k].push(line)); });
+  });
+
+  const strength = bpStrength(people, dateIso);
+  const ratio = (cur, tot) => aggregate ? `${bp2(cur)}/${bp2(tot)}` : `${cur}/${tot}`;
+
+  // Header.
+  const lines = [];
+  if (aggregate) {
+    lines.push(`${configGet("companyName")} PARADE STATE`);
+    lines.push(`${dateStr} ${type} ${opts.time || ""}`.trim());
+  } else {
+    lines.push(`${dateStr} ${type}`);
+    lines.push(headerLabel);
+  }
+  lines.push("");
+  lines.push(`TOTAL STRENGTH: ${strength.total}`);
+  lines.push(`CURRENT STRENGTH: ${strength.current}`);
+  lines.push("");
+  lines.push(`[OFFICER]: ${ratio(strength.groups.Officer.cur, strength.groups.Officer.tot)}`);
+  lines.push(`[WOSPEC]: ${ratio(strength.groups.WOSPEC.cur, strength.groups.WOSPEC.tot)}`);
+  lines.push(`[ENLISTEE]: ${ratio(strength.groups.Enlistee.cur, strength.groups.Enlistee.tot)}`);
+
+  // Sections, each preceded by its separator.
+  BP_SECTIONS.forEach((key, i) => {
+    const sep = aggregate ? BP_BIG_SEP : "-".repeat(BP_PLT_SECTION_SEPS[i]);
+    lines.push(sep);
+    const entries = buckets[key];
+    lines.push(`${BP_SECTION_LABELS[key]}: ${bp2(entries.length)}`);
+    if (entries.length) {
+      entries.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
+    } else {
+      lines.push(""); // empty section: header + count + one blank line (spec §9.2)
+    }
+  });
+
+  return lines.join("\n");
+}
+
+// ── Public entry point ──────────────────────────────────────────────────────
+// scope: { level: "company" } | { level: "platoon", platoon: "PLT1" | "HQ" }
+// type: "FP" | "LP". Returns the full message text.
+function generateBravesParadeState(scope, type, dateIso, time) {
+  scope = scope || { level: "company" };
+  const roster = STATE.roster || [];
+  const platoonPeople = code => roster.filter(r => personPlatoon(r) === code);
+
+  if (scope.level === "platoon") {
+    const code = scope.platoon;
+    const label = code === "HQ" ? configGet("hqLabel") : `PLATOON ${String(code).replace(/^PLT/i, "")}`;
+    return bpBuildBlock(platoonPeople(code), dateIso, type, { headerLabel: label });
+  }
+
+  // Company: aggregate block → 30 `=` → HQ block → (80 dashes) → PLT blocks.
+  const parts = [];
+  parts.push(bpBuildBlock(roster, dateIso, type, { aggregate: true, time }));
+  parts.push("");
+  parts.push(BP_EQ_SEP);
+  parts.push("");
+
+  // Order: HQ first, then platoons in natural order.
+  const plats = activePlatoons().map(p => p.code);
+  const ordered = ["HQ", ...plats.filter(c => c !== "HQ")];
+  const seen = new Set();
+  const blocks = [];
+  ordered.forEach(code => {
+    if (seen.has(code)) return;
+    seen.add(code);
+    const people = platoonPeople(code);
+    if (!people.length && code !== "HQ") return; // skip empty platoons (keep HQ)
+    const label = code === "HQ" ? configGet("hqLabel") : `PLATOON ${String(code).replace(/^PLT/i, "")}`;
+    blocks.push(bpBuildBlock(people, dateIso, type, { headerLabel: label }));
+  });
+  parts.push(blocks.join(`\n\n${BP_BIG_SEP}\n`));
+  return parts.join("\n");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SICK MESSAGES (spec §10)
+// ════════════════════════════════════════════════════════════════════════════
+// Two formats, both validated against `Message Formats.md`. Source = Medical rows
+// with type RSI/RSO reported on the given date (the day's sick parade). URTI vs
+// NON-URTI split by `urtiType`, falling back to classifyURTI(reason) for rows that
+// predate the field. Layout (updated Message Formats.md, DECISIONS #45): the six
+// field lines of an entry are SINGLE-spaced (joined "\n" into one chunk); builders
+// then join chunks (header, count headers, per-platoon labels, entries) with
+// "\n\n", so blank lines fall only between entries / around the count headers — not
+// between fields. R/N uses sickRN (name + B<4D>, no rank prefix — spec §10/§7 note).
+
+// "0700" → "0700H" (battalion time suffix). Pads to 4 digits defensively.
+function bpTimeH(time) {
+  return String(time || "").trim().padStart(4, "0").slice(0, 4) + "H";
+}
+// key/value field line — omits the trailing space when the value is blank, so an
+// unfilled field renders exactly "R/N:" (not "R/N: ") as in the sample.
+function bpKV(key, val) {
+  return val ? `${key}: ${val}` : `${key}:`;
+}
+// Report-sick rows for the day: type RSI/RSO reported on dateIso.
+function bpSickReports(dateIso) {
+  return (STATE.medical || []).filter(m =>
+    (m.type === "RSI" || m.type === "RSO") && displayDateToISO(m.date) === dateIso
+  );
+}
+// URTI / NON-URTI bucket for a report-sick row.
+function bpUrtiOf(m) {
+  const t = m.urtiType || classifyURTI(m.reason || "");
+  return t === "URTI" ? "URTI" : "NON-URTI";
+}
+// "FOLLOW UP STATUS FROM MO" value = the MO outcome from the medical record's
+// status (spec §10.4 — no separate field). Pending / blank → blank line (MO not
+// seen yet). MC/LD render with the inclusive day count ("9D MC").
+function bpSickFollowUp(m) {
+  if (!m.status || m.status === "Pending") return "";
+  if (m.status === "MC" || m.status === "LD") {
+    const days = bpInclusiveDays(m);
+    return days ? `${days}D ${m.status}` : m.status;
+  }
+  return m.status;
+}
+// The six field lines for one report-sick entry (S/N supplied by the caller,
+// which restarts numbering per URTI/NON-URTI sub-section — spec §10.2).
+function bpSickEntryLines(m, sn) {
+  return [
+    bpKV("S/N", bp2(sn)),
+    bpKV("R/N", sickRN(m.d4)),
+    bpKV("DATE", bpDDMMYY(displayDateToISO(m.date))),
+    bpKV("LOCATION", m.location || configGet("defaultSickLocation")),
+    bpKV("PURPOSE", m.reason || ""),
+    bpKV("FOLLOW UP STATUS FROM MO", bpSickFollowUp(m))
+  ];
+}
+// Emit a URTI block then a NON-URTI block (both always shown with counts), S/N
+// restarting in each. Returns a line array.
+function bpSickUrtiBlocks(reports) {
+  const urti = reports.filter(m => bpUrtiOf(m) === "URTI");
+  const nonUrti = reports.filter(m => bpUrtiOf(m) === "NON-URTI");
+  // Each entry is ONE chunk (its 6 field lines single-spaced, joined by "\n").
+  // The callers join chunks with "\n\n", so blank lines fall only between
+  // entries and around the URTI/NON-URTI count headers — matching the updated
+  // Message Formats.md (DECISIONS #45). Field lines within an entry are no
+  // longer double-spaced.
+  const lines = [`URTI: ${bp2(urti.length)}`];
+  urti.forEach((m, i) => lines.push(bpSickEntryLines(m, i + 1).join("\n")));
+  lines.push(`NON-URTI: ${bp2(nonUrti.length)}`);
+  nonUrti.forEach((m, i) => lines.push(bpSickEntryLines(m, i + 1).join("\n")));
+  return lines;
+}
+
+// §10.1 — single report-sick message: header → URTI block → NON-URTI block.
+function generateRSFormat(dateIso, time) {
+  const reports = bpSickReports(dateIso);
+  const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
+  lines.push(...bpSickUrtiBlocks(reports));
+  return lines.join("\n\n");
+}
+
+// §10.2 — company-wide RSI personnel, broken by platoon. Only platoons (and HQ)
+// with ≥1 report-sick entry are shown; TOTAL = sum across them.
+function generateRSIPersonnel(dateIso, time) {
+  const reports = bpSickReports(dateIso);
+  const platoonOf = d4 => {
+    const r = STATE.roster.find(x => x.id == d4);
+    return r ? personPlatoon(r) : "";
+  };
+  // Group by platoon code.
+  const byPlt = {};
+  reports.forEach(m => { (byPlt[platoonOf(m.d4)] = byPlt[platoonOf(m.d4)] || []).push(m); });
+
+  const lines = [`RSI PERSONNEL ${bpDDMMYY(dateIso)} ${bpTimeH(time)}`, `TOTAL: ${bp2(reports.length)} PAX`];
+  // Natural order: platoons numeric, HQ last (activePlatoons order); only those
+  // with entries. Any code not in activePlatoons (e.g. blank) appended at the end.
+  const known = activePlatoons().map(p => p.code);
+  const codes = Object.keys(byPlt);
+  const ordered = known.filter(c => byPlt[c]).concat(codes.filter(c => !known.includes(c)));
+  ordered.forEach(code => {
+    const members = byPlt[code];
+    if (!members || !members.length) return;
+    const label = code === "HQ" ? configGet("hqLabel")
+      : code ? `PLATOON ${String(code).replace(/^PLT/i, "")}` : "UNASSIGNED";
+    lines.push(`${label}: ${bp2(members.length)} PAX`);
+    lines.push(...bpSickUrtiBlocks(members));
+  });
+  return lines.join("\n\n");
+}
+// ───────────────────────── BRAVES-ARCHIVE-PORT END ─────────────────────────
+
+// ── Archive orchestration (GAS-only; uses SpreadsheetApp/readTab/appendMany) ──
+var BRAVES_PARADE_ARCHIVE_TAB = "ParadeArchive";
+var BRAVES_SICK_ARCHIVE_TAB = "SickArchive";
+
+function bravesArr_(x) { return Array.isArray(x) ? x : []; }
+
+// Config tab → object, mirroring the frontend normalizeConfig: accepts BOTH the
+// key/value-rows shape (Braves spec §4) AND the columns-as-keys single row that the
+// Telegram bot uses (botGroupChatId | … plus any Braves settings as extra columns).
+function bravesNormalizeConfig_(rows) {
+  var out = {};
+  function put(k, v) { var kk = String(k).trim(); if (kk) out[kk] = (typeof v === "string") ? v.trim() : v; }
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    if (r.key !== undefined || r.Key !== undefined) {
+      var k = String(r.key || r.Key || "").trim();
+      if (k) put(k, (r.value !== undefined ? r.value : (r.Value !== undefined ? r.Value : "")));
+    } else {
+      Object.keys(r).forEach(function (k) { put(k, r[k]); });   // columns-as-keys row
+    }
+  });
+  return out;
+}
+
+// ── Read-boundary normalizers (server-side ports of js/state.js) ─────────────
+// readTab returns rows verbatim, so the Roster id column (named "4d" on the sheet)
+// arrives as r["4d"] with leading zeros eaten by Sheets — r.id is undefined. The
+// ported parade/sick generators join on r.id / m.d4 / l.d4 / a.d4, so without the
+// same normalization the client applies, every join misses and names resolve to
+// the first roster row. These mirror padD4 / normalizeRoster / normalizeMedical /
+// padD4OnLayer in js/state.js — keep them in sync if those change.
+function bravesPadD4_(d4) {
+  var s = String(d4 == null ? "" : d4).trim().replace(/^C/i, "");
+  if (/^\d{1,3}$/.test(s)) { while (s.length < 4) s = "0" + s; return s; }
+  return s;
+}
+function bravesNormalizeRoster_(rows) {
+  return (rows || []).map(function (r) {
+    var id = bravesPadD4_(r.id || r["4d"] || r["4D"] || "");
+    // Auto-detect commander by id pattern (00xx) when the role column is blank;
+    // an explicit role from the sheet always wins.
+    var isCmdrById = /^00\d{2}$/.test(id);
+    var role = r.role || (isCmdrById ? "Commander" : "Recruit");
+    var fourD = (r.fourD !== undefined && r.fourD !== "")
+      ? String(r.fourD).trim()
+      : (role !== "Commander" && /^\d{4}$/.test(id) ? id : "");
+    var out = {};
+    Object.keys(r).forEach(function (k) { if (k !== "conditions") out[k] = r[k]; });
+    out.id = id;
+    out.role = role;
+    out.rank = r.rank || "";
+    out.platoon = r.platoon || "";
+    out.section = r.section != null ? String(r.section) : "";
+    out.rankGroup = r.rankGroup || "";
+    out.fourD = fourD;
+    out.leaveQuota = (r.leaveQuota !== undefined && r.leaveQuota !== "") ? +r.leaveQuota : "";
+    return out;
+  });
+}
+function bravesNormalizeMedical_(rows) {
+  return (rows || []).map(function (r) {
+    var status = r.status || "";
+    if (/^Excused /.test(status)) status = status.replace(/^Excused /, "Excuse ");
+    return {
+      id: r.id,
+      d4: bravesPadD4_(r.d4 || ""),
+      date: r.date || "",
+      reason: r.reason || "",
+      location: r.location || "",
+      status: status,
+      startDate: r.startDate || "",
+      endDate: r.endDate || "",
+      type: r.type || "",
+      urtiType: r.urtiType || "",
+      mrTiming: r.mrTiming || "",
+      visitId: r.visitId || ""
+    };
+  });
+}
+// Generic d4-padding pass for leave/appointments (no dedicated normalizer).
+function bravesPadD4OnLayer_(rows) {
+  return (rows || []).map(function (r) {
+    if (r && r.d4 != null) { var c = {}; Object.keys(r).forEach(function (k) { c[k] = r[k]; }); c.d4 = bravesPadD4_(r.d4); return c; }
+    return r;
+  });
+}
+
+// Build the global STATE the ported generators read, from the live sheet tabs.
+// Each layer is normalized at this read boundary exactly as the client does.
+function bravesLoadState_() {
+  STATE = {
+    roster: bravesNormalizeRoster_(bravesArr_(readTab("Roster"))),
+    medical: bravesNormalizeMedical_(bravesArr_(readTab("Medical"))),
+    leave: bravesPadD4OnLayer_(bravesArr_(readTab("Leave"))),
+    appointments: bravesPadD4OnLayer_(bravesArr_(readTab("Appointments"))),
+    platoons: bravesArr_(readTab("Platoons")),
+    config: bravesNormalizeConfig_(bravesArr_(readTab("Config")))
+  };
+}
+
+function bravesTodayISO_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd"); }
+function bravesNowHHMM_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "HHmm"); }
+// Slot before noon → First Parade, else Last Parade. Fallback heuristic for ad-hoc
+// manual snapshots at an unconfigured time; the scheduled poll uses the typed
+// parser below (which treats midday as FP, only the night/last slot as LP).
+function bravesSlotType_(slot) { var n = parseInt(String(slot).slice(0, 2), 10) || 0; return n < 12 ? "FP" : "LP"; }
+// "0730,1730" → ["0730","1730"] (4-digit, zero-padded; drops any ":FP"/":LP" tag).
+function bravesParseSlots_(cfg) {
+  if (!cfg) return [];
+  return String(cfg).split(",").map(function (s) {
+    var d = String(s).replace(/[^\d]/g, "");
+    while (d.length < 4) d = "0" + d;
+    return d.slice(0, 4);
+  }).filter(function (s) { return s.length === 4; });
+}
+// Parse the parade schedule into TYPED slots → [{slot:"HHMM", type:"FP"|"LP"}].
+// Each entry may carry an explicit type, "0730:FP, 1300:FP, 2130:LP" (case-
+// insensitive) — explicit always wins. Untyped entries default by time-of-day:
+// the latest slot becomes LP (the night / last parade) ONLY when it is actually
+// evening (hour ≥ LP_HOUR); every earlier slot, and a daytime-only schedule with
+// no evening slot, stays FP (morning + midday). So a midday parade is FP, not LP —
+// and "0730,1300" (no night parade) does NOT mislabel 1300 as LP and drop the
+// midday report-sick archive.
+var BRAVES_LP_HOUR_ = 16;  // earliest hour an untyped slot is treated as Last Parade
+function bravesParseParadeSlots_(cfg) {
+  if (!cfg) return [];
+  var parsed = String(cfg).split(",").map(function (s) {
+    var raw = String(s);
+    var tag = (raw.match(/(FP|LP)/i) || [])[1];
+    var d = raw.replace(/[^\d]/g, "");
+    while (d.length < 4) d = "0" + d;
+    return { slot: d.slice(0, 4), type: tag ? tag.toUpperCase() : null };
+  }).filter(function (x) { return x.slot.length === 4; });
+  var latest = parsed.reduce(function (m, x) { return x.slot > m ? x.slot : m; }, "");
+  var latestIsEvening = parseInt(latest.slice(0, 2), 10) >= BRAVES_LP_HOUR_;
+  parsed.forEach(function (x) {
+    if (!x.type) x.type = (x.slot === latest && latestIsEvening) ? "LP" : "FP";
+  });
+  return parsed;
+}
+// Report-sick archive slots: explicit archiveSickTimes if set, ELSE the FP
+// (morning + midday) parade slots — so report-sick is archived only in the
+// morning and midday and NEVER at the LP/night slot.
+function bravesSickSlots_(cfg) {
+  var explicit = bravesParseSlots_(cfg.archiveSickTimes);
+  if (explicit.length) return explicit;
+  return bravesParseParadeSlots_(cfg.archiveParadeTimes)
+    .filter(function (x) { return x.type === "FP"; })
+    .map(function (x) { return x.slot; });
+}
+
+function bravesEnsureArchiveTabs_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureTabWithHeaders_(ss, BRAVES_PARADE_ARCHIVE_TAB, ["timestamp", "date", "slot", "type", "scope", "message"]);
+  ensureTabWithHeaders_(ss, BRAVES_SICK_ARCHIVE_TAB, ["timestamp", "date", "slot", "format", "message"]);
+  // Force the date/slot columns to plain-text format. appendMany writes via
+  // setValues, which auto-coerces "2026-06-23"→a Date and "0730"→730; readTab then
+  // reformats Dates to "dd MMM yyyy", so bravesAlreadyArchived_'s string compare
+  // would never match and every poll would re-archive duplicates. Text format makes
+  // the written strings round-trip verbatim. (appendMany is on the do-not-change
+  // list, so we fix the storage format rather than the writer.)
+  bravesForceTextCols_(ss, BRAVES_PARADE_ARCHIVE_TAB, ["date", "slot"]);
+  bravesForceTextCols_(ss, BRAVES_SICK_ARCHIVE_TAB, ["date", "slot"]);
+}
+// Set the given header-named columns of a tab to plain-text ("@") number format,
+// so string values survive Sheets' input auto-coercion on write/read.
+function bravesForceTextCols_(ss, tabName, headerNames) {
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return;
+  var lastCol = sheet.getLastColumn();
+  if (!lastCol) return;
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+  var maxRows = sheet.getMaxRows();
+  headerNames.forEach(function (name) {
+    var idx = headers.indexOf(name);
+    if (idx >= 0) sheet.getRange(1, idx + 1, maxRows, 1).setNumberFormat("@");
+  });
+}
+
+// Idempotency: has this (date, slot) already been archived in tabName?
+function bravesAlreadyArchived_(tabName, dateIso, slot) {
+  return bravesArr_(readTab(tabName)).some(function (r) {
+    return String(r.date) === dateIso && String(r.slot) === String(slot);
+  });
+}
+
+function bravesArchiveParade_(dateIso, slot, type) {
+  if (bravesAlreadyArchived_(BRAVES_PARADE_ARCHIVE_TAB, dateIso, slot)) return null;
+  bravesLoadState_();
+  var msg = generateBravesParadeState({ level: "company" }, type, dateIso, slot);
+  var row = { timestamp: new Date().toISOString(), date: dateIso, slot: String(slot), type: type, scope: "company", message: msg };
+  appendMany(BRAVES_PARADE_ARCHIVE_TAB, [row]);
+  return row;
+}
+function bravesArchiveSick_(dateIso, slot) {
+  if (bravesAlreadyArchived_(BRAVES_SICK_ARCHIVE_TAB, dateIso, slot)) return null;
+  bravesLoadState_();
+  var msg = generateRSFormat(dateIso, slot);
+  var row = { timestamp: new Date().toISOString(), date: dateIso, slot: String(slot), format: "RS", message: msg };
+  appendMany(BRAVES_SICK_ARCHIVE_TAB, [row]);
+  return row;
+}
+
+// doPost action "archiveNow" (commander/admin). body: {kind?:"parade"|"sick"|"both",
+// date?:ISO, slot?:HHMM, type?:"FP"|"LP"}. Shares the generators with the cron so
+// manual + scheduled archives are produced by identical code.
+function bravesArchiveNow(body, ctx) {
+  bravesEnsureArchiveTabs_();
+  var dateIso = body.date || bravesTodayISO_();
+  var slot = body.slot || bravesNowHHMM_();
+  var kind = body.kind || "both";
+  var out = {};
+  if (kind === "parade" || kind === "both") {
+    var type = body.type;
+    if (!type) {
+      // Use the configured slot's FP/LP if this time is on the schedule; otherwise
+      // fall back to the noon heuristic for a truly ad-hoc snapshot.
+      var cfg = bravesNormalizeConfig_(bravesArr_(readTab("Config")));
+      var match = bravesParseParadeSlots_(cfg.archiveParadeTimes).filter(function (p) { return p.slot === slot; })[0];
+      type = match ? match.type : bravesSlotType_(slot);
+    }
+    out.parade = bravesArchiveParade_(dateIso, slot, type);
+  }
+  if (kind === "sick" || kind === "both") out.sick = bravesArchiveSick_(dateIso, slot);
+  return { ok: true, archived: out, date: dateIso, slot: slot };
+}
+
+// Time-driven poll (install via setupBravesArchive → 5-min trigger). Archives any
+// configured slot whose time-of-day has passed today and isn't already recorded.
+function archivePoll() {
+  bravesEnsureArchiveTabs_();
+  var now = bravesNowHHMM_(), dateIso = bravesTodayISO_();
+  var cfg = bravesNormalizeConfig_(bravesArr_(readTab("Config")));
+  // Parade: each configured slot, typed FP/LP (midday = FP, night/last = LP).
+  bravesParseParadeSlots_(cfg.archiveParadeTimes).forEach(function (p) {
+    if (p.slot <= now) bravesArchiveParade_(dateIso, p.slot, p.type);
+  });
+  // Report sick: morning + midday only (the FP slots, unless overridden).
+  bravesSickSlots_(cfg).forEach(function (slot) {
+    if (slot <= now) bravesArchiveSick_(dateIso, slot);
+  });
+}
+
+// One-time setup (run from the Apps Script editor): create the archive tabs and
+// install the 5-minute archivePoll trigger.
+function setupBravesArchive() {
+  bravesEnsureArchiveTabs_();
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "archivePoll") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("archivePoll").timeBased().everyMinutes(5).create();
+  Logger.log("Braves archive ready: ParadeArchive + SickArchive tabs ensured, 5-min archivePoll trigger installed.");
 }

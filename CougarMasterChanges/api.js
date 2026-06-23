@@ -12,8 +12,6 @@ const API = {
     const url = `${STATE.apiUrl}?action=${action}${tab ? "&tab=" + tab : ""}&auth=${auth}`;
     const res = await fetch(url);
     const data = await res.json();
-    // 401 covers both "not logged in" and "session_expired" — either way the
-    // caller should bounce to the login screen (handleAuthFailure in main.js).
     if (data && data.code === 401) throw new AuthError(data.error);
     return data;
   },
@@ -27,67 +25,30 @@ const API = {
     if (data && data.code === 401) throw new AuthError(data.error);
     return data;
   },
-  // ── Account auth (Step 1) ──────────────────────────────
-  // login does not carry an existing token — it's how you get one.
-  async login(email, password) {
+  // Redeem a single-use invite token. Does not require an existing auth token.
+  async redeemInvite(token) {
     const res = await fetch(STATE.apiUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ action: "login", email, password })
+      body: JSON.stringify({ action: "redeemInvite", token })
     });
     return res.json();
   },
-  async logout() { return this.post({ action: "logout" }); },
-  async changePassword(currentPassword, newPassword) {
-    return this.post({ action: "changePassword", currentPassword, newPassword });
-  },
-  // ── Admin: account + token management ──────────────────
-  async listAccounts() { return this.post({ action: "listAccounts" }); },
-  async addAccount(newEmail, newPersonId, newRole, newPassword) {
-    return this.post({ action: "addAccount", newEmail, newPersonId, newRole, newPassword });
-  },
-  async removeAccount(targetEmail) { return this.post({ action: "removeAccount", targetEmail }); },
-  async adminResetPassword(targetEmail, tempPassword) {
-    return this.post({ action: "adminResetPassword", targetEmail, tempPassword });
-  },
-  async listTokens() { return this.post({ action: "listTokens" }); },
-  async revokeToken(targetToken, targetEmail) {
-    return this.post({ action: "revokeToken", targetToken, targetEmail });
-  },
-  async revokeAllForEmail(targetEmail) { return this.post({ action: "revokeAllForEmail", targetEmail }); },
-  async revokeAllTokens() { return this.post({ action: "revokeAllTokens" }); },
-  // ── Archive (Item 1): manual snapshot. kind: "parade"|"sick"|"both". ──
-  async archiveNow(kind, opts) { return this.post({ action: "archiveNow", kind, ...(opts || {}) }); },
   async pullAll() {
     const data = await this.get("readAll");
     if (data.error) throw new Error(data.error);
     if (data.roster?.length) STATE.roster = normalizeRoster(data.roster);
     if (data.medical?.length) STATE.medical = normalizeMedical(data.medical);
-    if (data.attendance?.length) STATE.attendance = normalizeAttendance(data.attendance);
+    if (data.attendance?.length) STATE.attendance = data.attendance;
     if (data.ippt?.length) STATE.ippt = padD4OnLayer(data.ippt);
     if (data.rm?.length) STATE.rm = padD4OnLayer(data.rm);
     if (data.soc?.length) STATE.soc = padD4OnLayer(data.soc);
     if (data.polar?.length) STATE.polar = padD4OnLayer(data.polar);
     if (data.conductDetail?.length) STATE.conductDetail = padD4OnLayer(data.conductDetail);
     if (data.appointments?.length) STATE.appointments = padD4OnLayer(data.appointments);
-    if (data.leave?.length) STATE.leave = padD4OnLayer(data.leave);
+    if (data.leave?.length) STATE.leave = normalizeLeave(data.leave);
     if (data.msk?.length) STATE.msk = normalizeMSK(data.msk);
     if (data.conducts?.length) STATE.conducts = data.conducts;
-    // Braves reference tabs (spec §4/§12/A6). Assigned unconditionally (not
-    // length-gated) so clearing a tab in the Sheet actually clears it here —
-    // config especially must reflect deletions, not stick to a stale cache.
-    if (data.config !== undefined) STATE.config = normalizeConfig(data.config);
-    if (data.vocfit !== undefined) STATE.vocfit = normalizeVocFit(data.vocfit);
-    if (data.platoons !== undefined) STATE.platoons = normalizePlatoons(data.platoons);
-    // Admin pulls include the audit log; non-admins never receive it. Assign
-    // unconditionally to the admin-provided value so it clears if absent.
-    if (STATE.role === "admin") STATE.auditLog = Array.isArray(data.auditLog) ? data.auditLog : [];
-    // Archived parade-state / report-sick messages (Item 1) — admin-only, same as
-    // the audit log. The backend only returns these to admins.
-    if (STATE.role === "admin") {
-      STATE.paradeArchive = Array.isArray(data.paradeArchive) ? data.paradeArchive : [];
-      STATE.sickArchive = Array.isArray(data.sickArchive) ? data.sickArchive : [];
-    }
     // Re-sync LMS counts from polar after every pull. Polar entries are the
     // source of truth for "who wore the watch" = LMS participation; this
     // keeps the attendance LMS column auto-correct without manual button

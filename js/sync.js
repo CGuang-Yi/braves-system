@@ -63,6 +63,16 @@ function renderSync(el) {
       </p>
       <button class="btn btn-primary" onclick="openFitnessReportModal()" ${authed ? "" : "disabled"}>📨 Open Report Sender →</button>
     </div>
+    <div class="card admin-only" style="margin-top:16px">
+      <h3 style="color:var(--purple)">📊 Statistics (admin)</h3>
+      <p style="font-size:11px;color:var(--muted);margin:6px 0 10px;line-height:1.5">
+        One row per person, respecting the topbar scope. Opens in Excel / Google Sheets.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="exportSickStats()">📥 Report-Sick Stats (CSV)</button>
+        <button class="btn" onclick="exportHAStats()">📥 HA Stats (CSV)</button>
+      </div>
+    </div>
     <div class="admin-only" id="admin-panel" style="margin-top:16px"></div>`;
 
   // Admin panel renders into #admin-panel and lazy-loads accounts/sessions.

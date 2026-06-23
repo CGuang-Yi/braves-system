@@ -5,18 +5,12 @@
 // The Apps Script web app URL. This is no longer a secret — auth is enforced
 // server-side by per-device tokens issued via the invite flow (see Apps Script).
 // PASTE YOUR DEPLOYMENT URL HERE after redeploying the updated Apps Script:
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0moNSMsJfkFrg-u1sGCCCdd9GALNi-nkfV-C0JqGjBuusdJTDZHXeX8isP6dqFkEyeg/exec"
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzazMTu4y4XjjDXBGWN_aAE51fzP_z23zQUZnuKjWWPJ3fNNjUPbp3DbZW9T66OQysr/exec"
 
 // Storage key is versioned so we can invalidate stale caches in users' browsers.
 const STORAGE_KEY = "cougar-data-v2";
 const STORAGE_KEY_LEGACY = "cougar-data"; // v1 — contained hardcoded personnel fallback
-const AUTH_KEY = "cougar-auth";           // per-device auth token (now from login, not invites)
-// Session metadata that rides alongside the token: the account's role + identity.
-// Kept in their own keys (not in STORAGE_KEY) so a data-cache clear doesn't sign
-// the user out. The token in AUTH_KEY remains the single source the API sends.
-const ROLE_KEY = "braves-role";
-const PERSONID_KEY = "braves-personid";
-const EMAIL_KEY = "braves-email";
+const AUTH_KEY = "cougar-auth";
 const FILTER_KEY = "cougar-filter";
 const IPPT_AGG_KEY = "cougar-ippt-agg";
 const FITNESS_SENT_KEY = "cougar-fitness-sent";
@@ -40,45 +34,8 @@ const TAB_TO_STATE = {
   "Appointments": "appointments",
   "Leave": "leave",
   "MSK": "msk",
-  "Conducts": "conducts",
-  // Braves §4/§12/A6 reference tabs. VocFit/Platoons round-trip via the normal
-  // sync primitives; Config is key/value and is written through its own path
-  // (it normalizes array→object on read), so it is intentionally absent here.
-  "VocFit": "vocfit",
-  "Platoons": "platoons"
+  "Conducts": "conducts"
 };
-
-// Company-specific defaults (spec §4). Every value the system used to hardcode
-// lives here so the app adapts to another company by editing the BravesConfig tab,
-// not the code. STATE.config overlays these; it is populated by readAllTabs from
-// BOTH the bot's Config tab (parade/archive keys) and the BravesConfig tab
-// (company-identity keys), merged into one object. A missing key falls back to the
-// default below via configGet().
-const DEFAULT_CONFIG = {
-  companyName: "40 SAR BRAVES COMPANY",
-  companyPrefix: "B",
-  companyCoyCode: "B COY",
-  unitCode: "40SAR",
-  hqLabel: "BRAVES HQ",
-  defaultSickLocation: "PTMC",
-  polarCompanyName: "Braves Coy",
-  // Which signal decides whether a conduct earns an HA period (spec §14.3):
-  // "isHAExcluded" = existing conduct-name logic; "currencyTag" = the CSV
-  // "Currency Tags: HA" metadata. Switchable without code changes.
-  haEligibilitySource: "isHAExcluded",
-  // Leave types that classify as AL/OIL in parade state (spec §8, DECISIONS
-  // #32/#35). Any leave type NOT in this comma-separated list falls to OTHERS,
-  // sub-typed in/out of camp by reason keywords. Edit here (or override via the
-  // Config tab) to retune the split without touching code.
-  alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate"
-};
-
-// Read a Config value with the company default as a fallback. Always returns a
-// string-ish value; never throws on a missing Config tab.
-function configGet(key) {
-  const v = STATE.config && STATE.config[key];
-  return (v !== undefined && v !== null && v !== "") ? v : DEFAULT_CONFIG[key];
-}
 
 // Persisted set of tab names with unpushed local changes. Survives reloads
 // in its own localStorage key (separate from STORAGE_KEY) so a "Clear cache"
@@ -162,25 +119,7 @@ const STATE = {
   nav: "dashboard",
   apiUrl: APPS_SCRIPT_URL,
   authToken: localStorage.getItem(AUTH_KEY) || "",
-  // Account session (set on login). `role` drives the read-only gate and the
-  // admin panel; `personId`/`email` identify the signed-in account. Empty until
-  // a successful login.
-  role: localStorage.getItem(ROLE_KEY) || "",
-  personId: localStorage.getItem(PERSONID_KEY) || "",
-  email: localStorage.getItem(EMAIL_KEY) || "",
-  // Admin-panel data, loaded on demand from the backend (never cached to disk):
-  accounts: [],   // [{email, personId, role, addedBy, addedAt}] — no secrets
-  tokens: [],     // active sessions [{token, tokenPrefix, email, role, issuedAt, expired}]
-  auditLog: [],   // audit rows — only populated for admin pulls
-  paradeArchive: [], sickArchive: [], // archived parade/sick messages — admin-only pulls (Item 1)
   roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [], conductDetail: [], appointments: [], leave: [], msk: [],
-  // Braves reference data (spec §4/§12/A6). config is an object keyed by Config
-  // `key`; vocfit/platoons are row arrays. All empty until pulled — every reader
-  // falls back to DEFAULT_CONFIG / derivation so the app works before the Sheet
-  // tabs exist.
-  config: {},
-  vocfit: [],
-  platoons: [],
   // Canonical conduct registry: [{id: "c001", name: "Orientation Run"}, ...].
   // Source of truth for the conduct dimension — records on attendance/polar/
   // conductDetail reference entries here via `conductId` instead of carrying
@@ -245,26 +184,11 @@ function normalizeRoster(roster) {
     // values from the sheet always win.
     const isCmdrById = /^00\d{2}$/.test(id);
     const role = rest.role || (isCmdrById ? "Commander" : "Recruit");
-    // Braves org model (spec §5). These are new explicit columns; they default
-    // empty when the Sheet hasn't added them yet (the Step-5 scope rewrite reads
-    // them, the legacy 4D-parsing filter still works in the meantime).
-    //   platoon  — "HQ" / "PLT1".."PLTn"
-    //   section  — "1".."N", "Command" (PC/PS), or blank for HQ-flat personnel
-    //   rankGroup— "Officer" / "WOSPEC" / "Enlistee" (drives the strength split)
-    //   fourD    — display 4D; equals id for numeric non-commander ids, blank
-    //              for no-4D personnel (commanders show rank+name instead).
-    const fourD = rest.fourD !== undefined && rest.fourD !== ""
-      ? String(rest.fourD).trim()
-      : (role !== "Commander" && /^\d{4}$/.test(id) ? id : "");
     return {
       ...rest,
       id,
       role,
       rank: rest.rank || "",
-      platoon: rest.platoon || "",
-      section: rest.section != null ? String(rest.section) : "",
-      rankGroup: rest.rankGroup || "",
-      fourD,
       leaveQuota: rest.leaveQuota !== undefined && rest.leaveQuota !== "" ? +rest.leaveQuota : ""
     };
   });
@@ -292,16 +216,20 @@ function normalizeMedical(records) {
       location: r.location || "",
       status,
       startDate: r.startDate || "",
-      endDate: r.endDate || "",
-      // Braves §6 fields. `type` is the visit type (RSI/RSO/MR + legacy values),
-      // distinct from `status` (the MO outcome: MC/LD/Excuse…). All default
-      // blank so legacy rows keep working; the parade-state classifier (Step 3)
-      // reads `type` for REPORTING SICK / MR and `status` for ATT C / STATUS.
-      type: r.type || "",
-      urtiType: r.urtiType || "",      // "URTI" / "NON-URTI" — meaningful for RSI/RSO
-      mrTiming: r.mrTiming || "",      // optional free-text timing for MR rows
-      visitId: r.visitId || ""         // groups sibling rows of one multi-status visit
+      endDate: r.endDate || ""
     };
+  });
+}
+
+// Leave records get d4 padding plus a one-way migration of the legacy bare
+// "Leave" type to its current "Annual Leave" spelling, so old records keep
+// their badge color / calendar legend mapping after the rename.
+function normalizeLeave(records) {
+  return (records || []).map(r => {
+    if (!r) return r;
+    const out = r.d4 != null ? { ...r, d4: padD4(r.d4) } : { ...r };
+    if (out.type === "Leave") out.type = "Annual Leave";
+    return out;
   });
 }
 
@@ -349,80 +277,12 @@ function normalizeMSK(records) {
   });
 }
 
-// Config tab arrives as key/value rows ([{key, value}, ...]); collapse to a
-// plain object keyed by `key`. Tolerant of header casing (key/Key, value/Value)
-// and ignores blank keys. Returns {} when there's nothing usable.
-// Accepts BOTH Config-tab shapes (the sheet can be either, and the Telegram bot
-// owns the same "Config" tab as a single columns-as-keys row):
-//   • key/value rows  → {key:"companyName", value:"…"}            (Braves spec §4)
-//   • columns-as-keys → {companyName:"…", archiveParadeTimes:"…"}  (bot/COS layout)
-// A row is treated as key/value only when it actually has a `key` column; otherwise
-// every column on the row is taken as a setting. Both can coexist on one tab, so the
-// bot's columns (botGroupChatId, …) and Braves settings live side by side.
-function normalizeConfig(rows) {
-  const out = {};
-  const put = (k, v) => { const kk = String(k).trim(); if (kk) out[kk] = typeof v === "string" ? v.trim() : v; };
-  (rows || []).forEach(r => {
-    if (!r) return;
-    if (r.key !== undefined || r.Key !== undefined || r.KEY !== undefined) {
-      const k = String(r.key ?? r.Key ?? r.KEY ?? "").trim();
-      if (k) put(k, r.value ?? r.Value ?? r.VALUE ?? "");
-    } else {
-      Object.keys(r).forEach(k => put(k, r[k]));   // columns-as-keys row
-    }
-  });
-  return out;
-}
-
-// VocFit completion rows (spec §12.3): personId | completionDate | certifyingUnit.
-// d4-pad personId so it joins cleanly with the roster id space.
-function normalizeVocFit(rows) {
-  return (rows || []).map(r => ({
-    personId: padD4(r.personId || r.PersonId || r.d4 || r.id || ""),
-    completionDate: r.completionDate || r.CompletionDate || "",
-    certifyingUnit: r.certifyingUnit || r.CertifyingUnit || ""
-  })).filter(r => r.personId);
-}
-
-// Platoons tab (addendum A6.1): code | displayName | active | createdAt. `active`
-// is coerced to a real boolean (sheets store TRUE/FALSE as strings/booleans).
-function normalizePlatoons(rows) {
-  return (rows || []).map(r => {
-    const a = r.active;
-    const active = a === true || String(a).toUpperCase() === "TRUE" || a === "" || a == null;
-    return {
-      code: String(r.code || r.Code || "").trim(),
-      displayName: r.displayName || r.DisplayName || r.code || "",
-      active,
-      createdAt: r.createdAt || r.CreatedAt || ""
-    };
-  }).filter(r => r.code);
-}
-
-// Attendance normalizer (Braves §14 CSV import). The CSV import adds four fields
-// to attendance rows — `participants` (comma-joined Present 4Ds, the HA
-// participation source), `periods` (the B5 1h-period count for Double HA),
-// `currencyTags` (e.g. "HA", an HA-eligibility signal), and `source` ("csv" vs
-// "" for wizard rows). Defaulting them on EVERY row here is essential: writeTab
-// derives sheet headers from Object.keys(data[0]), so if the first row lacked
-// these keys a full-sheet push would silently strip the columns for all rows.
-function normalizeAttendance(rows) {
-  return (rows || []).map(r => ({
-    ...r,
-    participants: r.participants || "",
-    periods: (r.periods === 0 || r.periods) ? r.periods : "",
-    currencyTags: r.currencyTags || "",
-    source: r.source || ""
-  }));
-}
-
 function saveLocal() {
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
     conductDetail: STATE.conductDetail, appointments: STATE.appointments,
-    leave: STATE.leave, msk: STATE.msk, conducts: STATE.conducts,
-    config: STATE.config, vocfit: STATE.vocfit, platoons: STATE.platoons
+    leave: STATE.leave, msk: STATE.msk, conducts: STATE.conducts
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
 }
@@ -437,19 +297,16 @@ function loadLocal() {
     const d = JSON.parse(raw);
     STATE.roster = normalizeRoster(d.roster);
     STATE.medical = normalizeMedical(d.medical);
-    STATE.attendance = normalizeAttendance(d.attendance);
+    STATE.attendance = d.attendance || [];
     STATE.ippt = padD4OnLayer(d.ippt);
     STATE.rm = padD4OnLayer(d.rm);
     STATE.soc = padD4OnLayer(d.soc);
     STATE.polar = padD4OnLayer(d.polar);
     STATE.conductDetail = padD4OnLayer(d.conductDetail);
     STATE.appointments = padD4OnLayer(d.appointments);
-    STATE.leave = padD4OnLayer(d.leave);
+    STATE.leave = normalizeLeave(d.leave);
     STATE.msk = normalizeMSK(d.msk);
     STATE.conducts = Array.isArray(d.conducts) ? d.conducts : [];
-    STATE.config = d.config && typeof d.config === "object" ? d.config : {};
-    STATE.vocfit = normalizeVocFit(d.vocfit);
-    STATE.platoons = normalizePlatoons(d.platoons);
   } catch { /* fall through to empty state */ }
 }
 
@@ -459,39 +316,13 @@ function setAuthToken(token) {
   else localStorage.removeItem(AUTH_KEY);
 }
 
-// Persist the full account session after a successful login (or clear it on
-// logout / auth failure). The token still lives in AUTH_KEY via setAuthToken so
-// the API layer keeps reading from one place.
-function setSession(token, role, personId, email) {
-  setAuthToken(token);
-  STATE.role = role || "";
-  STATE.personId = personId || "";
-  STATE.email = email || "";
-  const put = (k, v) => v ? localStorage.setItem(k, v) : localStorage.removeItem(k);
-  put(ROLE_KEY, STATE.role);
-  put(PERSONID_KEY, STATE.personId);
-  put(EMAIL_KEY, STATE.email);
-}
-function clearSession() {
-  setSession("", "", "", "");
-  STATE.accounts = []; STATE.tokens = []; STATE.auditLog = [];
-}
-// Permission helpers used by the UI. The SERVER is the authoritative gate; these
-// only drive what the read-only viewer sees (soft disabling) and the admin panel.
-const canWrite = () => STATE.role === "commander" || STATE.role === "admin";
-const isAdminRole = () => STATE.role === "admin";
-
 function loadFilter() {
   try {
     const raw = localStorage.getItem(FILTER_KEY);
     if (!raw) return;
     const d = JSON.parse(raw);
-    // Step 5 (§11) switched filterPlt from a bare digit ("1") to a platoon CODE
-    // ("PLT1"/"HQ"). A legacy bare-numeric persisted value would now match no
-    // platoon and blank every view — so discard it (and its section) on load.
-    const legacyNumericPlt = d.plt && /^\d+$/.test(String(d.plt));
-    STATE.filterPlt = legacyNumericPlt ? "" : (d.plt || "");
-    STATE.filterSect = legacyNumericPlt ? "" : (d.sect || "");
+    STATE.filterPlt = d.plt || "";
+    STATE.filterSect = d.sect || "";
     STATE.filterRole = d.role || "";
   } catch { /* keep defaults */ }
 }

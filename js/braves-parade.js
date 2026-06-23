@@ -1,26 +1,19 @@
 // ============================================================================
-// BRAVES PARADE STATE — Step 3 (spec §7–9)  ***DRAFT — NOT YET LOADED***
+// BRAVES PARADE STATE — Step 3 (spec §7–9)
 // ============================================================================
-// This file is intentionally NOT referenced from index.html yet. It was written
-// during the overnight session while the Bash safety classifier was unavailable,
-// so it could NOT be run, `node --check`ed, or byte-validated against
-// `Message Formats.md` (the explicit Step-3 acceptance test). Loading it blind
-// could break the whole app (all scripts share global scope), so integration is
-// deferred until it can be verified. See SESSION_LOG.md handoff + DECISIONS #26–33.
+// The Braves §7–9 parade-state generator. Loaded after forms.js / before sync.js
+// (it leans on globals defined in earlier files). Replaces the legacy Cougar
+// parade builders; `regenerateReport()` routes FP/LP here via
+// generateBravesParadeState(scope, type, dateIso, time), and `paradeRN` delegates
+// to bravesParadeRN (so the borderline/appointment checklist sections still work).
 //
-// INTEGRATION CHECKLIST (do once Bash/node is back):
-//   1. node --check js/braves-parade.js
-//   2. Add  <script src="js/braves-parade.js?v=NN"></script>  AFTER forms.js,
-//      BEFORE sync.js, in index.html; bump ?v on every tag.
-//   3. Replace the legacy Cougar generators: point regenerateReport()'s FP/LP
-//      branch at generateBravesParadeState(scope, type, dateIso, time), and add a
-//      company/platoon scope selector to openReportModal (see notes at bottom).
-//   4. Remove the now-dead Cougar parade fns from forms.js (buildStrengthBlock,
-//      buildMedicalSection, buildOthersSection, buildAppointmentSection,
-//      generateParadeStateText, the old paradeRN) — or keep paradeRN's name and
-//      have it delegate to bravesParadeRN.
-//   5. Run the byte-comparison: generate FP for the sample data and diff against
-//      `Message Formats.md` (Company + Platoon sections). Tune SEP arrays / spacing.
+// Byte-validated 2026-06-21 against `Message Formats.md` with a Node fixture
+// harness (structural match + literal helper assertions). The sample is an
+// internally date-inconsistent montage and can't be reproduced verbatim end-to-
+// end (no source data; it even mis-counts one section and renders one person two
+// ways) — so the validation is structural + per-helper, not literal 279-pax.
+// Format decisions: DECISIONS #26–33 + #35 (this session). The sample's incidental
+// double-spaces are dropped (#26); names are NOT force-uppercased (#30).
 //
 // DEPENDENCIES (globals from earlier files; present once loaded after forms.js):
 //   STATE, configGet, displayDateToISO, medStatusActive, personPlatoon,
@@ -46,13 +39,24 @@ const BP_SECTION_LABELS = {
   others: "OTHERS"
 };
 
-// Leave types that count as AL/OIL (DECISIONS #32 — flag for confirmation; make
-// Config-driven later). Everything else → OTHERS (NOT IN CAMP).
-const BP_ALOIL_TYPES = new Set(
-  ["leave", "off-in-lieu", "oil", "al", "annual leave", "weekend", "night's out", "nights out", "compassionate"]
-);
+// Leave types that count as AL/OIL vs OTHERS (DECISIONS #32, resolved #35 this
+// session). Config-driven: configGet("alOilLeaveTypes") supplies the list
+// (comma-separated string or array); the hardcoded set below is the fallback if
+// Config is absent. Everything NOT in the set falls to OTHERS, sub-typed in/out
+// of camp by the reason-keyword derivation (bpOthersNotInCamp), per spec §8.
+const BP_ALOIL_TYPES_DEFAULT =
+  ["leave", "off-in-lieu", "oil", "al", "annual leave", "weekend", "night's out", "nights out", "compassionate"];
+function bpAlOilTypeSet() {
+  const cfg = configGet("alOilLeaveTypes");
+  if (cfg) {
+    const arr = Array.isArray(cfg) ? cfg : String(cfg).split(",");
+    const cleaned = arr.map(s => String(s).trim().toLowerCase()).filter(Boolean);
+    if (cleaned.length) return new Set(cleaned);
+  }
+  return new Set(BP_ALOIL_TYPES_DEFAULT);
+}
 function bpIsAlOilType(type) {
-  return BP_ALOIL_TYPES.has(String(type || "").trim().toLowerCase());
+  return bpAlOilTypeSet().has(String(type || "").trim().toLowerCase());
 }
 
 // ── Date helpers ────────────────────────────────────────────────────────────
@@ -123,34 +127,63 @@ function bpOthersNotInCamp(reasonText, override) {
 // Multi-section: a person may appear under several sections. Returns the section
 // → entry-line map for this one person, plus a binary notInCamp flag (counted
 // once). Dedupe within a section is by exact line text.
-function bpClassifyPerson(r, dateIso) {
+function bpClassifyPerson(r, dateIso, idx) {
   const rn = bravesParadeRN(r.id);
   const out = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
+  // Structured twin of `out`: for each pushed line we also record { line, reason,
+  // type } so the Status Board (A4 grid / A7 category) can read status/reason/type
+  // directly instead of regex-scraping the formatted parade text (which must stay
+  // byte-identical to Message Formats.md). `reason` always equals the line minus
+  // the "RN - " prefix, so it matches what bpStripRN would have returned.
+  const meta = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
   let notInCamp = false;
+  // Push to both `out` and `meta`, keeping the formatted line and its structured
+  // record aligned. `body` is the text after "RN - "; the line is built exactly as
+  // before (`${rn} - ${body}` trimmed) so output is unchanged.
+  const push2 = (section, body, type) => {
+    const line = `${rn} - ${body}`.trim();
+    out[section].push(line);
+    meta[section].push({ line, reason: bpStripRN(line, rn), type });
+  };
+
+  // Per-person rows: use the prebuilt d4→rows index when supplied (the Status
+  // Board grid passes one to avoid O(roster×days) full-array rescans); otherwise
+  // filter STATE on the fly. Either way the d4 match is already applied here, so
+  // the loop bodies below don't re-check it.
+  const leaveRows = idx ? (idx.leave[r.id] || []) : STATE.leave.filter(l => l.d4 === r.id);
+  const medRows = idx ? (idx.medical[r.id] || []) : STATE.medical.filter(m => m.d4 === r.id);
+  const apptRows = idx ? (idx.appointments[r.id] || []) : (STATE.appointments || []).filter(a => a.d4 === r.id);
 
   // Leave → AL/OIL (in the AL/OIL type set) or OTHERS (not in camp).
-  STATE.leave.forEach(l => {
-    if (l.d4 !== r.id) return;
+  leaveRows.forEach(l => {
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
-    const reason = [l.type, l.reason].filter(Boolean).join(" — ") || l.type || "";
+    // The entry text is the free-text reason ("48HR BO"), falling back to the
+    // leave type when no reason was recorded. (NOT "type — reason" — the sample
+    // shows a single clean label.)
+    const reason = l.reason || l.type || "";
     if (bpIsAlOilType(l.type)) {
-      out.alOil.push(`${rn} - ${reason} ${bpRange(l, true)}`.trim());
+      push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL");
+      notInCamp = true;  // AL/OIL is always not in camp
     } else {
-      out.others.push(`${rn} - ${reason} ${bpRange(l, false)} (OTHERS (NOT IN CAMP))`.replace(/\s+\(/, " (").trim());
+      // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
+      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP).
+      const nic = bpOthersNotInCamp(reason);
+      const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      const rng = bpRange(l, false);
+      push2("others", `${reason}${rng ? " " + rng : ""} (${label})`, "OTHERS");
+      if (nic) notInCamp = true;
     }
-    notInCamp = true;
   });
 
   // Medical rows for this person.
-  STATE.medical.forEach(m => {
-    if (m.d4 !== r.id) return;
+  medRows.forEach(m => {
     const reportedToday = displayDateToISO(m.date) === dateIso;
 
     // MR — own section, independent of everything else (spec §6/§8).
     if (m.type === "MR" && reportedToday) {
       const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
-      out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
+      push2("mr", `${m.reason || ""}${timing}`, "MR");
     }
 
     // REPORTING SICK — RSI/RSO reported today, or a Pending status active today.
@@ -158,50 +191,135 @@ function bpClassifyPerson(r, dateIso) {
       || (m.status === "Pending" && medStatusActive(m, dateIso));
     if (isRS) {
       const label = m.type === "RSO" ? "RSO" : "RSI"; // Pending→RSI (DECISIONS #31)
-      out.reportingSick.push(`${rn} - ${m.reason || ""} (${label})`.trim());
+      push2("reportingSick", `${m.reason || ""} (${label})`, label);
     }
 
     // ATT C — active MC (not-in-camp). Warded handled as OTHERS below.
     if (m.status === "MC" && medStatusActive(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D MC` : "MC";
-      out.attC.push(`${rn} - ${label} ${bpRange(m, false)}`.trim());
+      push2("attC", `${label} ${bpRange(m, false)}`.trim(), "MC");
       notInCamp = true;
     }
 
-    // STATUS — active LD or any Excuse-* (in camp, restricted).
-    if (medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
+    // STATUS — active LD or any Excuse-* (in camp, restricted). Requires a non-
+    // empty status: an imported RS/SENT_OUT episode carries status:"" with an
+    // active date range, which would otherwise emit a blank "RN - " STATUS line
+    // (and double-list someone already in REPORTING SICK).
+    if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
         && m.status !== "Pending" && m.status !== "NIL") {
       if (m.status === "LD") {
         const days = bpInclusiveDays(m);
         const label = days ? `${days}D LD` : "LD";
-        out.status.push(`${rn} - ${label} ${bpRange(m, true)}`.trim());
+        push2("status", `${label} ${bpRange(m, true)}`.trim(), "LD");
       } else {
         // Excuse-* / custom: show the status text + range when dated.
         const range = bpRange(m, true);
-        out.status.push(`${rn} - ${m.status}${range ? " " + range : ""}`.trim());
+        push2("status", `${m.status}${range ? " " + range : ""}`, m.status);
       }
     }
 
     // Warded → OTHERS (NOT IN CAMP).
     if (m.status === "Warded" && medStatusActive(m, dateIso)) {
-      out.others.push(`${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim());
+      push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "OTHERS");
       notInCamp = true;
     }
   });
 
-  // Out-of-camp medical appointments (MA) dated today → OTHERS (NOT IN CAMP).
-  (STATE.appointments || []).forEach(a => {
-    if (a.d4 !== r.id || a.resolved) return;
+  // Medical appointments (MA) dated today → OTHERS. The stored `outOfCamp` bit
+  // (set when booking, toggled live by the parade presence-tick) drives the
+  // sub-type: out of camp → NOT IN CAMP (and subtracts from current strength);
+  // in camp → OTHERS (IN CAMP), still present. Resolved appointments drop out.
+  apptRows.forEach(a => {
+    if (a.resolved) return;
     if (displayDateToISO(a.date) !== dateIso) return;
-    if (!bpOthersNotInCamp(a.reason, a.othersInCamp)) return;
-    out.others.push(`${rn} - ${a.reason || "Appointment"} (OTHERS (NOT IN CAMP))`.trim());
-    notInCamp = true;
+    const outOfCamp = !!a.outOfCamp;
+    const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+    push2("others", `${a.reason || "Appointment"} (${label})`, "OTHERS");
+    if (outOfCamp) notInCamp = true;
   });
 
-  // Dedupe each section by exact line (collapses multi-status sibling rows).
-  BP_SECTIONS.forEach(k => { out[k] = [...new Set(out[k])]; });
-  return { rn, sections: out, notInCamp };
+  // Dedupe each section by exact line first, keeping `meta` aligned with `out`.
+  BP_SECTIONS.forEach(k => {
+    const seen = new Set(), o = [], mt = [];
+    out[k].forEach((line, i) => {
+      if (seen.has(line)) return;
+      seen.add(line); o.push(line); mt.push(meta[k][i]);
+    });
+    out[k] = o; meta[k] = mt;
+  });
+  // STATUS multi-status collapse (DECISIONS #44): a recruit on several restricted
+  // statuses from one visit (e.g. LD + Excuse RMJ) produced one line per row, so
+  // they showed up as separate numbered entries. Since this classifier is per-
+  // person, every out.status line belongs to the same recruit — fold them into a
+  // single "RN - desc1, desc2" entry (descriptors joined, rn shown once). Only
+  // STATUS is collapsed: other sections carry per-entry "(OTHERS (…))"-style
+  // suffixes that don't read sensibly comma-joined, and a person rarely has >1.
+  if (out.status.length > 1) {
+    const descs = meta.status.map(x => x.reason);
+    const line = `${rn} - ${descs.join(", ")}`;
+    out.status = [line];
+    meta.status = [{ line, reason: descs.join(", "), type: "STATUS" }];
+  }
+  return { rn, sections: out, meta, notInCamp };
+}
+
+// Build a d4→rows index of leave/medical/appointments once, to pass to
+// bpClassifyPerson(r, dateIso, idx). The Status Board grid classifies every
+// person across ~35 day-cells; without this each call full-scans all three
+// STATE arrays (O(roster×days×rows)). Build once per render, reuse for all cells.
+function bpBuildIndex() {
+  const idx = { leave: {}, medical: {}, appointments: {} };
+  const add = (bucket, row) => {
+    const k = row && row.d4;
+    if (k == null) return;
+    (bucket[k] || (bucket[k] = [])).push(row);
+  };
+  (STATE.leave || []).forEach(l => add(idx.leave, l));
+  (STATE.medical || []).forEach(m => add(idx.medical, m));
+  (STATE.appointments || []).forEach(a => add(idx.appointments, a));
+  return idx;
+}
+
+// ── Status Board helpers (addendum A4/A7) — reuse the §8 classifier ──────────
+// A7.3 "today's category": the single-label §8 priority chain
+// (REPORTING SICK > ATT C > AL/OIL > STATUS > OTHERS); MR is independent.
+// Returns { primary:{key,label,reason}|null, mr:reason|null, sections, rn }.
+const BP_PRIMARY_CHAIN = [
+  ["reportingSick", "REPORTING SICK"], ["attC", "ATT C"], ["alOil", "AL/OIL"],
+  ["status", "STATUS"], ["others", "OTHERS"]
+];
+function bpStripRN(line, rn) {
+  // "Martin Tan B1411 - FEVER (RSI)" → "FEVER (RSI)" (best-effort reason text).
+  // Still used while building lines (push2) and the STATUS collapse; the Status
+  // Board consumers now read the structured `meta.reason` instead of re-parsing.
+  const pre = rn + " - ";
+  return line.startsWith(pre) ? line.slice(pre.length) : line;
+}
+function bpPrimaryForDay(r, dateIso, idx) {
+  const c = bpClassifyPerson(r, dateIso, idx);
+  let primary = null;
+  for (const [k, label] of BP_PRIMARY_CHAIN) {
+    if (c.sections[k].length) { primary = { key: k, label, reason: c.meta[k][0].reason }; break; }
+  }
+  const mr = c.meta.mr.length ? c.meta.mr[0].reason : null;
+  return { primary, mr, sections: c.sections, rn: c.rn, notInCamp: c.notInCamp };
+}
+// A4.2 grid cell: fill priority Leave > MC > LD/Excuse > RSI/RSO > MR, plus
+// secondary RSI/RSO markers. Returns { primary, hasRSI, hasRSO, hasMR, any }.
+function bpGridCell(r, dateIso, idx) {
+  const c = bpClassifyPerson(r, dateIso, idx);
+  const s = c.sections;
+  // Read the type from the structured twin rather than regex-matching the line.
+  const hasRSO = c.meta.reportingSick.some(x => x.type === "RSO");
+  const hasRSI = c.meta.reportingSick.some(x => x.type === "RSI");
+  let primary = null;
+  if (s.alOil.length) primary = "LV";
+  else if (s.attC.length) primary = "MC";
+  else if (s.status.length) primary = "LD";
+  else if (s.reportingSick.length) primary = hasRSO ? "RSO" : "RSI";
+  else if (s.mr.length) primary = "MR";
+  return { primary, hasRSI, hasRSO, hasMR: s.mr.length > 0, any: !!primary };
 }
 
 // ── Strength (spec §8) ──────────────────────────────────────────────────────
@@ -314,16 +432,111 @@ function generateBravesParadeState(scope, type, dateIso, time) {
   return parts.join("\n");
 }
 
-// ── INTEGRATION NOTES (openReportModal / regenerateReport) ──────────────────
-// The current modal (forms.js openReportModal) has no scope selector. To wire
-// Braves parade state:
-//   • Add a <select id="rep-scope"> to the FP/LP modal: "Company" + one option
-//     per activePlatoons() entry (value "company" or "platoon:PLT1").
-//   • In regenerateReport, for FP/LP:
-//       const sv = gv("rep-scope") || "company";
-//       const scope = sv === "company" ? {level:"company"}
-//                     : {level:"platoon", platoon: sv.split(":")[1]};
-//       text = generateBravesParadeState(scope, type, dateIso, time);
-//   • The §6 "live presence tick" design ideas (bidirectional left/returned)
-//     map onto the existing _paradeOverrides borderline mechanism — generalise
-//     it to toggle a person's notInCamp for OTHERS/appointments, not just MC.
+// ════════════════════════════════════════════════════════════════════════════
+// SICK MESSAGES (spec §10)
+// ════════════════════════════════════════════════════════════════════════════
+// Two formats, both validated against `Message Formats.md`. Source = Medical rows
+// with type RSI/RSO reported on the given date (the day's sick parade). URTI vs
+// NON-URTI split by `urtiType`, falling back to classifyURTI(reason) for rows that
+// predate the field. Layout (updated Message Formats.md, DECISIONS #45): the six
+// field lines of an entry are SINGLE-spaced (joined "\n" into one chunk); builders
+// then join chunks (header, count headers, per-platoon labels, entries) with
+// "\n\n", so blank lines fall only between entries / around the count headers — not
+// between fields. R/N uses sickRN (name + B<4D>, no rank prefix — spec §10/§7 note).
+
+// "0700" → "0700H" (battalion time suffix). Pads to 4 digits defensively.
+function bpTimeH(time) {
+  return String(time || "").trim().padStart(4, "0").slice(0, 4) + "H";
+}
+// key/value field line — omits the trailing space when the value is blank, so an
+// unfilled field renders exactly "R/N:" (not "R/N: ") as in the sample.
+function bpKV(key, val) {
+  return val ? `${key}: ${val}` : `${key}:`;
+}
+// Report-sick rows for the day: type RSI/RSO reported on dateIso.
+function bpSickReports(dateIso) {
+  return (STATE.medical || []).filter(m =>
+    (m.type === "RSI" || m.type === "RSO") && displayDateToISO(m.date) === dateIso
+  );
+}
+// URTI / NON-URTI bucket for a report-sick row.
+function bpUrtiOf(m) {
+  const t = m.urtiType || classifyURTI(m.reason || "");
+  return t === "URTI" ? "URTI" : "NON-URTI";
+}
+// "FOLLOW UP STATUS FROM MO" value = the MO outcome from the medical record's
+// status (spec §10.4 — no separate field). Pending / blank → blank line (MO not
+// seen yet). MC/LD render with the inclusive day count ("9D MC").
+function bpSickFollowUp(m) {
+  if (!m.status || m.status === "Pending") return "";
+  if (m.status === "MC" || m.status === "LD") {
+    const days = bpInclusiveDays(m);
+    return days ? `${days}D ${m.status}` : m.status;
+  }
+  return m.status;
+}
+// The six field lines for one report-sick entry (S/N supplied by the caller,
+// which restarts numbering per URTI/NON-URTI sub-section — spec §10.2).
+function bpSickEntryLines(m, sn) {
+  return [
+    bpKV("S/N", bp2(sn)),
+    bpKV("R/N", sickRN(m.d4)),
+    bpKV("DATE", bpDDMMYY(displayDateToISO(m.date))),
+    bpKV("LOCATION", m.location || configGet("defaultSickLocation")),
+    bpKV("PURPOSE", m.reason || ""),
+    bpKV("FOLLOW UP STATUS FROM MO", bpSickFollowUp(m))
+  ];
+}
+// Emit a URTI block then a NON-URTI block (both always shown with counts), S/N
+// restarting in each. Returns a line array.
+function bpSickUrtiBlocks(reports) {
+  const urti = reports.filter(m => bpUrtiOf(m) === "URTI");
+  const nonUrti = reports.filter(m => bpUrtiOf(m) === "NON-URTI");
+  // Each entry is ONE chunk (its 6 field lines single-spaced, joined by "\n").
+  // The callers join chunks with "\n\n", so blank lines fall only between
+  // entries and around the URTI/NON-URTI count headers — matching the updated
+  // Message Formats.md (DECISIONS #45). Field lines within an entry are no
+  // longer double-spaced.
+  const lines = [`URTI: ${bp2(urti.length)}`];
+  urti.forEach((m, i) => lines.push(bpSickEntryLines(m, i + 1).join("\n")));
+  lines.push(`NON-URTI: ${bp2(nonUrti.length)}`);
+  nonUrti.forEach((m, i) => lines.push(bpSickEntryLines(m, i + 1).join("\n")));
+  return lines;
+}
+
+// §10.1 — single report-sick message: header → URTI block → NON-URTI block.
+function generateRSFormat(dateIso, time) {
+  const reports = bpSickReports(dateIso);
+  const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
+  lines.push(...bpSickUrtiBlocks(reports));
+  return lines.join("\n\n");
+}
+
+// §10.2 — company-wide RSI personnel, broken by platoon. Only platoons (and HQ)
+// with ≥1 report-sick entry are shown; TOTAL = sum across them.
+function generateRSIPersonnel(dateIso, time) {
+  const reports = bpSickReports(dateIso);
+  const platoonOf = d4 => {
+    const r = STATE.roster.find(x => x.id == d4);
+    return r ? personPlatoon(r) : "";
+  };
+  // Group by platoon code.
+  const byPlt = {};
+  reports.forEach(m => { (byPlt[platoonOf(m.d4)] = byPlt[platoonOf(m.d4)] || []).push(m); });
+
+  const lines = [`RSI PERSONNEL ${bpDDMMYY(dateIso)} ${bpTimeH(time)}`, `TOTAL: ${bp2(reports.length)} PAX`];
+  // Natural order: platoons numeric, HQ last (activePlatoons order); only those
+  // with entries. Any code not in activePlatoons (e.g. blank) appended at the end.
+  const known = activePlatoons().map(p => p.code);
+  const codes = Object.keys(byPlt);
+  const ordered = known.filter(c => byPlt[c]).concat(codes.filter(c => !known.includes(c)));
+  ordered.forEach(code => {
+    const members = byPlt[code];
+    if (!members || !members.length) return;
+    const label = code === "HQ" ? configGet("hqLabel")
+      : code ? `PLATOON ${String(code).replace(/^PLT/i, "")}` : "UNASSIGNED";
+    lines.push(`${label}: ${bp2(members.length)} PAX`);
+    lines.push(...bpSickUrtiBlocks(members));
+  });
+  return lines.join("\n\n");
+}
