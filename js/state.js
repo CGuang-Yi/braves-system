@@ -49,9 +49,11 @@ const TAB_TO_STATE = {
 };
 
 // Company-specific defaults (spec §4). Every value the system used to hardcode
-// lives here so the app adapts to another company by editing the Config tab,
-// not the code. STATE.config (loaded from the Config tab) overlays these; a
-// missing key falls back to the default below via configGet().
+// lives here so the app adapts to another company by editing the BravesConfig tab,
+// not the code. STATE.config overlays these; it is populated by readAllTabs from
+// BOTH the bot's Config tab (parade/archive keys) and the BravesConfig tab
+// (company-identity keys), merged into one object. A missing key falls back to the
+// default below via configGet().
 const DEFAULT_CONFIG = {
   companyName: "40 SAR BRAVES COMPANY",
   companyPrefix: "B",

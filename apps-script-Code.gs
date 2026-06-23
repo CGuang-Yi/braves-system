@@ -104,8 +104,11 @@
  *   IPPT:       id | d4 | attempt | date | pushups | situps | runTime | score
  *   RouteMarch: id | d4 | rmNum | date | time | avgHr | maxHr | pass
  *   SOC:        id | d4 | socNum | date | time | avgHr | pass
- *   PolarFlow:  id | d4 | conduct | date | avgHr | maxHr | minHr | z1 | z2 | z3 | z4 | z5 | calories | trainingLoad | recovery | duration | distance
- *   ConductDetail: id | date | time | conduct | d4 | type | reason
+ *   PolarFlow:  id | d4 | conductId | date | avgHr | maxHr | minHr | z1 | z2 | z3 | z4 | z5 | calories | trainingLoad | recovery | duration | distance
+ *               (the live sheet keys conducts by `conductId` per the registry
+ *                model; the z1–z5/recovery zone columns are OCR-populated and may
+ *                be absent on sheets that predate them.)
+ *   ConductDetail: id | date | time | conductId | d4 | type | reason
  *               (one row per non-participating recruit per conduct.
  *                type ∈ {PX, RSI, Fallout, ReportSick}:
  *                  PX         = pre-existing status before the conduct (MC/LD/RMJ);
@@ -134,7 +137,7 @@
  *                display-format. `days` is numeric — defaults to
  *                (endDate − startDate + 1) but is editable for half-days.)
  *
- *   MSK:        timestamp | type | d4 | description | physioDate | cleared
+ *   MSK:        timestamp | d4 | type | description | physioDate | exercises | cleared | manualRegions
  *               (Recruit self-reports from a Google Form ("Cougar MSK /
  *                Physio Log") that posts directly here. type ∈
  *                {"Report Injury", "Log Exercises"}. `cleared` is NOT
@@ -145,14 +148,22 @@
  *                the next Push All.)
  *
  *   ── BRAVES reference tabs (optional; absent tab → [] on the frontend) ──
- *   Config:     key | value
- *               (Transferability layer, spec §4. Each row is one setting:
+ *   Config:     (Telegram bot / COS parade config — a single columns-as-keys row:
+ *                botGroupChatId | nextBookInDate | nextBookInTime | outOfCamp |
+ *                cutoffHours | rsoFormUrl | archiveParadeTimes | archiveSickTimes.
+ *                Owned by the bot and read by tgReadConfig — do NOT rename or
+ *                reshape it. readAllTabs merges its row into STATE.config so the
+ *                frontend sees the archive-time keys alongside BravesConfig.)
+ *   BravesConfig: key | value
+ *               (Transferability layer, spec §4 — split out from the bot's Config
+ *                tab so the two schemas never collide. Each row is one setting:
  *                companyName, companyPrefix (4D display prefix, e.g. "B"),
  *                companyCoyCode ("B COY"), unitCode ("40SAR"), hqLabel
  *                ("BRAVES HQ"), defaultSickLocation ("PTMC"),
  *                polarCompanyName, haEligibilitySource
  *                ("isHAExcluded" | "currencyTag"). Missing keys fall back to
- *                DEFAULT_CONFIG in js/state.js. Admin-only to edit.)
+ *                DEFAULT_CONFIG in js/state.js. Seeded by bravesMigrateSchema();
+ *                admin-only to edit.)
  *   VocFit:     personId | completionDate | certifyingUnit
  *               (Vocational Fitness Training completions, spec §12.3 — gates
  *                Double-HA eligibility together with rank ≥ 3SG/2LT.
@@ -177,7 +188,17 @@ function doGet(e) {
 
     // Public action: ping (used by the frontend to verify the URL is reachable).
     if (action === "ping") {
-      output = { ok: true, sheets: getTabNames(), timestamp: new Date().toISOString() };
+      // Filter manual/scratch tabs out of the connectivity list so they don't
+      // read as data tabs in the Sync log. They are never pulled — readAllTabs
+      // uses an explicit allow-list — this is purely cosmetic. "Conduct Master"
+      // is a human planning sheet with a banner in row 1 (real headers in row 2),
+      // so it must never be treated as a data tab regardless.
+      var NON_DATA_TABS = { "notes": 1, "Conduct Master": 1 };
+      output = {
+        ok: true,
+        sheets: getTabNames().filter(function (n) { return !NON_DATA_TABS[n]; }),
+        timestamp: new Date().toISOString()
+      };
     } else {
       // Every other read resolves the account context behind the token. Any valid
       // role (admin/commander/viewer) may read — read-only enforcement only bites
@@ -1008,6 +1029,83 @@ function ensureTabWithHeaders_(ss, name, headers) {
   sheet.setFrozenRows(1);
 }
 
+// One-off schema migration (sheet-audit remediation). Run once from the editor:
+//   bravesMigrateSchema()
+// Brings an existing live sheet up to the schema the frontend already expects.
+// SAFE TO RE-RUN: ensureTabWithHeaders_ only *appends* missing header cells to the
+// end of row 1 and never rewrites data rows, so existing values are untouched and
+// already-present columns are skipped. It does NOT push via writeTab (which would
+// re-derive headers from Object.keys(data[0]) and could strip columns). It also
+// never touches the bot's Config tab, ParadeArchive, or SickArchive.
+//
+// What it does:
+//   • Roster      — adds the Step-2 Braves columns (platoon, section, rankGroup, fourD)
+//   • Medical     — adds the §6 columns (location, type, urtiType, mrTiming, visitId)
+//   • Appointments— adds outOfCamp (parade-state "Camp:" line depends on it)
+//   • BravesConfig— creates the key|value company-identity tab and seeds it from
+//                   DEFAULT_CONFIG (kept in sync with js/state.js)
+//   • Platoons / VocFit / SOC — creates the reference tabs with their headers
+// It does NOT backfill values for the new Roster/Medical columns — that is manual
+// data entry the user owns. rankGroup in particular cannot be derived from a 4D.
+function bravesMigrateSchema() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Append-only column additions to existing tabs (no-ops if the column exists).
+  ensureTabWithHeaders_(ss, "Roster",
+    ["platoon", "section", "rankGroup", "fourD"]);
+  ensureTabWithHeaders_(ss, "Medical",
+    ["location", "type", "urtiType", "mrTiming", "visitId"]);
+  ensureTabWithHeaders_(ss, "Appointments",
+    ["outOfCamp"]);
+
+  // Reference tabs (created with headers if absent; missing tab → [] on frontend).
+  ensureTabWithHeaders_(ss, "Platoons",
+    ["code", "displayName", "active", "createdAt"]);
+  ensureTabWithHeaders_(ss, "VocFit",
+    ["personId", "completionDate", "certifyingUnit"]);
+  ensureTabWithHeaders_(ss, "SOC",
+    ["id", "d4", "socNum", "date", "time", "avgHr", "pass"]);
+
+  // BravesConfig (key|value) — create + seed the company-identity settings the
+  // frontend's DEFAULT_CONFIG defines. Only seeds keys that aren't already present
+  // so re-running never clobbers values an admin has edited.
+  ensureTabWithHeaders_(ss, "BravesConfig", ["key", "value"]);
+  bravesSeedConfig_(ss);
+
+  Logger.log("bravesMigrateSchema complete. Review the new columns/tabs, then " +
+    "redeploy (Manage Deployments → new Version, same URL).");
+}
+
+// Seed BravesConfig with the spec §4 defaults. Mirrors DEFAULT_CONFIG in
+// js/state.js — keep the two in sync. Skips any key already present so an admin's
+// edits and re-runs are both safe.
+function bravesSeedConfig_(ss) {
+  var DEFAULTS = {
+    companyName: "40 SAR BRAVES COMPANY",
+    companyPrefix: "B",
+    companyCoyCode: "B COY",
+    unitCode: "40SAR",
+    hqLabel: "BRAVES HQ",
+    defaultSickLocation: "PTMC",
+    polarCompanyName: "Braves Coy",
+    haEligibilitySource: "isHAExcluded",
+    alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate"
+  };
+  var sheet = ss.getSheetByName("BravesConfig");
+  var last = sheet.getLastRow();
+  var have = {};
+  if (last >= 2) {
+    sheet.getRange(2, 1, last - 1, 1).getValues().forEach(function (r) {
+      if (r[0]) have[String(r[0]).trim()] = true;
+    });
+  }
+  var toAdd = [];
+  Object.keys(DEFAULTS).forEach(function (k) { if (!have[k]) toAdd.push([k, DEFAULTS[k]]); });
+  if (toAdd.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, toAdd.length, 2).setValues(toAdd);
+  }
+}
+
 // Bootstrap the very first admin account. Run once from the editor:
 //   seedFirstAdmin("you@example.com", "your-strong-password")
 // Then log in via the web app and create the rest from the admin panel.
@@ -1101,10 +1199,9 @@ function readAllTabs(ctx) {
     "Leave": "leave",
     "MSK": "msk",
     "Conducts": "conducts",
-    // Braves reference tabs (spec §4/§12/A6). Config is key/value — the frontend
-    // collapses it to an object. All three are optional: a missing tab yields []
-    // and the frontend falls back to defaults/derivation.
-    "Config": "config",
+    // Braves reference tabs (spec §4/§12/A6). Optional: a missing tab yields []
+    // and the frontend falls back to defaults/derivation. Config is handled
+    // separately below (it is merged from two tabs).
     "VocFit": "vocfit",
     "Platoons": "platoons"
   };
@@ -1120,6 +1217,18 @@ function readAllTabs(ctx) {
       result[tabMap[tabName]] = [];
     }
   }
+
+  // Config is split across two tabs by design (sheet-audit remediation, §4):
+  //   • "Config"       — Telegram bot / COS parade config (columns-as-keys row)
+  //   • "BravesConfig" — Braves company-identity settings (key|value rows)
+  // Read both and concat the rows. The frontend's normalizeConfig collapses the
+  // combined list into one object, so bot keys (archiveParadeTimes, …) and Braves
+  // keys (companyName, …) live side by side without colliding. readTab returns []
+  // for an empty/absent tab, so concat is always safe.
+  var cfgRows = [];
+  if (ss.getSheetByName("Config"))       cfgRows = cfgRows.concat(readTab("Config"));
+  if (ss.getSheetByName("BravesConfig")) cfgRows = cfgRows.concat(readTab("BravesConfig"));
+  result.config = cfgRows;
 
   // Admin-only: include the audit log in the pull (A2.5). The Accounts tab is
   // never included here — it carries password hashes and is reached only via the
