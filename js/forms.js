@@ -800,13 +800,18 @@ function submitAttendance() {
   if (part > total) { alert("Participating cannot exceed total."); return; }
   if (px + fallout > total) { alert("Status + Fallout cannot exceed total."); return; }
   if (lms > part) { alert("LMS Participation cannot exceed Participating."); return; }
-  const entry = {
+  // Run the row through normalizeAttendance so it carries the four HA columns
+  // (participants/periods/currencyTags/source) as empty strings. Without them, if
+  // this bare row ever sat at index 0 of a full-tab `replace` push, writeTab would
+  // derive the sheet headers from Object.keys(data[0]) and silently strip those
+  // columns sheet-wide — wiping the CSV-import HA participation source.
+  const entry = normalizeAttendance([{
     id: editId || nextId(),
     date: isoToDisplayDate(gv("f-date")),
     conductId,
     total, participating: part, lms, px, fallout,
     remarks: gv("f-remarks")
-  };
+  }])[0];
   if (editId) {
     const idx = STATE.attendance.findIndex(a => a.id === editId);
     if (idx >= 0) STATE.attendance[idx] = entry;

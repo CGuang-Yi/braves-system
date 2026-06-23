@@ -1955,16 +1955,19 @@ function renderSBRosterList() {
   const q = _sbSearch.trim().toLowerCase();
   if (q) scoped = scoped.filter(r => String(r.name || "").toLowerCase().includes(q) || String(r.id || "").toLowerCase().includes(q) || String(r.fourD || "").includes(q));
   const ordered = sbOrdered(scoped);
+  // Index once; both bpPrimaryForDay and the per-row ghost-tag scan below would
+  // otherwise re-scan STATE.medical/leave/appointments for every person.
+  const idx = bpBuildIndex();
 
   const catColor = key => ({ reportingSick: SB_CELL.RSI, attC: SB_CELL.MC, alOil: SB_CELL.LV, status: SB_CELL.LD, others: { bg: "#8B949E", fg: "#1c1c1c" } }[key] || { bg: "#8B949E", fg: "#1c1c1c" });
   let lastGroup = null, body = "";
   ordered.forEach(({ r, group }) => {
     if (group !== lastGroup) { body += `<tr><td colspan="4" style="background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:4px 8px;font-weight:700">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
-    const p = bpPrimaryForDay(r, today);
+    const p = bpPrimaryForDay(r, today, idx);
     const ghostInfo = (() => {
       // most-severe ghost tag among this person's medical rows today
       let best = null;
-      (STATE.medical || []).filter(m => m.d4 === r.id).forEach(m => {
+      (idx.medical[r.id] || []).forEach(m => {
         const t = medStatusTag(m, today);
         if (t && t.ghostDay > 0 && (!best || t.ghostDay < best.ghostDay)) best = t;
       });
@@ -2021,6 +2024,9 @@ function renderSBGrid() {
   const todayKey = todayISO();
   const counts = sbRSCounts();
   const ordered = sbOrdered(scoped);
+  // Index leave/medical/appointments by d4 once; the grid classifies every person
+  // across ~35 day-cells and would otherwise re-scan all three STATE arrays per cell.
+  const idx = bpBuildIndex();
 
   const legend = Object.entries({ RSI: "RSI", RSO: "RSO", MC: "MC/ATTC", MR: "MR", LD: "LD/Excuse", LV: "Leave" })
     .map(([k, lbl]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px"><span style="width:11px;height:11px;border-radius:2px;background:${SB_CELL[k].bg};display:inline-block"></span>${lbl}</span>`).join("");
@@ -2038,7 +2044,7 @@ function renderSBGrid() {
       const future = iso > todayKey;
       let inner = "";
       if (!future) {
-        const cell = bpGridCell(r, iso);
+        const cell = bpGridCell(r, iso, idx);
         if (cell.any) {
           const pal = SB_CELL[cell.primary] || { bg: "#8B949E", fg: "#111" };
           const sec = (cell.hasRSI && cell.primary !== "RSI") ? "#EF9F27" : (cell.hasRSO && cell.primary !== "RSO") ? "#378ADD" : "";
@@ -2085,7 +2091,7 @@ function openSBCellDetail(d4, iso) {
   const c = bpClassifyPerson(r, iso);
   const order = [["reportingSick", "REPORTING SICK"], ["attC", "ATT C"], ["alOil", "AL/OIL"], ["status", "STATUS"], ["mr", "MR"], ["others", "OTHERS"]];
   const lines = [];
-  order.forEach(([k, label]) => c.sections[k].forEach(line => lines.push(`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><strong style="font-size:10px;color:var(--muted)">${label}</strong><br>${escapeAttr(bpStripRN(line, c.rn))}</div>`)));
+  order.forEach(([k, label]) => c.meta[k].forEach(x => lines.push(`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><strong style="font-size:10px;color:var(--muted)">${label}</strong><br>${escapeAttr(x.reason)}</div>`)));
   host.innerHTML = `
     <div onclick="closeSBPopover()" style="position:fixed;inset:0;z-index:60"></div>
     <div style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:61;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;min-width:260px;max-width:90vw;box-shadow:0 8px 28px rgba(0,0,0,.5)">

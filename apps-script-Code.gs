@@ -2615,8 +2615,11 @@ function bpClassifyPerson(r, dateIso) {
       notInCamp = true;
     }
 
-    // STATUS — active LD or any Excuse-* (in camp, restricted).
-    if (medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
+    // STATUS — active LD or any Excuse-* (in camp, restricted). Requires a non-
+    // empty status: an imported RS/SENT_OUT episode carries status:"" with an
+    // active date range, which would otherwise emit a blank "RN - " STATUS line
+    // (and double-list someone already in REPORTING SICK).
+    if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
         && m.status !== "Pending" && m.status !== "NIL") {
       if (m.status === "LD") {
         const days = bpInclusiveDays(m);
@@ -2946,13 +2949,77 @@ function bravesNormalizeConfig_(rows) {
   return out;
 }
 
+// ── Read-boundary normalizers (server-side ports of js/state.js) ─────────────
+// readTab returns rows verbatim, so the Roster id column (named "4d" on the sheet)
+// arrives as r["4d"] with leading zeros eaten by Sheets — r.id is undefined. The
+// ported parade/sick generators join on r.id / m.d4 / l.d4 / a.d4, so without the
+// same normalization the client applies, every join misses and names resolve to
+// the first roster row. These mirror padD4 / normalizeRoster / normalizeMedical /
+// padD4OnLayer in js/state.js — keep them in sync if those change.
+function bravesPadD4_(d4) {
+  var s = String(d4 == null ? "" : d4).trim().replace(/^C/i, "");
+  if (/^\d{1,3}$/.test(s)) { while (s.length < 4) s = "0" + s; return s; }
+  return s;
+}
+function bravesNormalizeRoster_(rows) {
+  return (rows || []).map(function (r) {
+    var id = bravesPadD4_(r.id || r["4d"] || r["4D"] || "");
+    // Auto-detect commander by id pattern (00xx) when the role column is blank;
+    // an explicit role from the sheet always wins.
+    var isCmdrById = /^00\d{2}$/.test(id);
+    var role = r.role || (isCmdrById ? "Commander" : "Recruit");
+    var fourD = (r.fourD !== undefined && r.fourD !== "")
+      ? String(r.fourD).trim()
+      : (role !== "Commander" && /^\d{4}$/.test(id) ? id : "");
+    var out = {};
+    Object.keys(r).forEach(function (k) { if (k !== "conditions") out[k] = r[k]; });
+    out.id = id;
+    out.role = role;
+    out.rank = r.rank || "";
+    out.platoon = r.platoon || "";
+    out.section = r.section != null ? String(r.section) : "";
+    out.rankGroup = r.rankGroup || "";
+    out.fourD = fourD;
+    out.leaveQuota = (r.leaveQuota !== undefined && r.leaveQuota !== "") ? +r.leaveQuota : "";
+    return out;
+  });
+}
+function bravesNormalizeMedical_(rows) {
+  return (rows || []).map(function (r) {
+    var status = r.status || "";
+    if (/^Excused /.test(status)) status = status.replace(/^Excused /, "Excuse ");
+    return {
+      id: r.id,
+      d4: bravesPadD4_(r.d4 || ""),
+      date: r.date || "",
+      reason: r.reason || "",
+      location: r.location || "",
+      status: status,
+      startDate: r.startDate || "",
+      endDate: r.endDate || "",
+      type: r.type || "",
+      urtiType: r.urtiType || "",
+      mrTiming: r.mrTiming || "",
+      visitId: r.visitId || ""
+    };
+  });
+}
+// Generic d4-padding pass for leave/appointments (no dedicated normalizer).
+function bravesPadD4OnLayer_(rows) {
+  return (rows || []).map(function (r) {
+    if (r && r.d4 != null) { var c = {}; Object.keys(r).forEach(function (k) { c[k] = r[k]; }); c.d4 = bravesPadD4_(r.d4); return c; }
+    return r;
+  });
+}
+
 // Build the global STATE the ported generators read, from the live sheet tabs.
+// Each layer is normalized at this read boundary exactly as the client does.
 function bravesLoadState_() {
   STATE = {
-    roster: bravesArr_(readTab("Roster")),
-    medical: bravesArr_(readTab("Medical")),
-    leave: bravesArr_(readTab("Leave")),
-    appointments: bravesArr_(readTab("Appointments")),
+    roster: bravesNormalizeRoster_(bravesArr_(readTab("Roster"))),
+    medical: bravesNormalizeMedical_(bravesArr_(readTab("Medical"))),
+    leave: bravesPadD4OnLayer_(bravesArr_(readTab("Leave"))),
+    appointments: bravesPadD4OnLayer_(bravesArr_(readTab("Appointments"))),
     platoons: bravesArr_(readTab("Platoons")),
     config: bravesNormalizeConfig_(bravesArr_(readTab("Config")))
   };
@@ -2976,8 +3043,12 @@ function bravesParseSlots_(cfg) {
 // Parse the parade schedule into TYPED slots → [{slot:"HHMM", type:"FP"|"LP"}].
 // Each entry may carry an explicit type, "0730:FP, 1300:FP, 2130:LP" (case-
 // insensitive) — explicit always wins. Untyped entries default by time-of-day:
-// the LATEST slot is LP (the night / last parade), every earlier slot is FP
-// (morning + midday). So a midday parade is FP, not LP.
+// the latest slot becomes LP (the night / last parade) ONLY when it is actually
+// evening (hour ≥ LP_HOUR); every earlier slot, and a daytime-only schedule with
+// no evening slot, stays FP (morning + midday). So a midday parade is FP, not LP —
+// and "0730,1300" (no night parade) does NOT mislabel 1300 as LP and drop the
+// midday report-sick archive.
+var BRAVES_LP_HOUR_ = 16;  // earliest hour an untyped slot is treated as Last Parade
 function bravesParseParadeSlots_(cfg) {
   if (!cfg) return [];
   var parsed = String(cfg).split(",").map(function (s) {
@@ -2988,7 +3059,10 @@ function bravesParseParadeSlots_(cfg) {
     return { slot: d.slice(0, 4), type: tag ? tag.toUpperCase() : null };
   }).filter(function (x) { return x.slot.length === 4; });
   var latest = parsed.reduce(function (m, x) { return x.slot > m ? x.slot : m; }, "");
-  parsed.forEach(function (x) { if (!x.type) x.type = (x.slot === latest) ? "LP" : "FP"; });
+  var latestIsEvening = parseInt(latest.slice(0, 2), 10) >= BRAVES_LP_HOUR_;
+  parsed.forEach(function (x) {
+    if (!x.type) x.type = (x.slot === latest && latestIsEvening) ? "LP" : "FP";
+  });
   return parsed;
 }
 // Report-sick archive slots: explicit archiveSickTimes if set, ELSE the FP
@@ -3006,6 +3080,28 @@ function bravesEnsureArchiveTabs_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ensureTabWithHeaders_(ss, BRAVES_PARADE_ARCHIVE_TAB, ["timestamp", "date", "slot", "type", "scope", "message"]);
   ensureTabWithHeaders_(ss, BRAVES_SICK_ARCHIVE_TAB, ["timestamp", "date", "slot", "format", "message"]);
+  // Force the date/slot columns to plain-text format. appendMany writes via
+  // setValues, which auto-coerces "2026-06-23"→a Date and "0730"→730; readTab then
+  // reformats Dates to "dd MMM yyyy", so bravesAlreadyArchived_'s string compare
+  // would never match and every poll would re-archive duplicates. Text format makes
+  // the written strings round-trip verbatim. (appendMany is on the do-not-change
+  // list, so we fix the storage format rather than the writer.)
+  bravesForceTextCols_(ss, BRAVES_PARADE_ARCHIVE_TAB, ["date", "slot"]);
+  bravesForceTextCols_(ss, BRAVES_SICK_ARCHIVE_TAB, ["date", "slot"]);
+}
+// Set the given header-named columns of a tab to plain-text ("@") number format,
+// so string values survive Sheets' input auto-coercion on write/read.
+function bravesForceTextCols_(ss, tabName, headerNames) {
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return;
+  var lastCol = sheet.getLastColumn();
+  if (!lastCol) return;
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+  var maxRows = sheet.getMaxRows();
+  headerNames.forEach(function (name) {
+    var idx = headers.indexOf(name);
+    if (idx >= 0) sheet.getRange(1, idx + 1, maxRows, 1).setNumberFormat("@");
+  });
 }
 
 // Idempotency: has this (date, slot) already been archived in tabName?

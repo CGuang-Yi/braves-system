@@ -162,7 +162,11 @@ function shParseExplicit(text) {
 // Parse one personnel row into episodes. Returns null for non-data rows (no 4D).
 function shParsePersonRow(ws, rn, cols, dateMap, legend) {
   const row = ws.getRow(rn);
-  const fourD = String(row.getCell(cols.d4Col).text || "").trim().replace(/\.0$/, "").replace(/[^\dC]/gi, "");
+  // Strip the float artefact (".0") and any non-digit decoration, including a
+  // leading "C" — padD4/resolveD4 downstream canonicalise the id, but the guard
+  // below only accepts bare digits, so a preserved "C" (e.g. "C1411") would make
+  // the whole person silently drop. Strip it here so C-prefixed 4Ds resolve.
+  const fourD = String(row.getCell(cols.d4Col).text || "").trim().replace(/\.0$/, "").replace(/[^\d]/g, "");
   if (!/^\d{3,4}$/.test(fourD)) return null;
   const name = String(row.getCell(cols.nameCol).text || "").trim();
   const sn = String(row.getCell(cols.snCol).text || "").trim();

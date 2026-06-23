@@ -127,14 +127,35 @@ function bpOthersNotInCamp(reasonText, override) {
 // Multi-section: a person may appear under several sections. Returns the section
 // → entry-line map for this one person, plus a binary notInCamp flag (counted
 // once). Dedupe within a section is by exact line text.
-function bpClassifyPerson(r, dateIso) {
+function bpClassifyPerson(r, dateIso, idx) {
   const rn = bravesParadeRN(r.id);
   const out = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
+  // Structured twin of `out`: for each pushed line we also record { line, reason,
+  // type } so the Status Board (A4 grid / A7 category) can read status/reason/type
+  // directly instead of regex-scraping the formatted parade text (which must stay
+  // byte-identical to Message Formats.md). `reason` always equals the line minus
+  // the "RN - " prefix, so it matches what bpStripRN would have returned.
+  const meta = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
   let notInCamp = false;
+  // Push to both `out` and `meta`, keeping the formatted line and its structured
+  // record aligned. `body` is the text after "RN - "; the line is built exactly as
+  // before (`${rn} - ${body}` trimmed) so output is unchanged.
+  const push2 = (section, body, type) => {
+    const line = `${rn} - ${body}`.trim();
+    out[section].push(line);
+    meta[section].push({ line, reason: bpStripRN(line, rn), type });
+  };
+
+  // Per-person rows: use the prebuilt d4→rows index when supplied (the Status
+  // Board grid passes one to avoid O(roster×days) full-array rescans); otherwise
+  // filter STATE on the fly. Either way the d4 match is already applied here, so
+  // the loop bodies below don't re-check it.
+  const leaveRows = idx ? (idx.leave[r.id] || []) : STATE.leave.filter(l => l.d4 === r.id);
+  const medRows = idx ? (idx.medical[r.id] || []) : STATE.medical.filter(m => m.d4 === r.id);
+  const apptRows = idx ? (idx.appointments[r.id] || []) : (STATE.appointments || []).filter(a => a.d4 === r.id);
 
   // Leave → AL/OIL (in the AL/OIL type set) or OTHERS (not in camp).
-  STATE.leave.forEach(l => {
-    if (l.d4 !== r.id) return;
+  leaveRows.forEach(l => {
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
     // The entry text is the free-text reason ("48HR BO"), falling back to the
@@ -142,7 +163,7 @@ function bpClassifyPerson(r, dateIso) {
     // shows a single clean label.)
     const reason = l.reason || l.type || "";
     if (bpIsAlOilType(l.type)) {
-      out.alOil.push(`${rn} - ${reason} ${bpRange(l, true)}`.trim());
+      push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL");
       notInCamp = true;  // AL/OIL is always not in camp
     } else {
       // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
@@ -150,20 +171,19 @@ function bpClassifyPerson(r, dateIso) {
       const nic = bpOthersNotInCamp(reason);
       const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
       const rng = bpRange(l, false);
-      out.others.push(`${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim());
+      push2("others", `${reason}${rng ? " " + rng : ""} (${label})`, "OTHERS");
       if (nic) notInCamp = true;
     }
   });
 
   // Medical rows for this person.
-  STATE.medical.forEach(m => {
-    if (m.d4 !== r.id) return;
+  medRows.forEach(m => {
     const reportedToday = displayDateToISO(m.date) === dateIso;
 
     // MR — own section, independent of everything else (spec §6/§8).
     if (m.type === "MR" && reportedToday) {
       const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
-      out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
+      push2("mr", `${m.reason || ""}${timing}`, "MR");
     }
 
     // REPORTING SICK — RSI/RSO reported today, or a Pending status active today.
@@ -171,34 +191,37 @@ function bpClassifyPerson(r, dateIso) {
       || (m.status === "Pending" && medStatusActive(m, dateIso));
     if (isRS) {
       const label = m.type === "RSO" ? "RSO" : "RSI"; // Pending→RSI (DECISIONS #31)
-      out.reportingSick.push(`${rn} - ${m.reason || ""} (${label})`.trim());
+      push2("reportingSick", `${m.reason || ""} (${label})`, label);
     }
 
     // ATT C — active MC (not-in-camp). Warded handled as OTHERS below.
     if (m.status === "MC" && medStatusActive(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D MC` : "MC";
-      out.attC.push(`${rn} - ${label} ${bpRange(m, false)}`.trim());
+      push2("attC", `${label} ${bpRange(m, false)}`.trim(), "MC");
       notInCamp = true;
     }
 
-    // STATUS — active LD or any Excuse-* (in camp, restricted).
-    if (medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
+    // STATUS — active LD or any Excuse-* (in camp, restricted). Requires a non-
+    // empty status: an imported RS/SENT_OUT episode carries status:"" with an
+    // active date range, which would otherwise emit a blank "RN - " STATUS line
+    // (and double-list someone already in REPORTING SICK).
+    if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
         && m.status !== "Pending" && m.status !== "NIL") {
       if (m.status === "LD") {
         const days = bpInclusiveDays(m);
         const label = days ? `${days}D LD` : "LD";
-        out.status.push(`${rn} - ${label} ${bpRange(m, true)}`.trim());
+        push2("status", `${label} ${bpRange(m, true)}`.trim(), "LD");
       } else {
         // Excuse-* / custom: show the status text + range when dated.
         const range = bpRange(m, true);
-        out.status.push(`${rn} - ${m.status}${range ? " " + range : ""}`.trim());
+        push2("status", `${m.status}${range ? " " + range : ""}`, m.status);
       }
     }
 
     // Warded → OTHERS (NOT IN CAMP).
     if (m.status === "Warded" && medStatusActive(m, dateIso)) {
-      out.others.push(`${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim());
+      push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "OTHERS");
       notInCamp = true;
     }
   });
@@ -207,17 +230,24 @@ function bpClassifyPerson(r, dateIso) {
   // (set when booking, toggled live by the parade presence-tick) drives the
   // sub-type: out of camp → NOT IN CAMP (and subtracts from current strength);
   // in camp → OTHERS (IN CAMP), still present. Resolved appointments drop out.
-  (STATE.appointments || []).forEach(a => {
-    if (a.d4 !== r.id || a.resolved) return;
+  apptRows.forEach(a => {
+    if (a.resolved) return;
     if (displayDateToISO(a.date) !== dateIso) return;
     const outOfCamp = !!a.outOfCamp;
     const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
-    out.others.push(`${rn} - ${a.reason || "Appointment"} (${label})`.trim());
+    push2("others", `${a.reason || "Appointment"} (${label})`, "OTHERS");
     if (outOfCamp) notInCamp = true;
   });
 
-  // Dedupe each section by exact line first.
-  BP_SECTIONS.forEach(k => { out[k] = [...new Set(out[k])]; });
+  // Dedupe each section by exact line first, keeping `meta` aligned with `out`.
+  BP_SECTIONS.forEach(k => {
+    const seen = new Set(), o = [], mt = [];
+    out[k].forEach((line, i) => {
+      if (seen.has(line)) return;
+      seen.add(line); o.push(line); mt.push(meta[k][i]);
+    });
+    out[k] = o; meta[k] = mt;
+  });
   // STATUS multi-status collapse (DECISIONS #44): a recruit on several restricted
   // statuses from one visit (e.g. LD + Excuse RMJ) produced one line per row, so
   // they showed up as separate numbered entries. Since this classifier is per-
@@ -226,10 +256,29 @@ function bpClassifyPerson(r, dateIso) {
   // STATUS is collapsed: other sections carry per-entry "(OTHERS (…))"-style
   // suffixes that don't read sensibly comma-joined, and a person rarely has >1.
   if (out.status.length > 1) {
-    const descs = out.status.map(line => bpStripRN(line, rn));
-    out.status = [`${rn} - ${descs.join(", ")}`];
+    const descs = meta.status.map(x => x.reason);
+    const line = `${rn} - ${descs.join(", ")}`;
+    out.status = [line];
+    meta.status = [{ line, reason: descs.join(", "), type: "STATUS" }];
   }
-  return { rn, sections: out, notInCamp };
+  return { rn, sections: out, meta, notInCamp };
+}
+
+// Build a d4→rows index of leave/medical/appointments once, to pass to
+// bpClassifyPerson(r, dateIso, idx). The Status Board grid classifies every
+// person across ~35 day-cells; without this each call full-scans all three
+// STATE arrays (O(roster×days×rows)). Build once per render, reuse for all cells.
+function bpBuildIndex() {
+  const idx = { leave: {}, medical: {}, appointments: {} };
+  const add = (bucket, row) => {
+    const k = row && row.d4;
+    if (k == null) return;
+    (bucket[k] || (bucket[k] = [])).push(row);
+  };
+  (STATE.leave || []).forEach(l => add(idx.leave, l));
+  (STATE.medical || []).forEach(m => add(idx.medical, m));
+  (STATE.appointments || []).forEach(a => add(idx.appointments, a));
+  return idx;
 }
 
 // ── Status Board helpers (addendum A4/A7) — reuse the §8 classifier ──────────
@@ -242,24 +291,28 @@ const BP_PRIMARY_CHAIN = [
 ];
 function bpStripRN(line, rn) {
   // "Martin Tan B1411 - FEVER (RSI)" → "FEVER (RSI)" (best-effort reason text).
+  // Still used while building lines (push2) and the STATUS collapse; the Status
+  // Board consumers now read the structured `meta.reason` instead of re-parsing.
   const pre = rn + " - ";
   return line.startsWith(pre) ? line.slice(pre.length) : line;
 }
-function bpPrimaryForDay(r, dateIso) {
-  const c = bpClassifyPerson(r, dateIso);
+function bpPrimaryForDay(r, dateIso, idx) {
+  const c = bpClassifyPerson(r, dateIso, idx);
   let primary = null;
   for (const [k, label] of BP_PRIMARY_CHAIN) {
-    if (c.sections[k].length) { primary = { key: k, label, reason: bpStripRN(c.sections[k][0], c.rn) }; break; }
+    if (c.sections[k].length) { primary = { key: k, label, reason: c.meta[k][0].reason }; break; }
   }
-  const mr = c.sections.mr.length ? bpStripRN(c.sections.mr[0], c.rn) : null;
+  const mr = c.meta.mr.length ? c.meta.mr[0].reason : null;
   return { primary, mr, sections: c.sections, rn: c.rn, notInCamp: c.notInCamp };
 }
 // A4.2 grid cell: fill priority Leave > MC > LD/Excuse > RSI/RSO > MR, plus
 // secondary RSI/RSO markers. Returns { primary, hasRSI, hasRSO, hasMR, any }.
-function bpGridCell(r, dateIso) {
-  const s = bpClassifyPerson(r, dateIso).sections;
-  const hasRSO = s.reportingSick.some(x => /\(RSO\)$/.test(x));
-  const hasRSI = s.reportingSick.some(x => /\(RSI\)$/.test(x));
+function bpGridCell(r, dateIso, idx) {
+  const c = bpClassifyPerson(r, dateIso, idx);
+  const s = c.sections;
+  // Read the type from the structured twin rather than regex-matching the line.
+  const hasRSO = c.meta.reportingSick.some(x => x.type === "RSO");
+  const hasRSI = c.meta.reportingSick.some(x => x.type === "RSI");
   let primary = null;
   if (s.alOil.length) primary = "LV";
   else if (s.attC.length) primary = "MC";
