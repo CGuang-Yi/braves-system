@@ -2928,15 +2928,20 @@ var BRAVES_SICK_ARCHIVE_TAB = "SickArchive";
 
 function bravesArr_(x) { return Array.isArray(x) ? x : []; }
 
-// Config tab (key/value rows) → object, mirroring the frontend normalizeConfig.
+// Config tab → object, mirroring the frontend normalizeConfig: accepts BOTH the
+// key/value-rows shape (Braves spec §4) AND the columns-as-keys single row that the
+// Telegram bot uses (botGroupChatId | … plus any Braves settings as extra columns).
 function bravesNormalizeConfig_(rows) {
   var out = {};
+  function put(k, v) { var kk = String(k).trim(); if (kk) out[kk] = (typeof v === "string") ? v.trim() : v; }
   (rows || []).forEach(function (r) {
     if (!r) return;
-    var k = String(r.key || r.Key || "").trim();
-    if (!k) return;
-    var v = (r.value !== undefined ? r.value : (r.Value !== undefined ? r.Value : ""));
-    out[k] = (typeof v === "string") ? v.trim() : v;
+    if (r.key !== undefined || r.Key !== undefined) {
+      var k = String(r.key || r.Key || "").trim();
+      if (k) put(k, (r.value !== undefined ? r.value : (r.Value !== undefined ? r.Value : "")));
+    } else {
+      Object.keys(r).forEach(function (k) { put(k, r[k]); });   // columns-as-keys row
+    }
   });
   return out;
 }

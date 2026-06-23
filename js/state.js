@@ -350,14 +350,24 @@ function normalizeMSK(records) {
 // Config tab arrives as key/value rows ([{key, value}, ...]); collapse to a
 // plain object keyed by `key`. Tolerant of header casing (key/Key, value/Value)
 // and ignores blank keys. Returns {} when there's nothing usable.
+// Accepts BOTH Config-tab shapes (the sheet can be either, and the Telegram bot
+// owns the same "Config" tab as a single columns-as-keys row):
+//   • key/value rows  → {key:"companyName", value:"…"}            (Braves spec §4)
+//   • columns-as-keys → {companyName:"…", archiveParadeTimes:"…"}  (bot/COS layout)
+// A row is treated as key/value only when it actually has a `key` column; otherwise
+// every column on the row is taken as a setting. Both can coexist on one tab, so the
+// bot's columns (botGroupChatId, …) and Braves settings live side by side.
 function normalizeConfig(rows) {
   const out = {};
+  const put = (k, v) => { const kk = String(k).trim(); if (kk) out[kk] = typeof v === "string" ? v.trim() : v; };
   (rows || []).forEach(r => {
     if (!r) return;
-    const k = String(r.key ?? r.Key ?? r.KEY ?? "").trim();
-    if (!k) return;
-    const v = r.value ?? r.Value ?? r.VALUE ?? "";
-    out[k] = typeof v === "string" ? v.trim() : v;
+    if (r.key !== undefined || r.Key !== undefined || r.KEY !== undefined) {
+      const k = String(r.key ?? r.Key ?? r.KEY ?? "").trim();
+      if (k) put(k, r.value ?? r.Value ?? r.VALUE ?? "");
+    } else {
+      Object.keys(r).forEach(k => put(k, r[k]));   // columns-as-keys row
+    }
   });
   return out;
 }
