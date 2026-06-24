@@ -945,8 +945,8 @@ function openRMForm(id) {
         ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
         ${formField("f-time", "Finish Time (hh:mm)", "time", "", `required value="${escapeAttr(e?.time)}"`)}
         <div class="form-row">
-          ${formField("f-avghr", "Avg HR", "number", "", `required min="30" max="220" step="1"${numVal(e?.avgHr)}`)}
-          ${formField("f-maxhr", "Max HR", "number", "", `required min="30" max="220" step="1"${numVal(e?.maxHr)}`)}
+          ${formField("f-avghr", "Avg HR (optional)", "number", "", `min="30" max="220" step="1"${numVal(e?.avgHr)}`)}
+          ${formField("f-maxhr", "Max HR (optional)", "number", "", `min="30" max="220" step="1"${numVal(e?.maxHr)}`)}
         </div>
         ${formSelect("f-pass", "Pass", [["Y", "Pass"], ["N", "Fail"]], true, e?.pass || "")}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
@@ -955,8 +955,11 @@ function openRMForm(id) {
 }
 function submitRM() {
   const editId = +gv("f-entry-id");
-  const avgHr = +gv("f-avghr"), maxHr = +gv("f-maxhr");
-  if (maxHr < avgHr) { alert("Max HR cannot be lower than Avg HR."); return; }
+  // HR is optional → keep "" rather than NaN when blank. Only enforce the
+  // max≥avg sanity check when both values are actually present.
+  const avgRaw = gv("f-avghr").trim(), maxRaw = gv("f-maxhr").trim();
+  const avgHr = avgRaw === "" ? "" : +avgRaw, maxHr = maxRaw === "" ? "" : +maxRaw;
+  if (avgHr !== "" && maxHr !== "" && maxHr < avgHr) { alert("Max HR cannot be lower than Avg HR."); return; }
   const entry = {
     id: editId || nextId(), d4: gv("f-d4"), rmNum: +gv("f-rm"),
     date: isoToDisplayDate(gv("f-date")),
@@ -977,6 +980,10 @@ function openSOCForm(id) {
   const e = id ? STATE.soc.find(x => x.id === id) : null;
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
   const numVal = v => v !== undefined && v !== null && v !== "" ? ` value="${v}"` : "";
+  // SOC time is a completion *duration*, not a time of day. Parse any stored
+  // value ("mm:ss" or legacy "hh:mm:ss" from the old clock input) into total
+  // seconds, then split to minutes + seconds for the two-field duration entry.
+  const dur = socDurationParts(e?.time);
   openModal(e ? "Edit SOC Result" : "Add SOC Result", `
     <form onsubmit="event.preventDefault(); submitSOC(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
@@ -985,8 +992,13 @@ function openSOCForm(id) {
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
         ${formSelect("f-soc", "SOC #", ["1", "2", "3", "4", "5"], true, e?.socNum ? String(e.socNum) : "")}
         ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
-        ${formField("f-time", "Completion Time (hh:mm:ss)", "time", "", `required step="1" min="00:04:00" max="00:30:00" value="${escapeAttr(e?.time)}"`)}
-        ${formField("f-avghr", "Avg HR", "number", "", `required min="30" max="220" step="1"${numVal(e?.avgHr)}`)}
+        <div class="form-group"><label>Completion Duration (min : sec)</label>
+          <div class="form-row">
+            ${formField("f-min", "Minutes", "number", "", `required min="0" max="59" step="1"${numVal(dur.min)}`)}
+            ${formField("f-sec", "Seconds", "number", "", `required min="0" max="59" step="1"${numVal(dur.sec)}`)}
+          </div>
+        </div>
+        ${formField("f-avghr", "Avg HR (optional)", "number", "", `min="30" max="220" step="1"${numVal(e?.avgHr)}`)}
         ${formSelect("f-pass", "Pass", [["Y", "Pass"], ["N", "Fail"]], true, e?.pass || "")}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
@@ -994,11 +1006,15 @@ function openSOCForm(id) {
 }
 function submitSOC() {
   const editId = +gv("f-entry-id");
+  // Build the canonical "mm:ss" duration string (zero-padded seconds).
+  const mins = Math.max(0, parseInt(gv("f-min"), 10) || 0);
+  const secs = Math.max(0, Math.min(59, parseInt(gv("f-sec"), 10) || 0));
+  const avgHrRaw = gv("f-avghr").trim();   // HR optional → keep "" rather than NaN
   const entry = {
     id: editId || nextId(), d4: gv("f-d4"), socNum: +gv("f-soc"),
     date: isoToDisplayDate(gv("f-date")),
-    time: gv("f-time"),
-    avgHr: +gv("f-avghr"),
+    time: `${mins}:${String(secs).padStart(2, "0")}`,
+    avgHr: avgHrRaw === "" ? "" : +avgHrRaw,
     pass: gv("f-pass")
   };
   if (editId) {

@@ -878,6 +878,27 @@ function fmtHrs(t) {
   return `${p} Hrs`;
 }
 
+// SOC completion time is a *duration*, not a time of day. Parse a stored value
+// — new "mm:ss" or legacy "hh:mm:ss" (from the old clock input) — into total
+// seconds, then split into whole minutes + seconds for the duration entry form.
+function socDurationParts(t) {
+  if (t == null || t === "") return { min: "", sec: "" };
+  const parts = String(t).split(":").map(n => parseInt(n, 10) || 0);
+  let total;
+  if (parts.length === 3) total = parts[0] * 3600 + parts[1] * 60 + parts[2]; // hh:mm:ss
+  else if (parts.length === 2) total = parts[0] * 60 + parts[1];               // mm:ss
+  else total = parts[0] || 0;                                                  // bare seconds
+  return { min: Math.floor(total / 60), sec: total % 60 };
+}
+// Display a stored SOC time as a clean "m:ss" duration (drops a legacy leading
+// "00:" hours component so old and new rows render consistently).
+function socDurationDisplay(t) {
+  if (t == null || t === "") return "—";
+  const { min, sec } = socDurationParts(t);
+  if (min === "" ) return "—";
+  return `${min}:${String(sec).padStart(2, "0")}`;
+}
+
 // ── MSK INJURY CLASSIFICATION ────────────────────────────
 // Maps free-text injury descriptions ("sprained ankle", "TFCC right wrist",
 // "shin splints") to body regions for analytics aggregation. Order matters
