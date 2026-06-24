@@ -61,7 +61,11 @@
  *                separate from `id`, which stays the primary key and may be a
  *                short text code (OC, PC1…) for no-4D personnel.)
  *   Medical:    id | d4 | date | reason | location | status | startDate | endDate |
- *               type | urtiType | mrTiming | visitId
+ *               type | urtiType | mrTiming | visitId | origin
+ *               (origin ∈ {manual, conductLog}: "conductLog" = auto-created as a
+ *                Pending report-sick backfill by a conduct import/wizard for an
+ *                absentee not already logged; "manual" = entered in the Medical
+ *                tab. Legacy rows default to "manual". Surfaced as a badge.)
  *               (Each row represents a "report sick" event — `date` is the
  *                date the recruit reported sick. `location` is optional —
  *                the clinic/hospital where the recruit reported sick OUTSIDE;
@@ -110,13 +114,18 @@
  *                be absent on sheets that predate them.)
  *   ConductDetail: id | date | time | conductId | d4 | type | reason
  *               (one row per non-participating recruit per conduct.
- *                type ∈ {PX, RSI, Fallout, ReportSick}:
- *                  PX         = pre-existing status before the conduct (MC/LD/RMJ);
+ *                type ∈ {Status, PX, RSI, Fallout, ReportSick}:
+ *                  Status     = pre-existing status absence (MC/LD/Excuse/Leave/Off).
+ *                               Formerly stored as "PX"; legacy rows are migrated
+ *                               to "Status" on read (normalizeConductDetail).
+ *                  PX         = present but NOT participating — doing PX (stretches).
+ *                               NOT an absence: excluded from every absent/missed
+ *                               tally. (This is the real meaning of "PX".)
  *                  RSI        = reporting sick at first parade that morning;
  *                  Fallout    = dropped out during the conduct itself;
  *                  ReportSick = sent to MO mid-day after the conduct.
  *                Aggregates in the Attendance sheet should match the
- *                per-conduct totals of these rows.)
+ *                per-conduct totals of these rows [Status counts toward `px`].)
  *
  *   Appointments: id | d4 | reason | date | time | location | outOfCamp | resolved
  *               (Booked future events — medical specialist visits, IPPT
