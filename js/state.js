@@ -300,7 +300,12 @@ function normalizeMedical(records) {
       type: r.type || "",
       urtiType: r.urtiType || "",      // "URTI" / "NON-URTI" — meaningful for RSI/RSO
       mrTiming: r.mrTiming || "",      // optional free-text timing for MR rows
-      visitId: r.visitId || ""         // groups sibling rows of one multi-status visit
+      visitId: r.visitId || "",        // groups sibling rows of one multi-status visit
+      // Provenance: "conductLog" = auto-created from a conduct import / wizard
+      // (a Pending report-sick backfill); "manual" = entered directly in the
+      // Medical tab. Legacy rows default to "manual". Surfaced as a badge so
+      // operators can tell auto-backfilled rows from hand-logged ones.
+      origin: r.origin || "manual"
     };
   });
 }
