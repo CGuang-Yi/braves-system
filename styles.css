@@ -52,6 +52,30 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .badge-pink{background:#F778BA22;color:var(--pink);border:1px solid #F778BA44}
 .badge-teal{background:#39D2C022;color:var(--teal);border:1px solid #39D2C044}
 
+/* ── Status Grid (GitHub-activity style): day = square, colour = status ───── */
+.sb-td{padding:1px;text-align:center}
+.sb-td.sb-wkstart{border-left:2px solid var(--border)}
+.sb-td.sb-weekend{background:rgba(255,255,255,0.02)}
+.sb-cell{display:flex;align-items:center;justify-content:center;min-width:22px;height:18px;
+  font-size:9px;font-weight:700;border-radius:3px;position:relative;margin:auto;
+  contain:layout style paint}                 /* contain = cheaper repaint on scroll (E3 perf) */
+.sb-cell[data-d4]{cursor:pointer}
+.sb-empty{color:var(--dim);background:var(--surface2)}
+.sb-future{color:var(--border);background:transparent}
+.sb-corner{position:absolute;top:0;right:0;width:0;height:0;
+  border-top:5px solid transparent;border-left:5px solid transparent}
+.sb-group{background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--muted);padding:3px 8px;font-weight:700;position:sticky;left:0}
+/* Identity columns: 4D always frozen; Name frozen on desktop only. On mobile the
+   Name un-freezes so the grid isn't buried under a wide frozen block (E2). */
+.sb-id{position:sticky;left:0;z-index:2;background:var(--surface);white-space:nowrap;
+  font-size:11px;font-weight:700;color:var(--accent);padding:2px 6px;min-width:52px}
+.sb-name{position:sticky;left:52px;z-index:1;background:var(--surface);white-space:nowrap;
+  font-size:11px;padding:2px 6px;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:760px){
+  .sb-name{position:static;left:auto;max-width:90px}
+}
+
 .btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
 .btn:hover{filter:brightness(1.2)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:var(--accentDim);border-color:var(--accent)}

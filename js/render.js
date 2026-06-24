@@ -2022,7 +2022,8 @@ let _sbSearch = "";
 const SB_CELL = {
   RSI: { bg: "#EF9F27", fg: "#633806" }, RSO: { bg: "#378ADD", fg: "#042C53" },
   MC:  { bg: "#E24B4A", fg: "#501313" }, MR:  { bg: "#7F77DD", fg: "#26215C" },
-  LD:  { bg: "#B4B2A9", fg: "#2C2C2A" }, LV:  { bg: "#1D9E75", fg: "#04342C" }
+  LD:  { bg: "#B4B2A9", fg: "#2C2C2A" }, LV:  { bg: "#1D9E75", fg: "#04342C" },
+  EX:  { bg: "#B08D57", fg: "#241B0E" }   // Excuse-* — distinct from LD's grey
 };
 function _sbKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
@@ -2190,33 +2191,41 @@ function renderSBGrid() {
   // across ~35 day-cells and would otherwise re-scan all three STATE arrays per cell.
   const idx = bpBuildIndex();
 
-  const legend = Object.entries({ RSI: "RSI", RSO: "RSO", MC: "MC/ATTC", MR: "MR", LD: "LD/Excuse", LV: "Leave" })
+  const legend = Object.entries({ RSI: "RSI", RSO: "RSO", MC: "MC/ATTC", MR: "MR", LD: "LD", EX: "Excuse", LV: "Leave" })
     .map(([k, lbl]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px"><span style="width:11px;height:11px;border-radius:2px;background:${SB_CELL[k].bg};display:inline-block"></span>${lbl}</span>`).join("");
 
+  const colspanAll = weeks.length * 7 + 3;   // 4D + Name + day cells + Total RS
   const dows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const weekHead = weeks.map(w => `<th colspan="7" style="border-left:2px solid var(--border);font-size:10px;color:var(--muted)">Wk of ${isoToDisplayDate(w.monIso).split(" ").slice(0, 2).join(" ")}</th>`).join("");
-  const dowHead = weeks.map(() => dows.map((d, i) => `<th style="font-size:9px;${i === 0 ? "border-left:2px solid var(--border);" : ""}${i >= 5 ? "color:var(--dim);" : "color:var(--muted);"}min-width:30px">${d}</th>`).join("")).join("");
+  const dowHead = weeks.map(() => dows.map((d, i) => `<th style="font-size:9px;${i === 0 ? "border-left:2px solid var(--border);" : ""}${i >= 5 ? "color:var(--dim);" : "color:var(--muted);"}min-width:26px">${d}</th>`).join("")).join("");
 
   let lastGroup = null, body = "";
   ordered.forEach(({ r, group }) => {
-    if (group !== lastGroup) { body += `<tr><td colspan="${weeks.length * 7 + 2}" style="background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:3px 8px;font-weight:700;position:sticky;left:0">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
+    if (group !== lastGroup) { body += `<tr><td colspan="${colspanAll}" class="sb-group">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
     const c = counts[r.id] || { rsi: 0, rso: 0 };
     let cells = "";
     weeks.forEach(w => w.days.forEach((iso, i) => {
+      const dayNum = +iso.slice(8, 10);                 // iso = YYYY-MM-DD
       const future = iso > todayKey;
-      let inner = "";
-      if (!future) {
+      let inner;
+      if (future) {
+        inner = `<div class="sb-cell sb-future">${dayNum}</div>`;
+      } else {
         const cell = bpGridCell(r, iso, idx);
         if (cell.any) {
           const pal = SB_CELL[cell.primary] || { bg: "#8B949E", fg: "#111" };
+          // Secondary RSI/RSO not already shown as the primary colour → corner triangle.
           const sec = (cell.hasRSI && cell.primary !== "RSI") ? "#EF9F27" : (cell.hasRSO && cell.primary !== "RSO") ? "#378ADD" : "";
-          inner = `<div onclick="openSBCellDetail('${r.id}','${iso}')" style="cursor:pointer;background:${pal.bg};color:${pal.fg};font-size:8px;font-weight:700;border-radius:2px;padding:1px 0;position:relative">${cell.primary}${sec ? `<span style="position:absolute;top:0;right:0;width:0;height:0;border-top:5px solid ${sec};border-left:5px solid transparent"></span>` : ""}</div>`;
+          inner = `<div class="sb-cell" data-d4="${r.id}" data-iso="${iso}" style="background:${pal.bg};color:${pal.fg}">${dayNum}${sec ? `<span class="sb-corner" style="border-top-color:${sec}"></span>` : ""}</div>`;
+        } else {
+          inner = `<div class="sb-cell sb-empty" data-d4="${r.id}" data-iso="${iso}">${dayNum}</div>`;
         }
       }
-      cells += `<td style="${i === 0 ? "border-left:2px solid var(--border);" : ""}padding:1px;text-align:center;${i >= 5 ? "background:rgba(255,255,255,0.02);" : ""}">${inner}</td>`;
+      cells += `<td class="sb-td${i === 0 ? " sb-wkstart" : ""}${i >= 5 ? " sb-weekend" : ""}">${inner}</td>`;
     }));
     body += `<tr>
-      <td style="text-align:left;position:sticky;left:0;background:var(--surface);white-space:nowrap;font-size:11px;z-index:1">${escapeAttr(r.name || r.id)} ${r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${r.fourD}</span>` : ""}</td>
+      <td class="sb-id">${r.fourD ? `${configGet("companyPrefix")}${r.fourD}` : escapeAttr(r.id)}</td>
+      <td class="sb-name">${escapeAttr(r.name || "")}</td>
       ${cells}
       <td style="font-weight:700;text-align:center">${c.rsi + c.rso}</td>
     </tr>`;
@@ -2224,7 +2233,7 @@ function renderSBGrid() {
 
   host.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <h3 style="font-size:14px;font-weight:600">Status Grid <span style="font-weight:400;color:var(--muted);font-size:11px">(calendar — weekly patterns)</span></h3>
+      <h3 style="font-size:14px;font-weight:600">Status Grid <span style="font-weight:400;color:var(--muted);font-size:11px">(calendar — day = square, colour = status)</span></h3>
       <div style="display:flex;gap:6px;align-items:center">
         <button class="btn" style="font-size:11px" onclick="sbGridNav(-1)">← earlier</button>
         <button class="btn" style="font-size:11px" onclick="sbGridNav(0)">current</button>
@@ -2233,14 +2242,21 @@ function renderSBGrid() {
     </div>
     <div style="margin-bottom:8px">${legend}</div>
     ${companyWide ? `<div style="font-size:11px;color:var(--orange);background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:6px 10px;margin-bottom:8px">Company scope shows all ${scoped.length} rows — pick a platoon in the scope filter for a more readable grid.</div>` : ""}
-    <div class="table-wrap" style="max-height:520px;overflow:auto"><table style="border-collapse:collapse">
+    <div class="table-wrap" style="max-height:520px;overflow:auto"><table class="sb-table" style="border-collapse:collapse" onclick="sbGridClick(event)">
       <thead>
-        <tr><th style="position:sticky;left:0;background:var(--surface);text-align:left">Name</th>${weekHead}<th rowspan="2" style="text-align:center">Total<br>RS</th></tr>
-        <tr><th style="position:sticky;left:0;background:var(--surface)"></th>${dowHead}</tr>
+        <tr><th class="sb-id" style="text-align:left">4D</th><th class="sb-name" style="text-align:left">Name</th>${weekHead}<th rowspan="2" style="text-align:center">Total<br>RS</th></tr>
+        <tr><th class="sb-id"></th><th class="sb-name"></th>${dowHead}</tr>
       </thead>
       <tbody>${body || `<tr><td style="color:var(--muted);padding:10px">No personnel in scope.</td></tr>`}</tbody>
     </table></div>
   `;
+}
+// Event delegation for grid cells (Misc/E3 perf): one listener on the table
+// instead of an inline onclick per ~35×N cells — far less HTML + far fewer
+// closures, which is what made iOS Chrome lag on the company-wide grid.
+function sbGridClick(e) {
+  const cell = e.target.closest("[data-iso]");
+  if (cell && cell.dataset.d4) openSBCellDetail(cell.dataset.d4, cell.dataset.iso);
 }
 function sbGridNav(delta) { _sbWeekOffset = delta === 0 ? 0 : _sbWeekOffset + delta; renderSBGrid(); }
 

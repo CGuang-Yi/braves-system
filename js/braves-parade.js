@@ -305,8 +305,11 @@ function bpPrimaryForDay(r, dateIso, idx) {
   const mr = c.meta.mr.length ? c.meta.mr[0].reason : null;
   return { primary, mr, sections: c.sections, rn: c.rn, notInCamp: c.notInCamp };
 }
-// A4.2 grid cell: fill priority Leave > MC > LD/Excuse > RSI/RSO > MR, plus
-// secondary RSI/RSO markers. Returns { primary, hasRSI, hasRSO, hasMR, any }.
+// A4.2 grid cell: fill priority Leave > MC > LD > Excuse > RSI/RSO > MR, plus
+// secondary RSI/RSO markers. LD and Excuse share the §8 `status` section but are
+// split here (per the agreed priority) by reading the structured types: a "LD"
+// type wins the LD colour, otherwise an Excuse-* status takes the EX colour.
+// Returns { primary, hasRSI, hasRSO, hasMR, any }.
 function bpGridCell(r, dateIso, idx) {
   const c = bpClassifyPerson(r, dateIso, idx);
   const s = c.sections;
@@ -316,7 +319,13 @@ function bpGridCell(r, dateIso, idx) {
   let primary = null;
   if (s.alOil.length) primary = "LV";
   else if (s.attC.length) primary = "MC";
-  else if (s.status.length) primary = "LD";
+  else if (s.status.length) {
+    // type is "LD" for an LD row; for the collapsed multi-status line it becomes
+    // "STATUS", so also sniff the reason text for an "LD" token. LD outranks Excuse.
+    const reason = c.meta.status.map(x => x.reason || "").join(", ");
+    const isLD = c.meta.status.some(x => x.type === "LD") || /\bLD\b/.test(reason);
+    primary = isLD ? "LD" : "EX";
+  }
   else if (s.reportingSick.length) primary = hasRSO ? "RSO" : "RSI";
   else if (s.mr.length) primary = "MR";
   return { primary, hasRSI, hasRSO, hasMR: s.mr.length > 0, any: !!primary };
