@@ -96,7 +96,7 @@ function openPerson(d4) {
     return (a.time || "") < (b.time || "") ? 1 : -1;
   });
   if (cd.length) {
-    const cdTypeColor = t => t === "PX" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
+    const cdTypeColor = t => t === "Status" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : t === "PX" ? "teal" : "yellow";
     // ReportSick is deduped by date — a recruit who falls out of three
     // conducts on the same day only went to MO once. Other types count rows
     // directly since each row is a distinct conduct miss.
@@ -105,7 +105,10 @@ function openPerson(d4) {
       if (t === "ReportSick") return new Set(rows.map(d => d.date)).size;
       return rows.length;
     };
-    html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${cd.length} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("PX")} PX · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick)</span></h4>`;
+    // PX = present but not participating (doing stretches) → NOT a miss; only
+    // Status/RSI/Fallout/ReportSick rows are genuine conduct misses.
+    const missedCount = cd.filter(d => d.type !== "PX").length;
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${missedCount} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("Status")} Status · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick${cdCount("PX") ? ` · ${cdCount("PX")} PX` : ""})</span></h4>`;
     html += `<div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
@@ -1387,7 +1390,7 @@ function confirmConductImport() {
   const detailRows = [];
   fallout.forEach(x => detailRows.push({ id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Fallout", reason: x.remarks || "" }));
   statusAbsent.forEach(x => detailRows.push({
-    id: nextId(), date, time, conductId, d4: x.resolvedId, type: "PX",
+    id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Status",
     reason: x.status === "Other" ? (x.remarks || "Other") : x.status + (x.remarks ? ` — ${x.remarks}` : "")
   }));
 
@@ -1553,7 +1556,7 @@ function openConductDetailForm(id) {
           ${conductPicker({ inputId: "f-conductId", selectedId: e?.conductId || "" })}
         </div>
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["PX", "Status (pre-existing medical status)"], ["Fallout", "Fallout (dropped out, no MO visit)"], ["RSI", "RSI (reported sick at first parade)"], ["ReportSick", "Report Sick (fallout → went to MO)"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["Status", "Status (pre-existing medical status — absent)"], ["PX", "PX (present, not participating — doing stretches, not absent)"], ["Fallout", "Fallout (dropped out, no MO visit)"], ["RSI", "RSI (reported sick at first parade)"], ["ReportSick", "Report Sick (fallout → went to MO)"]], true, e?.type || "")}
         ${formField("f-reason", "Reason", "text", "Sprained ankle / Fever / Shin splint...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
@@ -2462,9 +2465,10 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
     const iso = displayDateToISO(c.date);
     return iso && iso >= startIso && iso <= endIso;
   });
-  const skippedRows = conductDetailRows.filter(c => c.type === "PX" || c.type === "RSI" || c.type === "Fallout");
+  // PX = present doing stretches → not a miss; only Status/RSI/Fallout count.
+  const skippedRows = conductDetailRows.filter(c => c.type === "Status" || c.type === "RSI" || c.type === "Fallout");
   const missedCount = skippedRows.length;
-  const missedBreakdown = ["PX", "RSI", "Fallout"]
+  const missedBreakdown = ["Status", "RSI", "Fallout"]
     .map(t => ({ t, n: skippedRows.filter(m => m.type === t).length }))
     .filter(x => x.n > 0)
     .map(x => `${x.n} ${x.t}`).join(" · ") || "none";
@@ -3511,14 +3515,16 @@ function rebuildLogConductStatus() {
   if (!_logConduct) return;
   const prevByD4 = {};
   (_logConduct.status || []).forEach(s => { prevByD4[s.d4] = s; });
-  // For edit mode, also seed "notParticipating" from existing PX conductDetail
-  // rows matching this attendance — so re-opening shows the correct ticks.
+  // For edit mode, also seed "notParticipating" from existing Status
+  // conductDetail rows matching this attendance — so re-opening shows the
+  // correct ticks. ("Status" = the pre-existing-status non-participation type,
+  // formerly mislabelled "PX".)
   let existingPxByD4 = {};
   if (_logConduct.attendanceId) {
     const a = STATE.attendance.find(x => x.id === _logConduct.attendanceId);
     if (a) {
       STATE.conductDetail
-        .filter(d => d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId && d.type === "PX")
+        .filter(d => d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId && d.type === "Status")
         .forEach(d => { existingPxByD4[d.d4] = d.reason || ""; });
     }
   }
@@ -3787,11 +3793,13 @@ async function saveLogConductWizard() {
     remarks: w.remarks || ""
   };
 
-  // Build conductDetail rows. PX rows = only status entries marked
+  // Build conductDetail rows. "Status" rows = only status entries marked
   // "notParticipating" (the rest are participating despite their status).
+  // (This non-participation type was formerly mislabelled "PX"; PX now means a
+  // genuine, non-absent stretch activity.)
   const detailRows = [];
   w.status.filter(s => s.notParticipating).forEach(s => {
-    detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: s.d4, type: "PX", reason: s.reason || "" });
+    detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: s.d4, type: "Status", reason: s.reason || "" });
   });
   w.fallout.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "Fallout", reason: r.reason || "" }));
   w.reportSick.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "ReportSick", reason: r.reason || "" }));
@@ -3899,7 +3907,7 @@ function buildConductChatFormat(attendanceId) {
     d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId
   );
   const byType = {
-    PX: details.filter(d => d.type === "PX"),
+    Status: details.filter(d => d.type === "Status"),
     ReportSick: details.filter(d => d.type === "ReportSick"),
     Fallout: details.filter(d => d.type === "Fallout"),
     RSI: details.filter(d => d.type === "RSI")
@@ -3929,10 +3937,10 @@ function buildConductChatFormat(attendanceId) {
     return `${label}: ${String(rows.length).padStart(2, "0")}\n\n${blocks.join("\n\n")}`;
   };
 
-  const header = `${ddmmyy} ${fmtHrs(time)} ${conductLabel}\nTotal strength: ${a.total}\nParticipating: ${a.participating}\nStatus: ${String(byType.PX.length).padStart(2, "0")}\nReport sick: ${String(byType.ReportSick.length).padStart(2, "0")}\nFallout: ${String(byType.Fallout.length).padStart(2, "0")}`;
+  const header = `${ddmmyy} ${fmtHrs(time)} ${conductLabel}\nTotal strength: ${a.total}\nParticipating: ${a.participating}\nStatus: ${String(byType.Status.length).padStart(2, "0")}\nReport sick: ${String(byType.ReportSick.length).padStart(2, "0")}\nFallout: ${String(byType.Fallout.length).padStart(2, "0")}`;
 
   const parts = [header];
-  parts.push(section("STATUS", byType.PX, /*includeStatusBlock*/ true));
+  parts.push(section("STATUS", byType.Status, /*includeStatusBlock*/ true));
   if (byType.ReportSick.length) parts.push(section("REPORT SICK", byType.ReportSick, false));
   if (byType.Fallout.length) parts.push(section("FALLOUT", byType.Fallout, false));
   if (byType.RSI.length) parts.push(section("RSI", byType.RSI, false));

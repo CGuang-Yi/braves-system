@@ -98,6 +98,7 @@ function renderArchive(el) {
       </div>
       <input id="archive-search" placeholder="Filter by date / slot / text…" value="${escapeAttr(_archiveQuery)}" oninput="setArchiveQuery(this.value)"
         style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
+      <button class="btn" onclick="exportArchiveCSV('${_archiveTab}')" title="Export the messages currently shown (respects the filter) to CSV">⬇ Export CSV</button>
     </div>
     <div id="archive-list"></div>`;
   renderArchiveList();
@@ -129,11 +130,46 @@ function renderArchiveList() {
           ${r.scope ? `<span style="font-size:10px;color:var(--dim)">${escapeAttr(r.scope)}</span>` : ""}
           ${r.timestamp ? `<span style="font-size:10px;color:var(--dim)">· ${new Date(r.timestamp).toLocaleString()}</span>` : ""}
         </div>
-        <button class="btn" style="font-size:10px" onclick="(function(){const t=document.getElementById('${id}').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn" style="font-size:10px" onclick="(function(){const t=document.getElementById('${id}').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
+          <button class="btn btn-icon btn-danger" title="Delete this archived message (admin only)" onclick="deleteArchiveEntry('${_archiveTab}','${escapeAttr(r.timestamp || "")}','${escapeAttr(r.date || "")}','${escapeAttr(r.slot || "")}')">✕</button>
+        </div>
       </div>
       <pre id="${id}" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;max-height:320px;overflow:auto">${escapeAttr(r.message || "")}</pre>
     </div>`;
   }).join("");
+}
+
+// Delete one archived message (admin-only; backend re-checks the role). Matches
+// on the unique timestamp, with date+slot as a fallback for legacy rows.
+async function deleteArchiveEntry(kind, ts, date, slot) {
+  if (!confirm("Delete this archived message? This removes it from the audit trail and cannot be undone.")) return;
+  try {
+    const res = await API.deleteArchive(kind, { timestamp: ts, date, slot });
+    if (res && res.error) { alert("Delete failed: " + res.error); return; }
+    const key = kind === "sick" ? "sickArchive" : "paradeArchive";
+    STATE[key] = (STATE[key] || []).filter(r =>
+      ts ? String(r.timestamp) !== String(ts) : !(r.date === date && String(r.slot) === String(slot)));
+    renderArchive(document.getElementById("content"));
+  } catch (e) {
+    if (e.name === "AuthError" && typeof handleAuthFailure === "function") { handleAuthFailure(); return; }
+    alert("Delete error: " + e.message);
+  }
+}
+
+// Export the currently-shown archive tab (respecting the search filter) to CSV.
+function exportArchiveCSV(kind) {
+  const rows = (kind === "parade" ? STATE.paradeArchive : STATE.sickArchive) || [];
+  const q = _archiveQuery.trim().toLowerCase();
+  const flat = rows.slice()
+    .sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")))
+    .filter(r => !q || `${r.date} ${r.slot} ${r.type || r.format || ""} ${r.message || ""}`.toLowerCase().includes(q))
+    .map(r => ({
+      timestamp: r.timestamp || "", date: r.date || "", slot: r.slot || "",
+      type: r.type || r.format || "", scope: r.scope || "", message: r.message || ""
+    }));
+  if (!flat.length) { alert("Nothing to export."); return; }
+  exportCSV(flat, `${kind === "parade" ? "parade_state" : "report_sick"}_archive.csv`);
 }
 
 function renderDashboard(el) {
@@ -472,7 +508,7 @@ function viewMSKRegion(region) {
     const hasManual = reports.some(r => r.manualRegions && String(r.manualRegions).trim());
     const sources = [
       ...reports.map(r => ({ kind: "Form report", text: r.description || "—", color: "#E97BC2" })),
-      ...cdRows.map(c => ({ kind: c.type, text: c.reason || "—", color: c.type === "PX" ? "#5B8DEF" : c.type === "Fallout" ? "#E8573A" : "#F2A93B" }))
+      ...cdRows.map(c => ({ kind: c.type, text: c.reason || "—", color: c.type === "Status" ? "#5B8DEF" : c.type === "PX" ? "#39D2C0" : c.type === "Fallout" ? "#E8573A" : "#F2A93B" }))
     ];
     const allRegions = getMSKRegionsForRecruit(d4);
     return { d4, sources, allRegions, hasManual };
@@ -544,7 +580,7 @@ function renderMSKAnalytics(el) {
   // Daily aggregation — unique d4s per type per day.
   const daily = dates.map(iso => {
     const dayRows = mskConductRows.filter(c => displayDateToISO(c.date) === iso);
-    const px = new Set(dayRows.filter(c => c.type === "PX").map(c => c.d4));
+    const px = new Set(dayRows.filter(c => c.type === "Status").map(c => c.d4));
     const fo = new Set(dayRows.filter(c => c.type === "Fallout").map(c => c.d4));
     const rsi = new Set(dayRows.filter(c => c.type === "RSI").map(c => c.d4));
     const total = new Set([...px, ...fo, ...rsi]);
@@ -1117,7 +1153,10 @@ function toggleParticipants() { _showParticipants = !_showParticipants; render()
 function renderDetailParticipantsSummary(scopedAll) {
   if (!_detailFilterConduct) return "";
   const conductRecords = scopedAll.filter(d => `${d.date}|${d.time || ""}|${d.conductId || ""}` === _detailFilterConduct);
-  const absentSet = new Set(conductRecords.map(d => d.d4));
+  // PX = present doing stretches → NOT absent; exclude it from the absent set so
+  // PX people aren't subtracted from "participated" or tallied as no-shows.
+  const absentRecords = conductRecords.filter(d => d.type !== "PX");
+  const absentSet = new Set(absentRecords.map(d => d.d4));
   const inScope = filteredRoster();
   const participants = inScope.filter(r => !absentSet.has(r.id));
   const ct = t => conductRecords.filter(d => d.type === t).length;
@@ -1128,8 +1167,8 @@ function renderDetailParticipantsSummary(scopedAll) {
           <span style="color:var(--muted)">This conduct →</span>
           <strong style="color:var(--green)">Participated: ${participants.length}</strong>
           <span style="color:var(--muted)"> · </span>
-          <strong style="color:var(--red)">Absent: ${conductRecords.length}</strong>
-          <span style="color:var(--muted)"> (Status ${ct("PX")} · RSI ${ct("RSI")} · Fallout ${ct("Fallout")} · ReportSick ${ct("ReportSick")})</span>
+          <strong style="color:var(--red)">Absent: ${absentSet.size}</strong>
+          <span style="color:var(--muted)"> (Status ${ct("Status")} · RSI ${ct("RSI")} · Fallout ${ct("Fallout")} · ReportSick ${ct("ReportSick")}${ct("PX") ? ` · PX ${ct("PX")} present` : ""})</span>
         </div>
         <button class="btn" onclick="toggleParticipants()">${_showParticipants ? "▾ Hide" : "▸ Show"} participants (${participants.length})</button>
       </div>
@@ -1187,7 +1226,7 @@ function renderConductDetail(el) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  const typeBadgeColor = t => t === "PX" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
+  const typeBadgeColor = t => t === "Status" ? "orange" : t === "PX" ? "teal" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
   const totalConducts = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conductId || ""}`))].length;
   const titleSuffix = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scopedAll.length}/${STATE.conductDetail.length}]</span>` : ` (${STATE.conductDetail.length})`;
 
@@ -1200,10 +1239,11 @@ function renderConductDetail(el) {
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat"><label>Status (pre-existing)</label><div class="val" style="color:var(--orange)">${cnt("PX")}</div></div>
+      <div class="stat"><label>Status (pre-existing)</label><div class="val" style="color:var(--orange)">${cnt("Status")}</div></div>
       <div class="stat"><label>RSI (1st parade)</label><div class="val" style="color:var(--red)">${cnt("RSI")}</div></div>
       <div class="stat"><label>Fallout (mid-conduct)</label><div class="val" style="color:var(--purple)">${cnt("Fallout")}</div></div>
       <div class="stat"><label>Reported Sick (mid-day)</label><div class="val" style="color:var(--yellow)">${cnt("ReportSick")}</div></div>
+      ${cnt("PX") ? `<div class="stat"><label>PX (present, stretches)</label><div class="val" style="color:var(--teal)">${cnt("PX")}</div></div>` : ""}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Filter:</span>
@@ -1213,7 +1253,7 @@ function renderConductDetail(el) {
       </select>
       <select onchange="setDetailFilterType(this.value)" class="topbar-select">
         <option value="">All types</option>
-        ${[["PX","Status"],["RSI","RSI"],["Fallout","Fallout"],["ReportSick","Report Sick"]].map(([val,lab]) => `<option value="${val}" ${val === _detailFilterType ? "selected" : ""}>${lab}</option>`).join("")}
+        ${[["Status","Status"],["PX","PX (present)"],["RSI","RSI"],["Fallout","Fallout"],["ReportSick","Report Sick"]].map(([val,lab]) => `<option value="${val}" ${val === _detailFilterType ? "selected" : ""}>${lab}</option>`).join("")}
       </select>
       ${(_detailFilterConduct || _detailFilterType) ? `<button class="btn" onclick="clearDetailFilters()">Reset</button>` : ""}
     </div>
@@ -1565,7 +1605,7 @@ function renderPolar(el) {
     const [date, conductId, time] = k.split("|");
     const polarSet = new Set(STATE.polar.filter(p => p.date === date && p.conductId === conductId).map(p => p.d4));
     const absent = new Set(STATE.conductDetail
-      .filter(c => c.date === date && c.conductId === conductId && (c.type === "PX" || c.type === "RSI" || c.type === "Fallout"))
+      .filter(c => c.date === date && c.conductId === conductId && (c.type === "Status" || c.type === "RSI" || c.type === "Fallout"))
       .map(c => c.d4));
     const expectedAttenders = [...scopedRosterIds].filter(id => !absent.has(id));
     const missing = expectedAttenders.filter(id => !polarSet.has(id));

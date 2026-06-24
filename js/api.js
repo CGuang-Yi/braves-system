@@ -58,6 +58,11 @@ const API = {
   async revokeAllTokens() { return this.post({ action: "revokeAllTokens" }); },
   // ── Archive (Item 1): manual snapshot. kind: "parade"|"sick"|"both". ──
   async archiveNow(kind, opts) { return this.post({ action: "archiveNow", kind, ...(opts || {}) }); },
+  // Delete one archived message (admin-only). Matches on the unique timestamp,
+  // with date+slot as a fallback for legacy rows.
+  async deleteArchive(kind, row) {
+    return this.post({ action: "deleteArchive", kind, timestamp: row.timestamp || "", date: row.date || "", slot: row.slot || "" });
+  },
   async pullAll() {
     const data = await this.get("readAll");
     if (data.error) throw new Error(data.error);
@@ -68,7 +73,7 @@ const API = {
     if (data.rm?.length) STATE.rm = padD4OnLayer(data.rm);
     if (data.soc?.length) STATE.soc = padD4OnLayer(data.soc);
     if (data.polar?.length) STATE.polar = padD4OnLayer(data.polar);
-    if (data.conductDetail?.length) STATE.conductDetail = padD4OnLayer(data.conductDetail);
+    if (data.conductDetail?.length) STATE.conductDetail = normalizeConductDetail(data.conductDetail);
     if (data.appointments?.length) STATE.appointments = padD4OnLayer(data.appointments);
     if (data.leave?.length) STATE.leave = padD4OnLayer(data.leave);
     if (data.msk?.length) STATE.msk = normalizeMSK(data.msk);

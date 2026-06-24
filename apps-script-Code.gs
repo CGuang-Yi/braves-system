@@ -741,6 +741,18 @@ function routeAuthedPost(action, tab, body, ctx) {
   // This single gate is the authoritative "viewer is read-only" enforcement.
   if (!canWrite(ctx)) return { error: "Read-only access — your account cannot make changes.", code: 403 };
 
+  // Mass-deletion safety net (Misc B1): commanders are capped at N single-row
+  // deletes per rolling hour (default 30, Config key `commanderDeleteCap`).
+  // Admins are exempt. Only single-row deletes count — full-tab `write`/replace,
+  // append, appendMany and upsert are NOT throttled, so the conduct CSV import
+  // (which re-writes whole tabs) never trips this. 30/hr ≈ one every 2 min:
+  // ample for legitimate data correction, while a runaway loop blows past it
+  // instantly. Server-side so it can't be bypassed from the client.
+  if ((action === "deleteRowById" || action === "deleteRow") && ctx.role === "commander") {
+    var rate = bravesCheckDeleteRate_(ctx);
+    if (!rate.ok) return { error: "Deletion limit reached (" + rate.cap + " deletions/hour for commanders). Wait a bit, or ask an admin to make bulk changes.", code: 429 };
+  }
+
   var res;
   if (action === "write" && tab && body.data)                    res = writeTab(tab, body.data);
   else if (action === "append" && tab && body.row)               res = appendRow(tab, body.row);
@@ -753,11 +765,16 @@ function routeAuthedPost(action, tab, body, ctx) {
   else if (action === "getEmailInfo")                            res = getEmailInfoHelper();
   else if (action === "analyzePhoto")                            res = analyzePhotoHelper(body);
   else if (action === "archiveNow")                              res = bravesArchiveNow(body, ctx);
+  else if (action === "deleteArchive")                           res = bravesDeleteArchive(body, ctx);
   else return { error: "Invalid request" };
 
   // Audit manual archive snapshots (A2.3-style).
   if (action === "archiveNow" && res && !res.error) {
     writeAuditLog(ctx.email, ctx.personId, "archive_now", "Archive", (body && body.kind) || "both", body.auth);
+  }
+  // Audit archive deletions (admin-only; A2.3 tamper-trail).
+  if (action === "deleteArchive" && res && !res.error) {
+    writeAuditLog(ctx.email, ctx.personId, "delete_archive", (body && body.kind) === "sick" ? "SickArchive" : "ParadeArchive", (body && body.timestamp) || "", body.auth);
   }
 
   // Best-effort audit of data writes to the tabs called out in A2.3.
@@ -3235,6 +3252,53 @@ function bravesArchiveSick_(dateIso, slot) {
   var row = { timestamp: new Date().toISOString(), date: dateIso, slot: String(slot), format: "RS", message: msg };
   appendMany(BRAVES_SICK_ARCHIVE_TAB, [row]);
   return row;
+}
+
+// Commander mass-deletion throttle (Misc B1). Rolling 1-hour window of delete
+// timestamps per person, stored in ScriptProperties. Cap from Config key
+// `commanderDeleteCap` (default 30). Admins never reach this code path.
+function bravesDeleteCap_() {
+  try {
+    var cfg = bravesNormalizeConfig_(bravesArr_(readTab("Config")));
+    var n = parseInt(cfg.commanderDeleteCap, 10);
+    return (n && n > 0) ? n : 30;
+  } catch (e) { return 30; }
+}
+function bravesCheckDeleteRate_(ctx) {
+  var cap = bravesDeleteCap_();
+  var key = "delrate:" + (ctx.personId || ctx.email || "?");
+  var props = PropertiesService.getScriptProperties();
+  var now = Date.now(), windowMs = 3600 * 1000;
+  var arr = [];
+  try { arr = JSON.parse(props.getProperty(key) || "[]"); } catch (e) { arr = []; }
+  arr = arr.filter(function (t) { return (now - t) < windowMs; });   // prune >1h old
+  if (arr.length >= cap) { props.setProperty(key, JSON.stringify(arr)); return { ok: false, cap: cap }; }
+  arr.push(now);
+  props.setProperty(key, JSON.stringify(arr));
+  return { ok: true, cap: cap };
+}
+
+// doPost action "deleteArchive" (admin-only, Misc B2). Deletes a single archived
+// parade/sick message. Archive rows have no id column, so we match on the unique
+// ISO `timestamp` (falls back to date+slot if a legacy row lacks one).
+function bravesDeleteArchive(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Archive deletion is admin-only.", code: 403 };
+  var tabName = (body && body.kind === "sick") ? BRAVES_SICK_ARCHIVE_TAB : BRAVES_PARADE_ARCHIVE_TAB;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(tabName);
+  if (!sheet) return { error: "Archive tab not found." };
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { error: "Archive is empty." };
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
+  var tsCol = headers.indexOf("timestamp"), dCol = headers.indexOf("date"), sCol = headers.indexOf("slot");
+  var ts = body && body.timestamp, d = body && body.date, slot = body && body.slot;
+  var values = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  for (var i = 0; i < values.length; i++) {
+    var row = values[i];
+    var match = (ts && tsCol >= 0) ? String(row[tsCol]) === String(ts)
+      : (dCol >= 0 && sCol >= 0 && String(row[dCol]) === String(d) && String(row[sCol]) === String(slot));
+    if (match) { sheet.deleteRow(i + 2); return { ok: true }; }
+  }
+  return { error: "Archive entry not found (it may already be deleted)." };
 }
 
 // doPost action "archiveNow" (commander/admin). body: {kind?:"parade"|"sick"|"both",

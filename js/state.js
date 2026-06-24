@@ -312,6 +312,19 @@ function padD4OnLayer(records) {
   return (records || []).map(r => r && r.d4 != null ? { ...r, d4: padD4(r.d4) } : r);
 }
 
+// ConductDetail rows. Pads the 4D like every other layer, then migrates the
+// legacy `type:"PX"` → `"Status"`. Historically "PX" labelled an *absence due
+// to a pre-existing status* (MC/LD/Leave/Off) — which is the opposite of what
+// PX actually means (a set of stretches done by non-participants who are still
+// present, NOT an absence). Renaming frees "PX" so a genuine, non-absent PX
+// note can use it; the absentee/parade-state maths excludes type "PX" while
+// still counting "Status". (Same migration pattern as normalizeMedical's
+// "Excused X" → "Excuse X".)
+function normalizeConductDetail(records) {
+  return padD4OnLayer(records).map(r =>
+    r && r.type === "PX" ? { ...r, type: "Status" } : r);
+}
+
 // MSK records arrive from a Google Form that writes verbose column headers
 // ("4D (e.g. C1234)", "Injury Description", "List of Exercises Given …").
 // Apps Script readTab uses those headers as object keys verbatim, so we
@@ -442,7 +455,7 @@ function loadLocal() {
     STATE.rm = padD4OnLayer(d.rm);
     STATE.soc = padD4OnLayer(d.soc);
     STATE.polar = padD4OnLayer(d.polar);
-    STATE.conductDetail = padD4OnLayer(d.conductDetail);
+    STATE.conductDetail = normalizeConductDetail(d.conductDetail);
     STATE.appointments = padD4OnLayer(d.appointments);
     STATE.leave = padD4OnLayer(d.leave);
     STATE.msk = normalizeMSK(d.msk);
