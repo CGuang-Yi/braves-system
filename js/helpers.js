@@ -696,6 +696,63 @@ function exportJSON(data, filename) {
   URL.revokeObjectURL(url);
 }
 
+// ── Reusable per-tab list search + sort (Medical / IPPT / HA / Conduct) ───────
+// Each tab keeps its own {q, sort, dir} in this module-scope map (not persisted —
+// resets on reload, like the existing Conduct-detail filters). The search filters
+// by name + 4D on top of the topbar scope; clickable headers toggle sort. Mirrors
+// the Status Board search pattern but generalised so several tabs can reuse it.
+const _listCtl = {};
+function listCtl(key) { return _listCtl[key] || (_listCtl[key] = { q: "", sort: "", dir: 1 }); }
+function setListSearch(key, v) {
+  listCtl(key).q = v;
+  render();
+  // render() rebuilds #content, so refocus the search box to keep typing smooth.
+  const inp = document.getElementById("list-search-" + key);
+  if (inp) { inp.focus(); try { inp.setSelectionRange(v.length, v.length); } catch {} }
+}
+function setListSort(key, col) {
+  const c = listCtl(key);
+  if (c.sort === col) c.dir = -c.dir; else { c.sort = col; c.dir = 1; }
+  render();
+}
+// Search input bound to a tab key (place in the tab header).
+function listSearchInput(key, placeholder) {
+  const c = listCtl(key);
+  return `<input id="list-search-${key}" value="${escapeAttr(c.q)}" oninput="setListSearch('${key}', this.value)" placeholder="${escapeAttr(placeholder || "Search name / 4D…")}" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;min-width:180px">`;
+}
+// Filter rows (each carrying d4 or id) by the active query against name + 4D.
+function listSearchFilter(key, rows) {
+  const q = listCtl(key).q.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(r => {
+    const d4 = r.d4 || r.id || "";
+    const name = (typeof getName === "function" ? getName(d4) : "") || r.name || "";
+    return String(name).toLowerCase().includes(q) || String(d4).toLowerCase().includes(q);
+  });
+}
+// A sortable header cell. accessorKey is the column key passed to listApplySort.
+function sortTh(key, col, label, align) {
+  const c = listCtl(key);
+  const arrow = c.sort === col ? (c.dir > 0 ? " ▲" : " ▼") : "";
+  return `<th onclick="setListSort('${key}','${col}')" style="cursor:pointer;user-select:none;${align === "left" ? "text-align:left;" : ""}" title="Click to sort">${label}${arrow}</th>`;
+}
+// Apply the active sort using a {col: accessor} map. Strings sort case-insensitively;
+// numbers numerically. Stable-ish (slice copy). Returns rows unchanged if no sort set.
+function listApplySort(key, rows, accessors) {
+  const c = listCtl(key);
+  if (!c.sort || !accessors || !accessors[c.sort]) return rows;
+  const acc = accessors[c.sort];
+  return rows.slice().sort((a, b) => {
+    let va = acc(a), vb = acc(b);
+    if (typeof va === "string") va = va.toLowerCase();
+    if (typeof vb === "string") vb = vb.toLowerCase();
+    if (va == null) va = ""; if (vb == null) vb = "";
+    if (va < vb) return -1 * c.dir;
+    if (va > vb) return 1 * c.dir;
+    return 0;
+  });
+}
+
 // ── Admin statistics exports (CSV) ──────────────────────────────────────────
 // One row per person with ≥1 report-sick record in scope. Like the Report Sick
 // leaderboard, multiple medical rows on the same day collapse to ONE event per

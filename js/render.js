@@ -1199,12 +1199,14 @@ function renderConductDetail(el) {
 
   // Sort the visible records the same way — newest-first feels right when
   // scanning for "what happened today / yesterday."
-  const rows = [...scoped].sort((a, b) => {
+  let rows = [...scoped].sort((a, b) => {
     const ai = displayDateToISO(a.date) || a.date || "";
     const bi = displayDateToISO(b.date) || b.date || "";
     if (ai !== bi) return ai < bi ? 1 : -1;
     return (a.time || "") < (b.time || "") ? 1 : -1;
   });
+  // D1: name/4D search on top of the conduct/type sub-filters.
+  rows = listSearchFilter("conduct", rows);
 
   // ReportSick dedupes per (d4, date) — a single recruit who fell out of
   // multiple conducts on the same day only went to MO once. The other
@@ -1256,6 +1258,7 @@ function renderConductDetail(el) {
         <option value="">All types</option>
         ${[["Status","Status"],["PX","PX (present)"],["RSI","RSI"],["Fallout","Fallout"],["ReportSick","Report Sick"]].map(([val,lab]) => `<option value="${val}" ${val === _detailFilterType ? "selected" : ""}>${lab}</option>`).join("")}
       </select>
+      ${listSearchInput("conduct", "Search name / 4D…")}
       ${(_detailFilterConduct || _detailFilterType) ? `<button class="btn" onclick="clearDetailFilters()">Reset</button>` : ""}
     </div>
     ${renderDetailParticipantsSummary(scopedAll)}
@@ -1289,6 +1292,17 @@ function renderMedical(el) {
     const ai = displayDateToISO(a.m.startDate || a.m.date) || "";
     const bi = displayDateToISO(b.m.startDate || b.m.date) || "";
     return ai < bi ? 1 : ai > bi ? -1 : 0;
+  });
+  // D1: name/4D search + optional column sort (default stays newest-first).
+  const _medQ = listCtl("medical").q.trim().toLowerCase();
+  let medRows = _medQ
+    ? rowsWithTag.filter(({ m }) => { const nm = (getName(m.d4) || "").toLowerCase(); return nm.includes(_medQ) || String(m.d4).toLowerCase().includes(_medQ); })
+    : rowsWithTag;
+  medRows = listApplySort("medical", medRows, {
+    reported: x => displayDateToISO(x.m.startDate || x.m.date) || "",
+    fourD: x => x.m.d4 || "",
+    name: x => getName(x.m.d4) || "",
+    status: x => x.m.status || ""
   });
   const activeCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0).length;
   const ghostCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0).length;
@@ -1344,6 +1358,7 @@ function renderMedical(el) {
       <div style="display:flex;gap:8px">
         <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥 Import Sick History (xlsx)<input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
+        ${listSearchInput("medical", "Search name / 4D…")}
         <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Report Sick</button>
       </div>
     </div>
@@ -1355,9 +1370,9 @@ function renderMedical(el) {
     </div>
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
-        ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>Reported</th><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Reason</th><th>Status</th><th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${rowsWithTag.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${m.reason || ""}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${m.urtiType}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
-        </tbody></table></div>` : `<div class="empty-state">${STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet."}</div>`}
+        ${medRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("medical", "reported", "Reported")}${sortTh("medical", "fourD", "4D")}${sortTh("medical", "name", "Name", "left")}<th style="text-align:left">Reason</th>${sortTh("medical", "status", "Status")}<th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
+        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${m.reason || ""}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${m.urtiType}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        </tbody></table></div>` : `<div class="empty-state">${_medQ ? "No records match the search." : (STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet.")}</div>`}
       </div>
       <div class="card">
         <h3>Most Reports Sick${isFilterActive() ? ` <span style="color:var(--accent);font-weight:400;font-size:10px">in ${filterLabel()}</span>` : ""}</h3>
@@ -1406,6 +1421,48 @@ function renderIPPT(el) {
     else if (s <= 89) buckets[4]++;
     else buckets[5]++;
   }
+
+  // ── D2: table view selector (All / by attempt # / by date) ────────────────
+  const attemptsAvail = [...new Set(scoped.map(e => e.attempt).filter(a => a !== "" && a != null))].sort((a, b) => (+a) - (+b));
+  const datesAvail = [...new Set(scoped.map(e => e.date).filter(Boolean))].sort((a, b) => (displayDateToISO(b) || "").localeCompare(displayDateToISO(a) || ""));
+  const ipptView = _ipptView || "all";
+  let tableRows = scoped;
+  if (ipptView.startsWith("att:")) tableRows = scoped.filter(e => String(e.attempt) === ipptView.slice(4));
+  else if (ipptView.startsWith("date:")) tableRows = scoped.filter(e => e.date === ipptView.slice(5));
+  // D1: name/4D search + sortable columns.
+  tableRows = listSearchFilter("ippt", tableRows);
+  tableRows = listApplySort("ippt", tableRows, {
+    fourD: e => e.d4 || "", name: e => getName(e.d4) || "", attempt: e => +e.attempt || 0,
+    date: e => displayDateToISO(e.date) || e.date || "", score: e => isYTT(e) ? -1 : (+e.score || 0),
+    pushups: e => +e.pushups || 0, situps: e => +e.situps || 0
+  });
+
+  // ── D3: mean/median total score over time (non-YTT, grouped by date) ──────
+  const byDate = {};
+  scoped.filter(e => !isYTT(e)).forEach(e => { const iso = displayDateToISO(e.date) || e.date || ""; (byDate[iso] = byDate[iso] || []).push(+e.score || 0); });
+  const trendDates = Object.keys(byDate).filter(Boolean).sort();
+  const _median = arr => { const s = arr.slice().sort((a, b) => a - b); const n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0; };
+  const ipptTrend = {
+    labels: trendDates.map(iso => isoToDisplayDate(iso) || iso),
+    mean: trendDates.map(iso => Math.round(byDate[iso].reduce((a, b) => a + b, 0) / byDate[iso].length)),
+    median: trendDates.map(iso => Math.round(_median(byDate[iso])))
+  };
+
+  // ── D3: static (push-up + sit-up) vs run (2.4km) strength on latest attempt.
+  // Compares each recruit's static station score (out of 50) against their run
+  // score (out of 50) from the SAF tables; a ±2-point band counts as balanced.
+  const latestForStrength = aggregateIPPT(scoped, "latest");
+  const strength = { static: [], run: [], balanced: [], unknown: 0 };
+  latestForStrength.filter(e => !isYTT(e)).forEach(e => {
+    const r = STATE.roster.find(x => x.id === e.d4);
+    const age = r && r.age;
+    const res = age ? calculateIPPTScore(age, e.pushups, e.situps, e.runTime) : null;
+    if (!res) { strength.unknown++; return; }
+    const stat = (res.pushupScore || 0) + (res.situpScore || 0), run = res.runScore || 0;
+    if (stat > run + 2) strength.static.push(e.d4);
+    else if (run > stat + 2) strength.run.push(e.d4);
+    else strength.balanced.push(e.d4);
+  });
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -1469,14 +1526,66 @@ function renderIPPT(el) {
       </div>
     </div>
 
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>#</th><th>Date</th><th>PU</th><th>SU</th><th>2.4km</th><th>Score</th><th>Award</th><th></th></tr></thead><tbody>
-    ${scoped.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${displayPersonLabel(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${isYTT(i) ? '<span style="color:var(--muted)">—</span>' : i.score}</td><td>${ipptAwardBadge(i)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries in ${filterLabel()}.` : "No IPPT data yet. Add results or import CSV."}</div>`}`;
+    <div class="grid-2">
+      <div class="card">
+        <h3>Score Over Time <span style="color:var(--muted);font-weight:400;font-size:10px">mean &amp; median total, by date</span></h3>
+        ${trendDates.length ? `<div class="chart-box tall"><canvas id="chart-ippt-trend"></canvas></div>` : `<div style="color:var(--muted);font-size:12px;padding:8px">Need taken results on at least one date.</div>`}
+      </div>
+      <div class="card">
+        <h3>Static vs Run Strength <span style="color:var(--muted);font-weight:400;font-size:10px">latest attempt</span></h3>
+        <div style="font-size:12px;line-height:1.7">
+          <div><span class="badge badge-yellow">Stronger static</span> <strong>${strength.static.length}</strong> <span style="color:var(--muted)">(push-ups + sit-ups &gt; 2.4km)</span></div>
+          <div><span class="badge badge-accent">Stronger run</span> <strong>${strength.run.length}</strong> <span style="color:var(--muted)">(2.4km &gt; push-ups + sit-ups)</span></div>
+          <div><span class="badge badge-green">Balanced</span> <strong>${strength.balanced.length}</strong> <span style="color:var(--muted)">(within ±2 pts)</span></div>
+          ${strength.unknown ? `<div style="color:var(--dim);font-size:11px;margin-top:4px">${strength.unknown} not classified (age missing on roster — can't derive station scores)</div>` : ""}
+          ${strength.static.length ? `<div style="margin-top:6px;font-size:11px;color:var(--muted)"><strong style="color:var(--yellow)">Static:</strong> ${strength.static.map(d4 => escapeAttr(getName(d4) || displayId(d4))).join(", ")}</div>` : ""}
+          ${strength.run.length ? `<div style="margin-top:4px;font-size:11px;color:var(--muted)"><strong style="color:var(--accent)">Run:</strong> ${strength.run.map(d4 => escapeAttr(getName(d4) || displayId(d4))).join(", ")}</div>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      ${listSearchInput("ippt", "Search name / 4D…")}
+      <select onchange="setIpptView(this.value)" class="topbar-select" title="Filter the table to one attempt number or one date">
+        <option value="all" ${ipptView === "all" ? "selected" : ""}>All attempts &amp; dates</option>
+        <optgroup label="By attempt">${attemptsAvail.map(a => `<option value="att:${a}" ${ipptView === "att:" + a ? "selected" : ""}>Attempt ${a}</option>`).join("")}</optgroup>
+        <optgroup label="By date">${datesAvail.map(d => `<option value="date:${escapeAttr(d)}" ${ipptView === "date:" + d ? "selected" : ""}>${escapeAttr(d)}</option>`).join("")}</optgroup>
+      </select>
+      <span style="font-size:11px;color:var(--muted)">${tableRows.length} row${tableRows.length === 1 ? "" : "s"}</span>
+    </div>
+    ${tableRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("ippt", "fourD", "4D")}${sortTh("ippt", "name", "Name", "left")}${sortTh("ippt", "attempt", "#")}${sortTh("ippt", "date", "Date")}${sortTh("ippt", "pushups", "PU")}${sortTh("ippt", "situps", "SU")}<th>2.4km</th>${sortTh("ippt", "score", "Score")}<th>Award</th><th></th></tr></thead><tbody>
+    ${tableRows.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${displayPersonLabel(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${isYTT(i) ? '<span style="color:var(--muted)">—</span>' : i.score}</td><td>${ipptAwardBadge(i)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries match the current scope / filter.` : "No IPPT data yet. Add results or import CSV."}</div>`}`;
 
   // Charts attached after DOM is in place. Old instances were already wiped
   // by the destroy loop at the top of render().
   buildIPPTAwardsChart(stats);
   buildIPPTDistributionChart(buckets);
+  buildIPPTTrendChart(ipptTrend);
+}
+let _ipptView = "all";
+function setIpptView(v) { _ipptView = v; render(); }
+
+function buildIPPTTrendChart(trend) {
+  const canvas = document.getElementById("chart-ippt-trend");
+  if (!canvas || !trend.labels.length) return;
+  STATE.charts.ipptTrend = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: trend.labels,
+      datasets: [
+        { label: "Mean", data: trend.mean, borderColor: "#58A6FF", backgroundColor: "#58A6FF22", tension: .3, pointRadius: 3 },
+        { label: "Median", data: trend.median, borderColor: "#3FB950", backgroundColor: "#3FB95022", tension: .3, pointRadius: 3 }
+      ]
+    },
+    options: {
+      plugins: { legend: { labels: { color: "#8B949E", font: { size: 11 } } } },
+      scales: {
+        y: { beginAtZero: true, suggestedMax: 100, grid: { color: "#30363D" }, ticks: { color: "#8B949E" } },
+        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 } } }
+      }
+    }
+  });
 }
 
 function buildIPPTAwardsChart(stats) {
@@ -1768,6 +1877,17 @@ function renderHA(el) {
     if (pa !== pb) return pa - pb;
     return (a.ha.single?.periods || 0) - (b.ha.single?.periods || 0);
   });
+  // D1: name/4D search + optional column sort (default stays worst-status-first).
+  const _haQ = listCtl("ha").q.trim().toLowerCase();
+  let haRows = _haQ
+    ? haResults.filter(({ recruit: r }) => (String(r.name || "").toLowerCase().includes(_haQ) || String(r.id || "").toLowerCase().includes(_haQ)))
+    : haResults;
+  haRows = listApplySort("ha", haRows, {
+    fourD: x => x.recruit.id || "",
+    name: x => x.recruit.name || "",
+    status: x => prio[x.ha.overallStatus] ?? 9,
+    single: x => x.ha.single?.periods || 0
+  });
 
   const count = s => haResults.filter(x => x.ha.overallStatus === s).length;
   const counts = HA_STATUSES.map(count);
@@ -1783,6 +1903,7 @@ function renderHA(el) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <h2 style="font-size:18px;font-weight:700">Heat Acclimatisation (HA) Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}]</span>` : ""}</h2>
+      ${listSearchInput("ha", "Search name / 4D…")}
     </div>
 
     <div class="stats-row">
@@ -1805,12 +1926,12 @@ function renderHA(el) {
       <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Acclimatisation Status Roster</h3>
       <div class="table-wrap"><table>
         <thead><tr>
-          <th>4D</th><th style="text-align:left">Name</th><th>Plt/Sect</th><th>Status</th>
-          <th style="text-align:left">Single (/10)</th><th style="text-align:left">Expanded (/14)</th><th style="text-align:left">Double (/13)</th>
+          ${sortTh("ha", "fourD", "4D")}${sortTh("ha", "name", "Name", "left")}<th>Plt/Sect</th>${sortTh("ha", "status", "Status")}
+          ${sortTh("ha", "single", "Single (/10)", "left")}<th style="text-align:left">Expanded (/14)</th><th style="text-align:left">Double (/13)</th>
           <th>Last Activity</th><th>Currency</th>
         </tr></thead>
         <tbody>
-          ${haResults.map(({ recruit: r, ha }) => {
+          ${haRows.map(({ recruit: r, ha }) => {
             const c = haStatusColor(ha.overallStatus);
             const dbl = !ha.doubleEligible
               ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`

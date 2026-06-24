@@ -11,6 +11,13 @@ function closeModal() {
   document.querySelector(".modal")?.classList.remove("wide");
 }
 
+// Delete a record from within the person card, then re-open the card so the
+// operator stays in context (plain deleteEntry would leave a stale modal up).
+function pcDelete(arrayName, id, label, d4) {
+  deleteEntry(arrayName, id, label);   // confirms, mutates, syncs, re-renders
+  openPerson(d4);                      // refresh the card (no-op-ish if cancelled)
+}
+
 function openPerson(d4) {
   const p = STATE.roster.find(r => r.id === d4); if (!p) return;
   const med = STATE.medical.filter(m => m.d4 === d4);
@@ -119,19 +126,23 @@ function openPerson(d4) {
     </div>`;
   }
 
+  // Tiny inline edit/delete controls reused across the card record blocks.
+  const pcBtns = (formFn, arrayName, id, label) =>
+    `<span style="display:inline-flex;gap:2px;margin-left:4px"><button class="btn btn-icon" style="padding:0 5px" onclick="event.stopPropagation(); ${formFn}(${id})" title="Edit">✎</button><button class="btn btn-icon btn-danger" style="padding:0 5px" onclick="event.stopPropagation(); pcDelete('${arrayName}',${id},'${label}','${d4}')" title="Delete">✕</button></span>`;
+
   if (ippts.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">IPPT Progression</h4>`;
     html += `<div class="chart-box"><canvas id="person-ippt-chart"></canvas></div>`;
-    html += ippts.map(i => `<span class="badge badge-accent" style="margin:2px">#${i.attempt}: ${i.score} ${awardBadge(i.score)}</span>`).join("");
+    html += ippts.map(i => `<span style="display:inline-flex;align-items:center;margin:2px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:11px">#${i.attempt}: ${isYTT(i) ? "—" : i.score} ${awardBadge(i.score)}${pcBtns("openIPPTForm", "ippt", i.id, "IPPT entry")}</span>`).join("");
   }
   if (rms.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Route March</h4><div style="display:flex;gap:8px;flex-wrap:wrap">`;
-    html += rms.map(r => `<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">RM ${r.rmNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--teal)">${r.time}</div></div>`).join("");
+    html += rms.map(r => `<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">RM ${r.rmNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--teal)">${r.time}</div>${pcBtns("openRMForm", "rm", r.id, "route march entry")}</div>`).join("");
     html += `</div>`;
   }
   if (socs.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">SOC</h4><div style="display:flex;gap:8px;flex-wrap:wrap">`;
-    html += socs.map(s => `<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">SOC ${s.socNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--purple)">${s.time}</div></div>`).join("");
+    html += socs.map(s => `<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">SOC ${s.socNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--purple)">${socDurationDisplay(s.time)}</div>${pcBtns("openSOCForm", "soc", s.id, "SOC entry")}</div>`).join("");
     html += `</div>`;
   }
   if (med.length) {
@@ -149,8 +160,8 @@ function openPerson(d4) {
       const todayLabel = tagInfo ? `<span style="margin-left:6px">${medTagBadge(tagInfo.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
       return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <span>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${m.reason || ""}</span>
-          ${todayLabel}
+          <span>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${m.reason || ""}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
+          <span style="display:inline-flex;align-items:center;gap:4px">${todayLabel}${pcBtns("openMedicalForm", "medical", m.id, "medical record")}</span>
         </div>
         <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
       </div>`;
