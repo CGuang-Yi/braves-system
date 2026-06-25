@@ -1,5 +1,5 @@
 /*
- * COUGAR COMPANY DATA SYSTEM — Google Apps Script Backend
+ * BRAVES COMPANY DATA SYSTEM — Google Apps Script Backend
  * ═══════════════════════════════════════════════════════
  *
  * AUTH MODEL  (Build-order Step 1 — addendum A1/A2)
@@ -114,13 +114,21 @@
  *                be absent on sheets that predate them.)
  *   ConductDetail: id | date | time | conductId | d4 | type | reason
  *               (one row per non-participating recruit per conduct.
- *                type ∈ {Status, PX, RSI, Fallout, ReportSick}:
+ *                type ∈ {Status, PXP, RSI, Fallout, ReportSick}:
  *                  Status     = pre-existing status absence (MC/LD/Excuse/Leave/Off).
- *                               Formerly stored as "PX"; legacy rows are migrated
- *                               to "Status" on read (normalizeConductDetail).
- *                  PX         = present but NOT participating — doing PX (stretches).
+ *                               Formerly stored as "PX"; legacy "PX" rows are
+ *                               migrated to "Status" on read by the CLIENT
+ *                               (js/state.js normalizeConductDetail). The Apps
+ *                               Script side does NOT migrate — bravesLoadState_
+ *                               reads raw values — but no .gs logic branches on
+ *                               this `type`, so the un-migrated sheet value is
+ *                               inert server-side. (A future one-time sheet
+ *                               rewrite could converge both; not done yet.)
+ *                  PXP        = present but NOT participating — doing PX (stretches).
  *                               NOT an absence: excluded from every absent/missed
- *                               tally. (This is the real meaning of "PX".)
+ *                               tally. Displayed as "PX"; stored as "PXP" so the
+ *                               legacy PX→Status read-migration never clobbers a
+ *                               genuine present-not-participating row.
  *                  RSI        = reporting sick at first parade that morning;
  *                  Fallout    = dropped out during the conduct itself;
  *                  ReportSick = sent to MO mid-day after the conduct.

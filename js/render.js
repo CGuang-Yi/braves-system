@@ -293,10 +293,10 @@ function renderDashboard(el) {
       // Stack badges, reasons, and durations vertically so each cell aligns
       // row-by-row across the three columns when a recruit has 2+ statuses.
       const tagsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medTagBadge(s.tag)}</div>`).join("");
-      const reasonsCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.reason || '<span style="color:var(--dim)">—</span>'}</div>`).join("");
-      const durationsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medDurationLabel(s.record)}</div>`).join("");
+      const reasonsCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.reason ? escapeHTML(s.record.reason) : '<span style="color:var(--dim)">—</span>'}</div>`).join("");
+      const durationsCell = entry.statuses.map(s => `<div style="padding:2px 0">${escapeHTML(medDurationLabel(s.record))}</div>`).join("");
       const multiHint = multi ? ` <span style="font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px">×${entry.statuses.length}</span>` : "";
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${displayPersonLabel(r.id)}${multiHint}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;vertical-align:top">${reasonsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${durationsCell}</td></tr>`;
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${escapeHTML(displayPersonLabel(r.id))}${multiHint}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;vertical-align:top">${reasonsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${durationsCell}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state" style="padding:16px;font-size:12px">All scoped personnel are Active today.</div>`}
     ${recoveringRows.length ? `<h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">Recovering <span style="color:var(--dim);font-weight:400">(post-MC/LD ghost tag — back to training but monitor)</span></h3>
@@ -304,9 +304,9 @@ function renderDashboard(el) {
     ${recoveringRows.map(r => {
       const entry = allByD4[r.id];
       const tagsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medTagBadge(s.tag)}</div>`).join("");
-      const originalCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.status} · ${s.record.reason || ''}</div>`).join("");
+      const originalCell = entry.statuses.map(s => `<div style="padding:2px 0">${escapeHTML(s.record.status)} · ${escapeHTML(s.record.reason || '')}</div>`).join("");
       const clearedCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.endDate || ''}</div>`).join("");
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${displayPersonLabel(r.id)}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${originalCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${clearedCell}</td></tr>`;
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${escapeHTML(displayPersonLabel(r.id))}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${originalCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${clearedCell}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : ""}
     ${renderDashMSKCases(visible)}
@@ -401,32 +401,32 @@ function renderDashMSKCases(visible) {
       a.d4 === c.d4 && !a.resolved && (displayDateToISO(a.date) || "") >= todayISO()
     );
     const apptLine = upcomingAppts.length
-      ? upcomingAppts.map(a => `<div style="font-size:11px;color:var(--accent)">📅 ${a.date}${a.time ? ` @ ${fmtHrs(a.time)}` : ""} — ${a.reason || ""} <span style="color:var(--muted)">(${a.location || ""})</span></div>`).join("")
+      ? upcomingAppts.map(a => `<div style="font-size:11px;color:var(--accent)">📅 ${a.date}${a.time ? ` @ ${fmtHrs(a.time)}` : ""} — ${escapeHTML(a.reason || "")} <span style="color:var(--muted)">(${escapeHTML(a.location || "")})</span></div>`).join("")
       : `<div style="font-size:11px;color:var(--dim)">No physio appointment scheduled yet.</div>`;
 
     const injuryLine = c.latestInjury
-      ? `<div style="font-size:12px"><span style="color:var(--muted)">Injury:</span> ${c.latestInjury.description || ""}</div>`
+      ? `<div style="font-size:12px"><span style="color:var(--muted)">Injury:</span> ${escapeHTML(c.latestInjury.description || "")}</div>`
       : `<div style="font-size:12px;color:var(--dim)">No injury description on file.</div>`;
 
     // Body region chips — auto-classified by default, sergeant can re-tag
     // by clicking the pencil. Stored on the latest Report Injury row.
     const regions = c.latestInjury ? getMSKRegionsForRecruit(c.d4) : [];
     const regionsLine = c.latestInjury ? `<div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-      ${regions.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${reg}</span>`).join("")}
+      ${regions.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join("")}
       <button class="btn btn-icon" onclick="event.stopPropagation(); openMSKRegionMenu('${c.d4}')" title="Re-tag body regions" style="font-size:9px;padding:1px 6px">✎ tag</button>
     </div>` : "";
 
     const exercises = c.orderedExercises.length
       ? `<div style="margin-top:6px"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Physio visits (${c.orderedExercises.length})</div>${c.orderedExercises.map(e => {
           const d = e.physioDate || e.timestamp || "";
-          const exText = e.exercises ? ` — ${e.exercises}` : ` <span style="color:var(--dim)">(no new exercises)</span>`;
+          const exText = e.exercises ? ` — ${escapeHTML(e.exercises)}` : ` <span style="color:var(--dim)">(no new exercises)</span>`;
           return `<div style="font-size:11px;padding:4px 6px;background:var(--bg);border-left:2px solid var(--teal);margin-bottom:3px"><span class="mono" style="color:var(--muted);font-size:10px">${d}</span>${exText}</div>`;
         }).join("")}</div>`
       : `<div style="font-size:11px;color:var(--dim);margin-top:6px">No physio visits logged yet.</div>`;
 
     return `<div class="card" style="padding:12px;${faded ? 'opacity:.55;' : ''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
-        <div onclick="openPerson('${c.d4}')" style="cursor:pointer;font-weight:700">${displayId(c.d4) ? `<span class="mono" style="color:var(--accent);margin-right:6px">${displayId(c.d4)}</span>` : ""}${displayPersonLabel(c.d4)} <span class="badge badge-pink" style="font-size:9px;margin-left:4px">🦵 MSK</span></div>
+        <div onclick="openPerson('${c.d4}')" style="cursor:pointer;font-weight:700">${displayId(c.d4) ? `<span class="mono" style="color:var(--accent);margin-right:6px">${displayId(c.d4)}</span>` : ""}${escapeHTML(displayPersonLabel(c.d4))} <span class="badge badge-pink" style="font-size:9px;margin-left:4px">🦵 MSK</span></div>
         <div style="display:flex;gap:4px;flex-shrink:0">
           <button class="btn" style="font-size:10px;padding:3px 8px" onclick="openAppointmentForm(null, {d4:'${c.d4}', reason:'Physio review', location:'Physio Centre'})" title="Book a physio appointment for this recruit">📅 Book</button>
           <button class="btn ${c.allCleared ? 'btn-success' : ''}" style="font-size:10px;padding:3px 8px" onclick="toggleMSKCleared('${c.d4}')" title="${c.allCleared ? 'Reopen this case' : 'Mark this case cleared (hides from active list)'}">${c.allCleared ? '↺ Reopen' : '✓ Mark Cleared'}</button>
@@ -508,38 +508,38 @@ function viewMSKRegion(region) {
     const hasManual = reports.some(r => r.manualRegions && String(r.manualRegions).trim());
     const sources = [
       ...reports.map(r => ({ kind: "Form report", text: r.description || "—", color: "#E97BC2" })),
-      ...cdRows.map(c => ({ kind: c.type, text: c.reason || "—", color: c.type === "Status" ? "#5B8DEF" : c.type === "PX" ? "#39D2C0" : c.type === "Fallout" ? "#E8573A" : "#F2A93B" }))
+      ...cdRows.map(c => ({ kind: c.type, text: c.reason || "—", color: c.type === "Status" ? "#5B8DEF" : c.type === "PXP" ? "#39D2C0" : c.type === "Fallout" ? "#E8573A" : "#F2A93B" }))
     ];
     const allRegions = getMSKRegionsForRecruit(d4);
     return { d4, sources, allRegions, hasManual };
   });
 
-  const regionChipsHtml = regs => regs.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${reg}</span>`).join(" ");
+  const regionChipsHtml = regs => regs.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join(" ");
 
   const body = `
     <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:10px;line-height:1.55">
-      <strong style="color:${MSK_REGION_COLORS[region]}">${region}</strong> — ${matching.length} recruit${matching.length === 1 ? "" : "s"} classified${region === "Other" ? ". 'Other' means the keyword classifier couldn't tag them automatically — click <strong>Re-tag</strong> to fix manually." : ". Sources below show why each recruit was tagged."}
+      <strong style="color:${MSK_REGION_COLORS[region]}">${escapeHTML(region)}</strong> — ${matching.length} recruit${matching.length === 1 ? "" : "s"} classified${region === "Other" ? ". 'Other' means the keyword classifier couldn't tag them automatically — click <strong>Re-tag</strong> to fix manually." : ". Sources below show why each recruit was tagged."}
     </div>
     ${cards.length ? `<div style="display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto;padding-right:4px">
       ${cards.map(c => `<div style="padding:10px 12px;background:var(--surface2);border-radius:6px;border-left:3px solid ${MSK_REGION_COLORS[region]}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
           <div style="display:flex;gap:8px;align-items:center">
             <span class="mono" style="color:var(--accent);font-weight:700">${displayId(c.d4)}</span>
-            <span style="font-weight:600">${displayPersonLabel(c.d4)}</span>
+            <span style="font-weight:600">${escapeHTML(displayPersonLabel(c.d4))}</span>
             ${c.hasManual ? '<span style="font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:.5px">Manual override</span>' : ""}
           </div>
           <button class="btn" style="font-size:10px;padding:3px 8px" onclick="openMSKRegionMenu('${c.d4}')">✎ Re-tag</button>
         </div>
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Source text</div>
         <div style="display:flex;flex-direction:column;gap:3px">
-          ${c.sources.length ? c.sources.map(s => `<div style="font-size:11px;padding:4px 8px;background:var(--bg);border-left:2px solid ${s.color};border-radius:3px"><span style="color:${s.color};font-weight:600;font-size:10px">[${s.kind}]</span> ${s.text}</div>`).join("") : `<div style="font-size:11px;color:var(--dim)">No source text on file.</div>`}
+          ${c.sources.length ? c.sources.map(s => `<div style="font-size:11px;padding:4px 8px;background:var(--bg);border-left:2px solid ${s.color};border-radius:3px"><span style="color:${s.color};font-weight:600;font-size:10px">[${escapeHTML(s.kind)}]</span> ${escapeHTML(s.text)}</div>`).join("") : `<div style="font-size:11px;color:var(--dim)">No source text on file.</div>`}
         </div>
         <div style="margin-top:6px;font-size:10px;color:var(--muted)">All regions: ${regionChipsHtml(c.allRegions)}</div>
       </div>`).join("")}
     </div>` : `<div class="empty-state" style="padding:12px;font-size:12px">No recruits classified under this region in the current window.</div>`}
   `;
 
-  openModal(`Region drill-in — ${region}`, body);
+  openModal(`Region drill-in — ${escapeHTML(region)}`, body);
   document.querySelector(".modal")?.classList.add("wide");
 }
 
@@ -633,7 +633,7 @@ function renderMSKAnalytics(el) {
     .map(d4 => ({ d4, count: freq[d4].count, regions: getMSKRegionsForRecruit(d4) }))
     .sort((a, b) => b.count - a.count);
 
-  const regionChip = reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other};margin-right:3px">${reg}</span>`;
+  const regionChip = reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other};margin-right:3px">${escapeHTML(reg)}</span>`;
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px">
@@ -690,8 +690,8 @@ function renderMSKAnalytics(el) {
           const regions = getMSKRegionsForRecruit(r.d4);
           return `<div onclick="openMSKRegionMenu('${r.d4}')" style="cursor:pointer;font-size:12px;padding:8px 10px;background:var(--surface2);border-radius:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.d4)}</span>
-            <span style="font-weight:600">${displayPersonLabel(r.d4)}</span>
-            <span style="flex:1 1 200px;min-width:0;color:var(--muted)">${r.description || ""}</span>
+            <span style="font-weight:600">${escapeHTML(displayPersonLabel(r.d4))}</span>
+            <span style="flex:1 1 200px;min-width:0;color:var(--muted)">${escapeHTML(r.description || "")}</span>
             <span style="display:flex;flex-wrap:wrap;gap:3px">${regions.map(regionChip).join("")}</span>
           </div>`;
         }).join("")}
@@ -705,7 +705,7 @@ function renderMSKAnalytics(el) {
         ${ranked.map((p, i) => `<div onclick="openPerson('${p.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;background:var(--surface2);border-radius:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="color:var(--orange);font-weight:700;min-width:22px;text-align:right">${i + 1}</span>
           <span class="mono" style="color:var(--accent);font-weight:700">${displayId(p.d4)}</span>
-          <span style="flex:1 1 110px;min-width:0">${displayPersonLabel(p.d4)}</span>
+          <span style="flex:1 1 110px;min-width:0">${escapeHTML(displayPersonLabel(p.d4))}</span>
           <div style="flex:2 1 140px;min-width:80px;height:14px;background:var(--bg);border-radius:3px;position:relative;overflow:hidden">
             <div style="position:absolute;inset:0 ${100 - (p.count / maxRanked) * 100}% 0 0;background:linear-gradient(90deg, var(--accent), var(--teal));opacity:.7"></div>
             <span style="position:absolute;left:6px;top:0;font-size:10px;font-weight:600;line-height:14px">${p.count}</span>
@@ -721,7 +721,7 @@ function renderMSKAnalytics(el) {
       <div style="display:flex;flex-direction:column;gap:6px">
         ${chronic.map(c => `<div onclick="openPerson('${c.d4}')" style="cursor:pointer;font-size:12px;padding:8px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid ${MSK_REGION_COLORS[c.regions[0]] || MSK_REGION_COLORS.Other};display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span class="mono" style="color:var(--accent);font-weight:700">${displayId(c.d4)}</span>
-          <span style="flex:1 1 140px;min-width:0">${displayPersonLabel(c.d4)}</span>
+          <span style="flex:1 1 140px;min-width:0">${escapeHTML(displayPersonLabel(c.d4))}</span>
           <span class="mono" style="color:var(--red);font-weight:700">${c.count}× missed</span>
           <span style="display:flex;flex-wrap:wrap;gap:3px">${c.regions.map(regionChip).join("")}</span>
         </div>`).join("")}
@@ -866,10 +866,10 @@ function renderDashLeaveOut(visible, todayIso) {
   }
 
   const row = l => `<tr onclick="openPerson('${l.d4}')" style="cursor:pointer">
-    <td style="text-align:left;font-weight:600">${displayPersonLabel(l.d4)}</td>
+    <td style="text-align:left;font-weight:600">${escapeHTML(displayPersonLabel(l.d4))}</td>
     <td>${badge(l.type, typeColor(l.type))}</td>
     <td style="white-space:nowrap;font-size:11px;color:var(--muted)">${l.startDate}${l.startIso !== l.endIso ? ` → ${l.endDate}` : ""}</td>
-    <td style="text-align:left;font-size:11px;color:var(--muted)">${l.reason || ""}</td>
+    <td style="text-align:left;font-size:11px;color:var(--muted)">${escapeHTML(l.reason || "")}</td>
     <td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openLeaveForm(${l.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('leave', ${l.id}, 'leave record')" title="Delete">✕</button></td>
   </tr>`;
 
@@ -911,7 +911,7 @@ function renderLeave(el) {
     </div>
     ${renderLeaveTimeline(scoped, today)}
     ${rows.length ? `<h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">All entries</h3><div class="table-wrap"><table><thead><tr><th style="text-align:left">Name</th><th>Type</th><th>Start</th><th>End</th><th>Days</th><th style="text-align:left">Reason</th><th></th></tr></thead><tbody>
-    ${rows.map(l => `<tr onclick="openPerson('${l.d4}')" style="cursor:pointer"><td style="text-align:left;font-weight:600">${displayPersonLabel(l.d4)}</td><td>${badge(l.type, typeColor(l.type))}</td><td>${l.startDate || ""}</td><td>${l.endDate || ""}</td><td class="mono" style="font-weight:700">${l.days || ""}</td><td style="text-align:left;font-size:11px;color:var(--muted);max-width:240px;white-space:normal">${l.reason || ""}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openLeaveForm(${l.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('leave', ${l.id}, 'leave record')" title="Delete">✕</button></td></tr>`).join("")}
+    ${rows.map(l => `<tr onclick="openPerson('${l.d4}')" style="cursor:pointer"><td style="text-align:left;font-weight:600">${escapeHTML(displayPersonLabel(l.d4))}</td><td>${badge(l.type, typeColor(l.type))}</td><td>${l.startDate || ""}</td><td>${l.endDate || ""}</td><td class="mono" style="font-weight:700">${l.days || ""}</td><td style="text-align:left;font-size:11px;color:var(--muted);max-width:240px;white-space:normal">${escapeHTML(l.reason || "")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openLeaveForm(${l.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('leave', ${l.id}, 'leave record')" title="Delete">✕</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.leave.length ? `No leave records in ${filterLabel()}.` : "No leave records yet. Tap + Log to add one."}</div>`}`;
 }
 
@@ -967,12 +967,12 @@ function renderLeaveTimeline(scoped, todayIso) {
         const isStart = iso === match.startIso;
         const isEnd = iso === match.endIso;
         const radius = `${isStart ? '3px' : '0'} ${isEnd ? '3px' : '0'} ${isEnd ? '3px' : '0'} ${isStart ? '3px' : '0'}`;
-        return `<td style="padding:0;border-left:${borderLeft};height:18px" title="${match.type}${match.reason ? ': ' + match.reason : ''} (${match.startDate} → ${match.endDate})"><div style="background:${typeBg(match.type)};height:14px;margin:2px 0;border-radius:${radius};opacity:.85"></div></td>`;
+        return `<td style="padding:0;border-left:${borderLeft};height:18px" title="${escapeHTML(match.type)}${match.reason ? ': ' + escapeHTML(match.reason) : ''} (${match.startDate} → ${match.endDate})"><div style="background:${typeBg(match.type)};height:14px;margin:2px 0;border-radius:${radius};opacity:.85"></div></td>`;
       }
       const todayMark = isToday ? "background:#F8514922;" : "";
       return `<td style="padding:0;border-left:${borderLeft};${todayMark}height:18px"></td>`;
     }).join("");
-    return `<tr onclick="openPerson('${d4}')" style="cursor:pointer"><td style="padding:3px 8px;white-space:nowrap;font-size:11px;font-weight:600;background:var(--surface);border-right:2px solid var(--border);position:sticky;left:0;z-index:1">${displayPersonLabel(d4)}</td>${cells}</tr>`;
+    return `<tr onclick="openPerson('${d4}')" style="cursor:pointer"><td style="padding:3px 8px;white-space:nowrap;font-size:11px;font-weight:600;background:var(--surface);border-right:2px solid var(--border);position:sticky;left:0;z-index:1">${escapeHTML(displayPersonLabel(d4))}</td>${cells}</tr>`;
   }).join("");
 
   // Legend mirrors the type-color palette so users can decode the bars.
@@ -1020,11 +1020,11 @@ function renderDashAppointments(visible, todayIso) {
     const dayLabel = isToday ? `<span class="badge badge-red" style="font-size:9px">TODAY</span>` : "";
     return `<tr onclick="openPerson('${a.d4}')" style="cursor:pointer${isToday ? ';background:#F8514911' : ''}">
       <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(a.d4)}</td>
-      <td style="text-align:left">${displayPersonLabel(a.d4)}</td>
-      <td style="text-align:left">${a.reason || ""}</td>
+      <td style="text-align:left">${escapeHTML(displayPersonLabel(a.d4))}</td>
+      <td style="text-align:left">${escapeHTML(a.reason || "")}</td>
       <td style="white-space:nowrap">${a.date || ""} ${dayLabel}</td>
       <td class="mono" style="white-space:nowrap">${fmtHrs(a.time)}</td>
-      <td style="text-align:left;font-size:11px;color:var(--muted)">${a.location || ""}${a.outOfCamp ? ` <span class="badge badge-pink" style="font-size:9px">OUTSIDE</span>` : ""}</td>
+      <td style="text-align:left;font-size:11px;color:var(--muted)">${escapeHTML(a.location || "")}${a.outOfCamp ? ` <span class="badge badge-pink" style="font-size:9px">OUTSIDE</span>` : ""}</td>
       <td style="white-space:nowrap"><button class="btn btn-icon" style="color:var(--green)" onclick="event.stopPropagation(); toggleAppointmentResolved(${a.id})" title="Mark as resolved (hides from dashboard + parade state)">✓</button> <button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button></td>
     </tr>`;
   }).join("");
@@ -1058,14 +1058,14 @@ function renderDashProfileCards(scoped) {
   return `<div class="grid-2">
     <div class="card"><h3>Ration Breakdown</h3>
       ${rationRows.length ? `<div style="display:flex;flex-direction:column;gap:6px">
-        ${rationRows.map(([k, n]) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><span style="color:${rationColor(k)};font-weight:600">${k}</span><span class="mono" style="color:var(--muted)">${n} (${pct(n, scoped.length)}%)</span></div>`).join("")}
+        ${rationRows.map(([k, n]) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><span style="color:${rationColor(k)};font-weight:600">${escapeHTML(k)}</span><span class="mono" style="color:var(--muted)">${n} (${pct(n, scoped.length)}%)</span></div>`).join("")}
       </div>` : `<div style="color:var(--muted);font-size:12px">No ration data</div>`}
     </div>
     <div class="card"><h3>Allergies <span style="color:var(--muted);font-weight:400;font-size:11px">(${allergic.length} recruit${allergic.length === 1 ? '' : 's'})</span></h3>
       ${allergic.length ? `
-        ${allergenRows.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${allergenRows.map(([a, n]) => `<span class="badge badge-yellow">${a} · ${n}</span>`).join("")}</div>` : ""}
+        ${allergenRows.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${allergenRows.map(([a, n]) => `<span class="badge badge-yellow">${escapeHTML(a)} · ${n}</span>`).join("")}</div>` : ""}
         <div style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto">
-          ${allergic.map(r => `<div onclick="openPerson('${r.id}')" style="cursor:pointer;font-size:11px;padding:4px 6px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px"><span><span class="mono" style="color:var(--accent);font-weight:700">${r.id}</span> ${r.name}</span><span style="color:var(--yellow);text-align:right">${r.allergies}</span></div>`).join("")}
+          ${allergic.map(r => `<div onclick="openPerson('${r.id}')" style="cursor:pointer;font-size:11px;padding:4px 6px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px"><span><span class="mono" style="color:var(--accent);font-weight:700">${r.id}</span> ${escapeHTML(r.name)}</span><span style="color:var(--yellow);text-align:right">${escapeHTML(r.allergies)}</span></div>`).join("")}
         </div>
       ` : `<div style="color:var(--muted);font-size:12px">No recruits with allergies recorded</div>`}
     </div>
@@ -1091,7 +1091,7 @@ function renderRoster(el) {
     ${scoped.map(r => {
       const bmi = calcBMI(r);
       const isCmd = r.role === "Commander";
-      const nameCell = isCmd ? `${r.rank ? r.rank + " " : ""}${r.name}` : r.name;
+      const nameCell = isCmd ? `${escapeHTML(r.rank ? r.rank + " " : "")}${escapeHTML(r.name)}` : escapeHTML(r.name);
       const idCell = isCmd ? "" : r.id;
       const roleCell = isCmd ? `<span class="badge badge-purple">Commander</span>` : `<span style="color:var(--muted);font-size:11px">Recruit</span>`;
       // Braves org columns (spec §5). Show the explicit platoon/section when
@@ -1132,7 +1132,7 @@ function renderAttendance(el) {
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
       const time = fmtHrs(a.time) || '—';
-      return `<tr><td>${a.date}</td><td class="mono" style="color:${a.time ? 'var(--text)' : 'var(--dim)'}">${time}</td><td style="text-align:left">${conductName(a.conductId)}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${a.remarks || ''}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="copyConductChatFormat(${a.id})" title="Copy WhatsApp-format parade state message">📋</button> <button class="btn btn-icon" onclick="openLogConductWizard(${a.id})" title="Edit conduct (wizard)">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
+      return `<tr><td>${a.date}</td><td class="mono" style="color:${a.time ? 'var(--text)' : 'var(--dim)'}">${time}</td><td style="text-align:left">${escapeHTML(conductName(a.conductId))}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${escapeHTML(a.remarks || '')}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="copyConductChatFormat(${a.id})" title="Copy WhatsApp-format parade state message">📋</button> <button class="btn btn-icon" onclick="openLogConductWizard(${a.id})" title="Edit conduct (wizard)">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">No attendance records yet.</div>`}`;
 }
@@ -1154,9 +1154,9 @@ function toggleParticipants() { _showParticipants = !_showParticipants; render()
 function renderDetailParticipantsSummary(scopedAll) {
   if (!_detailFilterConduct) return "";
   const conductRecords = scopedAll.filter(d => `${d.date}|${d.time || ""}|${d.conductId || ""}` === _detailFilterConduct);
-  // PX = present doing stretches → NOT absent; exclude it from the absent set so
-  // PX people aren't subtracted from "participated" or tallied as no-shows.
-  const absentRecords = conductRecords.filter(d => d.type !== "PX");
+  // "PXP" = present doing stretches → NOT absent; exclude it from the absent set
+  // so PX people aren't subtracted from "participated" or tallied as no-shows.
+  const absentRecords = conductRecords.filter(d => d.type !== "PXP");
   const absentSet = new Set(absentRecords.map(d => d.d4));
   const inScope = filteredRoster();
   const participants = inScope.filter(r => !absentSet.has(r.id));
@@ -1169,7 +1169,7 @@ function renderDetailParticipantsSummary(scopedAll) {
           <strong style="color:var(--green)">Participated: ${participants.length}</strong>
           <span style="color:var(--muted)"> · </span>
           <strong style="color:var(--red)">Absent: ${absentSet.size}</strong>
-          <span style="color:var(--muted)"> (Status ${ct("Status")} · RSI ${ct("RSI")} · Fallout ${ct("Fallout")} · ReportSick ${ct("ReportSick")}${ct("PX") ? ` · PX ${ct("PX")} present` : ""})</span>
+          <span style="color:var(--muted)"> (Status ${ct("Status")} · RSI ${ct("RSI")} · Fallout ${ct("Fallout")} · ReportSick ${ct("ReportSick")}${ct("PXP") ? ` · PX ${ct("PXP")} present` : ""})</span>
         </div>
         <button class="btn" onclick="toggleParticipants()">${_showParticipants ? "▾ Hide" : "▸ Show"} participants (${participants.length})</button>
       </div>
@@ -1229,7 +1229,7 @@ function renderConductDetail(el) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  const typeBadgeColor = t => t === "Status" ? "orange" : t === "PX" ? "teal" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
+  const typeBadgeColor = t => t === "Status" ? "orange" : t === "PXP" ? "teal" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : "yellow";
   const totalConducts = [...new Set(scopedAll.map(d => `${d.date}|${d.time || ""}|${d.conductId || ""}`))].length;
   const titleSuffix = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scopedAll.length}/${STATE.conductDetail.length}]</span>` : ` (${STATE.conductDetail.length})`;
 
@@ -1246,17 +1246,17 @@ function renderConductDetail(el) {
       <div class="stat"><label>RSI (1st parade)</label><div class="val" style="color:var(--red)">${cnt("RSI")}</div></div>
       <div class="stat"><label>Fallout (mid-conduct)</label><div class="val" style="color:var(--purple)">${cnt("Fallout")}</div></div>
       <div class="stat"><label>Reported Sick (mid-day)</label><div class="val" style="color:var(--yellow)">${cnt("ReportSick")}</div></div>
-      ${cnt("PX") ? `<div class="stat"><label>PX (present, stretches)</label><div class="val" style="color:var(--teal)">${cnt("PX")}</div></div>` : ""}
+      ${cnt("PXP") ? `<div class="stat"><label>PX (present, stretches)</label><div class="val" style="color:var(--teal)">${cnt("PXP")}</div></div>` : ""}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
       <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Filter:</span>
       <select onchange="setDetailFilterConduct(this.value)" class="topbar-select" style="min-width:260px">
         <option value="">All conducts (${totalConducts})</option>
-        ${conductKeys.map(k => { const [dt, tm, cid] = k.split("|"); return `<option value="${escapeAttr(k)}" ${k === _detailFilterConduct ? "selected" : ""}>${dt}${tm ? " " + fmtHrs(tm) : ""} — ${conductName(cid) || "(unknown)"}</option>`; }).join("")}
+        ${conductKeys.map(k => { const [dt, tm, cid] = k.split("|"); return `<option value="${escapeAttr(k)}" ${k === _detailFilterConduct ? "selected" : ""}>${dt}${tm ? " " + fmtHrs(tm) : ""} — ${escapeHTML(conductName(cid) || "(unknown)")}</option>`; }).join("")}
       </select>
       <select onchange="setDetailFilterType(this.value)" class="topbar-select">
         <option value="">All types</option>
-        ${[["Status","Status"],["PX","PX (present)"],["RSI","RSI"],["Fallout","Fallout"],["ReportSick","Report Sick"]].map(([val,lab]) => `<option value="${val}" ${val === _detailFilterType ? "selected" : ""}>${lab}</option>`).join("")}
+        ${[["Status","Status"],["PXP","PX (present)"],["RSI","RSI"],["Fallout","Fallout"],["ReportSick","Report Sick"]].map(([val,lab]) => `<option value="${val}" ${val === _detailFilterType ? "selected" : ""}>${lab}</option>`).join("")}
       </select>
       ${listSearchInput("conduct", "Search name / 4D…")}
       ${(_detailFilterConduct || _detailFilterType) ? `<button class="btn" onclick="clearDetailFilters()">Reset</button>` : ""}
@@ -1265,14 +1265,14 @@ function renderConductDetail(el) {
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th style="text-align:left">Conduct</th><th>4D</th><th style="text-align:left">Name</th><th>Type</th><th style="text-align:left">Reason</th><th></th></tr></thead><tbody>
-        ${rows.map(d => `<tr onclick="openPerson('${d.d4}')" style="cursor:pointer"><td>${d.date || ""}</td><td class="mono">${fmtHrs(d.time) || "—"}</td><td style="text-align:left">${conductName(d.conductId)}</td><td class="mono" style="font-weight:700;color:var(--accent)">${d.d4}</td><td style="text-align:left">${getName(d.d4)}</td><td>${badge(d.type, typeBadgeColor(d.type))}</td><td style="text-align:left;max-width:280px;white-space:normal;font-size:11px">${d.reason || ""}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openConductDetailForm(${d.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('conductDetail', ${d.id}, 'conduct detail record')" title="Delete">✕</button></td></tr>`).join("")}
+        ${rows.map(d => `<tr onclick="openPerson('${d.d4}')" style="cursor:pointer"><td>${d.date || ""}</td><td class="mono">${fmtHrs(d.time) || "—"}</td><td style="text-align:left">${escapeHTML(conductName(d.conductId))}</td><td class="mono" style="font-weight:700;color:var(--accent)">${d.d4}</td><td style="text-align:left">${escapeHTML(getName(d.d4))}</td><td>${badge(d.type, typeBadgeColor(d.type))}</td><td style="text-align:left;max-width:280px;white-space:normal;font-size:11px">${escapeHTML(d.reason || "")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openConductDetailForm(${d.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('conductDetail', ${d.id}, 'conduct detail record')" title="Delete">✕</button></td></tr>`).join("")}
         </tbody></table></div>` : `<div class="empty-state">${STATE.conductDetail.length ? "No records match current filter." : "No conduct detail records yet. Tap + Log to add one."}</div>`}
       </div>
       <div class="card">
         <h3>Most Conducts Missed${isFilterActive() ? ` <span style="color:var(--accent);font-weight:400;font-size:10px">in ${filterLabel()}</span>` : ""}</h3>
         ${topMissed.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
           ${topMissed.map(m => `<div onclick="openPerson('${m.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px">
-            <span><span class="mono" style="color:var(--accent);font-weight:700">${m.d4}</span> ${getName(m.d4)}</span>
+            <span><span class="mono" style="color:var(--accent);font-weight:700">${m.d4}</span> ${escapeHTML(getName(m.d4))}</span>
             <span class="mono" style="font-weight:700;color:${m.count >= 5 ? "var(--red)" : m.count >= 3 ? "var(--orange)" : "var(--muted)"}">${m.count}</span>
           </div>`).join("")}
         </div>` : `<div style="color:var(--muted);font-size:12px">No data yet</div>`}
@@ -1371,14 +1371,14 @@ function renderMedical(el) {
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${medRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("medical", "reported", "Reported")}${sortTh("medical", "fourD", "4D")}${sortTh("medical", "name", "Name", "left")}<th style="text-align:left">Reason</th>${sortTh("medical", "status", "Status")}<th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${displayPersonLabel(m.d4)}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${m.reason || ""}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${m.urtiType}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(m.d4))}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${escapeHTML(m.reason || "")}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${escapeHTML(m.urtiType)}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
         </tbody></table></div>` : `<div class="empty-state">${_medQ ? "No records match the search." : (STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet.")}</div>`}
       </div>
       <div class="card">
         <h3>Most Reports Sick${isFilterActive() ? ` <span style="color:var(--accent);font-weight:400;font-size:10px">in ${filterLabel()}</span>` : ""}</h3>
         ${topReporters.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
           ${topReporters.map(r => `<div onclick="openPerson('${r.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px">
-            <span>${displayId(r.d4) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.d4)}</span> ` : ""}${displayPersonLabel(r.d4)}</span>
+            <span>${displayId(r.d4) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.d4)}</span> ` : ""}${escapeHTML(displayPersonLabel(r.d4))}</span>
             <span class="mono" style="font-weight:700;color:${r.count >= 5 ? "var(--red)" : r.count >= 3 ? "var(--orange)" : "var(--muted)"}">${r.count}</span>
           </div>`).join("")}
         </div>` : `<div style="color:var(--muted);font-size:12px">No data yet</div>`}
@@ -1508,7 +1508,7 @@ function renderIPPT(el) {
         <h3>YTT Chase List <span style="color:var(--accent);font-weight:400;font-size:10px">${yttRecruits.length} to chase</span></h3>
         ${yttRecruits.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
           ${yttRecruits.map(r => `<div onclick="openPerson('${r.id}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;justify-content:space-between;gap:8px;align-items:center">
-            <span>${displayId(r.id) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.id)}</span> ` : ""}${displayPersonLabel(r.id)}</span>
+            <span>${displayId(r.id) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.id)}</span> ` : ""}${escapeHTML(displayPersonLabel(r.id))}</span>
             <span class="badge badge-accent" style="font-size:9px">YTT</span>
           </div>`).join("")}
         </div>` : `<div style="color:var(--muted);font-size:12px;padding:8px">Everyone in scope has taken IPPT 🎉</div>`}
@@ -1518,7 +1518,7 @@ function renderIPPT(el) {
         ${topPerformers.length ? `<div style="display:flex;flex-direction:column;gap:4px;max-height:400px;overflow-y:auto">
           ${topPerformers.map((e, idx) => `<div onclick="openPerson('${e.d4}')" style="cursor:pointer;font-size:11px;padding:6px 8px;border-radius:4px;background:var(--surface2);display:flex;align-items:center;gap:8px">
             <span class="mono" style="font-weight:700;color:var(--muted);min-width:18px">#${idx + 1}</span>
-            <span style="flex:1">${displayId(e.d4) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(e.d4)}</span> ` : ""}${displayPersonLabel(e.d4)}</span>
+            <span style="flex:1">${displayId(e.d4) ? `<span class="mono" style="color:var(--accent);font-weight:700">${displayId(e.d4)}</span> ` : ""}${escapeHTML(displayPersonLabel(e.d4))}</span>
             <span class="mono" style="font-weight:700">${e.score}</span>
             ${awardBadge(e.score)}
           </div>`).join("")}
@@ -1554,7 +1554,7 @@ function renderIPPT(el) {
       <span style="font-size:11px;color:var(--muted)">${tableRows.length} row${tableRows.length === 1 ? "" : "s"}</span>
     </div>
     ${tableRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("ippt", "fourD", "4D")}${sortTh("ippt", "name", "Name", "left")}${sortTh("ippt", "attempt", "#")}${sortTh("ippt", "date", "Date")}${sortTh("ippt", "pushups", "PU")}${sortTh("ippt", "situps", "SU")}<th>2.4km</th>${sortTh("ippt", "score", "Score")}<th>Award</th><th></th></tr></thead><tbody>
-    ${tableRows.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${displayPersonLabel(i.d4)}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${isYTT(i) ? '<span style="color:var(--muted)">—</span>' : i.score}</td><td>${ipptAwardBadge(i)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
+    ${tableRows.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(i.d4))}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${isYTT(i) ? '<span style="color:var(--muted)">—</span>' : i.score}</td><td>${ipptAwardBadge(i)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries match the current scope / filter.` : "No IPPT data yet. Add results or import CSV."}</div>`}`;
 
   // Charts attached after DOM is in place. Old instances were already wiped
@@ -1650,7 +1650,7 @@ function renderRM(el) {
     ${[{ n: 1, d: "3KM" }, { n: 2, d: "3KM" }, { n: 3, d: "3KM" }, { n: 4, d: "4KM" }, { n: 5, d: "8KM" }, { n: 6, d: "12KM" }].map(rm => `<div style="flex:1;min-width:90px;background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid ${scoped.some(r => r.rmNum == rm.n) ? 'var(--green)' : 'var(--border)'};text-align:center"><div style="font-size:16px;font-weight:700;color:${scoped.some(r => r.rmNum == rm.n) ? 'var(--green)' : 'var(--muted)'}">RM ${rm.n}</div><div style="font-size:10px;color:var(--muted)">${rm.d}</div><div style="font-size:10px;color:var(--dim)">${scoped.filter(r => r.rmNum == rm.n).length} entries</div></div>`).join("")}
     </div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>RM</th><th>Date</th><th>Finish Time</th><th>Avg HR</th><th>Max HR</th><th>Pass</th><th></th></tr></thead><tbody>
-    ${scoped.map(r => `<tr><td class="mono" style="font-weight:700">${r.d4}</td><td style="text-align:left">${getName(r.d4)}</td><td>${r.rmNum}</td><td>${r.date}</td><td class="mono" style="font-weight:700">${r.time}</td><td>${r.avgHr === "" || r.avgHr == null ? "—" : r.avgHr}</td><td>${r.maxHr === "" || r.maxHr == null ? "—" : r.maxHr}</td><td>${badge(r.pass === "Y" ? "PASS" : "FAIL", r.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openRMForm(${r.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('rm', ${r.id}, 'route march entry')" title="Delete">✕</button></td></tr>`).join("")}
+    ${scoped.map(r => `<tr><td class="mono" style="font-weight:700">${r.d4}</td><td style="text-align:left">${escapeHTML(getName(r.d4))}</td><td>${r.rmNum}</td><td>${r.date}</td><td class="mono" style="font-weight:700">${r.time}</td><td>${r.avgHr === "" || r.avgHr == null ? "—" : r.avgHr}</td><td>${r.maxHr === "" || r.maxHr == null ? "—" : r.maxHr}</td><td>${badge(r.pass === "Y" ? "PASS" : "FAIL", r.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openRMForm(${r.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('rm', ${r.id}, 'route march entry')" title="Delete">✕</button></td></tr>`).join("")}
     </tbody></table></div>` : ""}`;
 }
 
@@ -1666,7 +1666,7 @@ function renderSOC(el) {
       </div>
     </div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>SOC#</th><th>Date</th><th>Duration</th><th>Avg HR</th><th>Pass</th><th></th></tr></thead><tbody>
-    ${scoped.map(s => `<tr><td class="mono">${s.d4}</td><td style="text-align:left">${getName(s.d4)}</td><td>${s.socNum}</td><td>${s.date}</td><td class="mono" style="font-weight:700">${socDurationDisplay(s.time)}</td><td>${s.avgHr === "" || s.avgHr == null ? "—" : s.avgHr}</td><td>${badge(s.pass === "Y" ? "PASS" : "FAIL", s.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openSOCForm(${s.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('soc', ${s.id}, 'SOC entry')" title="Delete">✕</button></td></tr>`).join("")}
+    ${scoped.map(s => `<tr><td class="mono">${s.d4}</td><td style="text-align:left">${escapeHTML(getName(s.d4))}</td><td>${s.socNum}</td><td>${s.date}</td><td class="mono" style="font-weight:700">${socDurationDisplay(s.time)}</td><td>${s.avgHr === "" || s.avgHr == null ? "—" : s.avgHr}</td><td>${badge(s.pass === "Y" ? "PASS" : "FAIL", s.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openSOCForm(${s.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('soc', ${s.id}, 'SOC entry')" title="Delete">✕</button></td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.soc.length ? `No SOC entries in ${filterLabel()}.` : "No SOC data yet."}</div>`}`;
 }
 
@@ -1680,7 +1680,7 @@ function renderPolar(el) {
   const groupCards = _polarStagedGroups.map(g => {
     const photos = g.photos.map(p => `
       <div style="position:relative;width:100px;height:60px;border-radius:4px;overflow:hidden;border:1px solid var(--border)">
-        <img src="${p.dataUrl}" style="width:100%;height:100%;object-fit:cover">
+        <img src="${escapeHTML(p.dataUrl)}" style="width:100%;height:100%;object-fit:cover">
         <div style="position:absolute;top:2px;left:2px;font-size:9px;color:${p.status === 'done' ? 'var(--green)' : p.status === 'error' ? 'var(--red)' : p.status === 'analyzing' ? 'var(--orange)' : 'var(--muted)'};background:rgba(13,17,23,.85);padding:1px 4px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px">${p.status === 'done' ? `✓ ${p.added || 0}` : p.status === 'error' ? '✕' : p.status === 'analyzing' ? '…' : 'ready'}</div>
         <button class="btn btn-icon btn-danger" onclick="removePolarPhotoFromGroup(${g.id}, ${p.id})" title="Remove" style="position:absolute;top:2px;right:2px;font-size:9px;padding:1px 5px;line-height:1">✕</button>
       </div>
@@ -1760,11 +1760,11 @@ function renderPolar(el) {
       <div style="display:flex;flex-direction:column;gap:8px;max-height:520px;overflow-y:auto">
         ${conductGaps.map(g => `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-            <div style="font-size:12px;font-weight:600">${g.date}${g.time ? ` <span class="mono" style="color:var(--muted);font-size:11px">${fmtHrs(g.time)}</span>` : ""} · ${conductName(g.conductId)}</div>
+            <div style="font-size:12px;font-weight:600">${g.date}${g.time ? ` <span class="mono" style="color:var(--muted);font-size:11px">${fmtHrs(g.time)}</span>` : ""} · ${escapeHTML(conductName(g.conductId))}</div>
             <div style="font-size:11px"><span style="color:var(--green)">${g.polarCount} wore polar</span> · <span style="color:var(--red);font-weight:700">${g.missing.length} didn't</span> · ${g.attended} attended</div>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:4px">
-            ${g.missing.map(d4 => `<button class="btn" style="font-size:10px;padding:3px 7px" onclick="openPerson('${d4}')" title="${escapeAttr(STATE.roster.find(r => r.id === d4)?.name || '')}"><span class="mono" style="color:var(--accent);font-weight:700">${displayId(d4)}</span> ${STATE.roster.find(r => r.id === d4)?.name || ''}</button>`).join("")}
+            ${g.missing.map(d4 => `<button class="btn" style="font-size:10px;padding:3px 7px" onclick="openPerson('${d4}')" title="${escapeAttr(STATE.roster.find(r => r.id === d4)?.name || '')}"><span class="mono" style="color:var(--accent);font-weight:700">${displayId(d4)}</span> ${escapeHTML(STATE.roster.find(r => r.id === d4)?.name || '')}</button>`).join("")}
           </div>
         </div>`).join("")}
       </div>
@@ -1772,7 +1772,7 @@ function renderPolar(el) {
 
     <div class="card"><h3>Expected CSV Columns</h3><code class="mono" style="font-size:11px;color:var(--accent)">4D, Conduct, Date, Avg HR, Max HR, Min HR, Calories, Training Load, Recovery, Duration, Distance</code></div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>Conduct</th><th>Date</th><th>Avg HR</th><th>Max HR</th><th>Cal</th><th>Load</th><th>Dur</th></tr></thead><tbody>
-    ${scoped.map(p => `<tr><td class="mono">${displayId(p.d4)}</td><td style="text-align:left">${displayPersonLabel(p.d4)}</td><td style="text-align:left">${conductName(p.conductId)}</td><td>${p.date}</td><td style="color:${+p.avgHr > 160 ? 'var(--red)' : +p.avgHr > 140 ? 'var(--orange)' : 'var(--green)'}">${p.avgHr}</td><td>${p.maxHr}</td><td>${p.calories}</td><td>${p.trainingLoad}</td><td>${p.duration}m</td></tr>`).join("")}
+    ${scoped.map(p => `<tr><td class="mono">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td style="text-align:left">${escapeHTML(conductName(p.conductId))}</td><td>${p.date}</td><td style="color:${+p.avgHr > 160 ? 'var(--red)' : +p.avgHr > 140 ? 'var(--orange)' : 'var(--green)'}">${p.avgHr}</td><td>${p.maxHr}</td><td>${p.calories}</td><td>${p.trainingLoad}</td><td>${p.duration}m</td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.polar.length ? `No Polar sessions in ${filterLabel()}.` : "No Polar data. Import a CSV or upload photos."}</div>`}`;
 }
 
@@ -1942,7 +1942,7 @@ function renderHA(el) {
               : (ha.currency && ha.currency.deadlineIso ? `<span style="color:var(--muted)">by ${isoToDisplayDate(ha.currency.deadlineIso)}</span>` : "—");
             return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer">
               <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(r.id)}</td>
-              <td style="text-align:left">${displayPersonLabel(r.id)}</td>
+              <td style="text-align:left">${escapeHTML(displayPersonLabel(r.id))}</td>
               <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
               <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
               <td style="text-align:left">${cell(ha.single?.periods || 0, 10, "#2DD4BF")}</td>

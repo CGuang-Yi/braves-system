@@ -58,7 +58,7 @@ function openPerson(d4) {
   const fmtPhone = s => { const d = String(s || "").replace(/\D/g, ""); return d.length === 8 ? d.slice(0, 4) + " " + d.slice(4) : (s || ""); };
   const edu = p["highest education level"] || "";
   const moto = p["motorcycle license"] || "";
-  const fact = (label, val, color) => `<span style="color:var(--muted)">${label}:</span> <strong style="color:${color || 'var(--text)'}">${val || '—'}</strong>`;
+  const fact = (label, val, color) => `<span style="color:var(--muted)">${label}:</span> <strong style="color:${color || 'var(--text)'}">${escapeHTML(val || '—')}</strong>`;
 
   html += `<div class="card" style="margin-bottom:12px;padding:14px"><h3 style="margin-bottom:10px">Profile</h3>
     <div class="stats-row" style="margin-bottom:10px">
@@ -68,8 +68,8 @@ function openPerson(d4) {
       <div class="stat"><label>BMI</label><div class="val" style="color:${bmiColor(bmi)}">${bmi ?? '—'}</div></div>
     </div>
     ${p.phone || p.email ? `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:8px">
-      ${p.phone ? `<span>📞 <a href="tel:${escapeAttr(String(p.phone).replace(/\D/g, ""))}" style="color:var(--accent);text-decoration:none">${fmtPhone(p.phone)}</a></span>` : ""}
-      ${p.email ? `<span>✉ <a href="mailto:${escapeAttr(p.email)}" style="color:var(--accent);text-decoration:none;word-break:break-all">${p.email}</a></span>` : ""}
+      ${p.phone ? `<span>📞 <a href="tel:${escapeAttr(String(p.phone).replace(/\D/g, ""))}" style="color:var(--accent);text-decoration:none">${escapeHTML(fmtPhone(p.phone))}</a></span>` : ""}
+      ${p.email ? `<span>✉ <a href="mailto:${escapeAttr(p.email)}" style="color:var(--accent);text-decoration:none;word-break:break-all">${escapeHTML(p.email)}</a></span>` : ""}
     </div>` : ""}
     <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px">
       ${fact("Ration", p.ration)}
@@ -78,8 +78,8 @@ function openPerson(d4) {
     </div>
   </div>`;
 
-  if (p.allergies) html += `<div style="background:#E3B34122;border:1px solid #E3B34144;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;color:var(--yellow)"><strong>Allergies:</strong> ${p.allergies}</div>`;
-  if (p.msk) html += `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--red)"><strong>MSK history:</strong> ${p.msk}</div>`;
+  if (p.allergies) html += `<div style="background:#E3B34122;border:1px solid #E3B34144;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;color:var(--yellow)"><strong>Allergies:</strong> ${escapeHTML(p.allergies)}</div>`;
+  if (p.msk) html += `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--red)"><strong>MSK history:</strong> ${escapeHTML(p.msk)}</div>`;
 
   // RSIs stat is clickable when there are records — opens an inline patterns
   // panel below the stats strip with day-of-week, status mix, timeline, reasons.
@@ -103,7 +103,7 @@ function openPerson(d4) {
     return (a.time || "") < (b.time || "") ? 1 : -1;
   });
   if (cd.length) {
-    const cdTypeColor = t => t === "Status" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : t === "PX" ? "teal" : "yellow";
+    const cdTypeColor = t => t === "Status" ? "orange" : t === "RSI" ? "red" : t === "Fallout" ? "purple" : t === "PXP" ? "teal" : "yellow";
     // ReportSick is deduped by date — a recruit who falls out of three
     // conducts on the same day only went to MO once. Other types count rows
     // directly since each row is a distinct conduct miss.
@@ -112,15 +112,16 @@ function openPerson(d4) {
       if (t === "ReportSick") return new Set(rows.map(d => d.date)).size;
       return rows.length;
     };
-    // PX = present but not participating (doing stretches) → NOT a miss; only
-    // Status/RSI/Fallout/ReportSick rows are genuine conduct misses.
-    const missedCount = cd.filter(d => d.type !== "PX").length;
-    html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${missedCount} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("Status")} Status · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick${cdCount("PX") ? ` · ${cdCount("PX")} PX` : ""})</span></h4>`;
+    // "PXP" = present but not participating (doing stretches) → NOT a miss; only
+    // Status/RSI/Fallout/ReportSick rows are genuine conduct misses. (Stored as
+    // "PXP" not "PX" so the legacy PX→Status read migration never clobbers it.)
+    const missedCount = cd.filter(d => d.type !== "PXP").length;
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${missedCount} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("Status")} Status · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick${cdCount("PXP") ? ` · ${cdCount("PXP")} PX` : ""})</span></h4>`;
     html += `<div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
       <table style="width:100%;border-collapse:collapse">
         <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
         <tbody>
-          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + fmtHrs(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${conductName(d.conductId)}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${d.reason || ''}</td></tr>`).join("")}
+          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + fmtHrs(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${escapeHTML(conductName(d.conductId))}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${escapeHTML(d.reason || '')}</td></tr>`).join("")}
         </tbody>
       </table>
     </div>`;
@@ -160,7 +161,7 @@ function openPerson(d4) {
       const todayLabel = tagInfo ? `<span style="margin-left:6px">${medTagBadge(tagInfo.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
       return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <span>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${m.reason || ""}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
+          <span>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
           <span style="display:inline-flex;align-items:center;gap:4px">${todayLabel}${pcBtns("openMedicalForm", "medical", m.id, "medical record")}</span>
         </div>
         <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
@@ -190,14 +191,14 @@ function openPerson(d4) {
         // Apps Script already formats Date cells as "21 May 2026" — use
         // as-is. Slicing was truncating the last digit of the year.
         const t = r.timestamp || "";
-        return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border-left:2px solid var(--pink);font-size:12px"><div style="color:var(--muted);font-size:10px">${t}</div>${r.description || ""}</div>`;
+        return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border-left:2px solid var(--pink);font-size:12px"><div style="color:var(--muted);font-size:10px">${t}</div>${escapeHTML(r.description || "")}</div>`;
       }).join("");
     }
     if (exercises.length) {
       html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">Physio visits</div>`;
       html += exercises.map(r => {
         const d = r.physioDate || r.timestamp || "";
-        const exText = r.exercises || `<span style="color:var(--dim)">(no new exercises)</span>`;
+        const exText = r.exercises ? escapeHTML(r.exercises) : `<span style="color:var(--dim)">(no new exercises)</span>`;
         return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border-left:2px solid var(--teal);font-size:12px"><div style="color:var(--muted);font-size:10px">${d}</div>${exText}</div>`;
       }).join("");
     }
@@ -474,7 +475,7 @@ function toggleReportSickPatterns(d4) {
       ${topReasons.length ? `<div style="margin-top:14px">
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Top Reasons</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${topReasons.map(r => `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px"><span style="color:var(--text)">${r.display}</span> <span class="mono" style="color:var(--accent);font-weight:700;margin-left:4px">×${r.count}</span></div>`).join("")}
+          ${topReasons.map(r => `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px"><span style="color:var(--text)">${escapeHTML(r.display)}</span> <span class="mono" style="color:var(--accent);font-weight:700;margin-left:4px">×${r.count}</span></div>`).join("")}
         </div>
       </div>` : ""}
     </div>
@@ -1406,6 +1407,21 @@ function confirmConductImport() {
   const pendingMedical = [];
   const seenPending = new Set();   // (d4|date) guard within this batch
 
+  // Two coordination maps keyed by `${conductId}|${date}|${time}`:
+  //   cleanedKeys     — keys whose PRIOR-session rows have already been purged
+  //                     (the "re-import replaces" rule), done ONCE per key.
+  //   batchEntryByKey — the attendance row this batch is building for that key.
+  // The CSV carries no time-of-day, so every file resolves to time="". Without
+  // this coordination, two files for the SAME conduct on the SAME day (e.g. an
+  // AM and a PM session) collide on the key: the old per-file purge ran on every
+  // iteration, so file 2 deleted file 1's just-pushed rows and only the last
+  // file survived (silent data loss). Now we purge a key's prior rows once, then
+  // MERGE subsequent same-key files into the one entry instead of clobbering.
+  const cleanedKeys = new Set();
+  const batchEntryByKey = {};
+  const detailByKey = {};   // de-dupes (d4|type|reason) within a merged key
+  let mergedFiles = 0;
+
   pend.conducts.forEach((p, idx) => {
     // Resolve the conduct id: existing match → reuse; else read the per-conduct
     // select (create-new or merge). New conducts of identical name coalesce.
@@ -1420,6 +1436,7 @@ function confirmConductImport() {
     }
     const date = p.dateDisplay;
     const time = "";   // CSV carries no time-of-day
+    const key = `${conductId}|${date}|${time}`;
 
     const matched = p.parsed.filter(x => x.resolvedId);
     const presentIds = [...new Set(matched.filter(x => x.status === "Present").map(x => x.resolvedId))];
@@ -1427,16 +1444,6 @@ function confirmConductImport() {
     const statusAbsent = matched.filter(x => ["MC", "Leave", "Off", "Other"].includes(x.status));
     totPresent += presentIds.length; totFallout += fallout.length; totStatus += statusAbsent.length;
     totUnmatched += p.parsed.filter(x => !x.resolvedId).length;
-
-    const attendanceEntry = {
-      id: nextId(), date, time, conductId,
-      total: presentIds.length + fallout.length + statusAbsent.length,
-      participating: presentIds.length, lms: 0,
-      px: statusAbsent.length, fallout: fallout.length,
-      remarks: p.activityName || "",
-      participants: presentIds.join(","),
-      periods: p.periods || 0, currencyTags: p.currencyTags || "", source: "csv"
-    };
 
     const detailRows = [];
     fallout.forEach(x => detailRows.push({ id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Fallout", reason: x.remarks || "" }));
@@ -1450,22 +1457,64 @@ function confirmConductImport() {
     // record (origin "conductLog") so the gap is visible and an MO outcome can
     // be filled in later. Existing records are left untouched.
     matched.filter(x => x.status === "MC").forEach(x => {
-      const key = `${x.resolvedId}|${date}`;
-      if (seenPending.has(key)) return;
+      const pkey = `${x.resolvedId}|${date}`;
+      if (seenPending.has(pkey)) return;
       const exists = STATE.medical.some(m => m.d4 === x.resolvedId && m.date === date);
       if (exists) return;
-      seenPending.add(key);
+      seenPending.add(pkey);
       pendingMedical.push({
         id: nextId(), d4: x.resolvedId, date, reason: x.remarks || "Reported sick (from conduct log)",
         status: "Pending", startDate: date, endDate: "", origin: "conductLog"
       });
     });
 
-    // Re-import de-dupe per (conductId, date, time).
-    STATE.attendance = STATE.attendance.filter(a => !(a.conductId === conductId && a.date === date && (a.time || "") === time));
-    STATE.conductDetail = STATE.conductDetail.filter(d => !(d.conductId === conductId && d.date === date && (d.time || "") === time));
-    STATE.attendance.push(attendanceEntry);
-    STATE.conductDetail.push(...detailRows);
+    // Purge any PRIOR-session rows for this key exactly once (re-import replace).
+    if (!cleanedKeys.has(key)) {
+      STATE.attendance = STATE.attendance.filter(a => `${a.conductId}|${a.date}|${a.time || ""}` !== key);
+      STATE.conductDetail = STATE.conductDetail.filter(d => `${d.conductId}|${d.date}|${d.time || ""}` !== key);
+      cleanedKeys.add(key);
+    }
+
+    // First file for this key → create the entry; later files MERGE into it.
+    let entry = batchEntryByKey[key];
+    if (!entry) {
+      entry = {
+        id: nextId(), date, time, conductId,
+        total: 0, participating: 0, lms: 0, px: 0, fallout: 0,
+        remarks: p.activityName || "", participants: "",
+        periods: p.periods || 0, currencyTags: p.currencyTags || "", source: "csv"
+      };
+      batchEntryByKey[key] = entry;
+      detailByKey[key] = new Set();
+      STATE.attendance.push(entry);
+    } else {
+      mergedFiles++;
+    }
+
+    // Union participants so a person present in two merged sessions counts once.
+    const partSet = new Set(entry.participants ? entry.participants.split(",").filter(Boolean) : []);
+    presentIds.forEach(id => partSet.add(id));
+    entry.participants = [...partSet].join(",");
+    entry.participating = partSet.size;
+    entry.px += statusAbsent.length;
+    entry.fallout += fallout.length;
+    entry.total = entry.participating + entry.px + entry.fallout;
+    // Periods drive Double-HA crediting. Take the MAX across merged files: a
+    // re-export of the same session carries identical periods (so max == that
+    // value, no double-credit), while genuinely distinct same-day sessions only
+    // under-credit by the smaller count — far safer than silently dropping a file.
+    entry.periods = Math.max(entry.periods || 0, p.periods || 0);
+    if (!entry.currencyTags && p.currencyTags) entry.currencyTags = p.currencyTags;
+
+    // Push detail rows, skipping (d4|type|reason) dups from an accidental
+    // double-select of the same file under one key.
+    const dset = detailByKey[key];
+    detailRows.forEach(r => {
+      const dk = `${r.d4}|${r.type}|${r.reason}`;
+      if (dset.has(dk)) return;
+      dset.add(dk);
+      STATE.conductDetail.push(r);
+    });
   });
 
   if (pendingMedical.length) STATE.medical.push(...pendingMedical);
@@ -1482,7 +1531,7 @@ function confirmConductImport() {
     autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
     if (pendingMedical.length) autoSync("Medical", { type: "replace", data: STATE.medical });
   }
-  alert(`Imported ${conductCount} conduct${conductCount === 1 ? "" : "s"}:\n  • ${totPresent} present · ${totFallout} fallout · ${totStatus} status\n  • ${pendingMedical.length} Pending report-sick record${pendingMedical.length === 1 ? "" : "s"} auto-created\n  • ${totUnmatched} unmatched rows skipped\nSyncing to sheet — check the sidebar indicator.`);
+  alert(`Imported ${conductCount} conduct${conductCount === 1 ? "" : "s"}:\n  • ${totPresent} present · ${totFallout} fallout · ${totStatus} status\n  • ${pendingMedical.length} Pending report-sick record${pendingMedical.length === 1 ? "" : "s"} auto-created\n  • ${totUnmatched} unmatched rows skipped${mergedFiles ? `\n  • ${mergedFiles} file${mergedFiles === 1 ? "" : "s"} merged into a same-conduct/same-day session (participants combined)` : ""}\nSyncing to sheet — check the sidebar indicator.`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1626,7 +1675,7 @@ function openConductDetailForm(id) {
           ${conductPicker({ inputId: "f-conductId", selectedId: e?.conductId || "" })}
         </div>
         <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["Status", "Status (pre-existing medical status — absent)"], ["PX", "PX (present, not participating — doing stretches, not absent)"], ["Fallout", "Fallout (dropped out, no MO visit)"], ["RSI", "RSI (reported sick at first parade)"], ["ReportSick", "Report Sick (fallout → went to MO)"]], true, e?.type || "")}
+        ${formSelect("f-type", "Type", [["Status", "Status (pre-existing medical status — absent)"], ["PXP", "PX (present, not participating — doing stretches, not absent)"], ["Fallout", "Fallout (dropped out, no MO visit)"], ["RSI", "RSI (reported sick at first parade)"], ["ReportSick", "Report Sick (fallout → went to MO)"]], true, e?.type || "")}
         ${formField("f-reason", "Reason", "text", "Sprained ankle / Fever / Shin splint...", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
       </div>
@@ -2334,7 +2383,7 @@ function renderApptCampSection(dateIso, paradeTime, type) {
     const checked = apptCurrentlyOut(a) ? "checked" : "";
     return `<label style="display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
       <input type="checkbox" ${checked} onchange="toggleApptCamp(${a.id}, this.checked, '${type}')" style="width:14px;height:14px;cursor:pointer">
-      <span>${paradeRN(a.d4)} — ${escapeAttr(a.reason || "")} (${fmtHrs(a.time)})</span>
+      <span>${escapeHTML(paradeRN(a.d4))} — ${escapeAttr(a.reason || "")} (${fmtHrs(a.time)})</span>
     </label>`;
   }).join("");
   section.innerHTML = `<div style="font-size:11px;background:#58A6FF11;border:1px solid #58A6FF44;border-radius:6px;padding:8px 10px">
@@ -2356,7 +2405,7 @@ function renderBorderlineSection(dateIso, type) {
     const endShort = toDDMMYY(displayDateToISO(m.endDate || "")) || m.endDate || "";
     return `<label style="display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
       <input type="checkbox" ${checked} onchange="toggleBorderline('${m.d4}', this.checked, '${type}')" style="width:14px;height:14px;cursor:pointer">
-      <span>${paradeRN(m.d4)} — ${m.status} ended ${endShort}</span>
+      <span>${escapeHTML(paradeRN(m.d4))} — ${m.status} ended ${endShort}</span>
     </label>`;
   }).join("");
   section.innerHTML = `<div style="font-size:11px;background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:8px 10px">
@@ -2679,7 +2728,7 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
   const startNice = isoToDisplayDate(startIso);
   const endNice = isoToDisplayDate(endIso);
   const bareId = String(r.id).replace(/^C/i, "");
-  const recHeader = `REC ${(r.name || "").toUpperCase()} ${bareId}`;
+  const recHeader = `REC ${escapeHTML((r.name || "").toUpperCase())} ${bareId}`;
 
   // Two parallel chart blocks — same layout/captions, different image src.
   const noChartsBlock = `<p style="background:#FFF8E1;border:1px solid #FFE082;padding:12px;border-radius:6px;color:#5D4037;font-size:13px">No Polar sessions logged in this window — we'd love to see you in the next one.</p>`;
@@ -2771,7 +2820,7 @@ function openFitnessReportModal() {
   // Recruit options for the preview/test dropdown — include any recruit
   // with non-empty email in the current scope.
   const recruitOptions = recipients.length
-    ? recipients.map(r => `<option value="${r.id}">${displayPersonLabel(r.id)} — ${r.email}</option>`).join("")
+    ? recipients.map(r => `<option value="${r.id}">${escapeHTML(displayPersonLabel(r.id))} — ${escapeHTML(r.email)}</option>`).join("")
     : `<option value="">(no recruits with email in scope)</option>`;
 
   openModal("📊 Email Fitness Reports", `
@@ -2840,7 +2889,7 @@ function openFitnessReportModal() {
     const el = document.getElementById("sender-info");
     if (!el) return;
     if (info.error) {
-      el.innerHTML = `⚠ Could not reach Apps Script (${info.error})`;
+      el.innerHTML = `⚠ Could not reach Apps Script (${escapeHTML(info.error)})`;
       el.style.color = "var(--red)";
       return;
     }
@@ -2858,12 +2907,12 @@ function openFitnessReportModal() {
       return;
     }
     const fromLine = info.senderEmail
-      ? `from <strong style="color:var(--accent)">${info.senderEmail}</strong>`
+      ? `from <strong style="color:var(--accent)">${escapeHTML(info.senderEmail)}</strong>`
       : `from your Apps Script owner account (check the Apps Script editor — top right)`;
     el.innerHTML = `📧 Emails sent ${fromLine} · Display name: "Cougar Coy Training" · Daily quota: <strong>${info.remainingQuota}</strong>`;
   }).catch(e => {
     const el = document.getElementById("sender-info");
-    if (el) el.innerHTML = `⚠ Sender check failed: ${e.message}`;
+    if (el) el.innerHTML = `⚠ Sender check failed: ${escapeHTML(e.message)}`;
   });
 }
 
@@ -2883,7 +2932,7 @@ function previewFitnessReport() {
 
   openModal("Preview — " + displayPersonLabel(d4), `
     <iframe id="preview-iframe" style="width:100%;height:600px;border:1px solid var(--border);border-radius:6px;background:#fff"></iframe>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Sample for ${displayPersonLabel(d4)}${recruit.email ? ` (${recruit.email})` : ""}. Close this to go back.</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Sample for ${escapeHTML(displayPersonLabel(d4))}${recruit.email ? ` (${escapeHTML(recruit.email)})` : ""}. Close this to go back.</div>
   `);
   document.querySelector(".modal")?.classList.add("wide");
 
@@ -2914,17 +2963,17 @@ async function sendTestReport() {
 
   const progress = document.getElementById("fitness-report-progress");
   progress.style.display = "block";
-  progress.innerHTML = `Sending test to <strong>${testEmail}</strong>…`;
+  progress.innerHTML = `Sending test to <strong>${escapeHTML(testEmail)}</strong>…`;
 
   try {
     const res = await API.sendEmail(testEmail, subject, htmlForEmail, inlineImages);
     if (res.error) {
-      progress.innerHTML = `<span style="color:var(--red)">⚠ Test failed: ${res.error}</span>`;
+      progress.innerHTML = `<span style="color:var(--red)">⚠ Test failed: ${escapeHTML(res.error)}</span>`;
     } else {
-      progress.innerHTML = `<span style="color:var(--green)">✓ Test sent to ${testEmail}.</span> Check your inbox (and spam folder). Quota left: ${res.remainingQuota}`;
+      progress.innerHTML = `<span style="color:var(--green)">✓ Test sent to ${escapeHTML(testEmail)}.</span> Check your inbox (and spam folder). Quota left: ${res.remainingQuota}`;
     }
   } catch (e) {
-    progress.innerHTML = `<span style="color:var(--red)">⚠ Test failed: ${e.message}</span>`;
+    progress.innerHTML = `<span style="color:var(--red)">⚠ Test failed: ${escapeHTML(e.message)}</span>`;
   }
 }
 
@@ -2947,7 +2996,7 @@ function updateBulkSendSummary() {
   const el = document.getElementById("bulk-send-summary");
   if (!el) return;
   const { queue, skipAlreadySent, skipNoEmail, total } = computeFitnessSendQueue();
-  const scopeNote = isFilterActive() ? ` in ${filterLabel()}` : "";
+  const scopeNote = isFilterActive() ? ` in ${escapeHTML(filterLabel())}` : "";
   let msg = `Bulk send to <strong style="color:var(--accent)">${queue.length}</strong> recruit${queue.length === 1 ? '' : 's'}${scopeNote}`;
   const notes = [];
   if (skipAlreadySent) notes.push(`${skipAlreadySent} skipped (already sent on this device)`);
@@ -2982,7 +3031,7 @@ async function sendAllReports() {
 
   for (let i = 0; i < queue.length; i++) {
     const r = queue[i];
-    progress.innerHTML = `Sending ${i + 1}/${queue.length} — currently <strong>${displayPersonLabel(r.id)}</strong><br><span style="color:var(--muted)">✓ ${sent} sent · ⚠ ${failed} failed · quota left: ${lastQuota}</span>`;
+    progress.innerHTML = `Sending ${i + 1}/${queue.length} — currently <strong>${escapeHTML(displayPersonLabel(r.id))}</strong><br><span style="color:var(--muted)">✓ ${sent} sent · ⚠ ${failed} failed · quota left: ${lastQuota}</span>`;
     try {
       const { htmlForEmail, inlineImages } = buildFitnessReportHTML(r.id, startIso, endIso);
       const res = await API.sendEmail(r.email, subject, htmlForEmail, inlineImages);
@@ -3824,7 +3873,7 @@ function updateLogConductOverlapWarning() {
   el.innerHTML = `
     <div style="background:#D2992222;border:1px solid #D2992266;border-radius:6px;padding:10px 12px;font-size:11px;color:var(--orange);line-height:1.55">
       <strong>⚠ Overlap detected:</strong> the following recruit${overlap.length === 1 ? " is" : "s are"} in BOTH Fallout AND Report Sick:
-      <div style="margin-top:4px;color:var(--text);font-weight:600">${overlap.map(d => `${displayId(d)} ${getName(d)}`).join(" · ")}</div>
+      <div style="margin-top:4px;color:var(--text);font-weight:600">${overlap.map(d => `${displayId(d)} ${escapeHTML(getName(d))}`).join(" · ")}</div>
       <div style="margin-top:4px;color:var(--muted);font-weight:400">Per convention: Report Sick = Fallout → went to MO. They shouldn't both contain the same recruit. You can save anyway — this is just a heads-up.</div>
     </div>
   `;
@@ -4395,7 +4444,7 @@ function openResetPasswordForm(emailEnc) {
   const email = decodeURIComponent(emailEnc);
   openModal("Reset Password", `
     <div style="display:flex;flex-direction:column;gap:10px">
-      <p style="font-size:12px;color:var(--muted)">Set a temporary password for <strong>${email}</strong>. They should change it after logging in.</p>
+      <p style="font-size:12px;color:var(--muted)">Set a temporary password for <strong>${escapeHTML(email)}</strong>. They should change it after logging in.</p>
       <label class="form-label">Temporary password (min 6)<input type="text" id="rp-password" class="form-input"></label>
       <div id="rp-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
       <button class="btn btn-primary" onclick="submitResetPassword('${encodeURIComponent(email)}')">Set Password</button>

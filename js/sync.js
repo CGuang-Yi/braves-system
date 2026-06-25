@@ -9,8 +9,8 @@ function renderSync(el) {
   const authStatusHtml = authed
     ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
          <span style="color:var(--green);font-weight:600">✓ Signed in</span>
-         <span style="font-size:12px;color:var(--muted)">${whoLabel ? whoLabel + " · " : ""}${STATE.email || ""}</span>
-         <span class="badge badge-accent">${STATE.role || "?"}</span>
+         <span style="font-size:12px;color:var(--muted)">${whoLabel ? escapeHTML(whoLabel) + " · " : ""}${escapeHTML(STATE.email || "")}</span>
+         <span class="badge badge-accent">${escapeHTML(STATE.role || "?")}</span>
          <span style="margin-left:auto;display:flex;gap:8px">
            <button class="btn" onclick="openChangePasswordForm()">Change Password</button>
            <button class="btn btn-danger" onclick="signOut()">Sign Out</button>
@@ -91,10 +91,10 @@ function renderAdminPanel() {
 
   const accountsRows = (STATE.accounts || []).map(a => `
     <tr>
-      <td>${a.email || ""}</td>
-      <td><span class="badge badge-accent">${a.role || ""}</span></td>
-      <td class="mono" style="font-size:10px">${a.personId || "—"}</td>
-      <td style="font-size:10px;color:var(--muted)">${a.addedBy || ""}</td>
+      <td>${escapeHTML(a.email || "")}</td>
+      <td><span class="badge badge-accent">${escapeHTML(a.role || "")}</span></td>
+      <td class="mono" style="font-size:10px">${escapeHTML(a.personId || "—")}</td>
+      <td style="font-size:10px;color:var(--muted)">${escapeHTML(a.addedBy || "")}</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn" style="font-size:10px" onclick="openResetPasswordForm('${encodeURIComponent(a.email)}')">Reset PW</button>
         <button class="btn btn-danger" style="font-size:10px" onclick="doRemoveAccount('${encodeURIComponent(a.email)}')">Remove</button>
@@ -103,9 +103,9 @@ function renderAdminPanel() {
 
   const tokenRows = (STATE.tokens || []).map(t => `
     <tr>
-      <td>${t.email || ""}</td>
-      <td><span class="badge badge-accent">${t.role || ""}</span></td>
-      <td class="mono" style="font-size:10px">${t.tokenPrefix || ""}…</td>
+      <td>${escapeHTML(t.email || "")}</td>
+      <td><span class="badge badge-accent">${escapeHTML(t.role || "")}</span></td>
+      <td class="mono" style="font-size:10px">${escapeHTML(t.tokenPrefix || "")}…</td>
       <td style="font-size:10px;color:var(--muted)">${t.issuedAt ? new Date(t.issuedAt).toLocaleString() : ""}${t.expired ? ' <span style="color:var(--red)">expired</span>' : ""}</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-danger" style="font-size:10px" onclick="doRevokeToken('${t.token}','${encodeURIComponent(t.email || "")}')">Revoke</button>
@@ -116,11 +116,11 @@ function renderAdminPanel() {
   const auditRows = audit.slice(0, _auditLimit).map(r => `
     <tr>
       <td style="font-size:10px;color:var(--muted);white-space:nowrap">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ""}</td>
-      <td style="font-size:11px">${r.email || ""}</td>
-      <td><span class="badge" style="font-size:9px">${r.role || ""}</span></td>
-      <td class="mono" style="font-size:10px">${r.action || ""}</td>
-      <td style="font-size:11px">${r.target || ""}</td>
-      <td style="font-size:11px;color:var(--muted)">${r.detail || ""}</td>
+      <td style="font-size:11px">${escapeHTML(r.email || "")}</td>
+      <td><span class="badge" style="font-size:9px">${escapeHTML(r.role || "")}</span></td>
+      <td class="mono" style="font-size:10px">${escapeHTML(r.action || "")}</td>
+      <td style="font-size:11px">${escapeHTML(r.target || "")}</td>
+      <td style="font-size:11px;color:var(--muted)">${escapeHTML(r.detail || "")}</td>
     </tr>`).join("");
 
   host.innerHTML = `
@@ -182,7 +182,7 @@ function syncLog(msg, color) {
   const el = document.getElementById("sync-log");
   if (!el) return;
   const t = new Date().toLocaleTimeString();
-  el.innerHTML = `<div style="color:${color || 'var(--muted)'}">${t} — ${msg}</div>` + el.innerHTML;
+  el.innerHTML = `<div style="color:${color || 'var(--muted)'}">${t} — ${escapeHTML(msg)}</div>` + el.innerHTML;
 }
 
 function setSyncIndicator(text, color) {

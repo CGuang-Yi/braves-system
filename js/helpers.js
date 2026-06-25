@@ -874,8 +874,24 @@ function formSelect(id, label, options, required = false, selected = "") {
 }
 const gv = id => document.getElementById(id)?.value || "";
 
-// Escape user-supplied text for safe interpolation into HTML attribute values.
-const escapeAttr = s => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+// Canonical HTML escaper — safe for BOTH text-node and double-quoted attribute
+// contexts. Escapes & < > " '. Use this everywhere untrusted text (person names,
+// medical reasons, conduct remarks/names, emails, custom statuses, CSV cells,
+// and error/exception messages) is interpolated into an innerHTML template
+// string, to neutralise DOM-XSS (a CSV/roster field like `<img onerror=…>` must
+// render as inert text, not execute in the operator's authenticated session).
+function escapeHTML(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+// Back-compat alias: existing call sites used escapeAttr for attribute values.
+// It now points at the full escaper (previously it missed `>` and `'`), so every
+// existing escapeAttr(...) call is strengthened with no call-site change.
+const escapeAttr = escapeHTML;
 
 // Local-time today as YYYY-MM-DD (avoids toISOString's UTC shift).
 function todayISO() {

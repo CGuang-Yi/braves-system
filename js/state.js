@@ -319,12 +319,21 @@ function padD4OnLayer(records) {
 
 // ConductDetail rows. Pads the 4D like every other layer, then migrates the
 // legacy `type:"PX"` → `"Status"`. Historically "PX" labelled an *absence due
-// to a pre-existing status* (MC/LD/Leave/Off) — which is the opposite of what
-// PX actually means (a set of stretches done by non-participants who are still
-// present, NOT an absence). Renaming frees "PX" so a genuine, non-absent PX
-// note can use it; the absentee/parade-state maths excludes type "PX" while
-// still counting "Status". (Same migration pattern as normalizeMedical's
-// "Excused X" → "Excuse X".)
+// to a pre-existing status* (MC/LD/Leave/Off) — the opposite of what PX really
+// means (a set of stretches done by non-participants who are still PRESENT, NOT
+// an absence). So legacy "PX" rows are all absences and must become "Status".
+//
+// CRITICAL — why the genuine present-not-participating type is stored as "PXP",
+// NOT "PX": this migration runs at every read boundary (pull AND loadLocal) and
+// cannot tell a legacy absence-"PX" from a newly-authored genuine-"PX" — both
+// are the literal string "PX". If genuine rows reused "PX", every reload/pull
+// would silently rewrite them to "Status", reclassifying a non-absence as a
+// counted absence (inflating missed/parade-state tallies). Using a distinct
+// stored token ("PXP") for the new meaning makes the two unambiguous: "PX" is
+// purely a legacy source that always maps to "Status", while "PXP" is the live
+// genuine type and is never touched. The human-facing label stays "PX".
+// (A future one-time backend rewrite of the sheet could retire this read-time
+// remap, but the token split keeps the client correct with no backend coupling.)
 function normalizeConductDetail(records) {
   return padD4OnLayer(records).map(r =>
     r && r.type === "PX" ? { ...r, type: "Status" } : r);

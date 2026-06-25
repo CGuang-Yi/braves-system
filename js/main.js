@@ -46,7 +46,7 @@ function refreshFilterUI() {
   // Braves scope (§11): platoons are CODES ("PLT1"/"HQ") from activePlatoons()
   // (which reads the Platoons tab, falling back to roster-derived codes).
   const platoons = activePlatoons();
-  pltSel.innerHTML = `<option value="">All plts</option>` + platoons.map(p => `<option value="${p.code}" ${p.code === String(STATE.filterPlt) ? "selected" : ""}>${p.displayName || p.code}</option>`).join("");
+  pltSel.innerHTML = `<option value="">All plts</option>` + platoons.map(p => `<option value="${escapeHTML(p.code)}" ${p.code === String(STATE.filterPlt) ? "selected" : ""}>${escapeHTML(p.displayName || p.code)}</option>`).join("");
 
   // Sections depend on platoon selection — "section 2" is ambiguous across
   // platoons, so the section dropdown is disabled until a platoon is picked.
@@ -54,7 +54,7 @@ function refreshFilterUI() {
   if (STATE.filterPlt) {
     const sections = sectionsInPlatoon(STATE.filterPlt);
     sectSel.disabled = false;
-    sectSel.innerHTML = `<option value="">All sects</option>` + sections.map(s => `<option value="${s}" ${s === String(STATE.filterSect) ? "selected" : ""}>${s === "Command" ? "Command" : "Sect " + s}</option>`).join("");
+    sectSel.innerHTML = `<option value="">All sects</option>` + sections.map(s => `<option value="${escapeHTML(s)}" ${s === String(STATE.filterSect) ? "selected" : ""}>${s === "Command" ? "Command" : "Sect " + escapeHTML(s)}</option>`).join("");
   } else {
     sectSel.disabled = true;
     sectSel.innerHTML = `<option value="">All sects</option>`;
