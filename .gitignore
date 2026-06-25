@@ -21,7 +21,6 @@ credentials.json
 secrets.json
 config.local.*
 
-# Claude Code per-machine settings (project settings.json stays tracked).
 .claude/settings.local.json
 .claude
 
