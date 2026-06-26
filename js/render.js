@@ -643,9 +643,9 @@ function renderMSKAnalytics(el) {
       </div>
       <div style="display:flex;gap:6px;align-items:center;font-size:11px;flex-wrap:wrap;flex:1 1 220px;justify-content:flex-end">
         <span style="color:var(--muted)">Window:</span>
-        <input id="msk-an-start" type="date" value="${startIso}" onchange="setMSKAnalyticsRange()" class="topbar-select" style="min-width:130px;flex:1 1 130px">
+        <input id="msk-an-start" type="date" value="${escapeAttr(startIso)}" onchange="setMSKAnalyticsRange()" class="topbar-select" style="min-width:130px;flex:1 1 130px">
         <span style="color:var(--muted)">→</span>
-        <input id="msk-an-end" type="date" value="${endIso}" onchange="setMSKAnalyticsRange()" class="topbar-select" style="min-width:130px;flex:1 1 130px">
+        <input id="msk-an-end" type="date" value="${escapeAttr(endIso)}" onchange="setMSKAnalyticsRange()" class="topbar-select" style="min-width:130px;flex:1 1 130px">
       </div>
     </div>
 

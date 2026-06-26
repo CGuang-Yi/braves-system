@@ -584,8 +584,8 @@ function addMedStatusRow(status = "", startIso = null, endIso = null) {
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" class="f-extra-custom-save" checked style="width:15px;height:15px"> Save for reuse <span style="color:var(--dim)">(adds it to the dropdowns)</span></label>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Start (inclusive)</label><input type="date" class="f-extra-start" value="${startIso}" min="2020-01-01" max="2099-12-31"></div>
-      <div class="form-group"><label>End (inclusive)</label><input type="date" class="f-extra-end" value="${endIso}" min="2020-01-01" max="2099-12-31"></div>
+      <div class="form-group"><label>Start (inclusive)</label><input type="date" class="f-extra-start" value="${escapeAttr(startIso)}" min="2020-01-01" max="2099-12-31"></div>
+      <div class="form-group"><label>End (inclusive)</label><input type="date" class="f-extra-end" value="${escapeAttr(endIso)}" min="2020-01-01" max="2099-12-31"></div>
     </div>`;
   host.appendChild(row);
 }
@@ -2334,7 +2334,7 @@ function renderConductPicker() {
   const exactMatch = matches.find(a => (a.time || "") === time);
   const selectedId = exactMatch ? exactMatch.id : (matches[0]?.id || "");
   if (!matches.length) {
-    host.innerHTML = `<div style="font-size:11px;color:var(--orange);background:#D2992222;border:1px solid #D2992244;border-radius:6px;padding:6px 10px">No conducts logged on ${date || dateIso}. Log one first via the Attendance tab.</div>`;
+    host.innerHTML = `<div style="font-size:11px;color:var(--orange);background:#D2992222;border:1px solid #D2992244;border-radius:6px;padding:6px 10px">No conducts logged on ${escapeHTML(date || dateIso)}. Log one first via the Attendance tab.</div>`;
     return;
   }
   host.innerHTML = `
@@ -2565,7 +2565,7 @@ function countMCDaysInWindow(d4, startIso, endIso) {
 // API.sendEmail along with htmlForEmail.
 function buildFitnessReportHTML(d4, startIso, endIso) {
   const r = STATE.roster.find(x => x.id === d4);
-  if (!r) return `<p>Recruit ${d4} not found.</p>`;
+  if (!r) return `<p>Recruit ${escapeHTML(d4)} not found.</p>`;
 
   // Pull every per-recruit data slice inside the window.
   const polar = computeFitnessMetrics(
@@ -2755,7 +2755,7 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
       <div style="font-size:12px;letter-spacing:2px;opacity:.85">🐆 COUGAR COY</div>
       <div style="font-size:22px;font-weight:700;margin-top:2px">Fitness Report</div>
       <div style="font-size:13px;opacity:.9;margin-top:8px">${recHeader}</div>
-      <div style="font-size:12px;opacity:.8">${startNice} → ${endNice}</div>
+      <div style="font-size:12px;opacity:.8">${escapeHTML(startNice)} → ${escapeHTML(endNice)}</div>
     </div>
 
     <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:8px;margin-bottom:8px">
