@@ -1215,11 +1215,13 @@ function finalizePolarImport(keyResolutions) {
   // this redesign eliminates.
   if (STATE.apiUrl && insertedRows.length) {
     autoSync("PolarFlow", { type: "appendMany", rows: insertedRows });
-    // If LMS counts on attendance changed, re-push those rows too (full
-    // replace because individual upserts would be N round-trips).
-    if (lmsChanged) autoSync("Attendance", { type: "replace", data: STATE.attendance });
+    // If LMS counts on attendance changed, push ONLY those rows via id-based
+    // upsert. A full-tab replace here would clobber any concurrent attendance
+    // edits made on another device since our last pull; per-row upsert is
+    // OCC-safe (each carries its baseRev and only touches its own row).
+    lmsChanged.forEach(row => autoSync("Attendance", { type: "upsert", row }));
   }
-  alert(`Imported ${insertedRows.length} Polar rows${lmsChanged ? `\nUpdated LMS on ${lmsChanged} attendance row${lmsChanged === 1 ? "" : "s"}.` : ""}\n\nSyncing to sheet — check the sidebar indicator for status.`);
+  alert(`Imported ${insertedRows.length} Polar rows${lmsChanged.length ? `\nUpdated LMS on ${lmsChanged.length} attendance row${lmsChanged.length === 1 ? "" : "s"}.` : ""}\n\nSyncing to sheet — check the sidebar indicator for status.`);
 }
 // ════════════════════════════════════════════════════════════════════════════
 // CSV CONDUCT IMPORT (spec §14)
@@ -3291,8 +3293,9 @@ async function commitConductMigration() {
   STATE.conducts = registry;
   // Backfill LMS counts now that polar/attendance can finally join on
   // conductId. Before this migration the LMS column was likely stale on rows
-  // where the conduct string had any drift between the two layers.
-  const lmsChanged = recomputeAttendanceLmsFromPolar();
+  // where the conduct string had any drift between the two layers. (Count only —
+  // this migration re-pushes the whole Attendance tab below anyway.)
+  const lmsChanged = recomputeAttendanceLmsFromPolar().length;
   saveLocal();
   closeModal();
   render();
@@ -3330,6 +3333,68 @@ function createConduct(name) {
   // of showing `[c00X?]` placeholders.
   autoSync("Conducts", { type: "append", row: entry });
   return id;
+}
+
+// Groups of conducts that share the same id (data corruption from the old
+// max+1 id scheme). Returns [{ id, conducts: [refs…] }] for ids used >1 time.
+function duplicateConductIdGroups() {
+  const byId = {};
+  (STATE.conducts || []).forEach(c => { (byId[c.id] = byId[c.id] || []).push(c); });
+  return Object.keys(byId)
+    .filter(id => byId[id].length > 1)
+    .map(id => ({ id, conducts: byId[id] }));
+}
+
+// Repair modal: for each shared id, the user picks which conduct KEEPS the id
+// (and therefore the records logged under it — they're ambiguous, so only the
+// owner the user knows about can claim them). The other conducts in the group
+// get fresh unique ids and start empty.
+function openFixConductIdsModal() {
+  const groups = duplicateConductIdGroups();
+  if (!groups.length) { alert("No duplicate conduct ids — nothing to fix."); return; }
+  const blocks = groups.map((g, gi) => {
+    const u = countConductUsage(g.id);
+    const usage = `${u.attendance} attendance · ${u.polar} polar · ${u.detail} detail (${u.total} record${u.total === 1 ? "" : "s"})`;
+    const opts = g.conducts.map((c, ci) => `
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;background:var(--surface2);margin-bottom:4px">
+        <input type="radio" name="dup-${gi}" value="${ci}" ${ci === 0 ? "checked" : ""} style="width:14px;height:14px">
+        <span style="font-weight:600">${escapeAttr(c.name)}</span>
+      </label>`).join("");
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:2px">Shared id <span class="mono" style="color:var(--accent)">${g.id}</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${usage} — these stay with the conduct you pick:</div>
+      ${opts}
+    </div>`;
+  }).join("");
+  openModal("Fix duplicate conduct ids", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;line-height:1.55">
+        ${groups.length} id${groups.length === 1 ? " is" : "s are"} shared by multiple conducts, so their records resolve to the wrong name. Pick which conduct keeps each id (and its existing records); the others get fresh, empty ids. Records can't be auto-split — if some belong to a renamed conduct, re-point them after via <strong>Merge</strong> or by editing.
+      </div>
+      ${blocks}
+      <button type="button" class="btn btn-primary" onclick="applyConductIdFixes()">Fix ids</button>
+    </div>`);
+}
+
+function applyConductIdFixes() {
+  const groups = duplicateConductIdGroups();
+  let reassigned = 0;
+  groups.forEach((g, gi) => {
+    const sel = document.querySelector(`input[name="dup-${gi}"]:checked`);
+    const keepIdx = sel ? +sel.value : 0;
+    g.conducts.forEach((c, ci) => {
+      if (ci === keepIdx) return;   // this one keeps the original id + records
+      c.id = nextConductId();        // others get a fresh, unique, empty id
+      reassigned++;
+    });
+  });
+  saveLocal();
+  closeModal();
+  render();
+  // Ids changed on existing rows, so a full rewrite (not per-row upsert) is the
+  // safe way to persist — upsert would append new rows and orphan the old ones.
+  if (STATE.apiUrl) pushTab("Conducts", STATE.conducts);
+  alert(`Reassigned ${reassigned} conduct id${reassigned === 1 ? "" : "s"}.\nRecords stayed with the conduct you chose; the rest now have fresh, empty ids.`);
 }
 
 function renameConduct(id, newName) {
@@ -3495,7 +3560,10 @@ function recomputeAttendanceLmsFromPolar() {
     const k = `${dateJoinKey(p.date)}|${ck}`;
     (polarByConduct[k] = polarByConduct[k] || new Set()).add(padD4(p.d4));
   });
-  let changed = 0;
+  // Collect the attendance rows whose LMS actually moved so callers can push
+  // them individually (OCC-safe upsert) instead of a full-tab replace that
+  // clobbers concurrent edits. Returns the array of changed rows.
+  const changed = [];
   STATE.attendance.forEach(a => {
     if ("polar" in a) delete a.polar;
     const ck = conductJoinKey(a);
@@ -3504,10 +3572,10 @@ function recomputeAttendanceLmsFromPolar() {
     if (count == null) return;
     if ((+a.lms || 0) !== count) {
       a.lms = count;
-      changed++;
+      changed.push(a);
     }
   });
-  if (changed) saveLocal();
+  if (changed.length) saveLocal();
   return changed;
 }
 
@@ -3544,7 +3612,7 @@ function refreshLmsFromPolar() {
   });
   const unmatched = [...polarKeys].filter(k => !attendanceKeys.has(k));
   const matched = [...polarKeys].filter(k => attendanceKeys.has(k));
-  const changed = recomputeAttendanceLmsFromPolar();
+  const changed = recomputeAttendanceLmsFromPolar().length;   // diagnostic count only
   render();
 
   let msg = changed
@@ -4287,7 +4355,7 @@ async function analyzeAndPushPolarPhotos() {
     }
   }
 
-  recomputeAttendanceLmsFromPolar();
+  const lmsChanged = recomputeAttendanceLmsFromPolar();
   saveLocal();
 
   // Push to sheet in one batch. appendMany only sends new rows — much
@@ -4295,12 +4363,16 @@ async function analyzeAndPushPolarPhotos() {
   let sheetPushed = false;
   if (newRows.length && STATE.apiUrl) {
     try {
-      await API.post({ action: "appendMany", tab: "PolarFlow", rows: newRows });
+      await API.post({ action: "appendMany", tab: "PolarFlow", rows: newRows, baseRev: STATE.rev["PolarFlow"] });
       sheetPushed = true;
     } catch (e) {
       errors.push({ photo: "(sheet push)", error: e.message });
     }
   }
+  // Persist any attendance LMS changes the new polar rows triggered. Per-row
+  // upsert (OCC-safe) so a concurrent attendance edit on another device isn't
+  // clobbered — previously these LMS changes were never pushed at all.
+  if (STATE.apiUrl) lmsChanged.forEach(row => autoSync("Attendance", { type: "upsert", row }));
 
   // Summary modal — shows what happened, plus any per-photo errors.
   const errorList = errors.length

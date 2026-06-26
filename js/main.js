@@ -232,7 +232,9 @@ async function pullAndRender() {
   applyRoleUI();
   setSyncIndicator("● Loading data…", "var(--orange)");
   try {
-    const pullPromise = API.pullAll();
+    const pullPromise = (typeof timed === "function")
+      ? timed("pull", "pull ALL (launch)", () => API.pullAll(), true)
+      : API.pullAll();
     if (typeof setPullInFlight === "function") setPullInFlight(pullPromise);
     const data = await pullPromise;
     if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
@@ -241,6 +243,10 @@ async function pullAndRender() {
     render();
     maybeRunConductMigration();
     maybeRestoreDirty();
+    // Keep this tab fresh: poll the cheap revCheck endpoint (~20s while visible +
+    // on focus/visibility/online) and pull only changed tabs. STATE.rev was just
+    // baselined by the pull above. Guarded so login + bootstrap don't double-wire.
+    if (STATE.authToken && typeof initAutoRefresh === "function") initAutoRefresh();
   } catch (e) {
     if (e.name === "AuthError") { handleAuthFailure(); }
     else {

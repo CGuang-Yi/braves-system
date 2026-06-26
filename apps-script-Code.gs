@@ -228,16 +228,21 @@ function doGet(e) {
         output = { error: "session_expired", code: 401 };
       } else if (action === "readAll") {
         output = readAllTabs(ctx);              // ctx → AuditLog included only for admins
+      } else if (action === "revCheck") {
+        // Cheap "what changed?" poll — just the per-tab revisions, no row data.
+        output = { ok: true, revs: getAllRevs(), timestamp: new Date().toISOString() };
       } else if (action === "read" && tab) {
         if ((tab === "AuditLog" || tab === "ParadeArchive" || tab === "SickArchive") && ctx.role !== "admin") {
           output = { error: "Not authorised", code: 403 };
         } else if (tab === "Accounts") {
           output = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
         } else {
-          output = readTab(tab);
+          // Single-tab read for partial pulls; carries the tab's current revision
+          // so the client can baseline it. (Untracked tabs report rev 1.)
+          output = { rows: readTab(tab), rev: getRev(tab) };
         }
       } else {
-        output = { error: "Unknown action. Use: readAll, read&tab=TabName, or ping" };
+        output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, or ping" };
       }
     }
   } catch (err) {
@@ -738,6 +743,121 @@ function clearFailedAttempts(email) {
 
 // ── Authenticated POST dispatch (role-gated) ─────────────
 
+// ─── REVISION TRACKING / OPTIMISTIC CONCURRENCY ─────────
+// Each data tab carries a monotonic revision counter in ScriptProperties
+// (key "rev:<TabName>"), bumped on every successful write. Clients send the
+// revision they last saw as `baseRev`; a full-tab write whose baseRev no longer
+// matches the server is REJECTED (conflict) instead of being allowed to clobber
+// newer data. A single (document) lock makes the check → write → bump sequence
+// atomic, since Apps Script web apps do NOT serialize concurrent requests.
+var REV_TABS = ["Roster", "Medical", "Attendance", "IPPT", "RouteMarch", "SOC",
+  "PolarFlow", "ConductDetail", "Appointments", "Leave", "MSK", "Conducts"];
+
+function getRev(tabName) {
+  var p = PropertiesService.getScriptProperties();
+  var v = p.getProperty("rev:" + tabName);
+  if (v === null) { p.setProperty("rev:" + tabName, "1"); return 1; }  // lazily seed
+  return Number(v) || 1;
+}
+
+function bumpRev(tabName) {
+  var p = PropertiesService.getScriptProperties();
+  var next = (Number(p.getProperty("rev:" + tabName)) || 1) + 1;
+  p.setProperty("rev:" + tabName, String(next));
+  return next;
+}
+
+function getAllRevs() {
+  var p = PropertiesService.getScriptProperties();
+  var out = {};
+  for (var i = 0; i < REV_TABS.length; i++) {
+    var v = p.getProperty("rev:" + REV_TABS[i]);
+    out[REV_TABS[i]] = v === null ? 1 : (Number(v) || 1);
+  }
+  return out;
+}
+
+// Optional one-time editor run; getRev also seeds lazily so this isn't required.
+function initAllRevs() {
+  for (var i = 0; i < REV_TABS.length; i++) getRev(REV_TABS[i]);
+  return getAllRevs();
+}
+
+// Lock used for DATA writes. Deliberately the DOCUMENT lock, NOT the script
+// lock — the Telegram poller (tgPoll) and webhook deduper hold the *script* lock
+// (up to 5 min while long-polling), which would otherwise block every web-app
+// write until its waitLock timeout. The document lock scopes contention to
+// actual sheet writers. Falls back to the script lock for a standalone script.
+function getDataLock() {
+  try { var l = LockService.getDocumentLock(); if (l) return l; } catch (e) {}
+  return LockService.getScriptLock();
+}
+
+// Atomic write wrapper. `enforce` true → reject when the client's `baseRev` no
+// longer matches the server (lost-update prevention). Runs fn() (the actual
+// sheet mutation) under the data lock, then bumps the tab's revision on success
+// and returns it as `result.rev` so the client can advance its baseline.
+// Backward-compat: a missing baseRev (old cached client, or a server-side bot
+// call routed here) skips the check but still bumps, so newer clients see it.
+// Untracked tabs (ReportSick, TgUsers, archives) just run fn() — no rev to bump.
+function withRevLock(tabName, baseRev, enforce, fn) {
+  if (REV_TABS.indexOf(tabName) === -1) return fn();   // not a tracked data tab
+  var lock = getDataLock();
+  try { lock.waitLock(15000); }
+  catch (e) { return { error: "Server busy, please retry", code: 503 }; }
+  try {
+    var serverRev = getRev(tabName);
+    if (enforce && baseRev !== undefined && baseRev !== null && baseRev !== "" &&
+        Number(baseRev) !== serverRev) {
+      return { conflict: true, tab: tabName, serverRev: serverRev };
+    }
+    var result = fn();
+    if (result && result.error) return result;          // don't bump on failure
+    if (!result) result = { ok: true };
+    result.rev = bumpRev(tabName);
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ── Manual-edit propagation (installable onEdit trigger) ─────
+// App/bot writes bump the revision through withRevLock, but typing directly into
+// the Google Sheet bypasses all of that — so dashboards' revCheck poll would
+// never notice a hand edit. This trigger bumps the edited tab's revision on any
+// human edit in the Sheets UI, so manual edits auto-refresh into open tabs too.
+// NOTE: programmatic writes (the web app's setValues) do NOT fire onEdit, so
+// this never double-counts app writes. Run installEditTrigger() ONCE from the
+// editor to enable it (an installable trigger is required — simple onEdit can't
+// reliably use ScriptProperties/LockService).
+function onEditBumpRev(e) {
+  try {
+    var sheet = e && e.range && e.range.getSheet();
+    if (!sheet) return;
+    var name = sheet.getName();
+    if (REV_TABS.indexOf(name) === -1) return;   // only tracked data tabs
+    var lock = getDataLock();
+    try { lock.waitLock(10000); } catch (le) { bumpRev(name); return; }  // best-effort
+    try { bumpRev(name); } finally { lock.releaseLock(); }
+  } catch (err) {
+    try { Logger.log("onEditBumpRev error: " + err); } catch (e2) {}  // fail quietly
+  }
+}
+
+// One-time setup: run this ONCE from the Apps Script editor (it asks for the
+// ScriptApp authorization). Idempotent — removes any prior copy first.
+function installEditTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "onEditBumpRev") ScriptApp.deleteTrigger(triggers[i]);
+  }
+  ScriptApp.newTrigger("onEditBumpRev")
+    .forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet())
+    .onEdit()
+    .create();
+  return "Installed onEdit rev-bump trigger for: " + REV_TABS.join(", ");
+}
+
 function routeAuthedPost(action, tab, body, ctx) {
   // Available to any signed-in role:
   if (action === "logout")          return handleLogout(body, ctx);
@@ -770,14 +890,21 @@ function routeAuthedPost(action, tab, body, ctx) {
     if (!rate.ok) return { error: "Deletion limit reached (" + rate.cap + " deletions/hour for commanders). Wait a bit, or ask an admin to make bulk changes.", code: 429 };
   }
 
+  // Data writes run under withRevLock for optimistic-concurrency safety. A full
+  // `write` (whole-tab replace — the lost-update catastrophe vector) ENFORCES the
+  // client's baseRev: a stale tab is rejected with {conflict} rather than allowed
+  // to clobber newer rows. Row-scoped ops (append/appendMany/upsert/delete) never
+  // touch other rows, so they don't enforce (that caused false-conflict retry
+  // storms) — they just apply and bump the rev. withRevLock returns the new rev
+  // on the result so the client can advance its baseline; baseRev rides in body.
   var res;
-  if (action === "write" && tab && body.data)                    res = writeTab(tab, body.data);
-  else if (action === "append" && tab && body.row)               res = appendRow(tab, body.row);
-  else if (action === "appendMany" && tab && body.rows)          res = appendMany(tab, body.rows);
-  else if (action === "upsertRow" && tab && body.row)            res = upsertRow(tab, body.row);
-  else if (action === "deleteRowById" && tab && body.id !== undefined) res = deleteRowById(tab, body.id);
-  else if (action === "deleteRow" && tab && body.rowIndex !== undefined) res = deleteRow(tab, body.rowIndex);
-  else if (action === "updateRow" && tab && body.rowIndex !== undefined && body.row) res = updateRow(tab, body.rowIndex, body.row);
+  if (action === "write" && tab && body.data)                    res = withRevLock(tab, body.baseRev, true,  function () { return writeTab(tab, body.data); });
+  else if (action === "append" && tab && body.row)               res = withRevLock(tab, body.baseRev, false, function () { return appendRow(tab, body.row); });
+  else if (action === "appendMany" && tab && body.rows)          res = withRevLock(tab, body.baseRev, false, function () { return appendMany(tab, body.rows); });
+  else if (action === "upsertRow" && tab && body.row)            res = withRevLock(tab, body.baseRev, false, function () { return upsertRow(tab, body.row); });
+  else if (action === "deleteRowById" && tab && body.id !== undefined) res = withRevLock(tab, body.baseRev, false, function () { return deleteRowById(tab, body.id); });
+  else if (action === "deleteRow" && tab && body.rowIndex !== undefined) res = withRevLock(tab, body.baseRev, false, function () { return deleteRow(tab, body.rowIndex); });
+  else if (action === "updateRow" && tab && body.rowIndex !== undefined && body.row) res = withRevLock(tab, body.baseRev, false, function () { return updateRow(tab, body.rowIndex, body.row); });
   else if (action === "sendEmail")                               res = sendEmailHelper(body);
   else if (action === "getEmailInfo")                            res = getEmailInfoHelper();
   else if (action === "analyzePhoto")                            res = analyzePhotoHelper(body);
@@ -1277,6 +1404,7 @@ function readAllTabs(ctx) {
 
   result.timestamp = new Date().toISOString();
   result.sheetName = ss.getName();
+  result.revs = getAllRevs();   // per-tab revisions so the client can baseline
   return result;
 }
 
@@ -2396,6 +2524,11 @@ function tgCompleteMC(chatId, state, url, fileId) {
       location: state.clinic || (rs && rs.clinic) || "",
       status: "", startDate: "", endDate: ""
     });
+    // This write bypasses doPost/withRevLock (it's a server-side bot action), so
+    // bump the Medical revision manually — otherwise dashboards' revCheck poll
+    // would never see the change and would silently miss the bot-reported sick
+    // record until a manual full pull.
+    bumpRev("Medical");
   } catch (e) {
     Logger.log("tgCompleteMC sheet error: " + e);
   }
