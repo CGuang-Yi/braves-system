@@ -87,10 +87,17 @@ const API = {
   async pullAll() {
     const data = await this.get("readAll");
     if (data.error) throw new Error(data.error);
-    // Only replace a STATE array when the response carries rows for it — an empty
-    // array in the response must not wipe local data (matches prior behavior).
+    // Replace a STATE array whenever the response carries that key — including an
+    // EMPTY array, which means the tab was cleared/emptied on the Sheet and the
+    // local copy must reflect that. readAllTabs always emits every data-tab key
+    // (an absent/empty sheet yields []), so gating on presence (Array.isArray)
+    // rather than length is safe: a genuinely missing key (older backend) is
+    // skipped and keeps local data, but [] propagates the deletion. Without this,
+    // deleting all rows of a tab in the Sheet left stale rows stuck in the cache
+    // because a full pull skipped the empty payload. Mirrors the config/vocfit/
+    // platoons presence-gating just below.
     for (const key in PULL_ASSIGN) {
-      if (data[key]?.length) PULL_ASSIGN[key](data[key]);
+      if (Array.isArray(data[key])) PULL_ASSIGN[key](data[key]);
     }
     if (data.revs) STATE.rev = data.revs;   // baseline per-tab revisions (sheet-keyed)
     // Braves reference tabs (spec §4/§12/A6). Assigned unconditionally (not
