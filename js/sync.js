@@ -31,6 +31,7 @@ function renderSync(el) {
         <button class="btn btn-primary" onclick="doPull()" id="pull-btn" ${authed ? "" : "disabled"}>⬇ Pull from Sheet</button>
         <button class="btn btn-success write-only" onclick="doPushAll()" id="push-btn" ${authed ? "" : "disabled"}>⬆ Push All to Sheet</button>
         <button class="btn" onclick="doPing()">🏓 Test Connection</button>
+        <button class="btn btn-danger" onclick="forceResync()" ${authed ? "" : "disabled"} title="Discard this device's unsynced changes and reload from the sheet. Use if stuck on 'unsaved'.">⟳ Force Resync</button>
       </div>
       <div id="sync-log" class="sync-log card" style="padding:10px"></div>
     </div>
@@ -185,7 +186,59 @@ function syncLog(msg, color) {
   el.innerHTML = `<div style="color:${color || 'var(--muted)'}">${t} — ${escapeHTML(msg)}</div>` + el.innerHTML;
 }
 
+// ── Sync timing instrumentation ──────────────────────────
+// Times every network round-trip and keeps the last ~30 per category so you can
+// see how long syncs actually take. Each call logs "[sync] <label>: <ms>ms" to
+// the console; run syncTimingSummary() in the console for min/avg/max/last per
+// category. Categories: "revCheck" (the cheap poll), "pull" (full + partial
+// data fetches), "write" (each upsert/append/delete/replace round-trip).
+const _now = () => (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+const _syncTimings = { revCheck: [], pull: [], write: [] };
+async function timed(category, label, fn, alsoSyncLog) {
+  const t0 = _now();
+  try {
+    return await fn();
+  } finally {
+    const ms = Math.round(_now() - t0);
+    const buf = _syncTimings[category] || (_syncTimings[category] = []);
+    buf.push(ms);
+    if (buf.length > 30) buf.shift();
+    console.log(`[sync] ${label}: ${ms}ms`);
+    if (alsoSyncLog) syncLog(`${label}: ${ms}ms`, "var(--dim)");
+  }
+}
+// Console helper: print a per-category summary of recent sync durations.
+function syncTimingSummary() {
+  const out = {};
+  for (const cat in _syncTimings) {
+    const a = _syncTimings[cat];
+    if (!a.length) { out[cat] = "(no samples)"; continue; }
+    const sum = a.reduce((s, x) => s + x, 0);
+    out[cat] = { samples: a.length, last: a[a.length - 1] + "ms", avg: Math.round(sum / a.length) + "ms", min: Math.min(...a) + "ms", max: Math.max(...a) + "ms" };
+  }
+  console.table(out);
+  return out;
+}
+
+// The always-visible topbar pill (#sync-status). kind ∈ ok | syncing | error.
+// `onTap` makes it a tap-to-retry button (used for the unsaved/error state).
+function updateSyncPill(kind, text, onTap) {
+  const el = document.getElementById("sync-status");
+  if (!el) return;
+  el.className = kind === "error" ? "s-error" : kind === "syncing" ? "s-syncing" : "s-ok";
+  el.textContent = text;
+  el.onclick = onTap || null;
+  el.title = onTap ? "Tap to retry syncing" : "Sync status";
+}
+
 function setSyncIndicator(text, color) {
+  // Mirror to the always-visible topbar pill so push status is obvious on mobile
+  // (the sidebar indicator below is hidden behind ☰). Color encodes the state.
+  const c = String(color || "");
+  if (/red/.test(c)) updateSyncPill("error", /auth|authenticated/i.test(text) ? "⚠ Sign in" : "⚠ Sync error", retryAllDirty);
+  else if (/orange/.test(c)) updateSyncPill("syncing", "⟳ Saving…");
+  else updateSyncPill("ok", "✓ Saved");
+
   const el = document.getElementById("sync-indicator");
   if (!el) return;
   el.textContent = text;
@@ -202,6 +255,8 @@ function setSyncIndicator(text, color) {
 // auth/sync/dirty status, and makes the indicator clickable when there are
 // dirty tabs that need retrying. Called after every autoSync attempt.
 let _lastSyncedAt = null;
+let _lastCheckedAt = null;   // last time the lightweight revCheck poll ran
+let _lastSyncError = null;   // last write failure message (for the pill/banner)
 function refreshSyncIndicator() {
   const el = document.getElementById("sync-indicator");
   if (!el) return;
@@ -215,6 +270,8 @@ function refreshSyncIndicator() {
   }
   const dirtyCount = (STATE.dirty && STATE.dirty.size) || 0;
   if (dirtyCount > 0) {
+    // Loud, tappable "not saved" state — both in the sidebar and the topbar pill.
+    updateSyncPill("error", `⚠ ${dirtyCount} unsaved · Retry`, retryAllDirty);
     el.textContent = `⚠ ${dirtyCount} tab${dirtyCount === 1 ? "" : "s"} need retry · Retry now`;
     el.style.color = "var(--red)";
     el.style.cursor = "pointer";
@@ -224,10 +281,15 @@ function refreshSyncIndicator() {
     return;
   }
   const stamp = _lastSyncedAt ? new Date(_lastSyncedAt).toLocaleTimeString() : new Date().toLocaleTimeString();
-  setSyncIndicator(`● Synced ${stamp}`, "var(--green)");
+  const checked = _lastCheckedAt ? ` · checked ${new Date(_lastCheckedAt).toLocaleTimeString()}` : "";
+  setSyncIndicator(`● Synced ${stamp}${checked}`, "var(--green)");
 }
 
 // ── Dirty-tab tracking ────────────────────────────────────
+// _dirtyOps stashes the exact granular ops that FAILED to push, so a later
+// retry can replay them (each OCC-merges via resolveConflict) instead of a
+// stale full-tab replace that would force the user to redo their edit.
+const _dirtyOps = new Map();   // tabName → array of failed granular modes
 function markDirty(tabName) {
   if (!tabName) return;
   STATE.dirty = STATE.dirty || new Set();
@@ -237,6 +299,7 @@ function markDirty(tabName) {
 function clearDirty(tabName) {
   if (!STATE.dirty) return;
   STATE.dirty.delete(tabName);
+  _dirtyOps.delete(tabName);
   saveDirty();
 }
 
@@ -268,132 +331,247 @@ function scheduleViewerRevert() {
   }, 400);
 }
 
-// ── Pull/push mutex + per-tab in-flight queue ────────────
+// ── Pull/push mutex + per-tab write queue ────────────────
 // _pullInFlight blocks all writes during a launch/refresh pull so we never
-// push against STATE that's about to be wiped by an arriving pull.
-// _inFlight maps tabName → the Promise of the push currently running for
-// that tab. _coalesced[tab] = true means "another push is queued; when the
-// current finishes, fire one more pushTab(latest STATE)" — coalescing
-// rapid-fire edits into one follow-up push.
+// push against STATE that's about to be replaced by an arriving pull.
+// Writes are queued PER TAB and dispatched one at a time as GRANULAR ops
+// (upsert/append/delete) — never collapsed into a full-tab replace, so a
+// burst of edits can't overwrite rows another device added meanwhile.
 let _pullInFlight = false;
-const _inFlight = new Map();
-const _coalesced = new Map();
 let _activePushCount = 0;
-// Awaitable promise that resolves when the current pull finishes. enqueueWrite
-// awaits this before starting so writes never operate on stale STATE.
+// Awaitable promise that resolves when the current pull finishes. The queue
+// awaits this before dispatching so writes never operate on stale STATE.
 let _pullPromise = Promise.resolve();
 function setPullInFlight(promise) {
   _pullInFlight = true;
   _pullPromise = Promise.resolve(promise).finally(() => { _pullInFlight = false; refreshSyncIndicator(); });
 }
 
-async function enqueueWrite(tabName, runner) {
-  // Wait for any in-flight pull to land — we never want to push stale STATE.
-  if (_pullInFlight) {
-    try { await _pullPromise; } catch (e) { /* pull failure handled elsewhere */ }
+const _writeQueue = new Map();    // tabName → array of pending modes
+const _draining = new Map();      // tabName → promise of the active drain loop
+
+// Single chokepoint for every write. Enqueues the op for its tab and starts a
+// drain loop if one isn't already running. mode dispatches to the right
+// primitive (see dispatchWrite). Returns the drain promise.
+//
+// Read-only guard (viewers): block BEFORE enqueueing so no dirty marker is ever
+// set. A dirty tab is the ONLY thing that later prompts a commander to push
+// (launch restore prompt / sidebar retry) — refusing to mark dirty is what
+// prevents a viewer's phantom edit from being accidentally approved. We scrub
+// any stale marker and schedule a silent re-pull to discard the optimistic
+// local edit the form already applied.
+function autoSync(tabName, mode) {
+  if (typeof canWrite === "function" && !canWrite()) {
+    clearDirty(tabName);
+    notifyReadOnly();
+    scheduleViewerRevert();
+    return Promise.resolve({ ok: false, readOnly: true });
   }
-  // Coalesce: if a push is already running for this tab, mark "needs another"
-  // and piggy-back on the existing promise. At flush time we re-fire with
-  // the LATEST STATE — never a captured snapshot — so the final push always
-  // reflects the user's current edits.
-  if (_inFlight.has(tabName)) {
-    _coalesced.set(tabName, true);
-    return _inFlight.get(tabName);
-  }
-  _activePushCount++;
-  refreshSyncIndicator();
-  const p = (async () => {
-    try {
-      await runner();
-      clearDirty(tabName);
-    } catch (e) {
-      markDirty(tabName);
-      syncLog(`Auto-push ${tabName} failed: ${e.message || e}`, "var(--red)");
-    } finally {
-      _inFlight.delete(tabName);
-      _activePushCount = Math.max(0, _activePushCount - 1);
-      _lastSyncedAt = Date.now();
-      refreshSyncIndicator();
-      // Flush coalesced — re-push current STATE for this tab. Uses replace
-      // because we can't recover the granular ops that were coalesced;
-      // pushTab guarantees the final state matches local STATE.
-      if (_coalesced.get(tabName)) {
-        _coalesced.delete(tabName);
-        const arrKey = TAB_TO_STATE[tabName];
-        if (arrKey && STATE[arrKey] != null) {
-          autoSync(tabName, { type: "replace", data: STATE[arrKey] });
-        }
-      }
-    }
-  })();
-  _inFlight.set(tabName, p);
+  if (!_writeQueue.has(tabName)) _writeQueue.set(tabName, []);
+  _writeQueue.get(tabName).push(mode);
+  if (_draining.has(tabName)) return _draining.get(tabName);
+  const p = drainTab(tabName);
+  _draining.set(tabName, p);
   return p;
 }
 
-// Single chokepoint for every write. mode dispatches to the right primitive:
+async function drainTab(tabName) {
+  _activePushCount++;
+  refreshSyncIndicator();
+  try {
+    // Never push against STATE that an in-flight pull is about to replace.
+    if (_pullInFlight) { try { await _pullPromise; } catch (e) { /* handled elsewhere */ } }
+    const q = _writeQueue.get(tabName);
+    while (q && q.length) {
+      const mode = q.shift();
+      try {
+        await runWrite(tabName, mode);
+        clearDirty(tabName);
+      } catch (e) {
+        markDirty(tabName);
+        _lastSyncError = (e && e.message) || String(e);   // surfaced in the pill/banner
+        // Stash the failed granular op so retryAllDirty can replay it (and
+        // OCC-merge) rather than a stale full replace. Replace failures aren't
+        // stashed — they re-derive from STATE on retry.
+        if (mode.type !== "replace") {
+          if (!_dirtyOps.has(tabName)) _dirtyOps.set(tabName, []);
+          _dirtyOps.get(tabName).push(mode);
+        }
+        syncLog(`Auto-push ${tabName} failed: ${e.message || e}`, "var(--red)");
+      }
+    }
+  } finally {
+    _draining.delete(tabName);
+    _activePushCount = Math.max(0, _activePushCount - 1);
+    _lastSyncedAt = Date.now();
+    refreshSyncIndicator();
+  }
+}
+
+// Dispatch one write to the backend. Each carries STATE.rev[tab] as baseRev
+// (added inside the API.* helpers; appendMany posts directly so it's added here).
 //   { type: "append",     row  } → API.appendRow
 //   { type: "appendMany", rows } → API.post appendMany
 //   { type: "upsert",     row  } → API.upsertRow (id-based, cross-device safe)
 //   { type: "delete",     id   } → API.deleteRowById
 //   { type: "replace",    data } → API.pushTab (full overwrite, bulk only)
-//
-// CRITICAL: the Apps Script backend returns errors as `{error: "..."}` in the
-// response body — it does NOT raise an HTTP error. API.* wrappers therefore
-// resolve with the error object instead of throwing. We MUST inspect the
-// response here and throw on `{error}`, otherwise enqueueWrite's try/catch
-// treats it as success and clears the dirty marker — silent data loss.
-async function autoSync(tabName, mode) {
-  // ── Read-only guard (viewers) ─────────────────────────
-  // Block BEFORE enqueueWrite so no dirty marker is ever set. A dirty tab is the
-  // ONLY thing that later prompts a commander to push (launch restore prompt /
-  // sidebar retry) — so refusing to mark dirty is what prevents a viewer's
-  // phantom edit from being accidentally approved. We also scrub any stale marker
-  // for this tab and schedule a silent re-pull to discard the optimistic local
-  // edit the form already applied, so phantom data doesn't linger in the UI/cache.
-  if (typeof canWrite === "function" && !canWrite()) {
-    clearDirty(tabName);
-    notifyReadOnly();
-    scheduleViewerRevert();
-    return { ok: false, readOnly: true };
-  }
-  return enqueueWrite(tabName, async () => {
-    if (!STATE.authToken) throw new Error("Not authenticated");
-    let res;
-    if (mode.type === "append")          res = await API.appendRow(tabName, mode.row);
-    else if (mode.type === "appendMany") res = await API.post({ action: "appendMany", tab: tabName, rows: mode.rows });
-    else if (mode.type === "upsert")     res = await API.upsertRow(tabName, mode.row);
-    else if (mode.type === "delete")     res = await API.deleteRowById(tabName, mode.id);
-    else if (mode.type === "replace")    res = await API.pushTab(tabName, mode.data);
-    else throw new Error(`Unknown autoSync mode: ${mode.type}`);
-    if (res && res.error) throw new Error(res.error);
-    return res;
-  });
+function dispatchWrite(tabName, mode) {
+  if (!STATE.authToken) return Promise.reject(new Error("Not authenticated"));
+  if (mode.type === "append")      return API.appendRow(tabName, mode.row);
+  if (mode.type === "appendMany")  return API.post({ action: "appendMany", tab: tabName, rows: mode.rows, baseRev: STATE.rev[tabName] });
+  if (mode.type === "upsert")      return API.upsertRow(tabName, mode.row);
+  if (mode.type === "delete")      return API.deleteRowById(tabName, mode.id);
+  if (mode.type === "replace")     return API.pushTab(tabName, mode.data);
+  return Promise.reject(new Error(`Unknown autoSync mode: ${mode.type}`));
 }
 
-// Retry every dirty tab via a full pushTab. Used by the sidebar warning
-// click and by the launch-time dirty-restore prompt.
+// Runs one write, handling the server's optimistic-concurrency response.
+// The backend returns errors AND conflicts in the BODY (not as HTTP errors),
+// so we must inspect the response here:
+//   { conflict:true } → our baseRev was stale (someone else wrote) → resolve.
+//   { error }         → real failure; throw so the tab is marked dirty.
+//   { rev }           → success; advance our baseline for this tab.
+async function runWrite(tabName, mode) {
+  let res = await timed("write", `write ${tabName} (${mode.type})`, () => dispatchWrite(tabName, mode));
+  // A stale write is rejected with { conflict }. Resolve by pulling fresh,
+  // re-applying this edit, and retrying. Bounded loop (not a single retry) so a
+  // BUSY tab whose revision keeps moving while we resolve still settles in-line
+  // instead of bouncing to the dirty "needs retry" list. replace returns a
+  // non-conflict result, so it never loops.
+  let attempts = 0;
+  while (res && res.conflict && attempts < 6) {
+    attempts++;
+    res = await resolveConflict(tabName, mode, res.serverRev);
+  }
+  if (res && res.conflict) throw new Error("Still out of date after refresh — will retry");
+  if (res && res.error) throw new Error(res.error);
+  if (res && res.rev != null) { STATE.rev[tabName] = res.rev; saveLocal(); }
+  return res;
+}
+
+// Recover from a stale-write rejection WITHOUT clobbering newer data.
+//  • Granular (upsert/append/appendMany/delete): pull the tab fresh, re-apply
+//    this edit on top of the latest rows, retry the push once (baseRev now
+//    matches) → the user's change lands alongside everyone else's.
+//  • replace (full re-push): never auto-clobber. Pull fresh and surface a
+//    banner asking the user to redo their bulk change on the refreshed data.
+async function resolveConflict(tabName, mode, serverRev) {
+  const arrKey = TAB_TO_STATE[tabName];
+  if (mode.type === "replace") {
+    try { await API.pullTabs([tabName]); } catch (e) { /* keep going */ }
+    if (serverRev != null) STATE.rev[tabName] = serverRev;
+    if (typeof render === "function") render();
+    showSyncBanner(`"${tabName}" was changed on another device. Refreshed to the latest — please redo your bulk change, then Re-push.`);
+    return { ok: true, refreshed: true };   // tab now matches server; not dirty
+  }
+  try { await API.pullTabs([tabName]); }
+  catch (e) { return { conflict: true, serverRev }; }   // couldn't refresh → bubble up
+  // Belt-and-suspenders: make baseRev reflect the server even if the partial
+  // read didn't carry a rev, so the retry isn't guaranteed to re-conflict.
+  if (serverRev != null && (STATE.rev[tabName] == null || Number(STATE.rev[tabName]) < Number(serverRev))) {
+    STATE.rev[tabName] = serverRev;
+  }
+  if (arrKey && Array.isArray(STATE[arrKey])) reapplyMode(arrKey, mode);
+  saveLocal();
+  if (typeof render === "function") render();
+  return dispatchWrite(tabName, mode);                 // retry with fresh baseRev
+}
+
+// Re-apply a granular op to a freshly-pulled local array so the UI keeps the
+// user's edit (the pull just replaced STATE[arrKey] with server rows).
+function reapplyMode(arrKey, mode) {
+  const arr = STATE[arrKey];
+  if (!Array.isArray(arr)) return;
+  if (mode.type === "upsert" && mode.row) {
+    const i = arr.findIndex(r => String(r.id) === String(mode.row.id));
+    if (i >= 0) arr[i] = mode.row; else arr.push(mode.row);
+  } else if (mode.type === "delete") {
+    const i = arr.findIndex(r => String(r.id) === String(mode.id));
+    if (i >= 0) arr.splice(i, 1);
+  } else if (mode.type === "append" && mode.row) {
+    arr.push(mode.row);
+  } else if (mode.type === "appendMany" && Array.isArray(mode.rows)) {
+    arr.push(...mode.rows);
+  }
+}
+
+// Retry every dirty tab. Safe now: the server's OCC check rejects a stale
+// replace (resolveConflict refreshes + warns) instead of clobbering. Used by
+// the sidebar warning click and the launch dirty-restore prompt.
 async function retryAllDirty() {
   if (!STATE.dirty || STATE.dirty.size === 0) return;
   const tabs = [...STATE.dirty];
   for (const tab of tabs) {
-    const arrKey = TAB_TO_STATE[tab];
-    if (!arrKey || !STATE[arrKey]) continue;
-    await autoSync(tab, { type: "replace", data: STATE[arrKey] });
+    const ops = _dirtyOps.get(tab);
+    if (ops && ops.length) {
+      // Replay the exact failed granular ops — each OCC-merges on top of any
+      // newer server rows, preserving both the user's edit and others'.
+      _dirtyOps.delete(tab);
+      for (const mode of ops) await autoSync(tab, mode);
+    } else {
+      // No stashed ops (e.g. after a reload) → full replace, OCC-guarded.
+      const arrKey = TAB_TO_STATE[tab];
+      if (arrKey && STATE[arrKey]) await autoSync(tab, { type: "replace", data: STATE[arrKey] });
+    }
+  }
+  // If a tab is STILL dirty after a full retry pass, the push is genuinely
+  // failing (auth expired, offline, a row the server keeps rejecting). Don't pop
+  // anything up — the topbar pill already shows the red "unsaved" state, and the
+  // Sync tab has a "Force Resync" button. The last error is logged for diagnosis.
+  if (STATE.dirty && STATE.dirty.size > 0 && _lastSyncError) {
+    syncLog(`Still unsaved (${[...STATE.dirty].join(", ")}): ${_lastSyncError}`, "var(--red)");
   }
 }
 
-// Pre-write staleness check used by bulk-replace operations. Returns true
-// when it's safe to proceed (user confirmed or counts match); false to abort.
-async function confirmStaleness(tabName, localCount) {
+// Escape hatch for a device stuck showing "unsaved" that a normal retry can't
+// clear (expired session, a poison local row, or stale cached code). Discards
+// this device's unsynced local changes and reloads the authoritative sheet
+// state, returning the device to a clean, synced baseline.
+async function forceResync() {
+  if (!confirm(
+    "Discard any unsynced changes on THIS device and reload everything from the sheet?\n\n" +
+    "Use this if the device is stuck on \"unsaved\". Local edits that never reached the sheet will be lost."
+  )) return;
+  STATE.dirty = new Set();
+  _dirtyOps.clear();
+  saveDirty();
+  STATE.rev = {};                 // drop a possibly-stale baseline → full authoritative pull
+  _lastSyncError = null;
+  setSyncIndicator("● Syncing…", "var(--orange)");
   try {
-    const res = await API.rowCount(tabName);
-    if (!res || res.error) return true;  // can't check → don't block
-    const sheetCount = res.dataRows ?? 0;
-    if (sheetCount <= localCount) return true;
-    const diff = sheetCount - localCount;
+    const p = timed("pull", "pull ALL (force resync)", () => API.pullAll(), true);
+    setPullInFlight(p);
+    await p;
+    _lastSyncedAt = Date.now();
+    refreshSyncIndicator();
+    if (typeof render === "function") render();
+    syncLog("Force resync complete — device is back in sync.", "var(--green)");
+  } catch (e) {
+    if (e.name === "AuthError") {
+      setSyncIndicator("● Not authenticated", "var(--red)");
+      syncLog("Force resync failed: not authorized — this device needs to sign in again.", "var(--red)");
+    } else {
+      setSyncIndicator("● Sync failed", "var(--red)");
+      syncLog("Force resync failed: " + (e.message || e), "var(--red)");
+    }
+  }
+}
+
+// Pre-write heads-up for the manual "Re-push all" button. Rev-aware: compares
+// our last-seen revision to the server's. Returns true to proceed, false to
+// abort and pull first. (The server OCC is the real guard — even "push anyway"
+// is rejected if stale — this just warns earlier.)
+async function confirmStaleness(tabName) {
+  try {
+    const res = await API.revCheck();
+    if (!res || res.error || !res.revs) return true;     // can't check → don't block
+    const serverRev = res.revs[tabName];
+    const localRev = STATE.rev[tabName];
+    if (serverRev == null || localRev == null || Number(serverRev) === Number(localRev)) return true;
     return confirm(
-      `${tabName} sheet has ${sheetCount} rows; you have ${localCount} locally (${diff} more on the sheet).\n\n` +
-      `Pushing now will overwrite the newer rows on the sheet.\n\nPull first?  Cancel = pull first.  OK = push anyway.`
+      `"${tabName}" has changed on another device since you last synced.\n\n` +
+      `Re-pushing now will overwrite those newer changes.\n\n` +
+      `OK = push anyway.  Cancel = abort and pull first (recommended).`
     );
   } catch { return true; }
 }
@@ -423,7 +601,7 @@ async function doPull() {
   try {
     syncLog("Pulling all data...");
     document.getElementById("pull-btn").disabled = true;
-    const pullPromise = API.pullAll();
+    const pullPromise = timed("pull", "pull ALL (readAll)", () => API.pullAll(), true);
     setPullInFlight(pullPromise);
     const data = await pullPromise;
     syncLog(`Pull complete! Sheet: ${data.sheetName}`, "var(--green)");
@@ -461,7 +639,7 @@ async function pushTab(tabName, data) {
   // dirty-tracking, and serialization queue all stay consistent with the
   // automatic write path.
   const localCount = Array.isArray(data) ? data.length : 0;
-  const proceed = await confirmStaleness(tabName, localCount);
+  const proceed = await confirmStaleness(tabName);
   if (!proceed) {
     syncLog(`${tabName}: push cancelled — pull first to see latest rows`, "var(--orange)");
     return;
@@ -473,6 +651,172 @@ async function pushTab(tabName, data) {
   } catch (e) { syncLog(`${tabName}: ${e.message}`, "var(--red)"); }
 }
 
+// ── Auto-refresh: poll the cheap revCheck endpoint, pull only changed tabs ──
+// Keeps every open tab fresh so a stale tab can't sit on hours-old data. The
+// poll is a tiny payload (per-tab revisions only); we full-fetch nothing unless
+// a tab's server revision is ahead of ours, then pull ONLY those tabs.
+const AUTO_REFRESH_MS = 20000;        // ~20s while visible (user-chosen cadence)
+const AUTO_REFRESH_MIN_GAP_MS = 8000; // debounce: ignore checks closer than this
+let _autoRefreshTimer = null;
+let _autoRefreshing = false;
+let _autoRefreshInited = false;       // wire the listeners/timer only once
+
+function isModalOpen() {
+  const o = document.getElementById("modal-overlay");
+  return !!o && !o.classList.contains("hidden");
+}
+
+async function autoRefreshTick(reason) {
+  if (!STATE.authToken) return;
+  if (_autoRefreshing) return;
+  // Never race a write or an in-flight pull.
+  if (_pullInFlight || _activePushCount > 0) return;
+  // Debounce focus+visibility+online firing together.
+  if (_lastCheckedAt && (Date.now() - _lastCheckedAt) < AUTO_REFRESH_MIN_GAP_MS && reason !== "interval") return;
+  _autoRefreshing = true;
+  try {
+    const res = await timed("revCheck", "revCheck", () => API.revCheck());
+    if (!res || res.error || !res.revs) return;
+    _lastCheckedAt = Date.now();
+    refreshSyncIndicator();
+
+    // Which sheet tabs have a server revision ahead of ours?
+    const changed = Object.keys(res.revs).filter(sheet =>
+      Number(res.revs[sheet]) > Number(STATE.rev[sheet] || 0)
+    );
+    if (changed.length === 0) return;
+
+    const dirty = STATE.dirty || new Set();
+    const dirtyChanged = changed.filter(t => dirty.has(t));
+    const safeChanged = changed.filter(t => !dirty.has(t));
+
+    // A tab with unsynced local edits that ALSO changed elsewhere — never pull
+    // over it. Offer "Sync now" which pushes the edits; the server OCC-merges
+    // them with the newer rows (no data lost on either side).
+    if (dirtyChanged.length) {
+      showDirtyConflictBanner(dirtyChanged);
+      // Other changed tabs (no local edits) are still safe to refresh quietly,
+      // as long as no form is open.
+      if (safeChanged.length && !isModalOpen()) await applyAutoPull(safeChanged);
+      return;
+    }
+    // No dirty collisions. If a form is open, don't re-render under it — banner.
+    if (isModalOpen()) {
+      if (safeChanged.length) showNewerDataBanner(safeChanged);
+      return;
+    }
+    await applyAutoPull(safeChanged);
+  } catch (e) {
+    if (e.name === "AuthError") setSyncIndicator("● Not authenticated", "var(--red)");
+  } finally {
+    _autoRefreshing = false;
+  }
+}
+
+// Pull the given sheet tabs, advance revs, re-render, flash a confirmation.
+async function applyAutoPull(sheetNames) {
+  if (!sheetNames || !sheetNames.length) return;
+  const pullPromise = timed("pull", `pull ${sheetNames.join(",")}`, () => API.pullTabs(sheetNames), true);
+  setPullInFlight(pullPromise);
+  try { await pullPromise; } catch (e) { return; }
+  _lastSyncedAt = Date.now();
+  refreshSyncIndicator();
+  if (typeof render === "function") render();
+  flashUpdatedIndicator();
+}
+
+function flashUpdatedIndicator() {
+  setSyncIndicator("● Updated just now", "var(--green)");
+  setTimeout(() => refreshSyncIndicator(), 3000);
+}
+
+// ── Non-destructive "newer data available" banner ───────────
+let _bannerPendingTabs = null;
+function ensureBannerEl() {
+  let el = document.getElementById("sync-banner");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "sync-banner";
+  el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:9999;display:none;" +
+    "align-items:center;gap:12px;background:var(--surface,#1c2128);color:var(--text,#e6edf3);" +
+    "border:1px solid var(--accent,#58A6FF);border-radius:8px;padding:10px 14px;font-size:13px;" +
+    "box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:92vw";
+  document.body.appendChild(el);
+  return el;
+}
+
+// Generic banner: message + optional action button + dismiss. Used for both
+// "newer data — refresh" and the bulk-replace "redo your change" notice.
+function showSyncBanner(message, actionLabel, onAction) {
+  const el = ensureBannerEl();
+  el.innerHTML = "";
+  const msg = document.createElement("span");
+  msg.textContent = message;
+  el.appendChild(msg);
+  if (actionLabel) {
+    const act = document.createElement("button");
+    act.className = "btn btn-primary";
+    act.style.cssText = "font-size:12px;padding:4px 10px";
+    act.textContent = actionLabel;
+    act.onclick = () => { hideSyncBanner(); if (onAction) onAction(); };
+    el.appendChild(act);
+  }
+  const x = document.createElement("button");
+  x.className = "btn";
+  x.style.cssText = "font-size:12px;padding:4px 8px";
+  x.textContent = "✕";
+  x.onclick = hideSyncBanner;
+  el.appendChild(x);
+  el.style.display = "flex";
+}
+function hideSyncBanner() {
+  const el = document.getElementById("sync-banner");
+  if (el) el.style.display = "none";
+}
+
+// "Newer data available — Refresh". Stashes the changed tabs so the manual
+// Refresh click pulls exactly those (only once the modal is closed and the
+// edits are no longer dirty for them).
+function showNewerDataBanner(changedTabs) {
+  _bannerPendingTabs = changedTabs.slice();
+  showSyncBanner(`Newer data available (${changedTabs.join(", ")}).`, "Refresh", async () => {
+    if (isModalOpen()) { showSyncBanner("Close the open form first, then Refresh.", "Refresh", () => showNewerDataBanner(_bannerPendingTabs || changedTabs)); return; }
+    await applyAutoPull(_bannerPendingTabs || changedTabs);
+    _bannerPendingTabs = null;
+  });
+}
+
+// Banner for tabs with unsynced local edits that also changed elsewhere.
+// "Sync now" pushes the local edits — the server OCC-merges with newer rows.
+function showDirtyConflictBanner(tabs) {
+  showSyncBanner(`Unsynced edits to ${tabs.join(", ")} also changed on another device.`, "Sync now", () => retryAllDirty());
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  if (document.visibilityState === "visible") {
+    _autoRefreshTimer = setInterval(() => autoRefreshTick("interval"), AUTO_REFRESH_MS);
+  }
+}
+function stopAutoRefresh() {
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
+}
+
+// Wire timer + events. Backgrounded tabs make ZERO calls (timer stopped on
+// hide); returning to a tab fires an immediate check so a stale tab self-heals.
+// Guarded so the post-login + bootstrap paths don't double-register listeners.
+function initAutoRefresh() {
+  if (_autoRefreshInited) { startAutoRefresh(); return; }
+  _autoRefreshInited = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { autoRefreshTick("visible"); startAutoRefresh(); }
+    else stopAutoRefresh();
+  });
+  window.addEventListener("focus", () => autoRefreshTick("focus"));
+  window.addEventListener("online", () => autoRefreshTick("online"));
+  startAutoRefresh();
+}
+
 async function autoSyncOnLaunch() {
   if (!STATE.authToken) {
     setSyncIndicator("● Not authenticated", "var(--red)");
@@ -480,12 +824,34 @@ async function autoSyncOnLaunch() {
   }
   setSyncIndicator("● Syncing…", "var(--orange)");
   try {
-    const pullPromise = API.pullAll();
+    // INCREMENTAL launch sync: if we have a revision baseline from the cache,
+    // do a cheap revCheck and pull ONLY changed tabs (in parallel) instead of a
+    // full readAll. Falls back to a full pull when there's no baseline (first
+    // run / old cache) or the backend lacks revCheck.
+    const hasBaseline = STATE.rev && Object.keys(STATE.rev).length > 0;
+    if (hasBaseline) {
+      const res = await timed("revCheck", "revCheck (launch)", () => API.revCheck());
+      _lastCheckedAt = Date.now();
+      if (res && !res.error && res.revs) {
+        const changed = Object.keys(res.revs).filter(s => Number(res.revs[s]) > Number(STATE.rev[s] || 0));
+        if (changed.length) {
+          await applyAutoPull(changed);   // parallel partial pulls + render + timing
+          syncLog(`Launch: refreshed ${changed.length} changed tab${changed.length === 1 ? "" : "s"} (${changed.join(", ")})`, "var(--green)");
+        } else {
+          _lastSyncedAt = Date.now();
+          refreshSyncIndicator();
+          syncLog("Launch: already up to date ✓", "var(--green)");
+        }
+        return;
+      }
+      // else: revCheck unsupported/failed → fall through to a full pull.
+    }
+    const pullPromise = timed("pull", "pull ALL (launch)", () => API.pullAll(), true);
     setPullInFlight(pullPromise);
     const data = await pullPromise;
     _lastSyncedAt = Date.now();
     refreshSyncIndicator();
-    syncLog(`Auto-sync on launch: pulled from ${data.sheetName}`, "var(--green)");
+    syncLog(`Auto-sync on launch: full pull from ${data.sheetName}`, "var(--green)");
     render();
   } catch (e) {
     if (e.name === "AuthError") {

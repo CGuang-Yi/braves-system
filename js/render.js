@@ -1793,6 +1793,7 @@ function renderConducts(el) {
       <h2 style="font-size:18px;font-weight:700">Conducts Registry <span style="color:var(--muted);font-weight:400;font-size:13px">${rows.length} entries · ${totalUsage} record${totalUsage === 1 ? "" : "s"}</span></h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${needsConductMigration() ? `<button class="btn" onclick="maybeRunConductMigration()" title="Open the legacy-data migration modal">🔧 Migrate legacy data</button>` : ""}
+        ${duplicateConductIdGroups().length ? `<button class="btn" style="background:#F8514922;border-color:#F8514944;color:var(--red)" onclick="openFixConductIdsModal()" title="Multiple conducts share the same id — records resolve to the wrong name. Fix it.">⚠️ Fix duplicate ids (${duplicateConductIdGroups().length})</button>` : ""}
         <button class="btn btn-success" onclick="pushTab('Conducts',STATE.conducts)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="promptCreateConduct()">+ New conduct</button>
       </div>

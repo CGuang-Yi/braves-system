@@ -1,0 +1,9 @@
+{
+  "name": "braves-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "40 SAR Braves Company data system — tests for the multi-device sync layer.",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

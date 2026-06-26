@@ -21,6 +21,13 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
 #topbar{padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;gap:10px;align-items:center;position:sticky;top:0;z-index:50;flex-shrink:0}
 #topbar input{flex:1;max-width:350px;padding:7px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit;font-size:12px;outline:none}
+/* Always-visible sync pill (mirrors the sidebar #sync-indicator). States set by
+   sync.js updateSyncPill(): .s-ok green, .s-syncing amber, .s-error red+pulse. */
+#sync-status{border:1px solid var(--border);background:var(--surface2);color:var(--muted);font:inherit;font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:default;white-space:nowrap;line-height:1;flex-shrink:0}
+#sync-status.s-ok{color:var(--green);border-color:#3FB95044;background:#3FB95018}
+#sync-status.s-syncing{color:var(--orange);border-color:#D2992244;background:#D2992218}
+#sync-status.s-error{color:var(--red);border-color:#F8514466;background:#F8514922;cursor:pointer;animation:syncPillPulse 1.4s ease-in-out infinite}
+@keyframes syncPillPulse{0%,100%{opacity:1}50%{opacity:.55}}
 #topbar-filters{margin-left:auto;display:flex;gap:6px;align-items:center}
 #topbar-filters .filter-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600}
 .topbar-select{padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit;font-size:12px;outline:none;min-width:78px}
@@ -168,6 +175,8 @@ tr:hover{background:var(--surface2)}
      instead of taking up a permanent second row. */
   #topbar{flex-wrap:nowrap;padding:8px 12px;gap:8px}
   #topbar .topbar-search-icon{display:none}
+  /* Compact, still-tappable pill on phones (sidebar indicator is hidden here). */
+  #sync-status{min-height:36px;display:inline-flex;align-items:center;padding:6px 10px;font-size:11px;flex-shrink:0}
   #topbar input{flex:1 1 auto;min-width:0;max-width:none;font-size:14px;padding:10px 12px}
   #search-results{order:99;flex-basis:100%;margin-top:4px}  /* drops below row if any */
 
