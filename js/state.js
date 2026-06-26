@@ -445,9 +445,9 @@ function normalizeAttendance(rows) {
 
 function saveLocal() {
   const d = {
-    roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
+    roster: STATE.roster, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
-    conductDetail: STATE.conductDetail, appointments: STATE.appointments,
+    conductDetail: STATE.conductDetail,
     leave: STATE.leave, msk: STATE.msk, conducts: STATE.conducts,
     config: STATE.config, vocfit: STATE.vocfit, platoons: STATE.platoons
   };
@@ -463,14 +463,14 @@ function loadLocal() {
     if (!raw) return;
     const d = JSON.parse(raw);
     STATE.roster = normalizeRoster(d.roster);
-    STATE.medical = normalizeMedical(d.medical);
+    STATE.medical = d.medical ? normalizeMedical(d.medical) : [];
     STATE.attendance = normalizeAttendance(d.attendance);
     STATE.ippt = padD4OnLayer(d.ippt);
     STATE.rm = padD4OnLayer(d.rm);
     STATE.soc = padD4OnLayer(d.soc);
     STATE.polar = padD4OnLayer(d.polar);
     STATE.conductDetail = normalizeConductDetail(d.conductDetail);
-    STATE.appointments = padD4OnLayer(d.appointments);
+    STATE.appointments = d.appointments ? padD4OnLayer(d.appointments) : [];
     STATE.leave = padD4OnLayer(d.leave);
     STATE.msk = normalizeMSK(d.msk);
     STATE.conducts = Array.isArray(d.conducts) ? d.conducts : [];
