@@ -1215,7 +1215,7 @@ function bravesMigrateSchema() {
   ensureTabWithHeaders_(ss, "Roster",
     ["platoon", "section", "rankGroup", "fourD"]);
   ensureTabWithHeaders_(ss, "Medical",
-    ["location", "type", "urtiType", "mrTiming", "visitId"]);
+    ["location", "type", "urtiType", "mrTiming", "visitId", "origin"]);
   ensureTabWithHeaders_(ss, "Appointments",
     ["outOfCamp"]);
 
@@ -2982,8 +2982,17 @@ function bpGridCell(r, dateIso) {
 }
 
 // ── Strength (spec §8) ──────────────────────────────────────────────────────
+// Roster statuses that mean the person has LEFT the company — only these drop a
+// row from strength. The roster `status` field doubles as a live mirror of the
+// recruit's current MEDICAL status (submitMedical writes MC/LD/Excuse/…/custom
+// back onto the roster row), so those values must NOT exclude anyone: a recruit
+// on MC is still posted to the company and counts toward TOTAL STRENGTH; their
+// not-in-camp state for CURRENT STRENGTH is derived from the Medical/Leave layer
+// (ATT C / OTHERS), not from this field. Only genuine departures are excluded.
+var BP_DEPARTED_STATUSES = ["Discharged", "ORD", "Posted Out", "Transferred", "Withdrawn", "Inactive"];
 function bpIsActive(r) {
-  return r.status === "Active" || !r.status; // DECISIONS #33
+  var s = (r && r.status != null) ? String(r.status).trim() : "";
+  return BP_DEPARTED_STATUSES.indexOf(s) === -1; // DECISIONS #33 — blank/Active/medical-mirror all count
 }
 // people: array of in-scope roster rows. Returns totals + per-rankGroup ratios.
 function bpStrength(people, dateIso) {
@@ -3276,7 +3285,11 @@ function bravesNormalizeMedical_(rows) {
       type: r.type || "",
       urtiType: r.urtiType || "",
       mrTiming: r.mrTiming || "",
-      visitId: r.visitId || ""
+      visitId: r.visitId || "",
+      // Provenance ("conductLog" = auto-backfilled from a conduct import, surfaced
+      // as the "(from conduct log)" teal badge; "manual" = hand-entered). Must be
+      // carried through the round-trip or the badge vanishes after push + pull.
+      origin: r.origin || "manual"
     };
   });
 }
