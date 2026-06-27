@@ -685,6 +685,18 @@ function bmiColor(bmi) {
   return 'var(--red)';                          // obese
 }
 
+// Build a timestamped export filename. ISO-8601 local timestamp leads (so the
+// OS sorts exports chronologically), then an optional tab label, then the
+// "braves-export" tag. Colons are swapped for dashes so the name is filesystem-
+// safe. e.g. exportFileName("Roster", "csv") → "2026-06-27T14-30-05 Roster braves-export.csv";
+// exportFileName("", "json") → "2026-06-27T14-30-05 braves-export.json".
+function exportFileName(label, ext) {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  return `${stamp} ${label ? label + " " : ""}braves-export.${ext}`;
+}
 function exportCSV(data, filename) {
   const csv = Papa.unparse(data);
   const blob = new Blob([csv], { type: "text/csv" });
