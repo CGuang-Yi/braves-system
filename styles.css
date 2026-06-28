@@ -105,6 +105,7 @@ tr:hover{background:var(--surface2)}
 .form-group label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 .form-group input,.form-group select{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;outline:none}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-row-3{display:grid;grid-template-columns:1fr .7fr 1fr;gap:10px}
 
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -215,6 +216,7 @@ tr:hover{background:var(--surface2)}
   /* Forms */
   .form-group input,.form-group select,.form-group textarea{padding:10px 12px;font-size:14px}
   .form-row{grid-template-columns:1fr}
+  .form-row-3{grid-template-columns:1fr}
 
   /* Modal: full-screen on phones. Use 100dvh so it sizes to the visible
      viewport (not behind iOS's toolbar). Bottom padding ensures the last
