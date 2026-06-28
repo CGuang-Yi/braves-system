@@ -1353,13 +1353,13 @@ function renderMedical(el) {
   };
 
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
-        <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥 Import Sick History (xlsx)<input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
+    <div class="tab-toolbar">
+      <h2 class="tab-title" style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
+      <div class="tab-actions">
+        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻<span class="btn-label"> Re-push all</span></button>
+        <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥<span class="btn-label"> Import Sick History (xlsx)</span><input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
         ${listSearchInput("medical", "Search name / 4D…")}
-        <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Report Sick</button>
+        <button class="btn btn-primary" onclick="openMedicalForm()">+<span class="btn-label"> Log Report Sick</span></button>
       </div>
     </div>
     <div class="stats-row">

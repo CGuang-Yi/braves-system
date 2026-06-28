@@ -49,6 +49,9 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .stat .sub{font-size:10px;color:var(--muted);margin-top:1px}
 .stats-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
 
+.tab-toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tab-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 .badge-green{background:#3FB95022;color:var(--green);border:1px solid #3FB95044}
 .badge-red{background:#F8514922;color:var(--red);border:1px solid #F8514944}
@@ -217,6 +220,13 @@ tr:hover{background:var(--surface2)}
   .form-group input,.form-group select,.form-group textarea{padding:10px 12px;font-size:14px}
   .form-row{grid-template-columns:1fr}
   .form-row-3{grid-template-columns:1fr}
+
+  /* Toolbar mobile layout */
+  .tab-toolbar{gap:10px}
+  .tab-toolbar .tab-title{flex:1 1 100%}
+  .tab-actions{width:100%;flex-wrap:wrap}
+  .tab-actions .btn-label{display:none}
+  .tab-actions input{flex:1 1 140px;min-width:120px}
 
   /* Modal: full-screen on phones. Use 100dvh so it sizes to the visible
      viewport (not behind iOS's toolbar). Bottom padding ensures the last
