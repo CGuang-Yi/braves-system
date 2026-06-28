@@ -386,7 +386,7 @@ function toggleReportSickPatterns(d4) {
   // Status mix — reveals "always NIL" (malingering signal) vs real MC/LD pattern.
   const statusCounts = {};
   med.forEach(m => { const k = m.status || "—"; statusCounts[k] = (statusCounts[k] || 0) + 1; });
-  const statusOrder = ["MC", "Warded", "LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Pending", "NIL"];
+  const statusOrder = ["MC", "Warded", "LD", "RIB (Rest in Bunk)", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Camo", "Excuse Loud Noise", "Pending", "NIL"];
   const statusRows = statusOrder.filter(s => statusCounts[s]).map(s => [s, statusCounts[s]]);
   const nilPct = med.length ? Math.round((statusCounts["NIL"] || 0) / med.length * 100) : 0;
 
@@ -417,8 +417,9 @@ function toggleReportSickPatterns(d4) {
 
   const statusColor = {
     "MC": "#F85149", "Warded": "#F85149",
-    "LD": "#D29922", "RMJ": "#D29922",
+    "LD": "#D29922", "RMJ": "#D29922", "RIB (Rest in Bunk)": "#E3B341",
     "Excuse Heavy Load": "#E3B341", "Excuse Kneeling": "#E3B341", "Excuse Squatting": "#E3B341", "Excuse Uniform": "#E3B341", "Excuse RMJ": "#E3B341", "Excuse Swimming": "#E3B341", "Excuse Prolonged Standing": "#E3B341", "Excuse Upper Limb": "#E3B341", "Excuse Lower Limb": "#E3B341",
+    "Excuse FLEGS": "#E3B341", "Excuse Sunlight": "#E3B341", "Excuse Stay In": "#E3B341", "Excuse PT": "#E3B341", "Excuse Shoes": "#E3B341", "Excuse Camo": "#E3B341", "Excuse Loud Noise": "#E3B341",
     "Pending": "#8B949E", "NIL": "#39D353", "—": "#6E7681"
   };
 

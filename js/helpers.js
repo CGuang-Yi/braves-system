@@ -375,8 +375,8 @@ function deleteEntry(arrayName, id, label) {
 //   • NIL — MO seen, no status issued (recruit back to active)
 const MED_STATUS_GROUPS = [
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
-  { label: "In camp, restricted",     options: ["LD"] },
-  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"] },
+  { label: "In camp, restricted",     options: ["LD", "RIB (Rest in Bunk)"] },
+  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Camo", "Excuse Loud Noise"] },
   { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Cleared by MO",           options: ["NIL"] }
 ];
@@ -490,6 +490,7 @@ function medSeverityRank(tag) {
   if (tag === "LD") return 80;
   if (tag === "RMJ") return 70;
   if (typeof tag === "string" && tag.startsWith("Excuse")) return 60;
+  if (tag === "RIB (Rest in Bunk)") return 58;   // in-camp restricted, adjacent to Excuse, below LD
   if (tag === "MC+1") return 50;
   if (tag === "MC+2") return 40;
   if (tag === "LD+1") return 30;
@@ -562,6 +563,7 @@ function medTagBadge(tag) {
     "LD+1":             { bg: "#E3B34122", bd: "#E3B34144", fg: "var(--yellow)" },
     "LD+2":             { bg: "#E3B34111", bd: "#E3B34133", fg: "#8B7521" },
     "RMJ":              { bg: "#58A6FF22", bd: "#58A6FF44", fg: "var(--accent)" },
+    "RIB (Rest in Bunk)": { bg: "#BC8CFF22", bd: "#BC8CFF44", fg: "var(--purple)" },
     "Pending":          { bg: "#8B949E22", bd: "#8B949E44", fg: "var(--muted)" },
     "NIL":              { bg: "#3FB95022", bd: "#3FB95044", fg: "var(--green)" }
   };
