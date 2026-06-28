@@ -29,7 +29,42 @@ function daysFromStartEndInclusive(startIso, endIso) {
   return diff > 0 ? diff : 0;
 }
 
+// Average participation. visibleSet === null → company-wide using the stored
+// participating/total per conduct (exact back-compat with the old dashboard).
+// Otherwise scope by the Present 4D list (numerator) and present+out-in-scope
+// (denominator, out = a conductDetail non-participation row), skipping conducts
+// with nobody in scope. Returns { pct: 0-100 integer, conducts: included count }.
+function scopedParticipation(attendance, conductDetail, visibleSet) {
+  if (visibleSet == null) {
+    const usable = (attendance || []).filter(function(a) { return Number(a.total) > 0; });
+    if (!usable.length) return { pct: 0, conducts: 0 };
+    var sum = usable.reduce(function(acc, a) { return acc + (Number(a.participating) / Number(a.total)) * 100; }, 0);
+    return { pct: Math.round(sum / usable.length), conducts: usable.length };
+  }
+  var rows = (attendance || []).filter(function(a) { return a.source === "csv"; });
+  // Index conductDetail out-rows by conductId|date for O(1) lookup.
+  var outBy = {};
+  (conductDetail || []).forEach(function(c) {
+    var key = String(c.conductId) + "|" + String(c.date);
+    if (!outBy[key]) outBy[key] = new Set();
+    outBy[key].add(String(c.d4));
+  });
+  var total = 0, n = 0;
+  rows.forEach(function(a) {
+    var present = String(a.participants || "").split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+    var scopedPresent = present.filter(function(id) { return visibleSet.has(String(id)); });
+    var outs = outBy[String(a.conductId) + "|" + String(a.date)] || new Set();
+    var scopedOut = 0;
+    outs.forEach(function(id) { if (visibleSet.has(String(id)) && scopedPresent.indexOf(String(id)) === -1) scopedOut++; });
+    var involved = scopedPresent.length + scopedOut;
+    if (involved === 0) return;
+    total += (scopedPresent.length / involved) * 100;
+    n++;
+  });
+  return { pct: n ? Math.round(total / n) : 0, conducts: n };
+}
+
 // Node test export (browser ignores `module`); see js/calc.js consumers below.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive };
+  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation };
 }

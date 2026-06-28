@@ -212,7 +212,9 @@ function renderDashboard(el) {
   // recruit counts as away if *any* of their active statuses is MC/Warded.
   const awayFromCamp = liveRows.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
   const inCamp = scoped.length - awayFromCamp;
-  const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a, c) => a + (c.participating / c.total * 100), 0) / STATE.attendance.length) : 0;
+  const _partVisible = (typeof filterVisibleSet === "function") ? filterVisibleSet() : null;
+  const _part = scopedParticipation(STATE.attendance, STATE.conductDetail, _partVisible);
+  const avgPart = _part.pct;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — Attendance figures remain company-wide.</div>` : "";
 
   // Braves §16 additions, computed via the §8 classifier (braves-parade.js,
@@ -269,7 +271,7 @@ function renderDashboard(el) {
       <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}${inlineBreakdown(recLive.length, cmdLive.length)}</div></div>
       <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}${inlineBreakdown(recInCamp, cmdInCamp)}</div></div>
       <div class="stat" title="MR + Reporting Sick today — physically in camp but not available for normal activities (§16)"><label>Not Available</label><div class="val" style="color:var(--purple)">${notAvailable}</div></div>
-      <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
+      <div class="stat"><label>Avg Part.${isFilterActive() ? ` <span style="color:var(--dim);font-weight:400">(${filterLabel()})</span>` : ` <span style="color:var(--dim);font-weight:400">(Company)</span>`}</label><div class="val" style="color:var(--accent)" title="${isFilterActive() ? `Scoped to ${filterLabel()} across ${_part.conducts} conduct(s)` : "Entire company average"}">${avgPart}%</div></div>
     </div>
     <div class="card" style="padding:10px 16px;margin-top:10px">
       <h3 style="font-size:13px;color:var(--muted);margin-bottom:6px">Strength by Rank Group <span style="font-weight:400;color:var(--dim)">(current/total in scope — §16)</span></h3>
