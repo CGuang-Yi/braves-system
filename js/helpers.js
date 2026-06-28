@@ -720,10 +720,16 @@ function exportJSON(data, filename) {
 // the Status Board search pattern but generalised so several tabs can reuse it.
 const _listCtl = {};
 function listCtl(key) { return _listCtl[key] || (_listCtl[key] = { q: "", sort: "", dir: 1 }); }
+const _listRenderers = {};
+function registerListRenderer(key, fn) { _listRenderers[key] = fn; }
 function setListSearch(key, v) {
   listCtl(key).q = v;
-  render();
-  // render() rebuilds #content, so refocus the search box to keep typing smooth.
+  const partial = _listRenderers[key];
+  if (partial) {
+    partial();   // rebuild ONLY the results region — the input node is preserved,
+    return;      // so focus + the mobile keyboard's input mode survive.
+  }
+  render();      // tabs without a registered partial renderer keep the old behaviour
   const inp = document.getElementById("list-search-" + key);
   if (inp) { inp.focus(); try { inp.setSelectionRange(v.length, v.length); } catch {} }
 }
@@ -735,7 +741,7 @@ function setListSort(key, col) {
 // Search input bound to a tab key (place in the tab header).
 function listSearchInput(key, placeholder) {
   const c = listCtl(key);
-  return `<input id="list-search-${key}" value="${escapeAttr(c.q)}" oninput="setListSearch('${key}', this.value)" placeholder="${escapeAttr(placeholder || "Search name / 4D…")}" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;min-width:180px">`;
+  return `<input id="list-search-${key}" type="search" inputmode="text" enterkeyhint="search" autocomplete="off" value="${escapeAttr(c.q)}" oninput="setListSearch('${key}', this.value)" placeholder="${escapeAttr(placeholder || "Search name / 4D…")}" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;min-width:140px;flex:1 1 140px">`;
 }
 // Filter rows (each carrying d4 or id) by the active query against name + 4D.
 function listSearchFilter(key, rows) {
