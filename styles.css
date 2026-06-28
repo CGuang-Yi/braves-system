@@ -181,7 +181,7 @@ tr:hover{background:var(--surface2)}
   #topbar .topbar-search-icon{display:none}
   /* Compact, still-tappable pill on phones (sidebar indicator is hidden here). */
   #sync-status{min-height:36px;display:inline-flex;align-items:center;padding:6px 10px;font-size:11px;flex-shrink:0}
-  #topbar input{flex:1 1 auto;min-width:0;max-width:none;font-size:14px;padding:10px 12px}
+  #topbar input{flex:1 1 auto;min-width:0;max-width:none;font-size:14px;padding:10px 10px;text-overflow:ellipsis}
   #search-results{order:99;flex-basis:100%;margin-top:4px}  /* drops below row if any */
 
   /* The "Scope" toggle — shows current filter state ("All", "P1", "P1S2"). */
