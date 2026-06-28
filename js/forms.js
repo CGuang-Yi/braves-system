@@ -2315,6 +2315,10 @@ function openReportModal(type) {
         .join("")
     : "";
 
+  // Platoon filter for the RSI Personnel report — mirrors the parade scope
+  // selector pattern but defaults to "All platoons" (full company).
+  const isRSIP = type === "RSIP";
+
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -2331,6 +2335,13 @@ function openReportModal(type) {
           <label>Scope</label>
           <select id="rep-scope" onchange="regenerateReport('${type}')" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:100%">
             ${scopeOptions}
+          </select>
+        </div>` : ""}
+        ${isRSIP ? `<div class="form-group">
+          <label>Platoon</label>
+          <select id="rep-scope" onchange="regenerateReport('RSIP')" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:100%">
+            <option value="company">All platoons</option>
+            ${activePlatoons().map(p => `<option value="platoon:${escapeAttr(p.code)}">${escapeAttr(p.displayName || p.code)}</option>`).join("")}
           </select>
         </div>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
@@ -2452,7 +2463,11 @@ function regenerateReport(type) {
   if (type === "MED") text = generateMedicalStatusText(dateIso, time);
   else if (type === "MSK") text = generateMSKReportText(dateIso, time);
   else if (type === "RS") text = generateRSFormat(dateIso, time);
-  else if (type === "RSIP") text = generateRSIPersonnel(dateIso, time);
+  else if (type === "RSIP") {
+    const sc = document.getElementById("rep-scope")?.value || "company";
+    const code = sc.startsWith("platoon:") ? sc.slice("platoon:".length) : "";
+    text = generateRSIPersonnel(dateIso, time, code);
+  }
   else if (type === "CONDUCT") {
     const id = +gv("rep-conduct-id") || null;
     text = id ? buildConductChatFormat(id) : "Pick a conduct from the dropdown above.";
