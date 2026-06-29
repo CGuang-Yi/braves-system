@@ -1973,10 +1973,10 @@ function renderConductDashboard(el) {
     ${progressionHTML}
     ${hasData ? `
     <div id="cd-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card" style="margin-top:10px"><h3>Cumulative Conduct-Miss Buildup <span style="font-weight:400;color:var(--dim);font-size:11px">(running total by ${groupBy})</span></h3><canvas id="cd-cumulative" height="220"></canvas></div>
+      <div class="card" style="margin-top:10px"><h3>Cumulative Conduct-Miss Buildup <span style="font-weight:400;color:var(--dim);font-size:11px">(running total by ${groupBy})</span></h3><div class="chart-box" style="height:220px"><canvas id="cd-cumulative"></canvas></div></div>
       <div class="grid-2">
-        <div class="card"><h3>Miss Composition${seriesIds ? " by Instance" : " Over Time"}</h3><canvas id="cd-stacks" height="220"></canvas></div>
-        <div class="card"><h3>Participation${seriesIds ? " by Instance" : " Trend"}</h3><canvas id="cd-participation" height="220"></canvas></div>
+        <div class="card"><h3>Miss Composition${seriesIds ? " by Instance" : " Over Time"}</h3><div class="chart-box" style="height:220px"><canvas id="cd-stacks"></canvas></div></div>
+        <div class="card"><h3>Participation${seriesIds ? " by Instance" : " Trend"}</h3><div class="chart-box" style="height:220px"><canvas id="cd-participation"></canvas></div></div>
       </div>
     </div>
     ${deferActive ? chartGateMarkup("loadConductDashCharts()") : ""}`
