@@ -1866,15 +1866,15 @@ function renderConductDashboard(el) {
   const winDays = startIso ? daysFromStartEndInclusive(startIso, endIso) : 0; // 0 = all
 
   // Conduct classes (series): group the registry by base name. Selecting one
-  // scopes the dashboard to that class's instances (all dates, ignoring the
-  // window) and unlocks the per-recruit progression list.
+  // scopes the dashboard to that class's instances and unlocks the per-recruit
+  // progression list. The date window stays active in class mode too (pick "All"
+  // to span the whole class), so charts AND progression honour it uniformly.
   const bases = [...new Set((STATE.conducts || []).map(c => parseConductSeries(c.name).base))].filter(Boolean).sort();
   const seriesIds = _conductSeries
     ? new Set((STATE.conducts || []).filter(c => parseConductSeries(c.name).base === _conductSeries).map(c => c.id))
     : null;
   const inSeries = id => !seriesIds || seriesIds.has(id);
-  const useWin = !seriesIds;                       // window applies only in all-conducts mode
-  const keepDate = disp => useWin ? inWin(disp) : true;
+  const keepDate = disp => inWin(disp);            // window applies in all modes (incl. class mode)
 
   // Scope (topbar filter) + grouping: by section when narrowed to one platoon,
   // else by platoon.
@@ -1907,12 +1907,13 @@ function renderConductDashboard(el) {
   const numOf = id => parseConductSeries(conductName(id)).num;
   let progressionHTML = "";
   if (seriesIds) {
+    // Held instances + who attended — drawn from the windowed class attendance
+    // (attnWin), so the progression frontier/position respect the date window too.
     const presentByConduct = {};
-    (STATE.attendance || []).forEach(a => {
-      if (!seriesIds.has(a.conductId)) return;
+    attnWin.forEach(a => {
       presentByConduct[a.conductId] = new Set(String(a.participants || "").split(",").map(s => s.trim()).filter(Boolean));
     });
-    // Held = series instances that actually have an attendance row.
+    // Held = series instances with an attendance row in the window.
     const held = (STATE.conducts || [])
       .filter(c => seriesIds.has(c.id) && presentByConduct[c.id])
       .map(c => ({ conductId: c.id, num: parseConductSeries(c.name).num }));
@@ -1948,8 +1949,8 @@ function renderConductDashboard(el) {
       ${bases.map(b => { const n = (STATE.conducts || []).filter(c => parseConductSeries(c.name).base === b).length; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${n > 1 ? ` (${n})` : ""}</option>`; }).join("")}
     </select>`;
   const scopeBanner = isFilterActive()
-    ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong>${seriesIds ? ` · class <strong>${escapeHTML(_conductSeries)}</strong> (all instances)` : ""} — buildup grouped by ${groupBy}.</div>`
-    : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${seriesIds ? `Class <strong>${escapeHTML(_conductSeries)}</strong> (all instances) — ` : "Whole company — "}buildup grouped by ${groupBy}. Use the topbar filter to scope by platoon/section.</div>`;
+    ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong>${seriesIds ? ` · class <strong>${escapeHTML(_conductSeries)}</strong>` : ""} — buildup grouped by ${groupBy}.</div>`
+    : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${seriesIds ? `Class <strong>${escapeHTML(_conductSeries)}</strong> — ` : "Whole company — "}buildup grouped by ${groupBy}. Use the topbar filter to scope by platoon/section.</div>`;
   const prefHint = STATE.deferCharts === "auto" ? "auto" : STATE.deferCharts;
 
   el.innerHTML = `
@@ -1957,7 +1958,7 @@ function renderConductDashboard(el) {
       <h2 style="font-size:18px;font-weight:700">📈 Conduct Dashboard</h2>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         ${seriesSelect}
-        ${seriesIds ? "" : winBtn("30d", "30") + winBtn("90d", "90") + winBtn("All", "all")}
+        ${winBtn("30d", "30")}${winBtn("90d", "90")}${winBtn("All", "all")}
         <span style="font-size:10px;color:var(--dim);margin-left:6px">Charts: ${prefHint} ·
           <a href="#" onclick="setChartPref('${STATE.deferCharts === 'defer' ? 'eager' : 'defer'}');return false" style="color:var(--accent)">${STATE.deferCharts === "defer" ? "auto-load" : "defer"}</a></span>
       </div>
@@ -1979,7 +1980,7 @@ function renderConductDashboard(el) {
       </div>
     </div>
     ${deferActive ? chartGateMarkup("loadConductDashCharts()") : ""}`
-    : `<div class="empty-state" style="padding:24px;font-size:13px;text-align:center;color:var(--muted)">No conduct data ${seriesIds ? "for this class" : "in this window"}/scope. Log conducts in the Attendance tab${seriesIds ? "" : " or widen the date window"}.</div>`}
+    : `<div class="empty-state" style="padding:24px;font-size:13px;text-align:center;color:var(--muted)">No conduct data ${seriesIds ? `for class "${escapeHTML(_conductSeries)}"` : ""} in this window/scope. Log conducts in the Attendance tab or widen the date window.</div>`}
   `;
 
   if (!hasData) return;
