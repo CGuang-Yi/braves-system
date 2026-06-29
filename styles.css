@@ -181,8 +181,11 @@ tr:hover{background:var(--surface2)}
   #topbar .topbar-search-icon{display:none}
   /* Compact, still-tappable pill on phones (sidebar indicator is hidden here). */
   #sync-status{min-height:36px;display:inline-flex;align-items:center;padding:6px 10px;font-size:11px;flex-shrink:0}
-  #topbar input{flex:1 1 auto;min-width:0;max-width:none;font-size:14px;padding:10px 10px;text-overflow:ellipsis}
-  #search-results{order:99;flex-basis:100%;margin-top:4px}  /* drops below row if any */
+  #topbar input{flex:2 1 130px;min-width:0;max-width:none;font-size:14px;padding:10px 10px;text-overflow:ellipsis}
+  /* Empty #search-results no longer reserves ~100px on the row (flex-basis:100%
+     never wrapped under the nowrap topbar), so the search box keeps a legible
+     width; it sizes to its chips when a global search is active. */
+  #search-results{order:99;flex:0 1 auto;min-width:0;margin-top:4px}
 
   /* The "Scope" toggle — shows current filter state ("All", "P1", "P1S2"). */
   #mobile-filter-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:54px;min-height:36px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font:inherit;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:.5px;flex-shrink:0}
