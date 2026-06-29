@@ -212,8 +212,7 @@ function renderDashboard(el) {
   // recruit counts as away if *any* of their active statuses is MC/Warded.
   const awayFromCamp = liveRows.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
   const inCamp = scoped.length - awayFromCamp;
-  const _partVisible = (typeof filterVisibleSet === "function") ? filterVisibleSet() : null;
-  const _part = scopedParticipation(STATE.attendance, STATE.conductDetail, _partVisible);
+  const _part = scopedParticipation(STATE.attendance, STATE.conductDetail, visible);
   const avgPart = _part.pct;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — strength &amp; participation figures reflect this scope.</div>` : "";
 
