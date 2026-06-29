@@ -3182,19 +3182,25 @@ function generateRSFormat(dateIso, time) {
 
 // §10.2 — company-wide RSI personnel, broken by platoon. Only platoons (and HQ)
 // with ≥1 report-sick entry are shown; TOTAL = sum across them.
-function generateRSIPersonnel(dateIso, time) {
+// scopeCode: optional platoon code (e.g. "PLT1", "HQ") to restrict output to a
+// single platoon; "" or omitted → full company output (backward-compatible).
+function generateRSIPersonnel(dateIso, time, scopeCode) {
+  scopeCode = scopeCode || "";
   const reports = bpSickReports(dateIso);
   const platoonOf = d4 => {
     const r = STATE.roster.find(x => x.id == d4);
     return r ? personPlatoon(r) : "";
   };
-  // Group by platoon code.
+  const scoped = scopeCode ? reports.filter(m => platoonOf(m.d4) === scopeCode) : reports;
   const byPlt = {};
-  reports.forEach(m => { (byPlt[platoonOf(m.d4)] = byPlt[platoonOf(m.d4)] || []).push(m); });
+  scoped.forEach(m => { (byPlt[platoonOf(m.d4)] = byPlt[platoonOf(m.d4)] || []).push(m); });
 
-  const lines = [`RSI PERSONNEL ${bpDDMMYY(dateIso)} ${bpTimeH(time)}`, `TOTAL: ${bp2(reports.length)} PAX`];
-  // Natural order: platoons numeric, HQ last (activePlatoons order); only those
-  // with entries. Any code not in activePlatoons (e.g. blank) appended at the end.
+  const scopeTag = scopeCode
+    ? (scopeCode === "HQ" ? (configGet("hqLabel") || "HQ") : `PLATOON ${String(scopeCode).replace(/^PLT/i, "")}`)
+    : "";
+  const header = scopeCode ? `RSI PERSONNEL ${bpDDMMYY(dateIso)} ${bpTimeH(time)} — ${scopeTag}` : `RSI PERSONNEL ${bpDDMMYY(dateIso)} ${bpTimeH(time)}`;
+  const lines = [header, `TOTAL: ${bp2(scoped.length)} PAX`];
+
   const known = activePlatoons().map(p => p.code);
   const codes = Object.keys(byPlt);
   const ordered = known.filter(c => byPlt[c]).concat(codes.filter(c => !known.includes(c)));

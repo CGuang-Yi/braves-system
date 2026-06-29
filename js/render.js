@@ -212,8 +212,9 @@ function renderDashboard(el) {
   // recruit counts as away if *any* of their active statuses is MC/Warded.
   const awayFromCamp = liveRows.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
   const inCamp = scoped.length - awayFromCamp;
-  const avgPart = STATE.attendance.length ? Math.round(STATE.attendance.reduce((a, c) => a + (c.participating / c.total * 100), 0) / STATE.attendance.length) : 0;
-  const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — Attendance figures remain company-wide.</div>` : "";
+  const _part = scopedParticipation(STATE.attendance, STATE.conductDetail, visible);
+  const avgPart = _part.pct;
+  const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — strength &amp; participation figures reflect this scope.</div>` : "";
 
   // Braves §16 additions, computed via the §8 classifier (braves-parade.js,
   // loaded after render.js — resolved at this runtime call). "Not Available
@@ -269,7 +270,7 @@ function renderDashboard(el) {
       <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}${inlineBreakdown(recLive.length, cmdLive.length)}</div></div>
       <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}${inlineBreakdown(recInCamp, cmdInCamp)}</div></div>
       <div class="stat" title="MR + Reporting Sick today — physically in camp but not available for normal activities (§16)"><label>Not Available</label><div class="val" style="color:var(--purple)">${notAvailable}</div></div>
-      <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)">${avgPart}%</div></div>
+      <div class="stat"><label>Avg Part.${isFilterActive() ? ` <span style="color:var(--dim);font-weight:400">(${filterLabel()})</span>` : ` <span style="color:var(--dim);font-weight:400">(Company)</span>`}</label><div class="val" style="color:var(--accent)" title="${isFilterActive() ? `Scoped to ${filterLabel()} across ${_part.conducts} conduct(s)` : "Entire company average"}">${avgPart}%</div></div>
     </div>
     <div class="card" style="padding:10px 16px;margin-top:10px">
       <h3 style="font-size:13px;color:var(--muted);margin-bottom:6px">Strength by Rank Group <span style="font-weight:400;color:var(--dim)">(current/total in scope — §16)</span></h3>
@@ -1293,17 +1294,6 @@ function renderMedical(el) {
     const bi = displayDateToISO(b.m.startDate || b.m.date) || "";
     return ai < bi ? 1 : ai > bi ? -1 : 0;
   });
-  // D1: name/4D search + optional column sort (default stays newest-first).
-  const _medQ = listCtl("medical").q.trim().toLowerCase();
-  let medRows = _medQ
-    ? rowsWithTag.filter(({ m }) => { const nm = (getName(m.d4) || "").toLowerCase(); return nm.includes(_medQ) || String(m.d4).toLowerCase().includes(_medQ); })
-    : rowsWithTag;
-  medRows = listApplySort("medical", medRows, {
-    reported: x => displayDateToISO(x.m.startDate || x.m.date) || "",
-    fourD: x => x.m.d4 || "",
-    name: x => getName(x.m.d4) || "",
-    status: x => x.m.status || ""
-  });
   const activeCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0).length;
   const ghostCount = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay > 0).length;
   const pendingCount = scoped.filter(m => m.status === "Pending").length;
@@ -1316,7 +1306,6 @@ function renderMedical(el) {
     rec: scoped.filter(m => pred(m) && !isCommander(m.d4)).length,
     cmd: scoped.filter(m => pred(m) && isCommander(m.d4)).length
   });
-  const totalSplit = splitC(() => true);
   const activeSplit = (() => {
     const rec = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0 && !isCommander(r.m.d4)).length;
     const cmd = rowsWithTag.filter(r => r.tagInfo && r.tagInfo.ghostDay === 0 && isCommander(r.m.d4)).length;
@@ -1332,18 +1321,6 @@ function renderMedical(el) {
     ? `<span style="font-size:55%;color:var(--muted);font-weight:400;margin-left:1px">/${rec}/${cmd}</span>`
     : "";
 
-  // Leaderboard: count UNIQUE report-sick days per recruit within the scope.
-  // A recruit can have several medical rows on the same date (one auto-created
-  // by the wizard's Report Sick, another manually entered for the same illness,
-  // or multiple statuses received for the same incident — e.g. "1D MC + 2D LD").
-  // The leaderboard cares about "how often does this person go to MO", so
-  // collapse those to one event per (d4, date).
-  const rsDaySets = {};
-  scoped.forEach(m => { (rsDaySets[m.d4] = rsDaySets[m.d4] || new Set()).add(m.date); });
-  const topReporters = Object.entries(rsDaySets)
-    .map(([d4, days]) => ({ d4, count: days.size }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
   // Total unique (d4, date) pairs across the whole scope — drives the
   // "Total report sicks" tile so it matches the leaderboard semantics.
   const totalReportSickDays = new Set(scoped.map(m => `${m.d4}|${m.date}`)).size;
@@ -1353,13 +1330,13 @@ function renderMedical(el) {
   };
 
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
-        <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥 Import Sick History (xlsx)<input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
+    <div class="tab-toolbar">
+      <h2 class="tab-title" style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
+      <div class="tab-actions">
+        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻<span class="btn-label"> Re-push all</span></button>
+        <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥<span class="btn-label"> Import Sick History (xlsx)</span><input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
         ${listSearchInput("medical", "Search name / 4D…")}
-        <button class="btn btn-primary" onclick="openMedicalForm()">+ Log Report Sick</button>
+        <button class="btn btn-primary" onclick="openMedicalForm()">+<span class="btn-label"> Log Report Sick</span></button>
       </div>
     </div>
     <div class="stats-row">
@@ -1368,6 +1345,40 @@ function renderMedical(el) {
       <div class="stat"><label>Recovering</label><div class="val" style="color:var(--orange)">${ghostCount}${inlineBreakdown(recoveringSplit)}</div></div>
       <div class="stat"><label>Pending</label><div class="val" style="color:var(--muted)">${pendingCount}${inlineBreakdown(pendingSplit)}</div></div>
     </div>
+    <div id="med-results"></div>`;
+  registerListRenderer("medical", renderMedicalRows);
+  renderMedicalRows();
+}
+function renderMedicalRows() {
+  const host = document.getElementById("med-results");
+  if (!host) return;
+  const visible = visibleD4Set();
+  const scoped = STATE.medical.filter(m => passesFilter(m.d4, visible));
+  const today = todayISO();
+  const rowsWithTag = scoped.map(m => ({ m, tagInfo: medStatusTag(m, today) }));
+  rowsWithTag.sort((a, b) => {
+    const ai = displayDateToISO(a.m.startDate || a.m.date) || "";
+    const bi = displayDateToISO(b.m.startDate || b.m.date) || "";
+    return ai < bi ? 1 : ai > bi ? -1 : 0;
+  });
+  const _medQ = listCtl("medical").q.trim().toLowerCase();
+  let medRows = _medQ
+    ? rowsWithTag.filter(({ m }) => { const nm = (getName(m.d4) || "").toLowerCase(); return nm.includes(_medQ) || String(m.d4).toLowerCase().includes(_medQ); })
+    : rowsWithTag;
+  medRows = listApplySort("medical", medRows, {
+    reported: x => displayDateToISO(x.m.startDate || x.m.date) || "",
+    fourD: x => x.m.d4 || "",
+    name: x => getName(x.m.d4) || "",
+    status: x => x.m.status || ""
+  });
+  // Leaderboard: count UNIQUE report-sick days per recruit within the scope.
+  const rsDaySets = {};
+  scoped.forEach(m => { (rsDaySets[m.d4] = rsDaySets[m.d4] || new Set()).add(m.date); });
+  const topReporters = Object.entries(rsDaySets)
+    .map(([d4, days]) => ({ d4, count: days.size }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  host.innerHTML = `
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${medRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("medical", "reported", "Reported")}${sortTh("medical", "fourD", "4D")}${sortTh("medical", "name", "Name", "left")}<th style="text-align:left">Reason</th>${sortTh("medical", "status", "Status")}<th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>

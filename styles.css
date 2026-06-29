@@ -49,6 +49,9 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .stat .sub{font-size:10px;color:var(--muted);margin-top:1px}
 .stats-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
 
+.tab-toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tab-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 .badge-green{background:#3FB95022;color:var(--green);border:1px solid #3FB95044}
 .badge-red{background:#F8514922;color:var(--red);border:1px solid #F8514944}
@@ -105,6 +108,7 @@ tr:hover{background:var(--surface2)}
 .form-group label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 .form-group input,.form-group select{padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;outline:none}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-row-3{display:grid;grid-template-columns:1fr .7fr 1fr;gap:10px}
 
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -177,8 +181,11 @@ tr:hover{background:var(--surface2)}
   #topbar .topbar-search-icon{display:none}
   /* Compact, still-tappable pill on phones (sidebar indicator is hidden here). */
   #sync-status{min-height:36px;display:inline-flex;align-items:center;padding:6px 10px;font-size:11px;flex-shrink:0}
-  #topbar input{flex:1 1 auto;min-width:0;max-width:none;font-size:14px;padding:10px 12px}
-  #search-results{order:99;flex-basis:100%;margin-top:4px}  /* drops below row if any */
+  #topbar input{flex:2 1 130px;min-width:0;max-width:none;font-size:14px;padding:10px 10px;text-overflow:ellipsis}
+  /* Empty #search-results no longer reserves ~100px on the row (flex-basis:100%
+     never wrapped under the nowrap topbar), so the search box keeps a legible
+     width; it sizes to its chips when a global search is active. */
+  #search-results{order:99;flex:0 1 auto;min-width:0;margin-top:4px}
 
   /* The "Scope" toggle — shows current filter state ("All", "P1", "P1S2"). */
   #mobile-filter-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:54px;min-height:36px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font:inherit;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:.5px;flex-shrink:0}
@@ -215,6 +222,14 @@ tr:hover{background:var(--surface2)}
   /* Forms */
   .form-group input,.form-group select,.form-group textarea{padding:10px 12px;font-size:14px}
   .form-row{grid-template-columns:1fr}
+  .form-row-3{grid-template-columns:1fr}
+
+  /* Toolbar mobile layout */
+  .tab-toolbar{gap:10px}
+  .tab-toolbar .tab-title{flex:1 1 100%}
+  .tab-actions{width:100%;flex-wrap:wrap}
+  .tab-actions .btn-label{display:none}
+  .tab-actions input{flex:1 1 140px;min-width:120px}
 
   /* Modal: full-screen on phones. Use 100dvh so it sizes to the visible
      viewport (not behind iOS's toolbar). Bottom padding ensures the last

@@ -386,7 +386,7 @@ function toggleReportSickPatterns(d4) {
   // Status mix — reveals "always NIL" (malingering signal) vs real MC/LD pattern.
   const statusCounts = {};
   med.forEach(m => { const k = m.status || "—"; statusCounts[k] = (statusCounts[k] || 0) + 1; });
-  const statusOrder = ["MC", "Warded", "LD", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Pending", "NIL"];
+  const statusOrder = ["MC", "Warded", "LD", "RIB (Rest in Bunk)", "RMJ", "Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Camo", "Excuse Loud Noise", "Pending", "NIL"];
   const statusRows = statusOrder.filter(s => statusCounts[s]).map(s => [s, statusCounts[s]]);
   const nilPct = med.length ? Math.round((statusCounts["NIL"] || 0) / med.length * 100) : 0;
 
@@ -417,8 +417,9 @@ function toggleReportSickPatterns(d4) {
 
   const statusColor = {
     "MC": "#F85149", "Warded": "#F85149",
-    "LD": "#D29922", "RMJ": "#D29922",
+    "LD": "#D29922", "RMJ": "#D29922", "RIB (Rest in Bunk)": "#E3B341",
     "Excuse Heavy Load": "#E3B341", "Excuse Kneeling": "#E3B341", "Excuse Squatting": "#E3B341", "Excuse Uniform": "#E3B341", "Excuse RMJ": "#E3B341", "Excuse Swimming": "#E3B341", "Excuse Prolonged Standing": "#E3B341", "Excuse Upper Limb": "#E3B341", "Excuse Lower Limb": "#E3B341",
+    "Excuse FLEGS": "#E3B341", "Excuse Sunlight": "#E3B341", "Excuse Stay In": "#E3B341", "Excuse PT": "#E3B341", "Excuse Shoes": "#E3B341", "Excuse Camo": "#E3B341", "Excuse Loud Noise": "#E3B341",
     "Pending": "#8B949E", "NIL": "#39D353", "—": "#6E7681"
   };
 
@@ -583,8 +584,9 @@ function addMedStatusRow(status = "", startIso = null, endIso = null) {
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" class="f-extra-custom-participates" style="width:15px;height:15px"> Still participates in conducts</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" class="f-extra-custom-save" checked style="width:15px;height:15px"> Save for reuse <span style="color:var(--dim)">(adds it to the dropdowns)</span></label>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label>Start (inclusive)</label><input type="date" class="f-extra-start" value="${escapeAttr(startIso)}" min="2020-01-01" max="2099-12-31"></div>
+    <div class="form-row form-row-3">
+      <div class="form-group"><label>Start (inclusive)</label><input type="date" class="f-extra-start" value="${escapeAttr(startIso)}" min="2020-01-01" max="2099-12-31" onchange="medExtraRecalcEnd(this)"></div>
+      <div class="form-group"><label>Days</label><input type="number" class="f-extra-days" min="1" max="365" step="1" inputmode="numeric" oninput="medExtraRecalcEnd(this)"></div>
       <div class="form-group"><label>End (inclusive)</label><input type="date" class="f-extra-end" value="${escapeAttr(endIso)}" min="2020-01-01" max="2099-12-31"></div>
     </div>`;
   host.appendChild(row);
@@ -601,6 +603,7 @@ function openMedicalForm(id) {
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
   const startVal = e ? displayDateToISO(e.startDate) || dateVal : todayISO();
   const endVal = e ? displayDateToISO(e.endDate) || "" : "";
+  const daysVal = (startVal && endVal) ? daysFromStartEndInclusive(startVal, endVal) : "";
   const selectedStatus = e?.status || "";
   _medExtraIdx = 0;
   openModal(e ? "Edit Report Sick Entry" : "Log Report Sick", `
@@ -644,9 +647,10 @@ function openMedicalForm(id) {
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer"><input type="checkbox" id="f-custom-save" checked style="width:15px;height:15px"> Save for reuse <span style="color:var(--dim)">(adds it to this dropdown)</span></label>
           <div style="font-size:10px;color:var(--muted)">Custom statuses are in-camp/restricted and don't get +1/+2 recovery tags.</div>
         </div>
-        <div class="form-row">
-          ${formField("f-start", "Start (inclusive)", "date", "", `value="${startVal}" min="2020-01-01" max="2099-12-31"`)}
-          ${formField("f-end", "End (inclusive)", "date", "", `value="${endVal}" min="2020-01-01" max="2099-12-31"`)}
+        <div class="form-row form-row-3">
+          ${formField("f-start", "Start (inclusive)", "date", "", `value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="medRecalcEndFromDays()"`)}
+          ${formField("f-days", "Days", "number", "", `min="1" max="365" step="1" inputmode="numeric" placeholder="e.g. 3" value="${daysVal}" oninput="medRecalcEndFromDays()"`)}
+          ${formField("f-end", "End (inclusive)", "date", "", `value="${endVal}" min="2020-01-01" max="2099-12-31" onchange="medSyncDaysFromEnd()"`)}
         </div>
         <div style="font-size:10px;color:var(--muted)">Start and end dates can be left blank for <strong>Pending</strong> (MO outcome unknown) and <strong>NIL</strong> (MO cleared, no status). Required for everything else.</div>
         <div id="f-extra-statuses" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -1943,6 +1947,30 @@ function recalcLeaveDays() {
   const diff = Math.round((new Date(en.value) - new Date(s.value)) / 86400000) + 1;
   if (diff > 0) d.value = diff;
 }
+// Medical form: Days → End (inclusive day-1) and End → Days, kept consistent so
+// a commander can drive the window from either side. Mirrors the Leave form's
+// recalc but uses the shared pure helper. Pending/NIL leave all three blank.
+function medRecalcEndFromDays() {
+  const s = document.getElementById("f-start"), d = document.getElementById("f-days"), e = document.getElementById("f-end");
+  if (!s || !d || !e || !s.value || !d.value) return;
+  const end = endDateFromStartAndDays(s.value, +d.value);
+  if (end) e.value = end;
+}
+function medSyncDaysFromEnd() {
+  const s = document.getElementById("f-start"), d = document.getElementById("f-days"), e = document.getElementById("f-end");
+  if (!s || !d || !e || !s.value || !e.value) return;
+  const n = daysFromStartEndInclusive(s.value, e.value);
+  if (n) d.value = n;
+}
+// Recompute one extra-status row's End from its Start + Days (inclusive day-1).
+function medExtraRecalcEnd(el) {
+  const row = el.closest(".med-extra-row");
+  if (!row) return;
+  const s = row.querySelector(".f-extra-start"), d = row.querySelector(".f-extra-days"), e = row.querySelector(".f-extra-end");
+  if (!s || !d || !e || !s.value || !d.value) return;
+  const end = endDateFromStartAndDays(s.value, +d.value);
+  if (end) e.value = end;
+}
 function submitLeave() {
   const editId = +gv("f-entry-id");
   const startIso = gv("f-start");
@@ -2287,6 +2315,10 @@ function openReportModal(type) {
         .join("")
     : "";
 
+  // Platoon filter for the RSI Personnel report — mirrors the parade scope
+  // selector pattern but defaults to "All platoons" (full company).
+  const isRSIP = type === "RSIP";
+
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -2303,6 +2335,13 @@ function openReportModal(type) {
           <label>Scope</label>
           <select id="rep-scope" onchange="regenerateReport('${type}')" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:100%">
             ${scopeOptions}
+          </select>
+        </div>` : ""}
+        ${isRSIP ? `<div class="form-group">
+          <label>Platoon</label>
+          <select id="rep-scope" onchange="regenerateReport('RSIP')" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:100%">
+            <option value="company">All platoons</option>
+            ${activePlatoons().map(p => `<option value="platoon:${escapeAttr(p.code)}">${escapeAttr(p.displayName || p.code)}</option>`).join("")}
           </select>
         </div>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
@@ -2424,7 +2463,11 @@ function regenerateReport(type) {
   if (type === "MED") text = generateMedicalStatusText(dateIso, time);
   else if (type === "MSK") text = generateMSKReportText(dateIso, time);
   else if (type === "RS") text = generateRSFormat(dateIso, time);
-  else if (type === "RSIP") text = generateRSIPersonnel(dateIso, time);
+  else if (type === "RSIP") {
+    const sc = document.getElementById("rep-scope")?.value || "company";
+    const code = sc.startsWith("platoon:") ? sc.slice("platoon:".length) : "";
+    text = generateRSIPersonnel(dateIso, time, code);
+  }
   else if (type === "CONDUCT") {
     const id = +gv("rep-conduct-id") || null;
     text = id ? buildConductChatFormat(id) : "Pick a conduct from the dropdown above.";

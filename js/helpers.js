@@ -375,8 +375,8 @@ function deleteEntry(arrayName, id, label) {
 //   • NIL — MO seen, no status issued (recruit back to active)
 const MED_STATUS_GROUPS = [
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
-  { label: "In camp, restricted",     options: ["LD"] },
-  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb"] },
+  { label: "In camp, restricted",     options: ["LD", "RIB (Rest in Bunk)"] },
+  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Camo", "Excuse Loud Noise"] },
   { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Cleared by MO",           options: ["NIL"] }
 ];
@@ -490,6 +490,7 @@ function medSeverityRank(tag) {
   if (tag === "LD") return 80;
   if (tag === "RMJ") return 70;
   if (typeof tag === "string" && tag.startsWith("Excuse")) return 60;
+  if (tag === "RIB (Rest in Bunk)") return 58;   // in-camp restricted, adjacent to Excuse, below LD
   if (tag === "MC+1") return 50;
   if (tag === "MC+2") return 40;
   if (tag === "LD+1") return 30;
@@ -562,6 +563,7 @@ function medTagBadge(tag) {
     "LD+1":             { bg: "#E3B34122", bd: "#E3B34144", fg: "var(--yellow)" },
     "LD+2":             { bg: "#E3B34111", bd: "#E3B34133", fg: "#8B7521" },
     "RMJ":              { bg: "#58A6FF22", bd: "#58A6FF44", fg: "var(--accent)" },
+    "RIB (Rest in Bunk)": { bg: "#BC8CFF22", bd: "#BC8CFF44", fg: "var(--purple)" },
     "Pending":          { bg: "#8B949E22", bd: "#8B949E44", fg: "var(--muted)" },
     "NIL":              { bg: "#3FB95022", bd: "#3FB95044", fg: "var(--green)" }
   };
@@ -718,10 +720,16 @@ function exportJSON(data, filename) {
 // the Status Board search pattern but generalised so several tabs can reuse it.
 const _listCtl = {};
 function listCtl(key) { return _listCtl[key] || (_listCtl[key] = { q: "", sort: "", dir: 1 }); }
+const _listRenderers = {};
+function registerListRenderer(key, fn) { _listRenderers[key] = fn; }
 function setListSearch(key, v) {
   listCtl(key).q = v;
-  render();
-  // render() rebuilds #content, so refocus the search box to keep typing smooth.
+  const partial = _listRenderers[key];
+  if (partial) {
+    partial();   // rebuild ONLY the results region — the input node is preserved,
+    return;      // so focus + the mobile keyboard's input mode survive.
+  }
+  render();      // tabs without a registered partial renderer keep the old behaviour
   const inp = document.getElementById("list-search-" + key);
   if (inp) { inp.focus(); try { inp.setSelectionRange(v.length, v.length); } catch {} }
 }
@@ -733,7 +741,7 @@ function setListSort(key, col) {
 // Search input bound to a tab key (place in the tab header).
 function listSearchInput(key, placeholder) {
   const c = listCtl(key);
-  return `<input id="list-search-${key}" value="${escapeAttr(c.q)}" oninput="setListSearch('${key}', this.value)" placeholder="${escapeAttr(placeholder || "Search name / 4D…")}" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;min-width:180px">`;
+  return `<input id="list-search-${key}" type="search" inputmode="text" enterkeyhint="search" autocomplete="off" value="${escapeAttr(c.q)}" oninput="setListSearch('${key}', this.value)" placeholder="${escapeAttr(placeholder || "Search name / 4D…")}" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;min-width:140px;flex:1 1 140px">`;
 }
 // Filter rows (each carrying d4 or id) by the active query against name + 4D.
 function listSearchFilter(key, rows) {
