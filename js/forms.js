@@ -1298,6 +1298,10 @@ function parseConductCSV_(rows, fileName) {
 // auto-created on commit. Papa.parse is async (callback per file), so we count
 // down and open the combined review only once every file has parsed.
 function importConductCSV(input) {
+  // Admin-only (RBAC): conduct CSV import. The UI control is .admin-only, this
+  // guard covers any programmatic call, and the backend re-checks via the
+  // `imported` flag on the bulk write.
+  if (!isAdminRole()) { input.value = ""; alert("Admin only — conduct CSV import is restricted to admin accounts."); return; }
   const files = Array.from(input.files || []);
   if (!files.length) return;
   const results = new Array(files.length);
@@ -1532,10 +1536,11 @@ function confirmConductImport() {
   render();
 
   // Full-tab replace (safe: normalizers guarantee every row carries its columns).
+  // `imported: true` marks these as a bulk import so the backend admin-gates them.
   if (STATE.apiUrl) {
-    autoSync("Attendance", { type: "replace", data: STATE.attendance });
-    autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
-    if (pendingMedical.length) autoSync("Medical", { type: "replace", data: STATE.medical });
+    autoSync("Attendance", { type: "replace", data: STATE.attendance, imported: true });
+    autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail, imported: true });
+    if (pendingMedical.length) autoSync("Medical", { type: "replace", data: STATE.medical, imported: true });
   }
   alert(`Imported ${conductCount} conduct${conductCount === 1 ? "" : "s"}:\n  • ${totPresent} present · ${totFallout} fallout · ${totStatus} status\n  • ${pendingMedical.length} Pending report-sick record${pendingMedical.length === 1 ? "" : "s"} auto-created\n  • ${totUnmatched} unmatched rows skipped${mergedFiles ? `\n  • ${mergedFiles} file${mergedFiles === 1 ? "" : "s"} merged into a same-conduct/same-day session (participants combined)` : ""}\nSyncing to sheet — check the sidebar indicator.`);
 }
@@ -2855,6 +2860,9 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
 // test send, and bulk send. Fetches sender identity + quota on open so
 // the user knows exactly which Gmail account emails will come from.
 function openFitnessReportModal() {
+  // Admin-only (RBAC): email dispatch. UI is .admin-only; this guards any
+  // programmatic call; the backend gates the sendEmail action with a 403.
+  if (!isAdminRole()) { alert("Admin only — sending emails is restricted to admin accounts."); return; }
   const today = todayISO();
   const monthAgo = new Date(today); monthAgo.setMonth(monthAgo.getMonth() - 1);
   const monthAgoIso = monthAgo.toISOString().slice(0, 10);
@@ -4446,6 +4454,9 @@ function closePolarAnalysisModal() {
 }
 
 function importBackup(input) {
+  // Admin-only (RBAC): restoring a full backup. UI is .admin-only; this guard
+  // covers programmatic calls; the backend re-checks via the `imported` flag.
+  if (!isAdminRole()) { input.value = ""; alert("Admin only — restoring a backup is restricted to admin accounts."); return; }
   const reader = new FileReader();
   reader.onload = e => { try {
     const d = JSON.parse(e.target.result);

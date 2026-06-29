@@ -878,6 +878,18 @@ function routeAuthedPost(action, tab, body, ctx) {
   // This single gate is the authoritative "viewer is read-only" enforcement.
   if (!canWrite(ctx)) return { error: "Read-only access — your account cannot make changes.", code: 403 };
 
+  // Admin-only capabilities (RBAC). Email dispatch is a distinct action so it
+  // gates cleanly; bulk imports (conduct CSV / full-backup restore) carry an
+  // explicit `imported` flag from the client so they can be blocked for non-
+  // admins WITHOUT affecting a commander's normal single-row edits (which share
+  // the generic write path but never set the flag).
+  if (action === "sendEmail" && !isAdmin(ctx)) {
+    return { error: "Admin only — email dispatch is restricted to admin accounts.", code: 403 };
+  }
+  if (body && body.imported && !isAdmin(ctx)) {
+    return { error: "Admin only — data import is restricted to admin accounts.", code: 403 };
+  }
+
   // Mass-deletion safety net (Misc B1): commanders are capped at N single-row
   // deletes per rolling hour (default 30, Config key `commanderDeleteCap`).
   // Admins are exempt. Only single-row deletes count — full-tab `write`/replace,
@@ -2875,8 +2887,17 @@ function bpClassifyPerson(r, dateIso) {
       out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
     }
 
-    // REPORTING SICK — RSI/RSO reported today, or a Pending status active today.
-    const isRS = ((m.type === "RSI" || m.type === "RSO") && reportedToday)
+    // REPORTING SICK — reported RSI/RSO today AND still awaiting the MO outcome
+    // (status Pending or blank). Once the MO issues any status — MC/LD/Excuse/
+    // Warded/RIB/custom, or NIL (cleared) — the person is no longer "reporting
+    // sick" and drops off this list (they appear under ATT C / STATUS / OTHERS
+    // instead). Fixes the double-listing of assigned/cleared personnel on the
+    // active RS list. A still-active Pending status keeps them on RS regardless
+    // of report date. NOTE: the daily sick-report messages (bpSickReports →
+    // generateRSFormat / generateRSIPersonnel) intentionally list everyone who
+    // reported that morning and are NOT affected by this guard.
+    const moPending = !m.status || m.status === "Pending";
+    const isRS = (((m.type === "RSI" || m.type === "RSO") && reportedToday) && moPending)
       || (m.status === "Pending" && medStatusActive(m, dateIso));
     if (isRS) {
       const label = m.type === "RSO" ? "RSO" : "RSI"; // Pending→RSI (DECISIONS #31)

@@ -36,13 +36,13 @@ function renderSync(el) {
       <div id="sync-log" class="sync-log card" style="padding:10px"></div>
     </div>
     <div class="grid-2">
-      <div class="card write-only">
+      <div class="card admin-only">
         <h3 style="color:var(--green)">📥 Import</h3>
         <div style="display:flex;flex-direction:column;gap:8px">
           <label class="btn" style="cursor:pointer;text-align:center">Full Backup (JSON)<input type="file" accept=".json" onchange="importBackup(this)" style="display:none"></label>
         </div>
       </div>
-      <div class="card write-only">
+      <div class="card admin-only">
         <h3 style="color:var(--accent)">📤 Export</h3>
         <button class="btn" onclick="exportJSON({roster:STATE.roster,medical:STATE.medical,attendance:STATE.attendance,ippt:STATE.ippt,rm:STATE.rm,soc:STATE.soc,polar:STATE.polar,conductDetail:STATE.conductDetail,appointments:STATE.appointments,leave:STATE.leave,msk:STATE.msk},exportFileName('','json'))" style="margin-bottom:8px;width:100%">Full Backup (JSON)</button>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -57,7 +57,7 @@ function renderSync(el) {
         </div>
       </div>
     </div>
-    <div class="card write-only" style="margin-top:16px">
+    <div class="card admin-only" style="margin-top:16px">
       <h3 style="color:var(--pink)">📊 Email Fitness Reports</h3>
       <p style="font-size:12px;color:var(--muted);margin:6px 0 12px;line-height:1.55">
         Send each recruit a personalized HTML email with their Polar fitness trends, conduct attendance, and an encouragement note tailored to their data. Respects the topbar scope filter. Recruits never see anyone else's data.
@@ -417,11 +417,13 @@ async function drainTab(tabName) {
 //   { type: "replace",    data } → API.pushTab (full overwrite, bulk only)
 function dispatchWrite(tabName, mode) {
   if (!STATE.authToken) return Promise.reject(new Error("Not authenticated"));
+  // `mode.imported` (bulk import) rides through to the POST body so the backend
+  // can admin-gate imports without throttling normal commander edits.
   if (mode.type === "append")      return API.appendRow(tabName, mode.row);
-  if (mode.type === "appendMany")  return API.post({ action: "appendMany", tab: tabName, rows: mode.rows, baseRev: STATE.rev[tabName] });
+  if (mode.type === "appendMany")  return API.post({ action: "appendMany", tab: tabName, rows: mode.rows, baseRev: STATE.rev[tabName], imported: mode.imported });
   if (mode.type === "upsert")      return API.upsertRow(tabName, mode.row);
   if (mode.type === "delete")      return API.deleteRowById(tabName, mode.id);
-  if (mode.type === "replace")     return API.pushTab(tabName, mode.data);
+  if (mode.type === "replace")     return API.pushTab(tabName, mode.data, mode.imported);
   return Promise.reject(new Error(`Unknown autoSync mode: ${mode.type}`));
 }
 

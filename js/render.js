@@ -217,12 +217,13 @@ function renderDashboard(el) {
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — strength &amp; participation figures reflect this scope.</div>` : "";
 
   // Braves §16 additions, computed via the §8 classifier (braves-parade.js,
-  // loaded after render.js — resolved at this runtime call). "Not Available
-  // (in camp)" = MR + REPORTING SICK today (present but not available — STATUS/
-  // LD/excuse deliberately excluded per §16; resolves open §20.7, DECISIONS #42).
-  // Strength-by-rank-group replaces Cougar's platoon-by-platoon breakdown (§16).
-  const naClassify = r => bpClassifyPerson(r, today);
-  const notAvailable = scoped.filter(r => { const c = naClassify(r); return c.sections.mr.length > 0 || c.sections.reportingSick.length > 0; }).length;
+  // loaded after render.js — resolved at this runtime call). "Not Available" =
+  // physically IN CAMP and currently RSI or MR (present but not available for
+  // normal activities). RSO (report sick OUTSIDE) and STATUS/LD/excuse are
+  // deliberately excluded (resolves open §20.7, DECISIONS #42). See
+  // bpIsNotAvailable in braves-parade.js. Strength-by-rank-group replaces
+  // Cougar's platoon-by-platoon breakdown (§16).
+  const notAvailable = scoped.filter(r => bpIsNotAvailable(r, today)).length;
   const grpStrength = bpStrength(scoped, today);
   const grpLine = g => `${grpStrength.groups[g].cur}/${grpStrength.groups[g].tot}`;
 
@@ -269,7 +270,7 @@ function renderDashboard(el) {
       <div class="stat"><label>Active today</label><div class="val" style="color:var(--green)">${active}${inlineBreakdown(recActive, cmdActive)}</div></div>
       <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}${inlineBreakdown(recLive.length, cmdLive.length)}</div></div>
       <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}${inlineBreakdown(recInCamp, cmdInCamp)}</div></div>
-      <div class="stat" title="MR + Reporting Sick today — physically in camp but not available for normal activities (§16)"><label>Not Available</label><div class="val" style="color:var(--purple)">${notAvailable}</div></div>
+      <div class="stat" title="Includes personnel in camp who are currently RSI or MR — physically present but not available for normal activities (§16). RSO and STATUS/LD/excuse are excluded."><label>Not Available <span style="cursor:help;color:var(--dim);font-weight:400" title="Includes personnel in camp who are currently RSI or MR — physically present but not available for normal activities (§16). RSO and STATUS/LD/excuse are excluded.">ⓘ</span></label><div class="val" style="color:var(--purple)">${notAvailable}</div></div>
       <div class="stat"><label>Avg Part.${isFilterActive() ? ` <span style="color:var(--dim);font-weight:400">(${filterLabel()})</span>` : ` <span style="color:var(--dim);font-weight:400">(Company)</span>`}</label><div class="val" style="color:var(--accent)" title="${isFilterActive() ? `Scoped to ${filterLabel()} across ${_part.conducts} conduct(s)` : "Entire company average"}">${avgPart}%</div></div>
     </div>
     <div class="card" style="padding:10px 16px;margin-top:10px">
@@ -1112,7 +1113,7 @@ function renderAttendance(el) {
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" onclick="refreshLmsFromPolar()" title="Recount LMS participants for every conduct from STATE.polar (the Polar class summary photo is the LMS roster) and write into the attendance rows">🔄 Recompute LMS</button>
         <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
-        <label class="btn" title="Import one or many attendance CSV exports at once (Activity metadata + User/Unit/Status/Remarks). Each file = one conduct; ids auto-created. Present rows feed HA participation.">📥 Import CSV(s)
+        <label class="btn admin-only" title="Admin: import one or many attendance CSV exports at once (Activity metadata + User/Unit/Status/Remarks). Each file = one conduct; ids auto-created. Present rows feed HA participation.">📥 Import CSV(s)
           <input type="file" accept=".csv" multiple onchange="importConductCSV(this)" style="display:none">
         </label>
         <button class="btn" onclick="showConductImportSchema()" title="Show the expected CSV / import format">ⓘ Format</button>
