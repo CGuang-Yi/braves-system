@@ -12,9 +12,18 @@ module.exports = async function run() {
   suite("render wiring: scoped participation");
   const render = fs.readFileSync(path.join(__dirname, "..", "js", "render.js"), "utf8");
   const helpers = fs.readFileSync(path.join(__dirname, "..", "js", "helpers.js"), "utf8");
+  const parade = fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8");
 
   await test("render.js does not reference the non-existent filterVisibleSet", () => {
     ok(!render.includes("filterVisibleSet"), "render.js still references undefined filterVisibleSet");
+  });
+
+  await test("the Not Available tile delegates to bpIsNotAvailable (Bug 2)", () => {
+    ok(render.includes("bpIsNotAvailable("), "render.js no longer uses the bpIsNotAvailable helper");
+    ok(parade.includes("function bpIsNotAvailable"), "bpIsNotAvailable is not defined in braves-parade.js");
+    // It must NOT fall back to the old over-broad predicate that counted RSO.
+    ok(!render.includes("c.sections.mr.length > 0 || c.sections.reportingSick.length > 0"),
+      "render.js still uses the old Not-Available predicate (counts RSO)");
   });
 
   await test("the scope-set helper render.js relies on is actually defined", () => {

@@ -158,8 +158,8 @@ const API = {
   async revCheck() {
     return this.get("revCheck");
   },
-  async pushTab(tabName, data) {
-    return this.post({ action: "write", tab: tabName, data, baseRev: STATE.rev[tabName] });
+  async pushTab(tabName, data, imported) {
+    return this.post({ action: "write", tab: tabName, data, baseRev: STATE.rev[tabName], imported });
   },
   async appendRow(tabName, row) {
     return this.post({ action: "append", tab: tabName, row, baseRev: STATE.rev[tabName] });

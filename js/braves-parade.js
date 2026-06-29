@@ -186,8 +186,17 @@ function bpClassifyPerson(r, dateIso, idx) {
       push2("mr", `${m.reason || ""}${timing}`, "MR");
     }
 
-    // REPORTING SICK — RSI/RSO reported today, or a Pending status active today.
-    const isRS = ((m.type === "RSI" || m.type === "RSO") && reportedToday)
+    // REPORTING SICK — reported RSI/RSO today AND still awaiting the MO outcome
+    // (status Pending or blank). Once the MO issues any status — MC/LD/Excuse/
+    // Warded/RIB/custom, or NIL (cleared) — the person is no longer "reporting
+    // sick" and drops off this list (they appear under ATT C / STATUS / OTHERS
+    // instead). Fixes the double-listing of assigned/cleared personnel on the
+    // active RS list. A still-active Pending status keeps them on RS regardless
+    // of report date. NOTE: the daily sick-report messages (bpSickReports →
+    // generateRSFormat / generateRSIPersonnel) intentionally list everyone who
+    // reported that morning and are NOT affected by this guard.
+    const moPending = !m.status || m.status === "Pending";
+    const isRS = (((m.type === "RSI" || m.type === "RSO") && reportedToday) && moPending)
       || (m.status === "Pending" && medStatusActive(m, dateIso));
     if (isRS) {
       const label = m.type === "RSO" ? "RSO" : "RSI"; // Pending→RSI (DECISIONS #31)
@@ -329,6 +338,20 @@ function bpGridCell(r, dateIso, idx) {
   else if (s.reportingSick.length) primary = hasRSO ? "RSO" : "RSI";
   else if (s.mr.length) primary = "MR";
   return { primary, hasRSI, hasRSO, hasMR: s.mr.length > 0, any: !!primary };
+}
+
+// Dashboard "Not Available" (Bug 2): a person counts only if they are physically
+// IN CAMP and currently RSI (Report Sick INSIDE) or MR (Medical Review). RSO
+// (report sick OUTSIDE) is excluded — they're not in camp — as are STATUS / LD /
+// Excuse / ATT C. Reads the structured `meta` twin so it keys off the parsed RSI
+// type rather than the formatted line. Frontend-only (dashboard concept) — not
+// mirrored into the Apps Script copy.
+function bpIsNotAvailable(r, dateIso, idx) {
+  const c = bpClassifyPerson(r, dateIso, idx);
+  if (c.notInCamp) return false;                       // must be physically in camp
+  const hasRSI = c.meta.reportingSick.some(x => x.type === "RSI");
+  const hasMR = c.sections.mr.length > 0;
+  return hasRSI || hasMR;
 }
 
 // ── Strength (spec §8) ──────────────────────────────────────────────────────

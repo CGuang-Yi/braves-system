@@ -117,4 +117,59 @@ module.exports = async function run() {
     const out = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: "bogus" } }).getContent());
     eq(out.code, 401, "401 for bad token");
   });
+
+  suite("backend: admin-only RBAC (email + imports)");
+
+  // Mint a session token for an arbitrary role (the harness only seeds an admin).
+  const mkToken = (b, role) => {
+    const token = role + "tok";
+    b.db.setProp("auth:" + token, JSON.stringify({
+      email: role + "@example.com", personId: "0001", role, issuedAt: new Date().toISOString()
+    }));
+    return token;
+  };
+  const postAs = (b, token, body) => JSON.parse(
+    b.doPost({ parameter: {}, postData: { contents: JSON.stringify(Object.assign({ auth: token }, body)) } }).getContent()
+  );
+
+  await test("sendEmail: commander is 403, admin is allowed past the RBAC gate", () => {
+    const b = loadBackend();
+    const cmdr = postAs(b, mkToken(b, "commander"),
+      { action: "sendEmail", to: "r@x.com", subject: "Hi", htmlBody: "<p>x</p>" });
+    eq(cmdr.code, 403, "commander blocked from email dispatch");
+    const adm = postAs(b, mkToken(b, "admin"),
+      { action: "sendEmail", to: "r@x.com", subject: "Hi", htmlBody: "<p>x</p>" });
+    ok(adm.code !== 403, "admin not blocked by the RBAC gate");
+  });
+
+  await test("sendEmail: viewer is read-only (403) before reaching the email gate", () => {
+    const b = loadBackend();
+    const out = postAs(b, mkToken(b, "viewer"),
+      { action: "sendEmail", to: "r@x.com", subject: "Hi", htmlBody: "<p>x</p>" });
+    eq(out.code, 403, "viewer blocked");
+  });
+
+  await test("imported bulk write: commander is 403, admin succeeds", () => {
+    const b = loadBackend();
+    b.db.seed("ConductDetail", ["id", "d4"], []);
+    const cmdrTok = mkToken(b, "commander");
+    const blocked = postAs(b, cmdrTok,
+      { action: "write", tab: "ConductDetail", data: [{ id: 1, d4: "0001" }], imported: true, baseRev: b.getRev("ConductDetail") });
+    eq(blocked.code, 403, "commander blocked from a flagged import");
+    eq(b.db.rowsOf("ConductDetail").length, 0, "nothing written");
+
+    const adm = postAs(b, mkToken(b, "admin"),
+      { action: "write", tab: "ConductDetail", data: [{ id: 1, d4: "0001" }], imported: true, baseRev: b.getRev("ConductDetail") });
+    ok(adm.ok, "admin import applies");
+    eq(b.db.rowsOf("ConductDetail").length, 1, "row written");
+  });
+
+  await test("commander's NORMAL write (no imported flag) is unaffected", () => {
+    const b = loadBackend();
+    b.db.seed("Medical", ["id", "reason"], []);
+    const r = postAs(b, mkToken(b, "commander"),
+      { action: "upsertRow", tab: "Medical", row: { id: 1, reason: "fever" }, baseRev: b.getRev("Medical") });
+    ok(r.ok && !r.conflict, "commander single-row edit still applies");
+    eq(b.db.rowsOf("Medical").length, 1, "row written");
+  });
 };
