@@ -120,4 +120,46 @@ module.exports = async function run() {
     eq(r.length, 1);
     eq(r[0].pct, 67); // present 0001,0002 (2) over involved 3
   });
+
+  suite("calc: conduct series parsing");
+
+  await test("trailing number is the instance index; first-of-kind = 1", () => {
+    eq(c.parseConductSeries("Endurance Run"), { base: "Endurance Run", num: 1 });
+    eq(c.parseConductSeries("Endurance Run 2"), { base: "Endurance Run", num: 2 });
+    eq(c.parseConductSeries("Endurance Run 6"), { base: "Endurance Run", num: 6 });
+    eq(c.parseConductSeries("Endurance Run 10"), { base: "Endurance Run", num: 10 });
+  });
+  await test("a leading digit is NOT an instance index", () => {
+    eq(c.parseConductSeries("5BX PT"), { base: "5BX PT", num: 1 });
+    eq(c.parseConductSeries("Road Run"), { base: "Road Run", num: 1 });
+  });
+
+  suite("calc: conduct progression");
+
+  await test("position = latest attended; missed = gaps below it; behind = frontier − position", () => {
+    // Class held #1..#6. Recruit 0001 attended 1,2,3,5 (skipped 4); company frontier = 6.
+    const instances = [
+      { conductId: "e1", num: 1 }, { conductId: "e2", num: 2 }, { conductId: "e3", num: 3 },
+      { conductId: "e4", num: 4 }, { conductId: "e5", num: 5 }, { conductId: "e6", num: 6 }
+    ];
+    const present = {
+      e1: new Set(["0001", "0002"]), e2: new Set(["0001", "0002"]), e3: new Set(["0001", "0002"]),
+      e4: new Set(["0002"]),         e5: new Set(["0001", "0002"]), e6: new Set(["0002"])
+    };
+    const r = c.conductProgress(instances, present, ["0001", "0002"]);
+    eq(r.seriesMax, 6);
+    const a = r.rows.find(x => x.d4 === "0001");
+    eq(a.position, 5, "latest attended");
+    eq(a.missed, [4], "gap below current");
+    eq(a.behind, 1, "frontier 6 − position 5");
+    eq(a.completed, 4);
+    const b = r.rows.find(x => x.d4 === "0002");
+    eq(b.position, 6); eq(b.missed, []); eq(b.behind, 0); // on the frontier, no gaps
+  });
+
+  await test("not started → position 0, no gaps, behind = frontier", () => {
+    const instances = [{ conductId: "e1", num: 1 }, { conductId: "e2", num: 2 }];
+    const r = c.conductProgress(instances, { e1: new Set(["0009"]), e2: new Set(["0009"]) }, ["0001"]);
+    eq(r.rows[0], { d4: "0001", position: 0, completed: 0, missed: [], behind: 2 });
+  });
 };

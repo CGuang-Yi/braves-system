@@ -158,7 +158,52 @@ function perConductParticipation(attendance, conductDetail, visibleSet) {
   return out;
 }
 
+// ── Conduct series / class progression (Phase 2b) ─────────────────────────────
+// A "class" of conducts shares a base name and is distinguished by a TRAILING
+// number; the first of its kind may omit the number (so it is instance 1).
+//   "Endurance Run"   → { base: "Endurance Run", num: 1 }
+//   "Endurance Run 6" → { base: "Endurance Run", num: 6 }
+//   "5BX PT"          → { base: "5BX PT",        num: 1 }  (leading digit ≠ instance)
+// Only a trailing run of digits (optionally space-separated) is the instance index.
+function parseConductSeries(name) {
+  const s = String(name == null ? "" : name).trim();
+  const m = s.match(/^(.+?)\s*(\d+)$/);
+  if (m) return { base: m[1].trim(), num: Number(m[2]) };
+  return { base: s, num: 1 };
+}
+
+// Per-recruit progression through one conduct class.
+//   instances:        [{ conductId, num }] — the class's HELD instances (any order)
+//   presentByConduct: { conductId: Set(d4) } — who participated in each instance
+//   recruitIds:       [d4] in scope (company/platoon/section already applied)
+// Definitions (confirmed):
+//   position = highest instance number the recruit attended (0 = not started)
+//   missed   = instances BELOW their position that they skipped (gaps)
+//   frontier = highest instance number held by anyone (seriesMax)
+//   behind   = frontier − position
+// Returns { seriesMax, held:[nums sorted], rows:[{ d4, position, completed, missed:[nums], behind }] }.
+function conductProgress(instances, presentByConduct, recruitIds) {
+  const held = (instances || [])
+    .filter(function (x) { return x && typeof x.num === "number" && !isNaN(x.num); })
+    .slice().sort(function (a, b) { return a.num - b.num; });
+  const seriesMax = held.reduce(function (m, x) { return Math.max(m, x.num); }, 0);
+  const rows = (recruitIds || []).map(function (d4) {
+    const id = String(d4);
+    const attended = held.filter(function (x) {
+      const set = presentByConduct[x.conductId];
+      return set && set.has(id);
+    }).map(function (x) { return x.num; });
+    const position = attended.length ? Math.max.apply(null, attended) : 0;
+    const attendedSet = new Set(attended);
+    const missed = held
+      .filter(function (x) { return x.num < position && !attendedSet.has(x.num); })
+      .map(function (x) { return x.num; });
+    return { d4: d4, position: position, completed: attended.length, missed: missed, behind: Math.max(0, seriesMax - position) };
+  });
+  return { seriesMax: seriesMax, held: held.map(function (x) { return x.num; }), rows: rows };
+}
+
 // Node test export (browser ignores `module`); see js/calc.js consumers below.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES };
+  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductProgress };
 }

@@ -1827,6 +1827,7 @@ function renderPolar(el) {
 // pattern). Heavy chart construction is deferred on mobile (Feature 4).
 let _conductDashStart;        // undefined → default window; "" → all-time; iso → windowed
 let _conductDashEnd = "";
+let _conductSeries = "";       // "" → all conducts; else a series base name (e.g. "Endurance Run")
 let _conductChartBuild = null;
 const CONDUCT_TYPE_COLORS = { Status: "#F2A93B", RSI: "#F85149", Fallout: "#E8573A", ReportSick: "#A371F7", PXP: "#39D2C0" };
 const CONDUCT_TYPE_LABELS = { Status: "Status", RSI: "RSI", Fallout: "Fallout", ReportSick: "Report Sick", PXP: "PX (excused)" };
@@ -1838,6 +1839,11 @@ function setConductWindow(days) {
   _conductDashStart = days === "all" ? "" : addDaysISO(todayISO(), -(Number(days) - 1));
   render();
 }
+
+// Conduct-class selector. "" → all conducts (date-windowed). A base name (e.g.
+// "Endurance Run") → scope to that class's instances (#1..#N, all dates) and
+// show the per-recruit progression list.
+function setConductSeries(base) { _conductSeries = base || ""; render(); }
 
 function loadConductDashCharts() {
   const g = document.getElementById("cd-charts"); if (g) g.style.display = "";
@@ -1859,6 +1865,17 @@ function renderConductDashboard(el) {
   };
   const winDays = startIso ? daysFromStartEndInclusive(startIso, endIso) : 0; // 0 = all
 
+  // Conduct classes (series): group the registry by base name. Selecting one
+  // scopes the dashboard to that class's instances (all dates, ignoring the
+  // window) and unlocks the per-recruit progression list.
+  const bases = [...new Set((STATE.conducts || []).map(c => parseConductSeries(c.name).base))].filter(Boolean).sort();
+  const seriesIds = _conductSeries
+    ? new Set((STATE.conducts || []).filter(c => parseConductSeries(c.name).base === _conductSeries).map(c => c.id))
+    : null;
+  const inSeries = id => !seriesIds || seriesIds.has(id);
+  const useWin = !seriesIds;                       // window applies only in all-conducts mode
+  const keepDate = disp => useWin ? inWin(disp) : true;
+
   // Scope (topbar filter) + grouping: by section when narrowed to one platoon,
   // else by platoon.
   const visible = visibleD4Set();
@@ -1870,15 +1887,15 @@ function renderConductDashboard(el) {
     return (groupBy === "section" ? personSection(r) : personPlatoon(r)) || "Unassigned";
   };
 
-  // Miss rows (scope + window), tagged with group + ISO date → calc aggregation.
+  // Miss rows (scope + window/series), tagged with group + ISO date → calc aggregation.
   const missRows = (STATE.conductDetail || [])
-    .filter(c => passesFilter(c.d4, visible) && inWin(c.date))
+    .filter(c => passesFilter(c.d4, visible) && inSeries(c.conductId) && keepDate(c.date))
     .map(c => ({ dateIso: displayDateToISO(c.date), group: groupOf(c.d4), type: c.type }));
   const agg = conductBuildup(missRows);
 
   // Participation per conduct (scope-aware) + scoped average for the tile.
   const attnWin = (STATE.attendance || [])
-    .filter(a => inWin(a.date))
+    .filter(a => inSeries(a.conductId) && keepDate(a.date))
     .map(a => Object.assign({}, a, { dateIso: displayDateToISO(a.date) }));
   const part = perConductParticipation(attnWin, STATE.conductDetail || [], scoped)
     .filter(p => p.dateIso)
@@ -1886,48 +1903,94 @@ function renderConductDashboard(el) {
   const avg = scopedParticipation(attnWin, STATE.conductDetail || [], scoped);
   const conductsLogged = attnWin.filter(a => Number(a.total) > 0 || String(a.participants || "")).length;
 
+  // Series mode: per-recruit progression through the class (calc.conductProgress).
+  const numOf = id => parseConductSeries(conductName(id)).num;
+  let progressionHTML = "";
+  if (seriesIds) {
+    const presentByConduct = {};
+    (STATE.attendance || []).forEach(a => {
+      if (!seriesIds.has(a.conductId)) return;
+      presentByConduct[a.conductId] = new Set(String(a.participants || "").split(",").map(s => s.trim()).filter(Boolean));
+    });
+    // Held = series instances that actually have an attendance row.
+    const held = (STATE.conducts || [])
+      .filter(c => seriesIds.has(c.id) && presentByConduct[c.id])
+      .map(c => ({ conductId: c.id, num: parseConductSeries(c.name).num }));
+    const recruitIds = filteredRoster().map(r => r.id);
+    const prog = conductProgress(held, presentByConduct, recruitIds);
+    const rows = prog.rows.slice().sort((a, b) => (a.position - b.position) || (b.behind - a.behind) || (b.missed.length - a.missed.length));
+    const frontier = prog.seriesMax ? `${escapeHTML(_conductSeries)} ${prog.seriesMax}` : "—";
+    const curCell = p => p.position ? `${escapeHTML(_conductSeries)} ${p.position}` : `<span style="color:var(--dim)">Not started</span>`;
+    const statusCell = p => {
+      if (!p.position) return `<span style="color:var(--muted)">Not started</span>`;
+      const bits = [];
+      if (p.behind > 0) bits.push(`<span style="color:var(--orange)">behind ${p.behind}</span>`);
+      if (p.missed.length) bits.push(`<span style="color:var(--red)">${p.missed.length} gap${p.missed.length > 1 ? "s" : ""}</span>`);
+      return bits.length ? bits.join(" · ") : `<span style="color:var(--green)">✓ on track</span>`;
+    };
+    progressionHTML = `<div class="card" style="margin-top:10px">
+      <h3>Class Progression — ${escapeHTML(_conductSeries)} <span style="font-weight:400;color:var(--dim);font-size:11px">(company frontier: ${frontier} · ${prog.held.length} held)</span></h3>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${isFilterActive() ? filterLabel() : "Whole company"} — each member's latest attended instance, gaps below it (missed), and how far behind the frontier they are. Click a row to open the member.</div>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Current</th><th>Done</th><th style="text-align:left">Missed</th><th style="text-align:left">Status</th></tr></thead><tbody>
+        ${rows.map(p => `<tr onclick="openPerson('${p.d4}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td>${curCell(p)}</td><td>${p.completed}/${prog.held.length}</td><td style="text-align:left;color:${p.missed.length ? "var(--red)" : "var(--dim)"}">${p.missed.length ? p.missed.map(n => "#" + n).join(", ") : "—"}</td><td style="text-align:left">${statusCell(p)}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty-state" style="padding:12px;font-size:12px">No members in scope.</div>`}
+    </div>`;
+  }
+
   const hasData = agg.dates.length > 0 || part.length > 0;
   const deferActive = shouldDeferCharts() && hasData;
   const winBtn = (label, days) => {
     const activeWin = (days === "all" && !startIso) || (days !== "all" && Number(days) === winDays);
     return `<button class="btn${activeWin ? " btn-primary" : ""}" style="font-size:11px" onclick="setConductWindow('${days}')">${label}</button>`;
   };
+  const seriesSelect = `<select class="topbar-select" style="font-size:11px" onchange="setConductSeries(this.value)" title="Scope to a conduct class (series)">
+      <option value="">All conducts</option>
+      ${bases.map(b => { const n = (STATE.conducts || []).filter(c => parseConductSeries(c.name).base === b).length; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${n > 1 ? ` (${n})` : ""}</option>`; }).join("")}
+    </select>`;
   const scopeBanner = isFilterActive()
-    ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — misses &amp; participation reflect this scope; buildup grouped by ${groupBy}.</div>`
-    : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Whole company — buildup grouped by ${groupBy}. Use the topbar filter to scope.</div>`;
+    ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong>${seriesIds ? ` · class <strong>${escapeHTML(_conductSeries)}</strong> (all instances)` : ""} — buildup grouped by ${groupBy}.</div>`
+    : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${seriesIds ? `Class <strong>${escapeHTML(_conductSeries)}</strong> (all instances) — ` : "Whole company — "}buildup grouped by ${groupBy}. Use the topbar filter to scope by platoon/section.</div>`;
   const prefHint = STATE.deferCharts === "auto" ? "auto" : STATE.deferCharts;
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <h2 style="font-size:18px;font-weight:700">📈 Conduct Dashboard</h2>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-        ${winBtn("30d", "30")}${winBtn("90d", "90")}${winBtn("All", "all")}
+        ${seriesSelect}
+        ${seriesIds ? "" : winBtn("30d", "30") + winBtn("90d", "90") + winBtn("All", "all")}
         <span style="font-size:10px;color:var(--dim);margin-left:6px">Charts: ${prefHint} ·
           <a href="#" onclick="setChartPref('${STATE.deferCharts === 'defer' ? 'eager' : 'defer'}');return false" style="color:var(--accent)">${STATE.deferCharts === "defer" ? "auto-load" : "defer"}</a></span>
       </div>
     </div>
     ${scopeBanner}
     <div class="stats-row" style="margin-top:8px">
-      <div class="stat"><label>Conducts</label><div class="val">${conductsLogged}</div></div>
-      <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)" title="${avg.conducts} conduct(s) in scope/window">${avg.pct}%</div></div>
+      <div class="stat"><label>${seriesIds ? "Instances" : "Conducts"}</label><div class="val">${conductsLogged}</div></div>
+      <div class="stat"><label>Avg Part.</label><div class="val" style="color:var(--accent)" title="${avg.conducts} conduct(s) in scope">${avg.pct}%</div></div>
       <div class="stat"><label>Total Misses</label><div class="val" style="color:var(--red)">${agg.totalMisses}</div></div>
       <div class="stat"><label>Worst Type</label><div class="val" style="color:var(--orange);font-size:18px">${agg.worstType ? (CONDUCT_TYPE_LABELS[agg.worstType] || agg.worstType) : "—"}</div></div>
     </div>
+    ${progressionHTML}
     ${hasData ? `
     <div id="cd-charts"${deferActive ? ' style="display:none"' : ''}>
       <div class="card" style="margin-top:10px"><h3>Cumulative Conduct-Miss Buildup <span style="font-weight:400;color:var(--dim);font-size:11px">(running total by ${groupBy})</span></h3><canvas id="cd-cumulative" height="220"></canvas></div>
       <div class="grid-2">
-        <div class="card"><h3>Miss Composition Over Time</h3><canvas id="cd-stacks" height="220"></canvas></div>
-        <div class="card"><h3>Participation Trend</h3><canvas id="cd-participation" height="220"></canvas></div>
+        <div class="card"><h3>Miss Composition${seriesIds ? " by Instance" : " Over Time"}</h3><canvas id="cd-stacks" height="220"></canvas></div>
+        <div class="card"><h3>Participation${seriesIds ? " by Instance" : " Trend"}</h3><canvas id="cd-participation" height="220"></canvas></div>
       </div>
     </div>
     ${deferActive ? chartGateMarkup("loadConductDashCharts()") : ""}`
-    : `<div class="empty-state" style="padding:24px;font-size:13px;text-align:center;color:var(--muted)">No conduct data in this window/scope. Log conducts in the Attendance tab or widen the date window.</div>`}
+    : `<div class="empty-state" style="padding:24px;font-size:13px;text-align:center;color:var(--muted)">No conduct data ${seriesIds ? "for this class" : "in this window"}/scope. Log conducts in the Attendance tab${seriesIds ? "" : " or widen the date window"}.</div>`}
   `;
 
   if (!hasData) return;
 
-  const dm = iso => { const d = new Date(iso + "T00:00:00"); return isNaN(d) ? iso : `${d.getDate()}/${d.getMonth() + 1}`; };
+  // X-axis labels: instance "#N" in series mode (per date), else day/month.
+  const instLabelByIso = {};
+  if (seriesIds) attnWin.forEach(a => { if (a.dateIso && instLabelByIso[a.dateIso] == null) instLabelByIso[a.dateIso] = "#" + numOf(a.conductId); });
+  const dm = iso => {
+    if (seriesIds && instLabelByIso[iso]) return instLabelByIso[iso];
+    const d = new Date(iso + "T00:00:00"); return isNaN(d) ? iso : `${d.getDate()}/${d.getMonth() + 1}`;
+  };
   const rateColorHex = r => r >= 95 ? "#3FB950" : r >= 70 ? "#D29922" : "#F85149";
   const axisBase = {
     responsive: true, maintainAspectRatio: false,
@@ -1980,7 +2043,7 @@ function renderConductDashboard(el) {
     const pColors = pData.map(rateColorHex);
     STATE.charts.cdParticipation = new Chart(document.getElementById("cd-participation"), {
       type: "line",
-      data: { labels: part.map(p => conductName(p.conductId).slice(0, 12)), datasets: [{
+      data: { labels: part.map(p => seriesIds ? "#" + numOf(p.conductId) : conductName(p.conductId).slice(0, 12)), datasets: [{
         data: pData, borderColor: "#8B949E", borderWidth: 2, tension: 0.35, fill: false,
         pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: pColors, pointBorderColor: pColors,
         segment: { borderColor: ctx => rateColorHex(pData[ctx.p1DataIndex]) }
