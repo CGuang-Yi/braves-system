@@ -22,6 +22,7 @@ const IPPT_AGG_KEY = "cougar-ippt-agg";
 const FITNESS_SENT_KEY = "cougar-fitness-sent";
 const DIRTY_KEY = "cougar-dirty-tabs";
 const CUSTOM_STATUS_KEY = "cougar-custom-statuses";
+const DEFER_CHARTS_KEY = "braves-defer-charts"; // chart lazy-load pref: auto|defer|eager
 
 // Sheet-tab-name → STATE-array-key lookup. The autoSync coalesce path uses
 // this when flushing a queued replace push: by the time the flush runs the
@@ -200,6 +201,12 @@ const STATE = {
   // and leaderboard. Does NOT affect the underlying table — that always
   // shows every row.
   ipptAggMode: localStorage.getItem(IPPT_AGG_KEY) === "best" ? "best" : "latest",
+  // Chart lazy-load preference for heavy chart views (Strength Board + Conduct
+  // Dashboard). "auto" (default) defers chart construction on mobile viewports
+  // and renders eagerly on desktop; "defer" always waits for a manual tap;
+  // "eager" always builds on load. Chart.js canvas construction is the mobile
+  // jank source — cheap tiles/tables always render immediately regardless.
+  deferCharts: (function () { const v = localStorage.getItem(DEFER_CHARTS_KEY); return v === "defer" || v === "eager" ? v : "auto"; })(),
   // Per-device record of which recruits have already had a fitness report
   // emailed to them. Drives the "skip already sent" default on bulk send so
   // a session interrupted mid-batch (or a fresh device) can resume without
@@ -225,6 +232,20 @@ const STATE = {
 function setIpptAggMode(mode) {
   STATE.ipptAggMode = mode === "best" ? "best" : "latest";
   localStorage.setItem(IPPT_AGG_KEY, STATE.ipptAggMode);
+}
+
+// Chart lazy-load pref (auto|defer|eager) — persisted per device.
+function setDeferCharts(mode) {
+  STATE.deferCharts = (mode === "defer" || mode === "eager") ? mode : "auto";
+  localStorage.setItem(DEFER_CHARTS_KEY, STATE.deferCharts);
+}
+// Should heavy charts wait for a manual "Load charts" tap right now? "auto"
+// defers only on mobile-width viewports. Re-evaluated per render so a resize or
+// device rotation is honoured.
+function shouldDeferCharts() {
+  if (STATE.deferCharts === "defer") return true;
+  if (STATE.deferCharts === "eager") return false;
+  return typeof window !== "undefined" && window.innerWidth <= 768;
 }
 
 // Sheet column is "4d" (preserved verbatim by Apps Script readTab), but the

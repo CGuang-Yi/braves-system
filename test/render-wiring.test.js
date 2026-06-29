@@ -35,4 +35,39 @@ module.exports = async function run() {
     ok(render.includes("scopedParticipation(STATE.attendance, STATE.conductDetail, visible)"),
       "render.js no longer passes the visible set into scopedParticipation");
   });
+
+  suite("render wiring: conduct dashboard + lazy-load (Phase 2)");
+
+  await test("Conduct Dashboard view is wired end to end", () => {
+    const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+    const calc = fs.readFileSync(path.join(__dirname, "..", "js", "calc.js"), "utf8");
+    ok(html.includes('data-nav="conductdash"'), "no Conduct Dashboard nav button in index.html");
+    ok(render.includes('case "conductdash": renderConductDashboard'), "render() does not route conductdash");
+    ok(render.includes("function renderConductDashboard"), "renderConductDashboard missing");
+    ok(render.includes("conductBuildup(") && render.includes("perConductParticipation("),
+      "render.js does not use the calc.js conduct aggregators");
+    ok(calc.includes("function conductBuildup") && calc.includes("function perConductParticipation"),
+      "calc.js conduct aggregators missing");
+  });
+
+  await test("lazy-load gate is wired for both heavy views", () => {
+    const state = fs.readFileSync(path.join(__dirname, "..", "js", "state.js"), "utf8");
+    const sync = fs.readFileSync(path.join(__dirname, "..", "js", "sync.js"), "utf8");
+    ok(state.includes("function shouldDeferCharts"), "shouldDeferCharts missing in state.js");
+    ok(render.includes("shouldDeferCharts()"), "render.js never consults shouldDeferCharts");
+    ok(render.includes("loadDashboardCharts") && render.includes("loadConductDashCharts"),
+      "chart loaders for the two heavy views are not both wired");
+    ok(sync.includes("setChartPref(") && sync.includes("Display / Performance"),
+      "Settings page is missing the lazy-load control");
+  });
+
+  await test("conduct class scoping + progression list are wired", () => {
+    const calc = fs.readFileSync(path.join(__dirname, "..", "js", "calc.js"), "utf8");
+    ok(calc.includes("function parseConductSeries") && calc.includes("function conductProgress"),
+      "calc.js series/progression helpers missing");
+    ok(render.includes("parseConductSeries(") && render.includes("conductProgress("),
+      "render.js does not use the series/progression helpers");
+    ok(render.includes("function setConductSeries"), "no conduct-class selector handler");
+    ok(render.includes("Class Progression"), "progression list not rendered");
+  });
 };
