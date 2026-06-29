@@ -60,4 +60,64 @@ module.exports = async function run() {
     eq(r.conducts, 0);
     eq(r.pct, 0);
   });
+
+  suite("calc: conduct dashboard buildup");
+
+  await test("cumulative buildup accumulates misses per group across dates", () => {
+    const rows = [
+      { dateIso: "2026-01-01", group: "Sec 1", type: "Fallout" },
+      { dateIso: "2026-01-01", group: "Sec 2", type: "RSI" },
+      { dateIso: "2026-01-03", group: "Sec 1", type: "Status" },
+      { dateIso: "2026-01-03", group: "Sec 1", type: "RSI" }
+    ];
+    const r = c.conductBuildup(rows);
+    eq(r.dates, ["2026-01-01", "2026-01-03"]);
+    eq(r.groups, ["Sec 1", "Sec 2"]);
+    eq(r.cumulative["Sec 1"], [1, 3]); // 1 on day1, +2 on day3
+    eq(r.cumulative["Sec 2"], [1, 1]); // 1 on day1, none day3 (carried)
+    eq(r.totalMisses, 4);
+  });
+
+  await test("PXP is shown in the stack/byType but is NOT a miss", () => {
+    const rows = [
+      { dateIso: "2026-01-01", group: "Sec 1", type: "PXP" },
+      { dateIso: "2026-01-01", group: "Sec 1", type: "Fallout" }
+    ];
+    const r = c.conductBuildup(rows);
+    eq(r.totalMisses, 1, "only Fallout counts");
+    eq(r.cumulative["Sec 1"], [1], "PXP excluded from buildup");
+    eq(r.byType.PXP, 1, "PXP still tallied for the stacked bar");
+    eq(r.stacks.PXP, [1]);
+    // misses ordered first, PXP (extra) last
+    eq(r.types[r.types.length - 1], "PXP");
+  });
+
+  await test("worstType picks the highest-count miss type; null when no misses", () => {
+    const r = c.conductBuildup([
+      { dateIso: "2026-01-01", group: "A", type: "RSI" },
+      { dateIso: "2026-01-02", group: "A", type: "RSI" },
+      { dateIso: "2026-01-02", group: "A", type: "Fallout" }
+    ]);
+    eq(r.worstType, "RSI");
+    eq(c.conductBuildup([{ dateIso: "2026-01-01", group: "A", type: "PXP" }]).worstType, null);
+  });
+
+  suite("calc: per-conduct participation");
+
+  await test("company-wide (null scope) → stored rate per conduct", () => {
+    const att = [
+      { dateIso: "2026-01-01", conductId: "C1", participating: 2, total: 4 },
+      { dateIso: "2026-01-02", conductId: "C2", participating: 3, total: 3 }
+    ];
+    const r = c.perConductParticipation(att, [], null);
+    eq(r.map(x => x.pct), [50, 100]);
+  });
+
+  await test("scoped → present∩scope over (present + out-in-scope) per conduct", () => {
+    const att = [{ source: "csv", dateIso: "2026-01-01", date: "01 Jan 2026", conductId: "C1", participants: "0001,0002,0050", participating: 3, total: 10 }];
+    const cd = [{ conductId: "C1", date: "01 Jan 2026", d4: "0003", type: "RSI" }];
+    const r = c.perConductParticipation(att, cd, new Set(["0001", "0002", "0003"]));
+    eq(r.length, 1);
+    eq(r[0].pct, 67); // present 0001,0002 (2) over involved 3
+  });
 };
