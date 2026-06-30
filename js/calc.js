@@ -29,12 +29,35 @@ function daysFromStartEndInclusive(startIso, endIso) {
   return diff > 0 ? diff : 0;
 }
 
+// Single canonical parser for the stored participant CSV (one place so the
+// format — delimiter, trimming, blank-skipping — has a single definition).
+// Accepts the attendance row's raw `participants` string (or any CSV string).
+function parseParticipantIds(participants) {
+  return String(participants == null ? "" : participants)
+    .split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+// Index conductDetail out-rows by "conductId|date" → Set(d4) for O(1) lookup.
+// Shared by scopedParticipation + perConductParticipation so a caller that needs
+// both can build the index once and pass it in (avoids re-walking conductDetail).
+function conductOutByIndex(conductDetail) {
+  var outBy = {};
+  (conductDetail || []).forEach(function (c) {
+    var key = String(c.conductId) + "|" + String(c.date);
+    if (!outBy[key]) outBy[key] = new Set();
+    outBy[key].add(String(c.d4));
+  });
+  return outBy;
+}
+
 // Average participation. visibleSet === null → company-wide using the stored
 // participating/total per conduct (exact back-compat with the old dashboard).
 // Otherwise scope by the Present 4D list (numerator) and present+out-in-scope
 // (denominator, out = a conductDetail non-participation row), skipping conducts
 // with nobody in scope. Returns { pct: 0-100 integer, conducts: included count }.
-function scopedParticipation(attendance, conductDetail, visibleSet) {
+// `outBy` (optional) is a precomputed conductOutByIndex — pass it to share the
+// index with perConductParticipation instead of rebuilding it here.
+function scopedParticipation(attendance, conductDetail, visibleSet, outBy) {
   if (visibleSet == null) {
     const usable = (attendance || []).filter(function(a) { return Number(a.total) > 0; });
     if (!usable.length) return { pct: 0, conducts: 0 };
@@ -42,16 +65,10 @@ function scopedParticipation(attendance, conductDetail, visibleSet) {
     return { pct: Math.round(sum / usable.length), conducts: usable.length };
   }
   var rows = (attendance || []).filter(function(a) { return a.source === "csv"; });
-  // Index conductDetail out-rows by conductId|date for O(1) lookup.
-  var outBy = {};
-  (conductDetail || []).forEach(function(c) {
-    var key = String(c.conductId) + "|" + String(c.date);
-    if (!outBy[key]) outBy[key] = new Set();
-    outBy[key].add(String(c.d4));
-  });
+  if (!outBy) outBy = conductOutByIndex(conductDetail);
   var total = 0, n = 0;
   rows.forEach(function(a) {
-    var present = String(a.participants || "").split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+    var present = parseParticipantIds(a.participants);
     var scopedPresent = present.filter(function(id) { return visibleSet.has(String(id)); });
     var outs = outBy[String(a.conductId) + "|" + String(a.date)] || new Set();
     var scopedOut = 0;
@@ -88,11 +105,16 @@ function conductBuildup(rows, missTypes) {
   const missSet = new Set(missTypes);
   rows = (rows || []).filter(function (r) { return r && r.dateIso; });
 
+  // Every miss must land on a group line so the cumulative chart's final values
+  // sum to exactly totalMisses; a blank/missing group buckets to "Unassigned"
+  // rather than being silently dropped (the UI caller never passes blanks, but
+  // this keeps the pure API self-consistent).
+  const normGroup = function (g) { return (g == null || g === "") ? "Unassigned" : g; };
   const dates = [...new Set(rows.map(function (r) { return r.dateIso; }))].sort();
   const dateIdx = {}; dates.forEach(function (d, i) { dateIdx[d] = i; });
   const groups = [...new Set(rows
-    .map(function (r) { return r.group; })
-    .filter(function (g) { return g != null && g !== ""; }))].sort();
+    .filter(function (r) { return missSet.has(r.type); })
+    .map(function (r) { return normGroup(r.group); }))].sort();
   const present = [...new Set(rows.map(function (r) { return r.type; }).filter(Boolean))];
   const types = missTypes.filter(function (t) { return present.indexOf(t) !== -1; })
     .concat(present.filter(function (t) { return !missSet.has(t); }));
@@ -108,7 +130,8 @@ function conductBuildup(rows, missTypes) {
     if (r.type && byType[r.type] != null) byType[r.type]++;
     if (missSet.has(r.type)) {
       totalMisses++;
-      if (r.group != null && cumulative[r.group]) cumulative[r.group][di]++;
+      const g = normGroup(r.group);
+      if (cumulative[g]) cumulative[g][di]++;   // every miss group exists by construction
     }
   });
   groups.forEach(function (g) {
@@ -129,7 +152,7 @@ function conductBuildup(rows, missTypes) {
 // scoped present ∩ scope over (present + out-in-scope). Each attendance row must
 // already carry `dateIso`. Returns [{ conductId, dateIso, pct }] in input order
 // (caller sorts + labels).
-function perConductParticipation(attendance, conductDetail, visibleSet) {
+function perConductParticipation(attendance, conductDetail, visibleSet, outBy) {
   const out = [];
   if (visibleSet == null) {
     (attendance || []).forEach(function (a) {
@@ -138,15 +161,10 @@ function perConductParticipation(attendance, conductDetail, visibleSet) {
     });
     return out;
   }
-  const outBy = {};
-  (conductDetail || []).forEach(function (c) {
-    const key = String(c.conductId) + "|" + String(c.date);
-    if (!outBy[key]) outBy[key] = new Set();
-    outBy[key].add(String(c.d4));
-  });
+  if (!outBy) outBy = conductOutByIndex(conductDetail);
   (attendance || []).forEach(function (a) {
     if (a.source !== "csv") return;
-    const present = String(a.participants || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    const present = parseParticipantIds(a.participants);
     const scopedPresent = present.filter(function (id) { return visibleSet.has(String(id)); });
     const outs = outBy[String(a.conductId) + "|" + String(a.date)] || new Set();
     let scopedOut = 0;
@@ -205,5 +223,5 @@ function conductProgress(instances, presentByConduct, recruitIds) {
 
 // Node test export (browser ignores `module`); see js/calc.js consumers below.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductProgress };
+  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductProgress, parseParticipantIds, conductOutByIndex };
 }

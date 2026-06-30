@@ -70,4 +70,16 @@ module.exports = async function run() {
     ok(render.includes("function setConductSeries"), "no conduct-class selector handler");
     ok(render.includes("Class Progression"), "progression list not rendered");
   });
+
+  await test("status grid is lazy-loaded behind the shared chart pref", () => {
+    ok(render.includes("function loadStatusGrid"), "no status-grid loader");
+    ok(render.includes("function renderSBGrid") && render.includes("_sbGridShown"),
+      "renderSBGrid does not gate on the _sbGridShown flag");
+    // The grid defer decision must reuse shouldDeferCharts so one pref governs all
+    // heavy views; sbGridNav must keep the grid shown once loaded.
+    ok(/renderSBGrid[\s\S]{0,400}shouldDeferCharts\(\)/.test(render),
+      "renderSBGrid never consults shouldDeferCharts");
+    ok(/function sbGridNav[\s\S]{0,120}_sbGridShown = true/.test(render),
+      "sbGridNav re-defers the grid instead of keeping it shown");
+  });
 };

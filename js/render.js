@@ -5,6 +5,9 @@
 function render() {
   Object.values(STATE.charts).forEach(c => c.destroy());
   STATE.charts = {};
+  // Drop any deferred-build closures from the previous view so an un-tapped
+  // builder can't pin its captured scope or fire against now-stale DOM.
+  _deferredBuilders = {};
 
   // Reset scroll on tab switches so a long previous tab doesn't leave the
   // next one looking pre-scrolled (and on mobile hiding the topbar).
@@ -291,7 +294,7 @@ function renderDashboard(el) {
       <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
       <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
     </div>
-    ${deferActive ? chartGateMarkup("loadDashboardCharts()") : ""}
+    ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
     ${renderDashProfileCards(scoped)}
     <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel <span style="color:var(--dim);font-weight:400">(live medical status on ${today})</span></h3>
     ${liveRows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Status today</th><th style="text-align:left">Reason</th><th style="text-align:left">Duration</th></tr></thead><tbody>
@@ -376,27 +379,50 @@ function renderDashboard(el) {
     options: { plugins: { legend: { display: false } }, scales: { y: { grace: "10%", grid: { color: "#30363D" }, ticks: { color: "#8B949E" } }, x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 9 } } } } }
   });
   }; // buildDashboardCharts
-  if (deferActive) _dashChartBuild = buildDashboardCharts; else buildDashboardCharts();
+  if (deferActive) _deferredBuilders["dash-chart-gate"] = buildDashboardCharts; else buildDashboardCharts();
 }
 
-// ── Chart lazy-load gate (Feature 4) ─────────────────────────────────────────
-// Shared "📊 Load charts" affordance shown when shouldDeferCharts() is true.
-// `onclickExpr` is the loader call for the specific view.
-function chartGateMarkup(onclickExpr) {
-  return `<div class="card" id="chart-gate" style="text-align:center;padding:18px;margin-top:10px">
-    <button class="btn btn-primary" onclick="${onclickExpr}">📊 Load charts</button>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Charts are deferred for a faster load${window.innerWidth <= 768 ? " on mobile" : ""}. <a href="#" onclick="setChartPref('eager');return false" style="color:var(--accent)">Always load charts</a></div>
+// ── Deferred-content gate (Feature 4) ────────────────────────────────────────
+// Heavy DOM / Chart.js construction is deferred behind a "Load" affordance when
+// shouldDeferCharts() is true (mobile, or explicit pref). Each deferrable block
+// has a UNIQUE gateId + container id so multiple gated blocks never collide on a
+// shared element id; the build closure is stashed in _deferredBuilders[gateId]
+// and run once on tap. render() clears the registry wholesale so a builder for an
+// abandoned view can't leak its captured scope or fire against stale DOM.
+let _deferredBuilders = {};
+function chartGateMarkup(onclickExpr, gateId, label) {
+  return `<div class="card" id="${gateId || "chart-gate"}" style="text-align:center;padding:18px;margin-top:10px">
+    <button class="btn btn-primary" onclick="${onclickExpr}">${label || "📊 Load charts"}</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Deferred for a faster load${window.innerWidth <= 768 ? " on mobile" : ""}. <a href="#" onclick="setChartPref('eager');return false" style="color:var(--accent)">Always load</a></div>
   </div>`;
 }
-// Builder stashed by renderDashboard when deferred; run on tap.
-let _dashChartBuild = null;
-function loadDashboardCharts() {
-  const g = document.getElementById("dash-charts"); if (g) g.style.display = "";
-  const gate = document.getElementById("chart-gate"); if (gate) gate.remove();
-  if (_dashChartBuild) { const b = _dashChartBuild; _dashChartBuild = null; b(); }
+// Reveal a hidden container, remove its gate, and run its stashed builder once.
+function runDeferred(containerId, gateId) {
+  const g = document.getElementById(containerId); if (g) g.style.display = "";
+  const gate = document.getElementById(gateId); if (gate) gate.remove();
+  const b = _deferredBuilders[gateId];
+  if (b) { delete _deferredBuilders[gateId]; b(); }
 }
+function loadDashboardCharts() { runDeferred("dash-charts", "dash-chart-gate"); }
+function loadConductDashCharts() { runDeferred("cd-charts", "cd-chart-gate"); }
 // Change the lazy-load preference (auto|defer|eager) and re-render the view.
 function setChartPref(mode) { setDeferCharts(mode); render(); }
+
+// Auto-defer keys off window.innerWidth, which only changes on resize/rotate.
+// Re-render when the defer decision actually flips across the 768px breakpoint so
+// a mobile→desktop (or rotate) transition reflects the new mode instead of being
+// stuck behind a gate (or showing an unwanted gate) until an unrelated re-render.
+// Debounced; no-op while the decision is unchanged.
+if (typeof window !== "undefined") {
+  let _lastDefer = shouldDeferCharts(), _deferResizeT = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(_deferResizeT);
+    _deferResizeT = setTimeout(() => {
+      const now = shouldDeferCharts();
+      if (now !== _lastDefer) { _lastDefer = now; render(); }
+    }, 200);
+  });
+}
 
 // Active MSK Cases — recruits who self-reported an injury via the Google
 // Form ("Cougar MSK / Physio Log"). One card per recruit, aggregating
@@ -1828,7 +1854,6 @@ function renderPolar(el) {
 let _conductDashStart;        // undefined → default window; "" → all-time; iso → windowed
 let _conductDashEnd = "";
 let _conductSeries = "";       // "" → all conducts; else a series base name (e.g. "Endurance Run")
-let _conductChartBuild = null;
 const CONDUCT_TYPE_COLORS = { Status: "#F2A93B", RSI: "#F85149", Fallout: "#E8573A", ReportSick: "#A371F7", PXP: "#39D2C0" };
 const CONDUCT_TYPE_LABELS = { Status: "Status", RSI: "RSI", Fallout: "Fallout", ReportSick: "Report Sick", PXP: "PX (excused)" };
 const CONDUCT_GROUP_PALETTE = ["#58A6FF", "#3FB950", "#D29922", "#A371F7", "#F85149", "#39D2C0", "#E8573A", "#8B949E"];
@@ -1844,12 +1869,6 @@ function setConductWindow(days) {
 // "Endurance Run") → scope to that class's instances (#1..#N, all dates) and
 // show the per-recruit progression list.
 function setConductSeries(base) { _conductSeries = base || ""; render(); }
-
-function loadConductDashCharts() {
-  const g = document.getElementById("cd-charts"); if (g) g.style.display = "";
-  const gate = document.getElementById("chart-gate"); if (gate) gate.remove();
-  if (_conductChartBuild) { const b = _conductChartBuild; _conductChartBuild = null; b(); }
-}
 
 function renderConductDashboard(el) {
   const today = todayISO();
@@ -1869,12 +1888,24 @@ function renderConductDashboard(el) {
   // scopes the dashboard to that class's instances and unlocks the per-recruit
   // progression list. The date window stays active in class mode too (pick "All"
   // to span the whole class), so charts AND progression honour it uniformly.
-  const bases = [...new Set((STATE.conducts || []).map(c => parseConductSeries(c.name).base))].filter(Boolean).sort();
-  const seriesIds = _conductSeries
-    ? new Set((STATE.conducts || []).filter(c => parseConductSeries(c.name).base === _conductSeries).map(c => c.id))
-    : null;
+  // Group the conduct registry by series base in ONE pass — reused for the class
+  // selector, its per-base instance counts, and the selected class's id set.
+  // numById memoises each conduct's instance number so the chart-label code below
+  // doesn't re-run the regex per row.
+  const seriesGroups = {};          // base → { ids:Set, count }
+  const numById = {};               // conductId → instance number
+  (STATE.conducts || []).forEach(c => {
+    const ps = parseConductSeries(c.name);
+    numById[c.id] = ps.num;
+    if (!ps.base) return;
+    const g = seriesGroups[ps.base] || (seriesGroups[ps.base] = { ids: new Set(), count: 0 });
+    g.ids.add(c.id); g.count++;
+  });
+  const bases = Object.keys(seriesGroups).sort();
+  const seriesIds = (_conductSeries && seriesGroups[_conductSeries]) ? seriesGroups[_conductSeries].ids : null;
   const inSeries = id => !seriesIds || seriesIds.has(id);
   const keepDate = disp => inWin(disp);            // window applies in all modes (incl. class mode)
+  const numOf = id => numById[id] != null ? numById[id] : parseConductSeries(conductName(id)).num;
 
   // Scope (topbar filter) + grouping: by section when narrowed to one platoon,
   // else by platoon.
@@ -1887,36 +1918,56 @@ function renderConductDashboard(el) {
     return (groupBy === "section" ? personSection(r) : personPlatoon(r)) || "Unassigned";
   };
 
-  // Miss rows (scope + window/series), tagged with group + ISO date → calc aggregation.
-  const missRows = (STATE.conductDetail || [])
-    .filter(c => passesFilter(c.d4, visible) && inSeries(c.conductId) && keepDate(c.date))
-    .map(c => ({ dateIso: displayDateToISO(c.date), group: groupOf(c.d4), type: c.type }));
+  // Aggregation column key: in class mode each INSTANCE is its own column (keyed
+  // by instance number, zero-padded so string-sort == numeric-sort) so two
+  // instances logged on the same calendar date don't collapse into one bar/point.
+  // In all-conducts mode the column is the conduct date.
+  const colKeyOf = c => seriesIds ? "i" + String(numOf(c.conductId)).padStart(6, "0") : displayDateToISO(c.date);
+
+  // Miss rows (scope + window/series), tagged with group + column key → calc aggregation.
+  const missDetailRows = (STATE.conductDetail || [])
+    .filter(c => passesFilter(c.d4, visible) && inSeries(c.conductId) && keepDate(c.date));
+  const missRows = missDetailRows
+    .map(c => ({ dateIso: colKeyOf(c), group: groupOf(c.d4), type: c.type }));
   const agg = conductBuildup(missRows);
 
-  // Participation per conduct (scope-aware) + scoped average for the tile.
+  // Participation per conduct (scope-aware) + scoped average for the tile. attnWin
+  // only keeps rows with a parseable date (keepDate already enforces this), and the
+  // tile + trend are fed the same set, so they always count the same conducts. The
+  // out-row index is built once and shared by both calc helpers.
+  const outByIdx = scoped ? conductOutByIndex(STATE.conductDetail || []) : null;
   const attnWin = (STATE.attendance || [])
     .filter(a => inSeries(a.conductId) && keepDate(a.date))
     .map(a => Object.assign({}, a, { dateIso: displayDateToISO(a.date) }));
-  const part = perConductParticipation(attnWin, STATE.conductDetail || [], scoped)
-    .filter(p => p.dateIso)
+  const part = perConductParticipation(attnWin, STATE.conductDetail || [], scoped, outByIdx)
     .sort((a, b) => a.dateIso < b.dateIso ? -1 : (a.dateIso > b.dateIso ? 1 : 0));
-  const avg = scopedParticipation(attnWin, STATE.conductDetail || [], scoped);
-  const conductsLogged = attnWin.filter(a => Number(a.total) > 0 || String(a.participants || "")).length;
+  const avg = scopedParticipation(attnWin, STATE.conductDetail || [], scoped, outByIdx);
+
+  // A conduct counts as "logged" if it has an attendance row with real data OR a
+  // tracked miss in scope — so a session where the whole scope was on status
+  // (total 0, no participants) still counts instead of the tile reading 0 while
+  // Total Misses shows its misses.
+  const loggedIds = new Set();
+  attnWin.forEach(a => { if (Number(a.total) > 0 || parseParticipantIds(a.participants).length) loggedIds.add(a.conductId); });
+  missDetailRows.forEach(c => loggedIds.add(c.conductId));
+  const conductsLogged = loggedIds.size;
 
   // Series mode: per-recruit progression through the class (calc.conductProgress).
-  const numOf = id => parseConductSeries(conductName(id)).num;
   let progressionHTML = "";
   if (seriesIds) {
     // Held instances + who attended — drawn from the windowed class attendance
     // (attnWin), so the progression frontier/position respect the date window too.
     const presentByConduct = {};
     attnWin.forEach(a => {
-      presentByConduct[a.conductId] = new Set(String(a.participants || "").split(",").map(s => s.trim()).filter(Boolean));
+      presentByConduct[a.conductId] = new Set(parseParticipantIds(a.participants));
     });
-    // Held = series instances with an attendance row in the window.
+    // Held = class instances that actually ran in-window — one with real
+    // attendance data or a tracked miss (loggedIds). An empty placeholder
+    // attendance row (no participants, no misses) is excluded so it can't inflate
+    // the company frontier or every recruit's completion denominator.
     const held = (STATE.conducts || [])
-      .filter(c => seriesIds.has(c.id) && presentByConduct[c.id])
-      .map(c => ({ conductId: c.id, num: parseConductSeries(c.name).num }));
+      .filter(c => seriesIds.has(c.id) && loggedIds.has(c.id))
+      .map(c => ({ conductId: c.id, num: numById[c.id] }));
     const recruitIds = filteredRoster().map(r => r.id);
     const prog = conductProgress(held, presentByConduct, recruitIds);
     const rows = prog.rows.slice().sort((a, b) => (a.position - b.position) || (b.behind - a.behind) || (b.missed.length - a.missed.length));
@@ -1946,7 +1997,7 @@ function renderConductDashboard(el) {
   };
   const seriesSelect = `<select class="topbar-select" style="font-size:11px" onchange="setConductSeries(this.value)" title="Scope to a conduct class (series)">
       <option value="">All conducts</option>
-      ${bases.map(b => { const n = (STATE.conducts || []).filter(c => parseConductSeries(c.name).base === b).length; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${n > 1 ? ` (${n})` : ""}</option>`; }).join("")}
+      ${bases.map(b => { const n = seriesGroups[b].count; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${n > 1 ? ` (${n})` : ""}</option>`; }).join("")}
     </select>`;
   const scopeBanner = isFilterActive()
     ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong>${seriesIds ? ` · class <strong>${escapeHTML(_conductSeries)}</strong>` : ""} — buildup grouped by ${groupBy}.</div>`
@@ -1979,18 +2030,17 @@ function renderConductDashboard(el) {
         <div class="card"><h3>Participation${seriesIds ? " by Instance" : " Trend"}</h3><div class="chart-box" style="height:220px"><canvas id="cd-participation"></canvas></div></div>
       </div>
     </div>
-    ${deferActive ? chartGateMarkup("loadConductDashCharts()") : ""}`
+    ${deferActive ? chartGateMarkup("loadConductDashCharts()", "cd-chart-gate") : ""}`
     : `<div class="empty-state" style="padding:24px;font-size:13px;text-align:center;color:var(--muted)">No conduct data ${seriesIds ? `for class "${escapeHTML(_conductSeries)}"` : ""} in this window/scope. Log conducts in the Attendance tab or widen the date window.</div>`}
   `;
 
   if (!hasData) return;
 
-  // X-axis labels: instance "#N" in series mode (per date), else day/month.
-  const instLabelByIso = {};
-  if (seriesIds) attnWin.forEach(a => { if (a.dateIso && instLabelByIso[a.dateIso] == null) instLabelByIso[a.dateIso] = "#" + numOf(a.conductId); });
-  const dm = iso => {
-    if (seriesIds && instLabelByIso[iso]) return instLabelByIso[iso];
-    const d = new Date(iso + "T00:00:00"); return isNaN(d) ? iso : `${d.getDate()}/${d.getMonth() + 1}`;
+  // X-axis label decode: in class mode the column key is "i<padded-num>" → "#N";
+  // in all-conducts mode it's an ISO date → day/month.
+  const dm = key => {
+    if (seriesIds) { const n = Number(String(key).replace(/^i/, "")); return isNaN(n) ? key : "#" + n; }
+    const d = new Date(key + "T00:00:00"); return isNaN(d) ? key : `${d.getDate()}/${d.getMonth() + 1}`;
   };
   const rateColorHex = r => r >= 95 ? "#3FB950" : r >= 70 ? "#D29922" : "#F85149";
   const axisBase = {
@@ -2053,7 +2103,7 @@ function renderConductDashboard(el) {
     });
   };
 
-  if (deferActive) _conductChartBuild = buildConductDashCharts; else buildConductDashCharts();
+  if (deferActive) _deferredBuilders["cd-chart-gate"] = buildConductDashCharts; else buildConductDashCharts();
 }
 
 // Conducts registry admin tab. Lists every entry in STATE.conducts with usage
@@ -2298,6 +2348,7 @@ let _sbCollapsed = (() => { try { return localStorage.getItem("braves-sb-collaps
 let _sbShowAll = false;
 let _sbWeekOffset = 0;     // grid paging, in 5-week windows (0 = current)
 let _sbSearch = "";
+let _sbGridShown = false;  // lazy-load: false → show the "Load grid" gate (mobile)
 
 // Grid cell palette (A4.2).
 const SB_CELL = {
@@ -2344,6 +2395,7 @@ function renderStatusBoard(el) {
     <div id="sb-grid" class="card" style="padding:14px"></div>
     <div id="sb-popover"></div>
   `;
+  _sbGridShown = false;   // re-defer the heavy calendar grid each time the board opens
   renderSBLeaderboard();
   renderSBRosterList();
   renderSBGrid();
@@ -2459,10 +2511,26 @@ function sbWeeks(offset) {
   }
   return weeks;
 }
+// Lazy-load: a wide grid is ~35 cells × N people of DOM — the same mobile jank
+// the charts defer. Build it only when not deferred, the user has tapped "Load
+// grid", or the scope is small enough to be cheap. Honours the shared chart pref
+// (auto/defer/eager) so one toggle governs every heavy view.
+const SB_GRID_DEFER_ROWS = 30;
 function renderSBGrid() {
   const host = document.getElementById("sb-grid");
   if (!host) return;
   const scoped = filteredRoster();
+  if (!_sbGridShown && shouldDeferCharts() && scoped.length > SB_GRID_DEFER_ROWS) {
+    host.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <h3 style="font-size:14px;font-weight:600">Status Grid <span style="font-weight:400;color:var(--muted);font-size:11px">(calendar — day = square, colour = status)</span></h3>
+      </div>
+      <div style="text-align:center;padding:18px">
+        <button class="btn btn-primary" onclick="loadStatusGrid()">🗓️ Load status grid</button>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px">Deferred for a faster load on mobile (${scoped.length} rows). <a href="#" onclick="setChartPref('eager');return false" style="color:var(--accent)">Always load</a></div>
+      </div>`;
+    return;
+  }
   const companyWide = !STATE.filterPlt;     // no platoon picked → whole company
   const weeks = sbWeeks(_sbWeekOffset);
   const todayKey = todayISO();
@@ -2539,7 +2607,8 @@ function sbGridClick(e) {
   const cell = e.target.closest("[data-iso]");
   if (cell && cell.dataset.d4) openSBCellDetail(cell.dataset.d4, cell.dataset.iso);
 }
-function sbGridNav(delta) { _sbWeekOffset = delta === 0 ? 0 : _sbWeekOffset + delta; renderSBGrid(); }
+function loadStatusGrid() { _sbGridShown = true; renderSBGrid(); }
+function sbGridNav(delta) { _sbGridShown = true; _sbWeekOffset = delta === 0 ? 0 : _sbWeekOffset + delta; renderSBGrid(); }
 
 // ── A4.4 lightweight cell-detail popover (reused by A7 rows) ─────────────────
 function openSBCellDetail(d4, iso) {
