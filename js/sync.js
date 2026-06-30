@@ -38,9 +38,9 @@ function renderSync(el) {
     <div class="card" style="margin-top:16px">
       <h3 style="color:var(--accent)">⚡ Display / Performance</h3>
       <p style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.5">
-        Controls when charts on the <strong>Strength Board</strong> and <strong>Conduct Dashboard</strong> are built.
-        Deferring renders the tiles and tables instantly and waits for a “📊 Load charts” tap before drawing the
-        charts — noticeably faster on mobile. This is a per-device setting.
+        Controls when heavy views — charts on the <strong>Strength Board</strong> and <strong>Conduct Dashboard</strong>,
+        plus the <strong>Status Board</strong> calendar grid — are built. Deferring renders the tiles and tables instantly
+        and waits for a “📊 Load” tap before drawing them — noticeably faster on mobile. This is a per-device setting.
       </p>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${[["auto", "Auto — defer on mobile"], ["eager", "Always load charts"], ["defer", "Always defer charts"]]

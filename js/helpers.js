@@ -1116,7 +1116,7 @@ function haDayMap(d4) {
   (STATE.attendance || []).forEach(a => {
     if (a.source !== "csv") return;             // only CSV imports establish HA
     if (!conductHAEligible(a)) return;
-    const ids = String(a.participants || "").split(",").map(s => s.trim()).filter(Boolean);
+    const ids = parseParticipantIds(a.participants);
     if (!ids.includes(String(d4))) return;
     const iso = displayDateToISO(a.date);
     if (!iso) return;

@@ -162,4 +162,49 @@ module.exports = async function run() {
     const r = c.conductProgress(instances, { e1: new Set(["0009"]), e2: new Set(["0009"]) }, ["0001"]);
     eq(r.rows[0], { d4: "0001", position: 0, completed: 0, missed: [], behind: 2 });
   });
+
+  suite("calc: conduct buildup group consistency");
+
+  await test("a blank/missing group buckets to Unassigned and still counts", () => {
+    const r = c.conductBuildup([
+      { dateIso: "2026-01-01", group: "", type: "RSI" },
+      { dateIso: "2026-01-01", group: null, type: "Fallout" },
+      { dateIso: "2026-01-01", group: "Sec 1", type: "Status" }
+    ]);
+    eq(r.totalMisses, 3);
+    eq(r.groups, ["Sec 1", "Unassigned"]);
+    // Invariant: the cumulative lines' final values sum to exactly totalMisses,
+    // so the buildup chart can never undershoot the Total Misses tile.
+    const lastSum = r.groups.reduce((s, g) => s + r.cumulative[g][r.cumulative[g].length - 1], 0);
+    eq(lastSum, r.totalMisses);
+    eq(r.cumulative["Unassigned"], [2]); // the blank + null misses
+    eq(r.cumulative["Sec 1"], [1]);
+  });
+
+  await test("groups list ignores PXP-only groups (no misses → no buildup line)", () => {
+    const r = c.conductBuildup([
+      { dateIso: "2026-01-01", group: "Sec 2", type: "PXP" },
+      { dateIso: "2026-01-01", group: "Sec 1", type: "RSI" }
+    ]);
+    eq(r.groups, ["Sec 1"]);     // Sec 2 has only PXP (not a miss)
+    eq(r.byType.PXP, 1);         // PXP still tallied for the stacked bar
+  });
+
+  suite("calc: participant parsing + shared out-index");
+
+  await test("parseParticipantIds trims, drops blanks, coerces nullish to []", () => {
+    eq(c.parseParticipantIds("0001, 0002 ,,0003"), ["0001", "0002", "0003"]);
+    eq(c.parseParticipantIds(""), []);
+    eq(c.parseParticipantIds(null), []);
+    eq(c.parseParticipantIds(undefined), []);
+  });
+
+  await test("a precomputed outBy index yields identical scoped results", () => {
+    const att = [{ source: "csv", date: "01 Jan 2026", dateIso: "2026-01-01", conductId: "C1", participants: "0001,0002,0050" }];
+    const cd = [{ conductId: "C1", date: "01 Jan 2026", d4: "0003", type: "RSI" }];
+    const scope = new Set(["0001", "0002", "0003"]);
+    const idx = c.conductOutByIndex(cd);
+    eq(c.perConductParticipation(att, cd, scope), c.perConductParticipation(att, null, scope, idx));
+    eq(c.scopedParticipation(att, cd, scope), c.scopedParticipation(att, null, scope, idx));
+  });
 };
