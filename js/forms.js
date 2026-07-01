@@ -1918,10 +1918,40 @@ function submitCommander() {
   if (STATE.apiUrl) autoSync("Roster", { type: "upsert", row: entry });
 }
 
+// Mirrors the legacy §8 heuristic (bpIsAlOilType / bpOthersNotInCamp in
+// braves-parade.js) purely to suggest a starting value for the In Camp
+// select — the classifier itself no longer guesses; every saved record
+// carries an explicit isInCamp.
+function leaveInCampGuess(type, reason) {
+  return bpIsAlOilType(type) ? false : !bpOthersNotInCamp(reason);
+}
+// Recomputes the In Camp select from the current Type/Reason, but only
+// until the commander manually picks a value themselves. Setting .value
+// here doesn't fire "change", so it never trips markLeaveInCampTouched below.
+function updateLeaveInCampDefault() {
+  const el = document.getElementById("f-in-camp");
+  if (!el || el.dataset.touched === "1") return;
+  el.value = String(leaveInCampGuess(gv("f-type"), gv("f-reason")));
+}
+function markLeaveInCampTouched() {
+  const el = document.getElementById("f-in-camp");
+  if (el) el.dataset.touched = "1";
+}
 function openLeaveForm(id) {
   const e = id ? STATE.leave.find(x => x.id === id) : null;
   const startVal = e ? displayDateToISO(e.startDate) || todayISO() : todayISO();
   const endVal = e ? displayDateToISO(e.endDate) || todayISO() : todayISO();
+  const LEAVE_TYPES = [
+    ["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Leave", "Leave"],
+    ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"],
+    ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"],
+    ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]
+  ];
+  // The native <select> below has no blank placeholder, so an untouched new
+  // form effectively defaults to the first option (Off-in-Lieu) — matched
+  // here so the In Camp smart-prefill agrees with what the browser shows.
+  const initialType = e?.type || LEAVE_TYPES[0][0];
+  const inCampDefault = e ? (e.isInCamp === true) : leaveInCampGuess(initialType, e?.reason || "");
   openModal(e ? "Edit Leave/Out Entry" : "Log Leave / Out", `
     <form onsubmit="event.preventDefault(); submitLeave(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
@@ -1933,17 +1963,17 @@ function openLeaveForm(id) {
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
         <div class="form-group"><label>Person</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-type", "Type", [["Off-in-Lieu", "Off-in-Lieu (counts toward quota)"], ["Leave", "Leave"], ["Compassionate", "Compassionate Leave"], ["Weekend", "Weekend"], ["Night's Out", "Night's Out (same-day, evening off-camp)"], ["Course", "Course"], ["Guard Duty", "Guard Duty"], ["NDP", "NDP"], ["Other", "Other"]], true, e?.type || "")}
+        <div class="form-group"><label>Type</label><select id="f-type" required onchange="updateLeaveInCampDefault()">${LEAVE_TYPES.map(([val, lab]) => `<option value="${val}" ${val === initialType ? "selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="form-row">
           ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
           ${formField("f-end", "End date", "date", "", `required value="${endVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
         </div>
         ${formField("f-days", "Days (auto-calc — editable for half-days)", "number", "1", `required min="0" max="365" step="0.5" value="${e?.days ?? 1}"`)}
-        ${formField("f-reason", "Reason / notes", "text", "APSC course / NDP rehearsal / Cleared leave balance…", `maxlength="200" value="${escapeAttr(e?.reason)}"`)}
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer">
-          <input id="f-in-camp" type="checkbox" ${e?.isInCamp ? "checked" : ""} style="width:16px;height:16px;cursor:pointer">
-          In Camp (counts toward Current Strength regardless of type — e.g. Guard Duty, working NDP)
-        </label>
+        ${formField("f-reason", "Reason / notes", "text", "APSC course / NDP rehearsal / Cleared leave balance…", `maxlength="200" value="${escapeAttr(e?.reason)}" oninput="updateLeaveInCampDefault()"`)}
+        <div class="form-group"><label>In Camp?</label><select id="f-in-camp" required onchange="markLeaveInCampTouched()" ${e ? 'data-touched="1"' : ""}>
+          <option value="true" ${inCampDefault ? "selected" : ""}>In Camp</option>
+          <option value="false" ${!inCampDefault ? "selected" : ""}>Not In Camp</option>
+        </select></div>
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Log"}</button>
       </div>
     </form>`);
@@ -1993,7 +2023,8 @@ function submitLeave() {
     endDate: isoToDisplayDate(endIso),
     days: +gv("f-days") || 0,
     reason: gv("f-reason") || "",
-    isInCamp: document.getElementById("f-in-camp")?.checked || false
+    isInCamp: gv("f-in-camp") === "true",
+    isInCampReviewed: true
   };
   if (editId) {
     const idx = STATE.leave.findIndex(l => l.id === editId);

@@ -42,8 +42,12 @@ const BP_SECTION_LABELS = {
 // Leave types that count as AL/OIL vs OTHERS (DECISIONS #32, resolved #35 this
 // session). Config-driven: configGet("alOilLeaveTypes") supplies the list
 // (comma-separated string or array); the hardcoded set below is the fallback if
-// Config is absent. Everything NOT in the set falls to OTHERS, sub-typed in/out
-// of camp by the reason-keyword derivation (bpOthersNotInCamp), per spec §8.
+// Config is absent. Everything NOT in the set falls to OTHERS. In/out-of-camp
+// for every leave row (AL/OIL and OTHERS alike) is the explicit isInCamp the
+// commander picks in the Leave form — see bpClassifyPerson below.
+// bpOthersNotInCamp is kept only to compute the form's smart-prefill
+// suggestion and the one-off GAS backfill migration; the classifier itself
+// never calls it.
 const BP_ALOIL_TYPES_DEFAULT =
   ["leave", "off-in-lieu", "oil", "al", "annual leave", "weekend", "night's out", "nights out", "compassionate"];
 function bpAlOilTypeSet() {
@@ -114,7 +118,10 @@ function sickRN(personId) {
   return name.trim();
 }
 
-// ── OTHERS sub-type (spec §8) ───────────────────────────────────────────────
+// ── OTHERS sub-type guess (spec §8, legacy) ─────────────────────────────────
+// No longer called by bpClassifyPerson (every leave row now carries an
+// explicit isInCamp). Kept for two callers: the Leave form's smart-prefill
+// (forms.js) and the one-off GAS backfill migration (bravesBackfillLeaveInCamp).
 function bpOthersNotInCamp(reasonText, override) {
   if (override === true) return false;   // othersInCamp = true → in camp
   if (override === false) return true;
@@ -154,16 +161,16 @@ function bpClassifyPerson(r, dateIso, idx) {
   const medRows = idx ? (idx.medical[r.id] || []) : STATE.medical.filter(m => m.d4 === r.id);
   const apptRows = idx ? (idx.appointments[r.id] || []) : (STATE.appointments || []).filter(a => a.d4 === r.id);
 
-  // Leave → AL/OIL (in the AL/OIL type set) or OTHERS (not in camp).
-  // "In Camp" override (l.isInCamp): the commander ticked it to say this
-  // person is physically present despite the assigned type (e.g. Guard Duty
-  // is working, so counts toward strength). Applies uniformly to AL/OIL and
-  // OTHERS types. Tracked separately and applied AFTER the loop (not inline
-  // per-row) so it's strictly additive: if a person has a second, un-
-  // overridden leave row active the same day, the override still pulls them
-  // in rather than being cancelled by that other row's notInCamp=true. It
-  // only ever clears the leave-contributed part of notInCamp — a later MC/
-  // Warded/out-of-camp appointment this function checks below is untouched.
+  // Leave → AL/OIL (in the AL/OIL type set) or OTHERS. Every leave row now
+  // carries an explicit isInCamp (In Camp/Not In Camp, picked by the
+  // commander in the Leave form — no more reason-keyword guessing). Applies
+  // uniformly to AL/OIL and OTHERS types. The "any row this day is explicitly
+  // In Camp" case is tracked separately and applied AFTER the loop (not
+  // inline per-row) so it's strictly additive: if a person has a second,
+  // Not-In-Camp leave row active the same day, the In Camp row still pulls
+  // them in rather than being cancelled by that other row's notInCamp=true.
+  // It only ever clears the leave-contributed part of notInCamp — a later
+  // MC/Warded/out-of-camp appointment this function checks below is untouched.
   let leaveOverride = false;
   leaveRows.forEach(l => {
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
@@ -172,20 +179,19 @@ function bpClassifyPerson(r, dateIso, idx) {
     // leave type when no reason was recorded. (NOT "type — reason" — the sample
     // shows a single clean label.)
     const reason = l.reason || l.type || "";
-    const override = l.isInCamp === true;
-    if (override) leaveOverride = true;
+    const inCamp = l.isInCamp === true;
+    if (inCamp) leaveOverride = true;
     if (bpIsAlOilType(l.type)) {
       push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL");
       notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
     } else {
-      // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
-      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP),
-      // unless isInCamp explicitly overrides it to IN CAMP.
-      const nic = bpOthersNotInCamp(reason, override ? true : undefined);
-      const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      // Non-AL/OIL leave → OTHERS; the commander picks In Camp/Not In Camp
+      // explicitly on every record (see bpOthersNotInCamp's own comment for
+      // where the old guess logic now only applies — form prefill/migration).
+      const label = inCamp ? "OTHERS (IN CAMP)" : "OTHERS (NOT IN CAMP)";
       const rng = bpRange(l, false);
       push2("others", `${reason}${rng ? " " + rng : ""} (${label})`, "OTHERS");
-      if (nic) notInCamp = true;
+      if (!inCamp) notInCamp = true;
     }
   });
   if (leaveOverride) notInCamp = false;

@@ -243,7 +243,7 @@ function shEpisodesToRows(persons, ctx) {
       const map = SH_STATUS_MAP[ep.status] || { kind: "medical", type: "RSI", status: ep.status };
       const sD = ctx.toDisplay(ep.startDate), eD = ctx.toDisplay(ep.endDate);
       if (map.kind === "leave") {
-        leave.push({ id: ctx.makeLeaveId(), d4, type: "AL/OIL", startDate: sD, endDate: eD, days: "", reason: ep.reason || "AL/OIL" });
+        leave.push({ id: ctx.makeLeaveId(), d4, type: "AL/OIL", startDate: sD, endDate: eD, days: "", reason: ep.reason || "AL/OIL", isInCamp: false, isInCampReviewed: false });
       } else {
         medical.push({
           id: ctx.makeMedId(), d4, date: sD, type: map.type,

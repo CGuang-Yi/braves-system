@@ -121,7 +121,7 @@ module.exports = async function run() {
     ok(sb.bpIsNotAvailable(person(sb), TODAY) === false);
   });
 
-  suite("parade classifier: isInCamp override (In Camp checkbox)");
+  suite("parade classifier: explicit isInCamp (In Camp / Not In Camp toggle)");
 
   await test("AL/OIL type (Leave) with isInCamp:true → counts as in camp", () => {
     const sb = loadParade();
@@ -146,11 +146,26 @@ module.exports = async function run() {
     ok(c.notInCamp === false, "isInCamp overrides the negative reason-keyword guess");
   });
 
-  await test("OTHERS type (Guard Duty) default (no isInCamp, no keyword) → in camp (regression)", () => {
+  await test("OTHERS type (Guard Duty) with isInCamp missing → NOT in camp (no more reason-keyword guessing)", () => {
     const sb = loadParade();
     sb.STATE.leave = [{ id: 1, d4: "0001", type: "Guard Duty", startDate: TODAY, endDate: TODAY, reason: "gate duty" }];
     const c = sb.bpClassifyPerson(person(sb), TODAY);
-    ok(c.notInCamp === false, "default OTHERS classification unchanged");
+    ok(c.notInCamp === true, "missing isInCamp now defaults to Not In Camp instead of being guessed from the reason text");
+  });
+
+  await test("OTHERS type (Course) explicitly isInCamp:false with no book-out keyword → NOT in camp (the reported bug, fixed)", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Course", startDate: TODAY, endDate: TODAY, reason: "APSC course", isInCamp: false }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    ok(c.meta.others[0].line.includes("NOT IN CAMP"), "label must read NOT IN CAMP");
+    ok(c.notInCamp === true, "explicit isInCamp:false must win even though the reason text has no book-out keyword");
+  });
+
+  await test("AL/OIL type (Leave) explicitly isInCamp:false → still not in camp", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Leave", startDate: TODAY, endDate: TODAY, isInCamp: false }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    ok(c.notInCamp === true, "explicit isInCamp:false on an AL/OIL type stays not-in-camp");
   });
 
   await test("two active leave rows same day, only one isInCamp:true → still counts as in camp (additive)", () => {

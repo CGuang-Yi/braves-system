@@ -172,4 +172,46 @@ module.exports = async function run() {
     ok(r.ok && !r.conflict, "commander single-row edit still applies");
     eq(b.db.rowsOf("Medical").length, 1, "row written");
   });
+
+  suite("backend: §8 classifier honours explicit isInCamp (mirrors frontend fix)");
+
+  await test("apps-script bpClassifyPerson: explicit isInCamp:false wins over a reason with no book-out keyword", () => {
+    const b = loadBackend();
+    b.STATE = {
+      roster: [{ id: "0001", name: "Test One", fourD: "1411", rank: "REC" }],
+      medical: [],
+      leave: [{ id: 1, d4: "0001", type: "Course", startDate: "01 Jun 2026", endDate: "02 Jun 2026", reason: "APSC course", isInCamp: false }]
+    };
+    const c = b.bpClassifyPerson(b.STATE.roster[0], "2026-06-01");
+    ok(c.notInCamp === true, "explicit isInCamp:false must be honoured with no reason-keyword guessing");
+  });
+
+  await test("apps-script bpClassifyPerson: missing isInCamp defaults to Not In Camp", () => {
+    const b = loadBackend();
+    b.STATE = {
+      roster: [{ id: "0001", name: "Test One", fourD: "1411", rank: "REC" }],
+      medical: [],
+      leave: [{ id: 1, d4: "0001", type: "Guard Duty", startDate: "01 Jun 2026", endDate: "02 Jun 2026", reason: "gate duty" }]
+    };
+    const c = b.bpClassifyPerson(b.STATE.roster[0], "2026-06-01");
+    ok(c.notInCamp === true, "missing isInCamp must default to Not In Camp, not a reason-keyword guess");
+  });
+
+  suite("backend: bravesBackfillLeaveInCamp (one-off migration)");
+
+  await test("fills blank isInCamp using the legacy guess, skips already-explicit rows", () => {
+    const b = loadBackend();
+    b.db.seed("Leave", ["id", "d4", "type", "startDate", "endDate", "days", "reason", "isInCamp", "isInCampReviewed"], [
+      ["1", "0001", "Weekend", "01 Jun 2026", "02 Jun 2026", "2", "", "", ""],
+      ["2", "0001", "Course", "01 Jun 2026", "02 Jun 2026", "2", "book out for range", "", ""],
+      ["3", "0001", "Guard Duty", "01 Jun 2026", "02 Jun 2026", "2", "gate duty", "", ""],
+      ["4", "0001", "Guard Duty", "01 Jun 2026", "02 Jun 2026", "2", "gate duty", true, ""]
+    ]);
+    b.bravesBackfillLeaveInCamp();
+    const rows = b.db.rowsOf("Leave");
+    eq(rows[0].isInCamp, false, "AL/OIL type blank -> FALSE (legacy hardcoded default)");
+    eq(rows[1].isInCamp, false, "OTHERS type with a book-out keyword blank -> FALSE (legacy guess)");
+    eq(rows[2].isInCamp, true, "OTHERS type with no keyword blank -> TRUE (legacy guess)");
+    eq(rows[3].isInCamp, true, "already-explicit row is left untouched");
+  });
 };
