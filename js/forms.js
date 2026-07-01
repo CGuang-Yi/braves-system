@@ -1940,6 +1940,10 @@ function openLeaveForm(id) {
         </div>
         ${formField("f-days", "Days (auto-calc — editable for half-days)", "number", "1", `required min="0" max="365" step="0.5" value="${e?.days ?? 1}"`)}
         ${formField("f-reason", "Reason / notes", "text", "APSC course / NDP rehearsal / Cleared leave balance…", `maxlength="200" value="${escapeAttr(e?.reason)}"`)}
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer">
+          <input id="f-in-camp" type="checkbox" ${e?.isInCamp ? "checked" : ""} style="width:16px;height:16px;cursor:pointer">
+          In Camp (counts toward Current Strength regardless of type — e.g. Guard Duty, working NDP)
+        </label>
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Log"}</button>
       </div>
     </form>`);
@@ -1988,7 +1992,8 @@ function submitLeave() {
     startDate: isoToDisplayDate(startIso),
     endDate: isoToDisplayDate(endIso),
     days: +gv("f-days") || 0,
-    reason: gv("f-reason") || ""
+    reason: gv("f-reason") || "",
+    isInCamp: document.getElementById("f-in-camp")?.checked || false
   };
   if (editId) {
     const idx = STATE.leave.findIndex(l => l.id === editId);

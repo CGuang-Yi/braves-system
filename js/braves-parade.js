@@ -155,6 +155,16 @@ function bpClassifyPerson(r, dateIso, idx) {
   const apptRows = idx ? (idx.appointments[r.id] || []) : (STATE.appointments || []).filter(a => a.d4 === r.id);
 
   // Leave → AL/OIL (in the AL/OIL type set) or OTHERS (not in camp).
+  // "In Camp" override (l.isInCamp): the commander ticked it to say this
+  // person is physically present despite the assigned type (e.g. Guard Duty
+  // is working, so counts toward strength). Applies uniformly to AL/OIL and
+  // OTHERS types. Tracked separately and applied AFTER the loop (not inline
+  // per-row) so it's strictly additive: if a person has a second, un-
+  // overridden leave row active the same day, the override still pulls them
+  // in rather than being cancelled by that other row's notInCamp=true. It
+  // only ever clears the leave-contributed part of notInCamp — a later MC/
+  // Warded/out-of-camp appointment this function checks below is untouched.
+  let leaveOverride = false;
   leaveRows.forEach(l => {
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
@@ -162,19 +172,23 @@ function bpClassifyPerson(r, dateIso, idx) {
     // leave type when no reason was recorded. (NOT "type — reason" — the sample
     // shows a single clean label.)
     const reason = l.reason || l.type || "";
+    const override = l.isInCamp === true;
+    if (override) leaveOverride = true;
     if (bpIsAlOilType(l.type)) {
       push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL");
-      notInCamp = true;  // AL/OIL is always not in camp
+      notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
     } else {
       // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
-      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP).
-      const nic = bpOthersNotInCamp(reason);
+      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP),
+      // unless isInCamp explicitly overrides it to IN CAMP.
+      const nic = bpOthersNotInCamp(reason, override ? true : undefined);
       const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
       const rng = bpRange(l, false);
       push2("others", `${reason}${rng ? " " + rng : ""} (${label})`, "OTHERS");
       if (nic) notInCamp = true;
     }
   });
+  if (leaveOverride) notInCamp = false;
 
   // Medical rows for this person.
   medRows.forEach(m => {

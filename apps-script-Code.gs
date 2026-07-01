@@ -144,7 +144,7 @@
  *                (shown in the parade state's MEDICAL APPT "Camp:" line);
  *                resolved = TRUE hides it from the dashboard + parade state.)
  *
- *   Leave:      id | d4 | type | startDate | endDate | days | reason
+ *   Leave:      id | d4 | type | startDate | endDate | days | reason | isInCamp
  *               (Personnel absences. type ∈ {Leave, Compassionate,
  *                Off-in-Lieu, Weekend, Night's Out, Course, Guard Duty,
  *                NDP, Other}. Only
@@ -152,7 +152,12 @@
  *                (roster field). Night's Out = same-day evening off-camp
  *                (start = end = same date). startDate/endDate inclusive,
  *                display-format. `days` is numeric — defaults to
- *                (endDate − startDate + 1) but is editable for half-days.)
+ *                (endDate − startDate + 1) but is editable for half-days.
+ *                isInCamp = TRUE forces the person to count toward CURRENT
+ *                STRENGTH regardless of type — e.g. Guard Duty is working,
+ *                so counts as present. Default/blank = existing §8 behavior
+ *                (AL/OIL types not-in-camp; OTHERS types guessed from the
+ *                reason text). See bpClassifyPerson.)
  *
  *   MSK:        timestamp | d4 | type | description | physioDate | exercises | cleared | manualRegions
  *               (Recruit self-reports from a Google Form ("Cougar MSK /
@@ -1215,6 +1220,7 @@ function ensureTabWithHeaders_(ss, name, headers) {
 //   • Roster      — adds the Step-2 Braves columns (platoon, section, rankGroup, fourD)
 //   • Medical     — adds the §6 columns (location, type, urtiType, mrTiming, visitId)
 //   • Appointments— adds outOfCamp (parade-state "Camp:" line depends on it)
+//   • Leave        — adds isInCamp (the "In Camp" override; strength calc depends on it)
 //   • BravesConfig— creates the key|value company-identity tab and seeds it from
 //                   DEFAULT_CONFIG (kept in sync with js/state.js)
 //   • Platoons / VocFit / SOC — creates the reference tabs with their headers
@@ -1230,6 +1236,8 @@ function bravesMigrateSchema() {
     ["location", "type", "urtiType", "mrTiming", "visitId", "origin"]);
   ensureTabWithHeaders_(ss, "Appointments",
     ["outOfCamp"]);
+  ensureTabWithHeaders_(ss, "Leave",
+    ["isInCamp"]);
 
   // Reference tabs (created with headers if absent; missing tab → [] on frontend).
   ensureTabWithHeaders_(ss, "Platoons",
@@ -2854,6 +2862,12 @@ function bpClassifyPerson(r, dateIso) {
   let notInCamp = false;
 
   // Leave → AL/OIL (in the AL/OIL type set) or OTHERS (not in camp).
+  // "In Camp" override — see js/braves-parade.js for the frontend twin (keep
+  // both copies identical; this file has no `require`, dual-maintenance is
+  // manual). Tracked separately and applied AFTER the loop so it's strictly
+  // additive: an un-overridden second leave row the same day can't cancel it,
+  // and a later MC/Warded/out-of-camp appointment check is untouched.
+  let leaveOverride = false;
   STATE.leave.forEach(l => {
     if (l.d4 !== r.id) return;
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
@@ -2862,19 +2876,23 @@ function bpClassifyPerson(r, dateIso) {
     // leave type when no reason was recorded. (NOT "type — reason" — the sample
     // shows a single clean label.)
     const reason = l.reason || l.type || "";
+    const override = l.isInCamp === true;
+    if (override) leaveOverride = true;
     if (bpIsAlOilType(l.type)) {
       out.alOil.push(`${rn} - ${reason} ${bpRange(l, true)}`.trim());
-      notInCamp = true;  // AL/OIL is always not in camp
+      notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
     } else {
       // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
-      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP).
-      const nic = bpOthersNotInCamp(reason);
+      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP),
+      // unless isInCamp explicitly overrides it to IN CAMP.
+      const nic = bpOthersNotInCamp(reason, override ? true : undefined);
       const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
       const rng = bpRange(l, false);
       out.others.push(`${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim());
       if (nic) notInCamp = true;
     }
   });
+  if (leaveOverride) notInCamp = false;
 
   // Medical rows for this person.
   STATE.medical.forEach(m => {
