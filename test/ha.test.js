@@ -212,4 +212,39 @@ module.exports = async function run() {
     seedThreeDays([med("0001", "MC", iso(2026, 4, 20), iso(2026, 4, 25))]);
     eq(Object.keys(H.haDayMap("0001")).length, 3);
   });
+
+  // ── HA activity grid helpers ─────────────────────────────────────────────
+  suite("HA: haExcludedDayMap / haGridWeeks (activity grid)");
+
+  await test("haExcludedDayMap returns the medically-excused day, and only that day", () => {
+    seedThreeDays([med("0001", "MC", iso(2026, 5, 2), iso(2026, 5, 2))]);
+    const excluded = H.haExcludedDayMap("0001");
+    eq(Array.from(excluded).sort().join(","), iso(2026, 5, 2));
+  });
+
+  await test("haExcludedDayMap is empty when nothing disqualifies", () => {
+    seedThreeDays([med("0001", "NIL", iso(2026, 5, 2), iso(2026, 5, 2))]);
+    eq(H.haExcludedDayMap("0001").size, 0);
+  });
+
+  await test("haGridWeeks aligns to Monday and covers the requested range", () => {
+    // 2026-05-06 is a Wednesday; 2026-05-08 is a Friday.
+    const weeks = H.haGridWeeks(iso(2026, 5, 6), iso(2026, 5, 8));
+    eq(weeks.length, 1);
+    eq(weeks[0].monIso, iso(2026, 5, 4));           // Monday of that week
+    eq(weeks[0].days.length, 7);
+    eq(weeks[0].days[0], iso(2026, 5, 4));
+    eq(weeks[0].days[6], iso(2026, 5, 10));         // Sunday
+  });
+
+  await test("haGridWeeks spans a month boundary without gaps or overlaps", () => {
+    const weeks = H.haGridWeeks(iso(2026, 4, 28), iso(2026, 5, 5));
+    // Flatten and check every day in range is present exactly once, in order.
+    const allDays = weeks.flatMap(w => w.days);
+    for (let i = 1; i < allDays.length; i++) {
+      eq(H._haAddDays(allDays[i - 1], 1), allDays[i]);
+    }
+    ok(allDays.includes(iso(2026, 4, 28)), "range start day present");
+    ok(allDays.includes(iso(2026, 5, 5)), "range end day present");
+  });
 };

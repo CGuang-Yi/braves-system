@@ -86,6 +86,15 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
   .sb-name{position:static;left:auto;max-width:90px}
 }
 
+/* ── HA Activity Days grid (GitHub-activity style, calendar orientation): ───
+   weeks run left→right as columns, Mon..Sun as rows, day-of-month numbers in
+   each cell, month labels across the top. Sizing matches .sb-cell. */
+.ha-grid{border-collapse:collapse}
+.ha-grid-td{padding:1px;text-align:center}
+.ha-grid-cell{display:flex;align-items:center;justify-content:center;min-width:22px;height:18px;
+  font-size:9px;font-weight:700;border-radius:3px}
+.ha-grid-dow{font-size:9px;color:var(--muted);text-align:right;padding-right:4px;white-space:nowrap}
+
 .btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
 .btn:hover{filter:brightness(1.2)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:var(--accentDim);border-color:var(--accent)}

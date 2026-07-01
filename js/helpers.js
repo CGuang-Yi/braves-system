@@ -1145,10 +1145,49 @@ function haDayMap(d4) {
   return map;
 }
 
+// Same participant/eligibility scan as haDayMap, but for the activity-grid view:
+// collect the days that were medically excused (instead of discarding them),
+// so the grid can render *why* a gap exists rather than leaving it blank.
+function haExcludedDayMap(d4) {
+  const excluded = new Set();
+  (STATE.attendance || []).forEach(a => {
+    if (a.source !== "csv") return;
+    if (!conductHAEligible(a)) return;
+    const ids = parseParticipantIds(a.participants);
+    if (!ids.includes(String(d4))) return;
+    const iso = displayDateToISO(a.date);
+    if (!iso) return;
+    if (haMedicallyExcusedOn(d4, iso)) excluded.add(iso);
+  });
+  return excluded;
+}
+
 // Local (tz-safe) yyyy-mm-dd key + day arithmetic. Using toISOString() here would
 // shift the date under a +ve UTC offset; build the key from local fields instead.
 function _haKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function _haAddDays(iso, n) { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return _haKey(d); }
+
+// Monday-aligned week list spanning [minIso, maxIso], for the GitHub-style HA
+// activity grid (§13 display). Mirrors sbWeeks()'s Monday-start convention
+// (render.js) so the two calendar grids in the app agree on week boundaries.
+function haGridWeeks(minIso, maxIso) {
+  const start = new Date(minIso + "T00:00:00");
+  const startDow = (start.getDay() + 6) % 7;         // 0 = Monday
+  start.setDate(start.getDate() - startDow);
+  const end = new Date(maxIso + "T00:00:00");
+  const endDow = (end.getDay() + 6) % 7;
+  end.setDate(end.getDate() + (6 - endDow));          // pad out to the Sunday
+  const weeks = [];
+  const wk = new Date(start);
+  while (wk <= end) {
+    const monIso = _haKey(wk);
+    const days = [];
+    for (let d = 0; d < 7; d++) days.push(_haAddDays(monIso, d));
+    weeks.push({ monIso, days });
+    wk.setDate(wk.getDate() + 7);
+  }
+  return weeks;
+}
 
 // §12.4 state machine. dateMap[iso] = periodSum (>0 ⇒ active day). mode "day" adds
 // 1 per active day (Single/Expanded, capped 1/day); "time" adds the periodSum
