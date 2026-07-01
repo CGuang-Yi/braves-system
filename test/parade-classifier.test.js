@@ -120,4 +120,53 @@ module.exports = async function run() {
     const sb = loadParade([{ id: 1, d4: "0001", type: "RSI", date: TODAY, status: "MC", startDate: TODAY, endDate: "2026-07-03" }]);
     ok(sb.bpIsNotAvailable(person(sb), TODAY) === false);
   });
+
+  suite("parade classifier: isInCamp override (In Camp checkbox)");
+
+  await test("AL/OIL type (Leave) with isInCamp:true → counts as in camp", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Leave", startDate: TODAY, endDate: TODAY, isInCamp: true }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.alOil.length, 1, "still shows under AL/OIL");
+    ok(c.notInCamp === false, "override forces in-camp despite AL/OIL type");
+  });
+
+  await test("AL/OIL type (Weekend) without isInCamp → still not-in-camp (regression)", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Weekend", startDate: TODAY, endDate: TODAY }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    ok(c.notInCamp === true, "unchecked AL/OIL leave remains not-in-camp");
+  });
+
+  await test("OTHERS type (Guard Duty) with a book-out reason + isInCamp:true → override wins", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Guard Duty", startDate: TODAY, endDate: TODAY, reason: "book out for stores run", isInCamp: true }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 1);
+    ok(c.notInCamp === false, "isInCamp overrides the negative reason-keyword guess");
+  });
+
+  await test("OTHERS type (Guard Duty) default (no isInCamp, no keyword) → in camp (regression)", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Guard Duty", startDate: TODAY, endDate: TODAY, reason: "gate duty" }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    ok(c.notInCamp === false, "default OTHERS classification unchanged");
+  });
+
+  await test("two active leave rows same day, only one isInCamp:true → still counts as in camp (additive)", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [
+      { id: 1, d4: "0001", type: "Leave", startDate: TODAY, endDate: TODAY },
+      { id: 2, d4: "0001", type: "Course", startDate: TODAY, endDate: TODAY, reason: "book out for range", isInCamp: true }
+    ];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    ok(c.notInCamp === false, "any overridden row pulls the person in, regardless of other un-overridden rows");
+  });
+
+  await test("isInCamp:true leave row + active MC same day → still NOT in camp (override doesn't reach medical)", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "RSI", date: TODAY, status: "MC", startDate: TODAY, endDate: "2026-07-03" }]);
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Guard Duty", startDate: TODAY, endDate: TODAY, isInCamp: true }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    ok(c.notInCamp === true, "MC still excludes the person even though their leave row is overridden");
+  });
 };
