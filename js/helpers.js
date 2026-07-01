@@ -1133,8 +1133,22 @@ function _haAddDays(iso, n) { const d = new Date(iso + "T00:00:00"); d.setDate(d
 // §12.4 state machine. dateMap[iso] = periodSum (>0 ⇒ active day). mode "day" adds
 // 1 per active day (Single/Expanded, capped 1/day); "time" adds the periodSum
 // (Double — sums B5 time-periods, HA.md). Resets on break-limit breach.
+//
+// params.maxActiveDays (optional) caps the active-day span of one attempt: Double is
+// "13 periods across 7 days, not inclusive of breaks" (HA.md §3) — the periods may be
+// many per day but must land within 7 *active* days. Reaching that many active days
+// without hitting the target restarts the window from the current day. Single/Expanded
+// omit it (their target == active-day count, so the span is self-bounding).
+//
+// Unlike a single-completion return, the machine scans the full [start..end] range and
+// records EVERY completion (resetting after each) in `completions`. computeHACurrency
+// needs all qualification dates so a programme completed *after* a lapse can re-qualify
+// the person (HA.md "Lapse recovery"). `status`/`completionDate`/`periods` keep their
+// first-completion meaning for the existing display callers.
 function runHAStateMachine(dateMap, startIso, endIso, params) {
-  let periods = 0, breaksUsed = 0, consec = 0, windowStart = null;
+  let periods = 0, breaksUsed = 0, consec = 0, activeDays = 0, windowStart = null;
+  let firstCompletion = null, firstCompletionPeriods = 0;
+  const completions = [];
   const d = new Date(startIso + "T00:00:00"), end = new Date(endIso + "T00:00:00");
   while (d <= end) {
     const key = _haKey(d);
@@ -1142,19 +1156,36 @@ function runHAStateMachine(dateMap, startIso, endIso, params) {
     const active = inc > 0;
     const step = params.mode === "time" ? inc : 1;
     if (windowStart === null) {
-      if (active) { windowStart = key; periods = step; }
+      if (active) { windowStart = key; periods = step; activeDays = 1; }
     } else if (active) {
-      periods += step; consec = 0;
+      if (params.maxActiveDays !== undefined && activeDays >= params.maxActiveDays) {
+        // Active-day span exhausted without completing — restart from this day.
+        periods = step; breaksUsed = 0; consec = 0; activeDays = 1; windowStart = key;
+      } else {
+        periods += step; consec = 0; activeDays++;
+      }
     } else {
       breaksUsed++; consec++;
       if (breaksUsed > params.maxBreak || (params.maxConsec !== undefined && consec > params.maxConsec)) {
-        periods = 0; breaksUsed = 0; consec = 0; windowStart = null;
+        periods = 0; breaksUsed = 0; consec = 0; activeDays = 0; windowStart = null;
       }
     }
-    if (periods >= params.target) return { status: "Completed", completionDate: key, periods, breaksUsed, windowStart };
+    if (periods >= params.target) {
+      completions.push(key);
+      if (firstCompletion === null) { firstCompletion = key; firstCompletionPeriods = periods; }
+      // Reset so a later full programme (a re-qualification) is detected too.
+      periods = 0; breaksUsed = 0; consec = 0; activeDays = 0; windowStart = null;
+    }
     d.setDate(d.getDate() + 1);
   }
-  return { status: windowStart ? "In Progress" : "Not Started", periods, breaksUsed, consecutiveBreak: consec, windowStart, completionDate: null };
+  const completed = firstCompletion !== null;
+  return {
+    status: completed ? "Completed" : (windowStart ? "In Progress" : "Not Started"),
+    completionDate: firstCompletion,
+    completions,
+    periods: completed ? firstCompletionPeriods : periods,
+    breaksUsed, consecutiveBreak: consec, windowStart
+  };
 }
 
 // HA currency (HA.md "Clarifications" / DECISIONS #3,#4 — authoritative over the
@@ -1162,19 +1193,32 @@ function runHAStateMachine(dateMap, startIso, endIso, params) {
 // the most recent prior activity; a ≤7-day pair resets Day 1 to the day after the
 // later activity (deadline = later + 14 days). An activity (or today) past the
 // Day-14 deadline with no intervening reset ⇒ lapsed. The deadline check precedes
-// the reset so a partner that lands past Day 14 still lapses (HA.md Example 1).
-function computeHACurrency(dayKeys, qualIso) {
-  if (!qualIso) return { lapsed: false, deadlineIso: null };
-  let deadline = _haAddDays(qualIso, 14);
-  let prev = qualIso;
+// the pairing reset so a partner that lands past Day 14 still lapses (HA.md Example 1).
+//
+// `qualDates` is the full sorted list of programme-completion dates (Single OR
+// Expanded — one scheme for everyone, HA.md). Completing a programme (re)starts the
+// window from that day, so a programme finished AFTER a lapse re-qualifies the person
+// (HA.md "Lapse recovery"). A bare string is accepted for back-compat (single qual).
+function computeHACurrency(dayKeys, qualDates) {
+  const quals = (Array.isArray(qualDates) ? qualDates : [qualDates]).filter(Boolean).slice().sort();
+  if (!quals.length) return { lapsed: false, deadlineIso: null };
+  const qualSet = new Set(quals);
+  const firstQual = quals[0];
+  let deadline = null, prev = null, lapsed = false, lapseDateIso = null;
   for (const a of dayKeys) {
-    if (a <= qualIso) continue;
-    if (a > deadline) return { lapsed: true, lapseDateIso: deadline };
+    if (a < firstQual) continue;
+    if (qualSet.has(a)) {
+      // (Re)qualification — restart the 14-day window, recovering from any lapse.
+      deadline = _haAddDays(a, 14); prev = a; lapsed = false; lapseDateIso = null;
+      continue;
+    }
+    if (lapsed) { prev = a; continue; }                 // stay lapsed until re-qualification
+    if (a > deadline) { lapsed = true; lapseDateIso = deadline; prev = a; continue; }
     if (daysBetween(prev, a) <= 7) deadline = _haAddDays(a, 14);
     prev = a;
   }
-  if (todayISO() > deadline) return { lapsed: true, lapseDateIso: deadline };
-  return { lapsed: false, deadlineIso: deadline };
+  if (!lapsed && deadline !== null && todayISO() > deadline) { lapsed = true; lapseDateIso = deadline; }
+  return lapsed ? { lapsed: true, lapseDateIso } : { lapsed: false, deadlineIso: deadline };
 }
 
 // Double-HA rank gate (HA.md: ≥3SG / ≥2LT ⇒ Foundation/Service Term done).
@@ -1214,21 +1258,29 @@ function computeHA(d4) {
     singleStatus = (single.status === "In Progress" || expanded.status === "In Progress") ? "In Progress" : "Not Started";
   }
 
-  // Currency / lapse — only meaningful once qualified.
+  // Currency / lapse — only meaningful once qualified. Pass EVERY qualification date
+  // (all Single + Expanded completions) so a programme re-completed after a lapse can
+  // recover currency (HA.md lapse-recovery). firstQual gates the Double window below.
   let currency = { lapsed: false, deadlineIso: null };
+  let firstQual = null;
   if (singleComplete) {
-    const comps = [single.completionDate, expanded.completionDate].filter(Boolean).sort();
-    currency = computeHACurrency(keys, comps[0]);
+    const comps = [...new Set([...(single.completions || []), ...(expanded.completions || [])])].sort();
+    firstQual = comps[0];
+    currency = computeHACurrency(keys, comps);
     if (currency.lapsed) singleStatus = "Lapsed";
   }
 
-  // Double track (gated on a live Single qualification + eligibility).
+  // Double track (gated on a live Single qualification + eligibility). Counted ONLY
+  // from the day after Single qualification — Double is a distinct programme done by
+  // those who have ALREADY completed Single (HA.md §3), so its 13 periods / 7-day
+  // window must not reuse the sessions that earned Single.
   let doubleEligible = false, doubleStatus = null, doubleTrack = null;
   if (singleComplete && singleStatus !== "Lapsed") {
     const r = STATE.roster.find(x => x.id == d4);
     doubleEligible = hasVocFit(d4) || (r && rankQualifiesDoubleHA(r));
     if (doubleEligible) {
-      doubleTrack = runHAStateMachine(dayMap, start, endIso, { target: 13, maxBreak: 2, mode: "time" });
+      const dblStart = _haAddDays(firstQual, 1);
+      doubleTrack = runHAStateMachine(dayMap, dblStart, endIso, { target: 13, maxBreak: 2, maxActiveDays: 7, mode: "time" });
       doubleStatus = doubleTrack.status === "Completed" ? "Double HA Complete" : doubleTrack.status;
     }
   }
