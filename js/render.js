@@ -2418,7 +2418,7 @@ function renderSBLeaderboard() {
   const tab = m => `<button onclick="sbSetSort('${m}')" style="padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:${_sbSort === m ? "var(--accent)" : "var(--surface)"};color:${_sbSort === m ? "#fff" : "var(--text)"};font-size:11px;cursor:pointer">${m}</button>`;
   const row = (x, i) => `<div onclick="openPerson('${x.r.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px">
       <span class="mono" style="color:var(--muted);min-width:20px">${i + 1}.</span>
-      <span style="flex:1">${escapeAttr(x.r.name || "")} ${x.r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${x.r.fourD}</span>` : ""}</span>
+      <span style="flex:1">${escapeAttr(x.r.name || "")} ${x.r.role !== "Commander" && x.r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${x.r.fourD}</span>` : ""}</span>
       <span style="background:#EF9F2722;color:#EF9F27;border:1px solid #EF9F2744;border-radius:4px;padding:1px 6px;font-size:10px">RSI ${x.rsi}</span>
       <span style="background:#378ADD22;color:#378ADD;border:1px solid #378ADD44;border-radius:4px;padding:1px 6px;font-size:10px">RSO ${x.rso}</span>
       <strong style="min-width:24px;text-align:right">${x.total}</strong>
@@ -2569,7 +2569,7 @@ function renderSBGrid() {
       cells += `<td class="sb-td${i === 0 ? " sb-wkstart" : ""}${i >= 5 ? " sb-weekend" : ""}">${inner}</td>`;
     }));
     body += `<tr>
-      <td class="sb-id">${r.fourD ? `${configGet("companyPrefix")}${r.fourD}` : escapeAttr(r.id)}</td>
+      <td class="sb-id">${r.role !== "Commander" && r.fourD ? `${configGet("companyPrefix")}${r.fourD}` : escapeAttr(r.id)}</td>
       <td class="sb-name">${escapeAttr(r.name || "")}</td>
       ${cells}
       <td style="font-weight:700;text-align:center">${c.rsi + c.rso}</td>

@@ -94,6 +94,45 @@ module.exports = async function run() {
     eq(c.meta.reportingSick[0].type, "RSO");
   });
 
+  suite("parade classifier: Bug 3 — MR drops off parade state once resolved");
+
+  await test("MR reported today + blank status → still on the MR list", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "", startDate: TODAY }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.mr.length, 1, "unresolved MR should be on the MR list");
+  });
+
+  await test("MR reported today + Pending → still on the MR list", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "Pending", startDate: TODAY }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.mr.length, 1, "Pending MR should still be on the MR list");
+  });
+
+  await test("MR given MC today → OFF the MR list, now under ATT C", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "MC", startDate: TODAY, endDate: "2026-07-03" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.mr.length, 0, "resolved MR (MC) must drop off the MR list");
+    eq(c.sections.attC.length, 1, "MC should surface under ATT C instead");
+  });
+
+  await test("MR given LD today → OFF the MR list, now under STATUS", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "LD", startDate: TODAY, endDate: "2026-07-03" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.mr.length, 0, "resolved MR (LD) must drop off the MR list");
+    eq(c.sections.status.length, 1, "LD should surface under STATUS instead");
+  });
+
+  await test("MR cleared (NIL) today → OFF the MR list entirely", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "NIL", startDate: TODAY }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.mr.length, 0, "cleared (NIL) MR must drop off the MR list");
+  });
+
+  await test("resolved MR (LD, still in camp) no longer counts toward bpIsNotAvailable", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "LD", startDate: TODAY, endDate: "2026-07-03" }]);
+    ok(sb.bpIsNotAvailable(person(sb), TODAY) === false, "resolved MR must not inflate Not Available");
+  });
+
   suite("parade classifier: Bug 2 — bpIsNotAvailable = in-camp RSI or MR");
 
   await test("in-camp RSI → not available", () => {

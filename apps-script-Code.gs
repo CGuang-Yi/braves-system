@@ -2875,19 +2875,20 @@ function bravesParadeRN(personId) {
   if (!r) return String(personId);
   const name = r.name || "";
   const prefix = configGet("companyPrefix") || "B";
-  if (r.fourD && String(r.fourD).trim() !== "") {
+  if (r.role !== "Commander" && r.fourD && String(r.fourD).trim() !== "") {
     return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
   }
   return [r.rank, name].filter(Boolean).join(" ").trim();
 }
 
-// Sick-message R/N (spec §10): name (+ B<4D>) with NO rank prefix.
+// Sick-message R/N (spec §10): name (+ B<4D>) with NO rank prefix. Commanders
+// never get a 4D suffix here either — they're never displayed by id.
 function sickRN(personId) {
   const r = STATE.roster.find(x => x.id == personId);
   if (!r) return String(personId);
   const name = r.name || "";
   const prefix = configGet("companyPrefix") || "B";
-  if (r.fourD && String(r.fourD).trim() !== "") {
+  if (r.role !== "Commander" && r.fourD && String(r.fourD).trim() !== "") {
     return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
   }
   return name.trim();
@@ -2951,12 +2952,6 @@ function bpClassifyPerson(r, dateIso) {
     if (m.d4 !== r.id) return;
     const reportedToday = displayDateToISO(m.date) === dateIso;
 
-    // MR — own section, independent of everything else (spec §6/§8).
-    if (m.type === "MR" && reportedToday) {
-      const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
-      out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
-    }
-
     // REPORTING SICK — reported RSI/RSO today AND still awaiting the MO outcome
     // (status Pending or blank). Once the MO issues any status — MC/LD/Excuse/
     // Warded/RIB/custom, or NIL (cleared) — the person is no longer "reporting
@@ -2967,6 +2962,16 @@ function bpClassifyPerson(r, dateIso) {
     // generateRSFormat / generateRSIPersonnel) intentionally list everyone who
     // reported that morning and are NOT affected by this guard.
     const moPending = !m.status || m.status === "Pending";
+
+    // MR — own section, independent of everything else (spec §6/§8). Same
+    // pending gate as REPORTING SICK: once the MO resolves the review with a
+    // final status (MC/LD/Excuse/NIL/…), it's no longer awaiting review and
+    // drops off this list (the resolved status surfaces it under ATT C /
+    // STATUS / OTHERS instead) — otherwise a resolved MR double-lists.
+    if (m.type === "MR" && reportedToday && moPending) {
+      const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
+      out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
+    }
     const isRS = (((m.type === "RSI" || m.type === "RSO") && reportedToday) && moPending)
       || (m.status === "Pending" && medStatusActive(m, dateIso));
     if (isRS) {
