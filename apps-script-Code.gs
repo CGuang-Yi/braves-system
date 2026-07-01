@@ -144,7 +144,7 @@
  *                (shown in the parade state's MEDICAL APPT "Camp:" line);
  *                resolved = TRUE hides it from the dashboard + parade state.)
  *
- *   Leave:      id | d4 | type | startDate | endDate | days | reason | isInCamp
+ *   Leave:      id | d4 | type | startDate | endDate | days | reason | isInCamp | isInCampReviewed
  *               (Personnel absences. type ∈ {Leave, Compassionate,
  *                Off-in-Lieu, Weekend, Night's Out, Course, Guard Duty,
  *                NDP, Other}. Only
@@ -153,11 +153,17 @@
  *                (start = end = same date). startDate/endDate inclusive,
  *                display-format. `days` is numeric — defaults to
  *                (endDate − startDate + 1) but is editable for half-days.
- *                isInCamp = TRUE forces the person to count toward CURRENT
- *                STRENGTH regardless of type — e.g. Guard Duty is working,
- *                so counts as present. Default/blank = existing §8 behavior
- *                (AL/OIL types not-in-camp; OTHERS types guessed from the
- *                reason text). See bpClassifyPerson.)
+ *                isInCamp = explicit TRUE/FALSE the commander picks per
+ *                record — whether this leave/out counts toward CURRENT
+ *                STRENGTH (e.g. Guard Duty is working, so counts as
+ *                present). Every row saved through the Leave form carries
+ *                an explicit value; blank (legacy/un-migrated rows) reads
+ *                as FALSE (Not In Camp). See bpClassifyPerson.
+ *                isInCampReviewed = FALSE flags a row the sick-history
+ *                importer auto-created (isInCamp defaulted, not confirmed
+ *                by a commander) so the UI can show a "confirm" badge;
+ *                cleared to TRUE the moment the row is saved through the
+ *                Leave form.)
  *
  *   MSK:        timestamp | d4 | type | description | physioDate | exercises | cleared | manualRegions
  *               (Recruit self-reports from a Google Form ("Cougar MSK /
@@ -1237,7 +1243,7 @@ function bravesMigrateSchema() {
   ensureTabWithHeaders_(ss, "Appointments",
     ["outOfCamp"]);
   ensureTabWithHeaders_(ss, "Leave",
-    ["isInCamp"]);
+    ["isInCamp", "isInCampReviewed"]);
 
   // Reference tabs (created with headers if absent; missing tab → [] on frontend).
   ensureTabWithHeaders_(ss, "Platoons",
@@ -1255,6 +1261,46 @@ function bravesMigrateSchema() {
 
   Logger.log("bravesMigrateSchema complete. Review the new columns/tabs, then " +
     "redeploy (Manage Deployments → new Version, same URL).");
+}
+
+// One-off backfill migration — run once from the editor after deploying the
+// explicit In Camp/Not In Camp toggle:
+//   bravesBackfillLeaveInCamp()
+// Existing Leave rows may have a blank isInCamp cell — that used to mean
+// "guess from the reason text" for non-AL/OIL types (bpOthersNotInCamp), and
+// was always FALSE for AL/OIL types. The classifier no longer guesses (every
+// row must carry an explicit isInCamp now), so this writes that same legacy
+// guess into every still-blank cell, once, so parade-state output for
+// existing records doesn't change at the moment this runs.
+// SAFE TO RE-RUN — only touches rows where isInCamp isn't already an
+// explicit TRUE/FALSE. Never touches isInCampReviewed (legacy rows are never
+// flagged for review — only new sick-history imports are).
+function bravesBackfillLeaveInCamp() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Leave");
+  if (!sheet) { Logger.log("No Leave tab found."); return; }
+  var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow < 2) { Logger.log("Leave tab has no data rows."); return; }
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var col = {};
+  headers.forEach(function (h, i) { col[String(h).trim()] = i; });
+  if (col.isInCamp === undefined || col.type === undefined) {
+    Logger.log("Leave tab is missing isInCamp/type columns — run bravesMigrateSchema() first.");
+    return;
+  }
+  var range = sheet.getRange(2, 1, lastRow - 1, lastCol);
+  var values = range.getValues();
+  var updated = 0;
+  values.forEach(function (row) {
+    var cur = row[col.isInCamp];
+    if (cur === true || cur === false) return; // already explicit — skip
+    var type = row[col.type];
+    var reason = col.reason !== undefined ? row[col.reason] : "";
+    row[col.isInCamp] = bpIsAlOilType(type) ? false : !bpOthersNotInCamp(reason, undefined);
+    updated++;
+  });
+  if (updated) range.setValues(values);
+  Logger.log("bravesBackfillLeaveInCamp complete. " + updated + " row(s) given an explicit isInCamp value.");
 }
 
 // Seed BravesConfig with the spec §4 defaults. Mirrors DEFAULT_CONFIG in
@@ -2771,8 +2817,12 @@ const BP_SECTION_LABELS = {
 // Leave types that count as AL/OIL vs OTHERS (DECISIONS #32, resolved #35 this
 // session). Config-driven: configGet("alOilLeaveTypes") supplies the list
 // (comma-separated string or array); the hardcoded set below is the fallback if
-// Config is absent. Everything NOT in the set falls to OTHERS, sub-typed in/out
-// of camp by the reason-keyword derivation (bpOthersNotInCamp), per spec §8.
+// Config is absent. Everything NOT in the set falls to OTHERS. In/out-of-camp
+// for every leave row (AL/OIL and OTHERS alike) is the explicit isInCamp the
+// commander picks in the Leave form — see bpClassifyPerson below.
+// bpOthersNotInCamp is kept only to compute the form's smart-prefill
+// suggestion and the one-off GAS backfill migration; the classifier itself
+// never calls it.
 const BP_ALOIL_TYPES_DEFAULT =
   ["leave", "off-in-lieu", "oil", "al", "annual leave", "weekend", "night's out", "nights out", "compassionate"];
 function bpAlOilTypeSet() {
@@ -2843,7 +2893,10 @@ function sickRN(personId) {
   return name.trim();
 }
 
-// ── OTHERS sub-type (spec §8) ───────────────────────────────────────────────
+// ── OTHERS sub-type guess (spec §8, legacy) ─────────────────────────────────
+// No longer called by bpClassifyPerson (every leave row now carries an
+// explicit isInCamp). Kept for bravesBackfillLeaveInCamp (the one-off
+// migration below) — see js/forms.js for the frontend's other caller.
 function bpOthersNotInCamp(reasonText, override) {
   if (override === true) return false;   // othersInCamp = true → in camp
   if (override === false) return true;
@@ -2861,12 +2914,13 @@ function bpClassifyPerson(r, dateIso) {
   const out = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
   let notInCamp = false;
 
-  // Leave → AL/OIL (in the AL/OIL type set) or OTHERS (not in camp).
-  // "In Camp" override — see js/braves-parade.js for the frontend twin (keep
-  // both copies identical; this file has no `require`, dual-maintenance is
-  // manual). Tracked separately and applied AFTER the loop so it's strictly
-  // additive: an un-overridden second leave row the same day can't cancel it,
-  // and a later MC/Warded/out-of-camp appointment check is untouched.
+  // Leave → AL/OIL (in the AL/OIL type set) or OTHERS. Every leave row now
+  // carries an explicit isInCamp — see js/braves-parade.js for the frontend
+  // twin (keep both copies identical; this file has no `require`,
+  // dual-maintenance is manual). The "any row this day is explicitly In
+  // Camp" case is tracked separately and applied AFTER the loop so it's
+  // strictly additive: a second Not-In-Camp leave row the same day can't
+  // cancel it, and a later MC/Warded/out-of-camp appointment check is untouched.
   let leaveOverride = false;
   STATE.leave.forEach(l => {
     if (l.d4 !== r.id) return;
@@ -2876,20 +2930,18 @@ function bpClassifyPerson(r, dateIso) {
     // leave type when no reason was recorded. (NOT "type — reason" — the sample
     // shows a single clean label.)
     const reason = l.reason || l.type || "";
-    const override = l.isInCamp === true;
-    if (override) leaveOverride = true;
+    const inCamp = l.isInCamp === true;
+    if (inCamp) leaveOverride = true;
     if (bpIsAlOilType(l.type)) {
       out.alOil.push(`${rn} - ${reason} ${bpRange(l, true)}`.trim());
       notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
     } else {
-      // Non-AL/OIL leave → OTHERS; in/out of camp via the §8 reason-keyword
-      // default ("book out"/"out of camp"/MA → NOT IN CAMP; else IN CAMP),
-      // unless isInCamp explicitly overrides it to IN CAMP.
-      const nic = bpOthersNotInCamp(reason, override ? true : undefined);
-      const label = nic ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      // Non-AL/OIL leave → OTHERS; the commander picks In Camp/Not In Camp
+      // explicitly on every record (no more reason-keyword guessing here).
+      const label = inCamp ? "OTHERS (IN CAMP)" : "OTHERS (NOT IN CAMP)";
       const rng = bpRange(l, false);
       out.others.push(`${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim());
-      if (nic) notInCamp = true;
+      if (!inCamp) notInCamp = true;
     }
   });
   if (leaveOverride) notInCamp = false;
