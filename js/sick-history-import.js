@@ -230,6 +230,17 @@ const SH_STATUS_MAP = {
   ALOIL:    { kind: "leave",   type: "AL/OIL" }
 };
 
+// An "EX" episode only carries the generic "Excuse" bucket — the sheet's colour
+// legend has no separate swatch per excuse subtype, so the subtype (if any) only
+// survives in the free-text reason (e.g. "EX PT", from shParseExplicit's label).
+// Promote to the granular "Excuse PT" when the reason says so, so this bulk-import
+// path disqualifies PT-excuse days from HA credit the same way the manual
+// submitMedical form does (haStatusDisqualifies() matches the exact string
+// "Excuse PT" — see helpers.js:1122 and braves-ha-pr20-followups memory).
+function shExcuseStatus(reason) {
+  return /\bPT\b/i.test(reason || "") ? "Excuse PT" : "Excuse";
+}
+
 // Episodes → canonical rows. ctx supplies the environment-specific bits so this
 // stays pure: { resolveD4(raw)->canonicalD4|null, makeMedId(), makeLeaveId(),
 // toDisplay(iso)->displayDate }. Unmatched 4Ds are returned (never silently
@@ -247,7 +258,7 @@ function shEpisodesToRows(persons, ctx) {
       } else {
         medical.push({
           id: ctx.makeMedId(), d4, date: sD, type: map.type,
-          status: ep.status === "EX" ? "Excuse" : map.status,
+          status: ep.status === "EX" ? shExcuseStatus(ep.reason) : map.status,
           reason: ep.reason || "", startDate: sD, endDate: eD,
           urtiType: "", mrTiming: "", visitId: ""
         });
