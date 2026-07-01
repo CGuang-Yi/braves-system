@@ -1111,6 +1111,25 @@ function conductHAEligible(att) {
   if (configGet("haEligibilitySource") === "currencyTag") return /\bha\b/i.test(att.currencyTags || "");
   return !isHAExcluded(att.conductId);          // default: existing name logic
 }
+
+// Medical statuses that mean the recruit did NOT physically complete the conduct,
+// so the day must not count toward Heat Acclimatisation (user rule, 2026-07):
+// MC/Warded (away), LD (light duty), RIB (rest in bunk) and Excuse PT (excused PT)
+// all disqualify. MR is a visit *type* (a same-day review), not a status, and every
+// other Excuse keeps the day — the recruit still trained. A ghost suffix (MC+1)
+// strips to its base first. Without this, someone left in the CSV participant list
+// while on report-sick would wrongly earn an HA day (see test/ha.test.js).
+const HA_DISQUALIFYING_STATUS = new Set(["MC", "Warded", "LD", "Excuse PT"]);
+function haStatusDisqualifies(status) {
+  const base = medStatusBaseFamily(status || "");
+  return HA_DISQUALIFYING_STATUS.has(base) || base.startsWith("RIB");
+}
+// Does d4 hold a disqualifying medical status active on this ISO day?
+function haMedicallyExcusedOn(d4, iso) {
+  return (STATE.medical || []).some(m =>
+    String(m.d4) === String(d4) && haStatusDisqualifies(m.status) && medStatusActive(m, iso));
+}
+
 function haDayMap(d4) {
   const map = {};
   (STATE.attendance || []).forEach(a => {
@@ -1120,6 +1139,7 @@ function haDayMap(d4) {
     if (!ids.includes(String(d4))) return;
     const iso = displayDateToISO(a.date);
     if (!iso) return;
+    if (haMedicallyExcusedOn(d4, iso)) return;  // MC/LD/RIB/Excuse-PT that day ⇒ no HA credit
     map[iso] = (map[iso] || 0) + (Number(a.periods) || 1);   // Σ B5 periods that day
   });
   return map;

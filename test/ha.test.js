@@ -164,4 +164,52 @@ module.exports = async function run() {
     ok(ha.overallStatus !== "Lapsed", "re-qualified member should not be Lapsed");
     eq(ha.currency.lapsed, false);
   });
+
+  // ── Report-sick leak: a disqualifying medical status must not earn an HA day ──
+  // A recruit stays in a conduct's CSV participant list even when they were MC /
+  // LD / RIB / Excuse-PT that day. haDayMap must drop those days (user rule,
+  // 2026-07): MC/Warded, LD, RIB, Excuse PT disqualify; MR (a visit type, not a
+  // status) and every other excuse still count — the recruit trained.
+  suite("HA: medical status excludes HA credit (report-sick leak)");
+
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const disp = i => { const [y, m, d] = i.split("-").map(Number); return `${String(d).padStart(2, "0")} ${MON[m - 1]} ${y}`; };
+  function med(d4, status, startIso, endIso, type) {
+    return { d4, status, type: type || "RSI", date: disp(startIso), startDate: disp(startIso), endDate: disp(endIso || startIso) };
+  }
+  // Three 1-period HA-eligible conducts on May 1/2/3, recruit 0001 present at all.
+  function seedThreeDays(medical) {
+    H.STATE.attendance = [att(iso(2026, 5, 1), 1), att(iso(2026, 5, 2), 1), att(iso(2026, 5, 3), 1)];
+    H.STATE.medical = medical;
+    H.STATE.conductDetail = [];
+  }
+
+  for (const status of ["MC", "Warded", "LD", "RIB (Rest in Bunk)", "Excuse PT"]) {
+    await test(`${status} on May 2 removes only May 2 from the HA day-map`, () => {
+      seedThreeDays([med("0001", status, iso(2026, 5, 2), iso(2026, 5, 2))]);
+      eq(Object.keys(H.haDayMap("0001")).sort().join(","), [iso(2026, 5, 1), iso(2026, 5, 3)].join(","));
+    });
+  }
+
+  await test("a multi-day MC drops every conduct inside its window", () => {
+    seedThreeDays([med("0001", "MC", iso(2026, 5, 1), iso(2026, 5, 3))]);
+    eq(Object.keys(H.haDayMap("0001")).length, 0);
+  });
+
+  for (const status of ["MR", "Excuse Kneeling", "NIL", "Pending"]) {
+    await test(`${status} keeps the day — recruit still counts`, () => {
+      seedThreeDays([med("0001", status, iso(2026, 5, 2), iso(2026, 5, 2), status === "MR" ? "MR" : "RSI")]);
+      eq(Object.keys(H.haDayMap("0001")).length, 3);
+    });
+  }
+
+  await test("an MC for a DIFFERENT recruit does not touch 0001's days", () => {
+    seedThreeDays([med("0002", "MC", iso(2026, 5, 2), iso(2026, 5, 2))]);
+    eq(Object.keys(H.haDayMap("0001")).length, 3);
+  });
+
+  await test("an MC window that misses every conduct day changes nothing", () => {
+    seedThreeDays([med("0001", "MC", iso(2026, 4, 20), iso(2026, 4, 25))]);
+    eq(Object.keys(H.haDayMap("0001")).length, 3);
+  });
 };
