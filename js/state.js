@@ -471,6 +471,15 @@ function normalizeAttendance(rows) {
   }));
 }
 
+// CodeQL js/clear-text-storage-of-sensitive-data (alert #20): medical/appointments
+// data is cached here unencrypted. Accepted risk, not fixed — this is an offline
+// mirror of the authenticated user's own data for a device they already control;
+// any encryption key derivable client-side (e.g. from authToken, itself in
+// localStorage — see AUTH_KEY) would sit right next to the ciphertext, so it
+// blocks nothing an XSS or local-device attacker couldn't already read. Real
+// defense is XSS prevention (escapeHTML at render) and treating the browser
+// profile as sensitive, not encrypting data against an attacker who already
+// has same-origin JS execution or disk access.
 function saveLocal() {
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
