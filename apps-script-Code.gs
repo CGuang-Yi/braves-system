@@ -2875,6 +2875,7 @@ function bravesParadeRN(personId) {
   if (!r) return String(personId);
   const name = r.name || "";
   const prefix = configGet("companyPrefix") || "B";
+  // Duplicates isCommander/displayPersonLabel (helpers.js) — can't reuse: this needs B<fourD> tagging, not plain name.
   if (r.role !== "Commander" && r.fourD && String(r.fourD).trim() !== "") {
     return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
   }
@@ -2888,6 +2889,7 @@ function sickRN(personId) {
   if (!r) return String(personId);
   const name = r.name || "";
   const prefix = configGet("companyPrefix") || "B";
+  // Duplicates isCommander/displayPersonLabel (helpers.js) — can't reuse: this needs B<fourD> tagging with no rank prefix.
   if (r.role !== "Commander" && r.fourD && String(r.fourD).trim() !== "") {
     return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
   }
