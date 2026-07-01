@@ -211,11 +211,6 @@ function renderDashboard(el) {
   const recoveringRows = scoped.filter(r => topTag(r) && topTag(r).ghostDay > 0)
     .sort((a, b) => topTag(a).ghostDay - topTag(b).ghostDay);
   const active = scoped.length - liveRows.length;
-  // In Camp = Total Str − ATTC. ATTC means physically away (MC or Warded);
-  // LD/RMJ/Excuse/Pending recruits are still in camp, just restricted. A
-  // recruit counts as away if *any* of their active statuses is MC/Warded.
-  const awayFromCamp = liveRows.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
-  const inCamp = scoped.length - awayFromCamp;
   const _part = scopedParticipation(STATE.attendance, STATE.conductDetail, visible);
   const avgPart = _part.pct;
   const scopeBanner = isFilterActive() ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong> — strength &amp; participation figures reflect this scope.</div>` : "";
@@ -228,7 +223,10 @@ function renderDashboard(el) {
   // bpIsNotAvailable in braves-parade.js. Strength-by-rank-group replaces
   // Cougar's platoon-by-platoon breakdown (§16).
   const notAvailable = scoped.filter(r => bpIsNotAvailable(r, today)).length;
+  // In Camp = the §8 classifier's CURRENT STRENGTH for this scope (same math
+  // the parade-state message uses) — NOT a simplified MC/Warded-only guess.
   const grpStrength = bpStrength(scoped, today);
+  const inCamp = grpStrength.current;
   const grpLine = g => `${grpStrength.groups[g].cur}/${grpStrength.groups[g].tot}`;
 
   // R/C breakdown — only shown when scope is "All". Helps reproduce the
@@ -241,10 +239,8 @@ function renderDashboard(el) {
   const cmdLive = liveRows.filter(r => r.role === "Commander");
   const recActive = recRows.length - recLive.length;
   const cmdActive = cmdRows.length - cmdLive.length;
-  const recAway = recLive.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
-  const cmdAway = cmdLive.filter(r => allByD4[r.id].statuses.some(s => s.tag === "MC" || s.tag === "Warded")).length;
-  const recInCamp = recRows.length - recAway;
-  const cmdInCamp = cmdRows.length - cmdAway;
+  const recInCamp = bpStrength(recRows, today).current;
+  const cmdInCamp = bpStrength(cmdRows, today).current;
   // Inline "total/recruits/commanders" — the /R/C portion renders smaller
   // and dimmer so the headline number stays pronounced. Hidden when scope
   // is already narrowed to one role.
