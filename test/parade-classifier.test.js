@@ -49,7 +49,7 @@ function loadParade(medical) {
   };
   vm.createContext(sandbox);
   const src = fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8")
-    + "\n;this.bpClassifyPerson = bpClassifyPerson; this.bpIsNotAvailable = bpIsNotAvailable;\n";
+    + "\n;this.bpClassifyPerson = bpClassifyPerson; this.bpIsNotAvailable = bpIsNotAvailable; this.bpSickFollowUp = bpSickFollowUp;\n";
   vm.runInContext(src, sandbox, { filename: "braves-parade.js" });
   return sandbox;
 }
@@ -222,5 +222,53 @@ module.exports = async function run() {
     sb.STATE.leave = [{ id: 1, d4: "0001", type: "Guard Duty", startDate: TODAY, endDate: TODAY, isInCamp: true }];
     const c = sb.bpClassifyPerson(person(sb), TODAY);
     ok(c.notInCamp === true, "MC still excludes the person even though their leave row is overridden");
+  });
+
+  suite("parade classifier: STATUS section shows duration for every status, not just LD");
+
+  await test("RIB with a date range → duration prefix, same as LD", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "RSI", date: TODAY, status: "RIB (Rest in Bunk)", startDate: TODAY, endDate: "2026-07-03" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.status.length, 1, "RIB should surface under STATUS");
+    ok(c.sections.status[0].includes("5D RIB (Rest in Bunk)"), `expected a 5D prefix, got: ${c.sections.status[0]}`);
+  });
+
+  await test("Excuse-* with a date range → duration prefix, same as LD", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "RSI", date: TODAY, status: "Excuse RMJ", startDate: TODAY, endDate: "2026-07-03" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.status.length, 1, "Excuse-* should surface under STATUS");
+    ok(c.sections.status[0].includes("5D Excuse RMJ"), `expected a 5D prefix, got: ${c.sections.status[0]}`);
+  });
+
+  suite("bpSickFollowUp: FOLLOW UP STATUS FROM MO shows duration for every status, not just MC/LD");
+
+  await test("MC → duration prefix (unchanged)", () => {
+    const sb = loadParade();
+    eq(sb.bpSickFollowUp({ status: "MC", startDate: TODAY, endDate: "2026-07-03" }), "5D MC");
+  });
+
+  await test("LD → duration prefix (unchanged)", () => {
+    const sb = loadParade();
+    eq(sb.bpSickFollowUp({ status: "LD", startDate: TODAY, endDate: "2026-07-03" }), "5D LD");
+  });
+
+  await test("RIB → now gets a duration prefix too", () => {
+    const sb = loadParade();
+    eq(sb.bpSickFollowUp({ status: "RIB (Rest in Bunk)", startDate: TODAY, endDate: "2026-07-03" }), "5D RIB (Rest in Bunk)");
+  });
+
+  await test("Excuse-* → now gets a duration prefix too", () => {
+    const sb = loadParade();
+    eq(sb.bpSickFollowUp({ status: "Excuse RMJ", startDate: TODAY, endDate: "2026-07-03" }), "5D Excuse RMJ");
+  });
+
+  await test("Warded → still no duration (kept as plain status text)", () => {
+    const sb = loadParade();
+    eq(sb.bpSickFollowUp({ status: "Warded", startDate: TODAY, endDate: "2026-07-03" }), "Warded");
+  });
+
+  await test("Pending → still blank", () => {
+    const sb = loadParade();
+    eq(sb.bpSickFollowUp({ status: "Pending", startDate: TODAY }), "");
   });
 };

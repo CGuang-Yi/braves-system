@@ -236,21 +236,16 @@ function bpClassifyPerson(r, dateIso, idx) {
       notInCamp = true;
     }
 
-    // STATUS — active LD or any Excuse-* (in camp, restricted). Requires a non-
-    // empty status: an imported RS/SENT_OUT episode carries status:"" with an
-    // active date range, which would otherwise emit a blank "RN - " STATUS line
-    // (and double-list someone already in REPORTING SICK).
+    // STATUS — active LD, RIB, Excuse-*, or any other in-camp-restricted status.
+    // Requires a non-empty status: an imported RS/SENT_OUT episode carries
+    // status:"" with an active date range, which would otherwise emit a blank
+    // "RN - " STATUS line (and double-list someone already in REPORTING SICK).
+    // Every status here gets the same "{days}D {status}" duration prefix.
     if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
         && m.status !== "Pending" && m.status !== "NIL") {
-      if (m.status === "LD") {
-        const days = bpInclusiveDays(m);
-        const label = days ? `${days}D LD` : "LD";
-        push2("status", `${label} ${bpRange(m, true)}`.trim(), "LD");
-      } else {
-        // Excuse-* / custom: show the status text + range when dated.
-        const range = bpRange(m, true);
-        push2("status", `${m.status}${range ? " " + range : ""}`, m.status);
-      }
+      const days = bpInclusiveDays(m);
+      const label = days ? `${days}D ${m.status}` : m.status;
+      push2("status", `${label} ${bpRange(m, true)}`.trim(), m.status);
     }
 
     // Warded → OTHERS (NOT IN CAMP).
@@ -535,11 +530,9 @@ function bpUrtiOf(m) {
 // seen yet). MC/LD render with the inclusive day count ("9D MC").
 function bpSickFollowUp(m) {
   if (!m.status || m.status === "Pending") return "";
-  if (m.status === "MC" || m.status === "LD") {
-    const days = bpInclusiveDays(m);
-    return days ? `${days}D ${m.status}` : m.status;
-  }
-  return m.status;
+  if (m.status === "Warded") return m.status;
+  const days = bpInclusiveDays(m);
+  return days ? `${days}D ${m.status}` : m.status;
 }
 // The six field lines for one report-sick entry (S/N supplied by the caller,
 // which restarts numbering per URTI/NON-URTI sub-section — spec §10.2).
