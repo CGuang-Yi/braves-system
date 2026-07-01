@@ -267,6 +267,11 @@ module.exports = async function run() {
     eq(sb.bpSickFollowUp({ status: "Warded", startDate: TODAY, endDate: "2026-07-03" }), "Warded");
   });
 
+  await test("NIL with leftover start/end dates → still no duration prefix", () => {
+    const sb = loadParade();
+    eq(sb.bpSickFollowUp({ status: "NIL", startDate: "2026-06-29", endDate: "2026-07-01" }), "NIL");
+  });
+
   await test("Pending → still blank", () => {
     const sb = loadParade();
     eq(sb.bpSickFollowUp({ status: "Pending", startDate: TODAY }), "");

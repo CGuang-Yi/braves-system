@@ -3230,7 +3230,7 @@ function bpUrtiOf(m) {
 // seen yet). MC/LD render with the inclusive day count ("9D MC").
 function bpSickFollowUp(m) {
   if (!m.status || m.status === "Pending") return "";
-  if (m.status === "Warded") return m.status;
+  if (m.status === "Warded" || m.status === "NIL") return m.status;
   const days = bpInclusiveDays(m);
   return days ? `${days}D ${m.status}` : m.status;
 }
