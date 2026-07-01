@@ -18,6 +18,76 @@ function pcDelete(arrayName, id, label, d4) {
   openPerson(d4);                      // refresh the card (no-op-ish if cancelled)
 }
 
+// HA Activity Days grid — GitHub-contribution-style calendar (§13 display).
+// Status → colour: no activity (muted), trained 1 period / 2+ periods (two
+// shades of green, darker = more — GitHub's "more commits = darker" idiom),
+// medically excused (red, matching SB_CELL.MC's red so it reads consistently
+// with the Status Board grid), future (dim outline only).
+const HA_GRID_CELL = {
+  none:      { bg: "var(--surface2)", fg: "var(--dim)", label: "No activity" },
+  trained1:  { bg: "#2EA043", fg: "#04240D", label: "Trained · 1 period" },
+  trained2:  { bg: "#196C2E", fg: "#EAFFF0", label: "Trained · 2+ periods" },
+  excused:   { bg: "#E24B4A", fg: "#501313", label: "Medically excused" },
+  future:    { bg: "transparent", fg: "var(--border)", label: "Future" }
+};
+const HA_GRID_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const HA_GRID_MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function haActivityGridHtml(ha, d4) {
+  const dayMap = ha.dayMap || {};
+  const excluded = haExcludedDayMap(d4);
+  const keys = Object.keys(dayMap).concat(Array.from(excluded));
+  if (!keys.length) return "";
+  const minIso = keys.reduce((a, b) => (b < a ? b : a));
+  const todayKey = todayISO();
+  const weeks = haGridWeeks(minIso, todayKey);
+
+  let lastMonth = null;
+  const monthHead = weeks.map(w => {
+    const m = +w.monIso.slice(5, 7) - 1;
+    const label = m !== lastMonth ? HA_GRID_MONTH[m] : "";
+    lastMonth = m;
+    return `<th style="font-size:9px;font-weight:600;color:var(--muted);text-align:left;padding-left:1px">${label}</th>`;
+  }).join("");
+
+  const rows = HA_GRID_DOW.map((dow, r) => {
+    const cells = weeks.map(w => {
+      const iso = w.days[r];
+      let cell, title;
+      if (iso > todayKey) {
+        cell = HA_GRID_CELL.future;
+        title = "";
+      } else if (excluded.has(iso)) {
+        cell = HA_GRID_CELL.excused;
+        title = `${isoToDisplayDate(iso)} — medically excused`;
+      } else if ((dayMap[iso] || 0) >= 2) {
+        cell = HA_GRID_CELL.trained2;
+        title = `${isoToDisplayDate(iso)} — trained, ${dayMap[iso]} periods`;
+      } else if ((dayMap[iso] || 0) >= 1) {
+        cell = HA_GRID_CELL.trained1;
+        title = `${isoToDisplayDate(iso)} — trained, 1 period`;
+      } else {
+        cell = HA_GRID_CELL.none;
+        title = `${isoToDisplayDate(iso)} — no activity`;
+      }
+      const dayNum = +iso.slice(8, 10);
+      return `<td class="ha-grid-td"><div class="ha-grid-cell" ${title ? `title="${escapeAttr(title)}"` : ""} style="background:${cell.bg};color:${cell.fg}">${dayNum}</div></td>`;
+    }).join("");
+    return `<tr><td class="ha-grid-dow">${r % 2 === 0 ? dow : ""}</td>${cells}</tr>`;
+  }).join("");
+
+  const legend = ["none", "trained1", "trained2", "excused"]
+    .map(k => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px;color:var(--muted)"><span style="width:11px;height:11px;border-radius:2px;background:${HA_GRID_CELL[k].bg};display:inline-block;border:1px solid var(--border)"></span>${HA_GRID_CELL[k].label}</span>`)
+    .join("");
+
+  return `
+    <div style="overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px">
+      <table class="ha-grid"><thead><tr><td></td>${monthHead}</tr></thead><tbody>${rows}</tbody></table>
+    </div>
+    <div style="margin-top:6px">${legend}</div>
+  `;
+}
+
 function openPerson(d4) {
   const p = STATE.roster.find(r => r.id === d4); if (!p) return;
   const med = STATE.medical.filter(m => m.d4 === d4);
@@ -225,11 +295,8 @@ function openPerson(d4) {
       </div>`;
     };
 
-    // Activity timeline from the day map (green cell = period day; value = Σ B5).
-    const days = ha.activeDays || [];
-    const timelineHtml = days.length
-      ? days.map(iso => `<span title="${isoToDisplayDate(iso)}" style="display:inline-block;min-width:30px;text-align:center;font-size:9px;padding:2px 4px;margin:2px;background:var(--green)22;border:1px solid var(--green)44;border-radius:3px;color:var(--green)">${isoToDisplayDate(iso).split(" ").slice(0,2).join(" ")}${ha.dayMap[iso] > 1 ? " ·" + ha.dayMap[iso] : ""}</span>`).join("")
-      : "";
+    // Activity grid: GitHub-contribution-style calendar of this recruit's HA days.
+    const timelineHtml = haActivityGridHtml(ha, d4);
 
     const currLine = ha.currency && ha.currency.lapsed
       ? `<div style="font-size:11px;color:var(--red);margin-top:6px">⚠ Currency lapsed${ha.currency.lapseDateIso ? " (deadline " + isoToDisplayDate(ha.currency.lapseDateIso) + ")" : ""} — re-qualify via any programme.</div>`
@@ -249,8 +316,8 @@ function openPerson(d4) {
           : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Double: 🔒 ${ha.singleStatus === "Single HA Complete" ? "not eligible (needs VocFit or ≥3SG/≥2LT)" : "locked until Single HA complete"}</div>`}
         ${currLine}
         ${timelineHtml ? `
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">Activity Days (period = green; ·n = ${"Σ"} B5)</div>
-          <div style="max-height:120px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;line-height:1.6">${timelineHtml}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">Activity Days</div>
+          ${timelineHtml}
         ` : `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px">No HA participation logged yet (CSV import).</div>`}
       </div>
     `;
