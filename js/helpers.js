@@ -1109,7 +1109,17 @@ function isHAExcluded(conductId) {
 // conducts where the person is in the Present `participants` list.
 function conductHAEligible(att) {
   if (configGet("haEligibilitySource") === "currencyTag") return /\bha\b/i.test(att.currencyTags || "");
-  return !isHAExcluded(att.conductId);          // default: existing name logic
+  return !isHAExcluded(att.conductId);          // legacy: conduct-name logic
+}
+
+// Add/remove the "HA" token on an attendance row's currencyTags string — the
+// per-conduct eligibility signal when Config haEligibilitySource is
+// "currencyTag" (the default). Preserves any other tags; normalizes separators.
+function toggleHATag(tags) {
+  const list = String(tags || "").split(",").map(s => s.trim()).filter(Boolean);
+  const has = list.some(t => /^ha$/i.test(t));
+  const out = has ? list.filter(t => !/^ha$/i.test(t)) : list.concat("HA");
+  return out.join(", ");
 }
 
 // Medical statuses that mean the recruit did NOT physically complete the conduct,

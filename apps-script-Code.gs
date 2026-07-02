@@ -1315,7 +1315,7 @@ function bravesSeedConfig_(ss) {
     hqLabel: "BRAVES HQ",
     defaultSickLocation: "PTMC",
     polarCompanyName: "Braves Coy",
-    haEligibilitySource: "isHAExcluded",
+    haEligibilitySource: "currencyTag",
     alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate"
   };
   var sheet = ss.getSheetByName("BravesConfig");
@@ -2650,9 +2650,10 @@ const DEFAULT_CONFIG = {
   defaultSickLocation: "PTMC",
   polarCompanyName: "Braves Coy",
   // Which signal decides whether a conduct earns an HA period (spec §14.3):
-  // "isHAExcluded" = existing conduct-name logic; "currencyTag" = the CSV
-  // "Currency Tags: HA" metadata. Switchable without code changes.
-  haEligibilitySource: "isHAExcluded",
+  // "isHAExcluded" = legacy conduct-name logic; "currencyTag" = the CSV
+  // "Currency Tags: HA" metadata. Switchable without code changes. Matches the
+  // frontend default in js/state.js — keep the two in sync.
+  haEligibilitySource: "currencyTag",
   // Leave types that classify as AL/OIL in parade state (spec §8, DECISIONS
   // #32/#35). Any leave type NOT in this comma-separated list falls to OTHERS,
   // sub-typed in/out of camp by reason keywords. Edit here (or override via the
