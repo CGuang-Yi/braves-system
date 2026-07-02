@@ -250,9 +250,11 @@ function bpClassifyPerson(r, dateIso, idx) {
       push2("status", `${label} ${bpRange(m, true)}`.trim(), m.status);
     }
 
-    // Warded → OTHERS (NOT IN CAMP).
+    // Warded → OTHERS (NOT IN CAMP). Tagged type "WD" (not the generic "OTHERS")
+    // so the Status Board grid/list can colour it as away rather than leaving it
+    // indistinguishable from an in-camp OTHERS entry — see bpGridCell/bpPrimaryForDay.
     if (m.status === "Warded" && medStatusActive(m, dateIso)) {
-      push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "OTHERS");
+      push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "WD");
       notInCamp = true;
     }
   });
@@ -331,7 +333,7 @@ function bpPrimaryForDay(r, dateIso, idx) {
   const c = bpClassifyPerson(r, dateIso, idx);
   let primary = null;
   for (const [k, label] of BP_PRIMARY_CHAIN) {
-    if (c.sections[k].length) { primary = { key: k, label, reason: c.meta[k][0].reason }; break; }
+    if (c.sections[k].length) { primary = { key: k, label, reason: c.meta[k][0].reason, type: c.meta[k][0].type }; break; }
   }
   const mr = c.meta.mr.length ? c.meta.mr[0].reason : null;
   return { primary, mr, sections: c.sections, rn: c.rn, notInCamp: c.notInCamp };
@@ -347,9 +349,11 @@ function bpGridCell(r, dateIso, idx) {
   // Read the type from the structured twin rather than regex-matching the line.
   const hasRSO = c.meta.reportingSick.some(x => x.type === "RSO");
   const hasRSI = c.meta.reportingSick.some(x => x.type === "RSI");
+  const hasWarded = c.meta.others.some(x => x.type === "WD");
   let primary = null;
   if (s.alOil.length) primary = "LV";
   else if (s.attC.length) primary = "MC";
+  else if (hasWarded) primary = "WD";   // OTHERS-section but away-not-in-camp, same tier as ATT C
   else if (s.status.length) {
     // type is "LD" for an LD row; for the collapsed multi-status line it becomes
     // "STATUS", so also sniff the reason text for an "LD" token. LD outranks Excuse.
