@@ -475,6 +475,18 @@ function normalizeAttendance(rows) {
   }));
 }
 
+// Editing an Attendance row through a wizard that only knows about a SUBSET of
+// its fields (e.g. the Log Conduct wizard, which builds
+// id/date/time/conductId/total/participating/lms/px/fallout/remarks) must not
+// destroy the CSV-import fields above — a full `STATE.attendance[idx] = entry`
+// replace silently blanked participants/periods/currencyTags/source on every
+// CSV-imported conduct edited this way, which erased that conduct from
+// everyone's HA. Spread the existing row first so only entry's own keys move;
+// a brand-new row (no `existing`) has nothing to preserve.
+function mergeAttendanceEdit(existing, entry) {
+  return existing ? { ...existing, ...entry } : entry;
+}
+
 // CodeQL js/clear-text-storage-of-sensitive-data (alert #20): medical/appointments
 // data is cached here unencrypted. Accepted risk, not fixed — this is an offline
 // mirror of the authenticated user's own data for a device they already control;
