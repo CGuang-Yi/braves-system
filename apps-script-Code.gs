@@ -87,7 +87,11 @@
  *                The "follow up status from MO" in sick messages is derived
  *                from `status` (the MO outcome) — there is no separate field.)
  *   Attendance: id | date | time | conductId | total | participating | lms | px | fallout | remarks
- *               | participants | periods | currencyTags | source
+ *               | participants | periods | currencyTags | source | statusReviewed
+ *               (statusReviewed = TRUE once the Log Conduct wizard has saved this
+ *                conduct's status checklist; controls whether re-opens default
+ *                medically-restricted-but-present recruits to ticked. Auto-added
+ *                by upsertRow's ensureColumnsForKeys — no migration needed.)
  *               (Braves §14 CSV-import columns: participants = comma-joined
  *                Present 4Ds [the HA participation source]; periods = CSV cell
  *                B5 [Double-HA time-period count]; currencyTags = CSV row 2

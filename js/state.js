@@ -471,7 +471,13 @@ function normalizeAttendance(rows) {
     participants: r.participants || "",
     periods: (r.periods === 0 || r.periods) ? r.periods : "",
     currencyTags: r.currencyTags || "",
-    source: r.source || ""
+    source: r.source || "",
+    // Whether the Log Conduct wizard has reviewed this conduct's status
+    // checklist (set true on save). Stamped on EVERY row — even though only
+    // wizard-saved rows are true — so a full-tab replace (writeTab derives the
+    // sheet header from Object.keys(data[0])) can never strip the column and
+    // wipe the flag off already-reviewed conducts.
+    statusReviewed: !!r.statusReviewed
   }));
 }
 
