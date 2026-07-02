@@ -64,9 +64,13 @@ const DEFAULT_CONFIG = {
   defaultSickLocation: "PTMC",
   polarCompanyName: "Braves Coy",
   // Which signal decides whether a conduct earns an HA period (spec §14.3):
-  // "isHAExcluded" = existing conduct-name logic; "currencyTag" = the CSV
-  // "Currency Tags: HA" metadata. Switchable without code changes.
-  haEligibilitySource: "isHAExcluded",
+  // "isHAExcluded" = legacy conduct-name logic; "currencyTag" = the CSV
+  // "Currency Tags: HA" metadata. Switchable without code changes. Default is
+  // the tag: the name logic only excludes IPPT/Sports & Games/Swim, so untagged
+  // non-HA conducts (e.g. Combat PT) wrongly earned HA days under it. NOTE: an
+  // explicit BravesConfig sheet value overrides this default — clear/update the
+  // sheet row if it still says "isHAExcluded".
+  haEligibilitySource: "currencyTag",
   // Leave types that classify as AL/OIL in parade state (spec §8, DECISIONS
   // #32/#35). Any leave type NOT in this comma-separated list falls to OTHERS,
   // sub-typed in/out of camp by reason keywords. Edit here (or override via the

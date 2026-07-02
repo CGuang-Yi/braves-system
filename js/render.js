@@ -1170,7 +1170,7 @@ function renderAttendance(el) {
         <button class="btn btn-primary" onclick="openLogConductWizard()" title="One-shot wizard: date + time + conduct + Status Personnel checklist + bulk Report Sick / Fallout / RSI rows + auto totals + chat-format copy">+ Log Conduct</button>
       </div>
     </div>
-    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th>Conduct</th><th>Total</th><th>Part.</th><th>LMS</th><th>Status</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
+    ${STATE.attendance.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Time</th><th>Conduct</th><th title="Counts toward Heat Acclimatisation (click a cell to toggle)">HA</th><th>Total</th><th>Part.</th><th>LMS</th><th>Status</th><th>Fallout</th><th>Rate</th><th>LMS Rate</th><th style="text-align:left">Remarks</th><th></th></tr></thead><tbody>
     ${[...STATE.attendance].sort((a, b) => {
       // Newest first by date, then time (later in the day on top within a date).
       const ai = displayDateToISO(a.date) || a.date || "";
@@ -1184,7 +1184,19 @@ function renderAttendance(el) {
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
       const time = fmtHrs(a.time) || '—';
-      return `<tr><td>${a.date}</td><td class="mono" style="color:${a.time ? 'var(--text)' : 'var(--dim)'}">${time}</td><td style="text-align:left">${escapeHTML(conductName(a.conductId))}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${escapeHTML(a.remarks || '')}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="copyConductChatFormat(${a.id})" title="Copy WhatsApp-format parade state message">📋</button> <button class="btn btn-icon" onclick="openLogConductWizard(${a.id})" title="Edit conduct (wizard)">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
+      // HA-eligibility cell (§14.3). Only CSV-imported rows can feed HA (§12.2:
+      // wizard rows carry no participant list), and the toggle only means
+      // anything when the currencyTag source is active — otherwise show the
+      // name-logic verdict read-only so the column never lies about what
+      // computeHA will do.
+      const tagSrc = configGet("haEligibilitySource") === "currencyTag";
+      const haOn = conductHAEligible(a);
+      const haCell = a.source !== "csv"
+        ? `<span style="color:var(--dim)" title="Wizard-logged conduct — HA participation comes only from CSV imports (spec §12.2)">—</span>`
+        : tagSrc
+          ? `<button class="btn btn-icon" onclick="toggleConductHA(${a.id})" style="color:${haOn ? 'var(--green)' : 'var(--dim)'};font-weight:700" title="${haOn ? 'Counts toward HA — click to exclude' : 'Not an HA conduct — click to count it toward HA'}">${haOn ? 'HA ✓' : 'HA ✕'}</button>`
+          : `<span style="color:${haOn ? 'var(--green)' : 'var(--dim)'}" title="Eligibility comes from the conduct name (Config haEligibilitySource = 'isHAExcluded'); set it to 'currencyTag' to toggle per conduct">${haOn ? 'HA' : '—'}</span>`;
+      return `<tr><td>${a.date}</td><td class="mono" style="color:${a.time ? 'var(--text)' : 'var(--dim)'}">${time}</td><td style="text-align:left">${escapeHTML(conductName(a.conductId))}</td><td>${haCell}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${escapeHTML(a.remarks || '')}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="copyConductChatFormat(${a.id})" title="Copy WhatsApp-format parade state message">📋</button> <button class="btn btn-icon" onclick="openLogConductWizard(${a.id})" title="Edit conduct (wizard)">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">No attendance records yet.</div>`}`;
 }

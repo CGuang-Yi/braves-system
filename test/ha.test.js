@@ -25,7 +25,10 @@ function loadHelpers() {
   // don't seed). parseParticipantIds/configGet live in other bundles (no collision).
   target.parseParticipantIds = p =>
     String(p == null ? "" : p).split(",").map(s => s.trim()).filter(Boolean);
-  target.configGet = () => undefined;                 // → default "isHAExcluded" path
+  // Mirrors the production default (state.js DEFAULT_CONFIG): per-conduct
+  // currencyTags govern HA eligibility. Individual tests swap this stub to
+  // "isHAExcluded" to exercise the legacy name path.
+  target.configGet = key => (key === "haEligibilitySource" ? "currencyTag" : undefined);
   target.conductName = () => "Endurance Run";         // not IPPT/Sports/Swim ⇒ HA-eligible
   target.STATE = { attendance: [], roster: [], vocfit: [], conductDetail: [] };
   return target;
@@ -142,7 +145,7 @@ module.exports = async function run() {
   function att(dateIso, periods) {
     const [y, m, d] = dateIso.split("-").map(Number);
     const disp = `${String(d).padStart(2, "0")} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1]} ${y}`;
-    return { source: "csv", conductId: "C1", date: disp, participants: "0001", periods, currencyTags: "" };
+    return { source: "csv", conductId: "C1", date: disp, participants: "0001", periods, currencyTags: "HA" };
   }
 
   await test("bug 3: Double does not reuse the pre-qualification Single sessions", () => {
@@ -254,5 +257,64 @@ module.exports = async function run() {
     }
     ok(allDays.includes(iso(2026, 4, 28)), "range start day present");
     ok(allDays.includes(iso(2026, 5, 5)), "range end day present");
+  });
+
+  // ── HA-eligibility source (§14.3) + per-conduct HA tag toggle ─────────────
+  // The active signal is Config `haEligibilitySource`. Production default is
+  // now "currencyTag" (per-conduct `Currency Tags: HA` metadata), because the
+  // name logic wrongly counted untagged conducts like "Combat PT" toward HA.
+  suite("HA: eligibility source (§14.3) — currencyTag default + tag toggle");
+
+  await test("state.js DEFAULT_CONFIG haEligibilitySource is currencyTag", () => {
+    // state.js gets its own vm context: its top-level `const STATE` would
+    // lexically shadow the helpers context's injected STATE stub otherwise.
+    // It also reads localStorage eagerly (authToken seed), so stub that.
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol,
+      localStorage: { getItem: () => null, setItem() {}, removeItem() {} }
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "state.js"), "utf8"), ctx, { filename: "state.js" });
+    eq(vm.runInContext('configGet("haEligibilitySource")', ctx), "currencyTag");
+  });
+
+  await test("untagged CSV conduct (the Combat PT case) earns no HA day under the tag source", () => {
+    const row = att(iso(2026, 5, 1), 2);
+    row.currencyTags = "";                              // Combat PT's actual import shape
+    seed([row]);
+    eq(Object.keys(H.haDayMap("0001")).length, 0);
+  });
+
+  await test("the HA tag is matched case-insensitively", () => {
+    const row = att(iso(2026, 5, 1), 2);
+    row.currencyTags = "ha";
+    seed([row]);
+    eq(Object.keys(H.haDayMap("0001")).length, 1);
+  });
+
+  await test("explicit isHAExcluded Config still uses the conduct-name logic", () => {
+    const prevCfg = H.configGet;
+    H.configGet = key => (key === "haEligibilitySource" ? "isHAExcluded" : undefined);
+    try {
+      const row = att(iso(2026, 5, 1), 2);
+      row.currencyTags = "";                            // untagged, but name is fine
+      seed([row]);
+      eq(Object.keys(H.haDayMap("0001")).length, 1, "harmless name ⇒ eligible");
+      const prevName = H.conductName;
+      H.conductName = () => "IPPT 1";                   // excluded by name
+      try { eq(Object.keys(H.haDayMap("0001")).length, 0, "IPPT name ⇒ excluded"); }
+      finally { H.conductName = prevName; }
+    } finally { H.configGet = prevCfg; }
+  });
+
+  await test("toggleHATag adds and removes the HA token, preserving other tags", () => {
+    eq(H.toggleHATag(""), "HA");
+    eq(H.toggleHATag("HA"), "");
+    eq(H.toggleHATag("ha"), "");                        // case-insensitive removal
+    eq(H.toggleHATag("HA, RM"), "RM");
+    eq(H.toggleHATag("RM"), "RM, HA");
+    eq(H.toggleHATag(undefined), "HA");                 // wizard rows have no tags field
   });
 };

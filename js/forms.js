@@ -3725,6 +3725,20 @@ function recomputeAttendanceLmsFromPolar() {
   return changed;
 }
 
+// Flip a conduct's HA eligibility by toggling the "HA" token on its
+// currencyTags (the §14.3 signal — only honoured when Config
+// haEligibilitySource is "currencyTag", which is the default). Pushes the FULL
+// local row via OCC upsert so sibling fields (participants/periods/source)
+// survive the write.
+function toggleConductHA(id) {
+  const a = STATE.attendance.find(x => x.id === id);
+  if (!a) return;
+  a.currencyTags = toggleHATag(a.currencyTags);
+  saveLocal();
+  render();
+  if (STATE.apiUrl) autoSync("Attendance", { type: "upsert", row: a });
+}
+
 // Human label for a polar/attendance key — used in the diagnostic alert
 // so the user can read mismatched entries without decoding "id:c003".
 function describeJoinKey(k) {
