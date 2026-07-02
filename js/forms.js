@@ -4181,7 +4181,10 @@ async function saveLogConductWizard() {
   // moved away from it), but historical rows shouldn't be silently deleted.
   if (w.attendanceId) {
     const idx = STATE.attendance.findIndex(a => a.id === w.attendanceId);
-    if (idx >= 0) STATE.attendance[idx] = attendanceEntry;
+    // mergeAttendanceEdit (state.js) preserves the CSV-import-only fields
+    // (participants/periods/currencyTags/source) the wizard never collects —
+    // a bare replace here silently erased a CSV-imported conduct from HA.
+    if (idx >= 0) STATE.attendance[idx] = mergeAttendanceEdit(STATE.attendance[idx], attendanceEntry);
     else STATE.attendance.push(attendanceEntry);
   } else {
     STATE.attendance.push(attendanceEntry);
