@@ -1114,11 +1114,21 @@ function conductHAEligible(att) {
 
 // Add/remove the "HA" token on an attendance row's currencyTags string — the
 // per-conduct eligibility signal when Config haEligibilitySource is
-// "currencyTag" (the default). Preserves any other tags; normalizes separators.
+// "currencyTag" (the default). The "has HA" test mirrors conductHAEligible's
+// \bha\b word-boundary match (the signal computeHA actually reads) so the
+// toggle direction never disagrees with the column — including on
+// space-separated values like "HA RM" that an exact-token check would miss.
+// Removal strips the standalone HA word wherever it sits and drops any token it
+// empties; addition appends a normalized ", HA". Other tags are preserved.
 function toggleHATag(tags) {
-  const list = String(tags || "").split(",").map(s => s.trim()).filter(Boolean);
-  const has = list.some(t => /^ha$/i.test(t));
-  const out = has ? list.filter(t => !/^ha$/i.test(t)) : list.concat("HA");
+  const str = String(tags || "");
+  if (!/\bha\b/i.test(str)) {
+    const list = str.split(",").map(s => s.trim()).filter(Boolean);
+    return list.concat("HA").join(", ");
+  }
+  const out = str.split(",")
+    .map(t => t.replace(/\bha\b/ig, " ").replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean);
   return out.join(", ");
 }
 
