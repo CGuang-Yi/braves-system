@@ -2363,7 +2363,8 @@ const SB_CELL = {
   RSI: { bg: "#EF9F27", fg: "#633806" }, RSO: { bg: "#378ADD", fg: "#042C53" },
   MC:  { bg: "#E24B4A", fg: "#501313" }, MR:  { bg: "#7F77DD", fg: "#26215C" },
   LD:  { bg: "#B4B2A9", fg: "#2C2C2A" }, LV:  { bg: "#1D9E75", fg: "#04342C" },
-  EX:  { bg: "#B08D57", fg: "#241B0E" }   // Excuse-* — distinct from LD's grey
+  EX:  { bg: "#B08D57", fg: "#241B0E" },  // Excuse-* — distinct from LD's grey
+  WD:  { bg: "#9F1239", fg: "#3F0518" }   // Warded — away/not-in-camp, distinct from MC's red
 };
 function _sbKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
@@ -2463,7 +2464,11 @@ function renderSBRosterList() {
   // otherwise re-scan STATE.medical/leave/appointments for every person.
   const idx = bpBuildIndex();
 
-  const catColor = key => ({ reportingSick: SB_CELL.RSI, attC: SB_CELL.MC, alOil: SB_CELL.LV, status: SB_CELL.LD, others: { bg: "#8B949E", fg: "#1c1c1c" } }[key] || { bg: "#8B949E", fg: "#1c1c1c" });
+  // Warded lands in the "others" section (spec §8 keeps it out of ATT C) but is
+  // still an away/not-in-camp case — colour it like MC/WD instead of the generic
+  // grey OTHERS chip, which reads as an unremarkable in-camp leave entry.
+  const catColor = primary => (primary?.type === "WD") ? SB_CELL.WD
+    : ({ reportingSick: SB_CELL.RSI, attC: SB_CELL.MC, alOil: SB_CELL.LV, status: SB_CELL.LD, others: { bg: "#8B949E", fg: "#1c1c1c" } }[primary?.key] || { bg: "#8B949E", fg: "#1c1c1c" });
   let lastGroup = null, body = "";
   ordered.forEach(({ r, group }) => {
     if (group !== lastGroup) { body += `<tr><td colspan="4" style="background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:4px 8px;font-weight:700">${escapeAttr(group)}</td></tr>`; lastGroup = group; }
@@ -2478,7 +2483,7 @@ function renderSBRosterList() {
       return best;
     })();
     const catBadge = p.primary
-      ? `<span style="background:${catColor(p.primary.key).bg}33;color:${catColor(p.primary.key).bg};border:1px solid ${catColor(p.primary.key).bg}66;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.label}</span>`
+      ? `<span style="background:${catColor(p.primary).bg}33;color:${catColor(p.primary).bg};border:1px solid ${catColor(p.primary).bg}66;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.type === "WD" ? "WARDED" : p.primary.label}</span>`
       : `<span style="color:var(--green);font-size:11px">Present</span>`;
     const mrBadge = p.mr ? ` <span style="background:#7F77DD33;color:#7F77DD;border:1px solid #7F77DD66;border-radius:4px;padding:2px 6px;font-size:9px">MR</span>` : "";
     const ghostBadge = ghostInfo ? ` <span title="recovering" style="color:var(--muted);font-size:9px;border:1px solid var(--border);border-radius:3px;padding:1px 4px">${ghostInfo.tag}</span>` : "";
@@ -2548,7 +2553,7 @@ function renderSBGrid() {
   // across ~35 day-cells and would otherwise re-scan all three STATE arrays per cell.
   const idx = bpBuildIndex();
 
-  const legend = Object.entries({ RSI: "RSI", RSO: "RSO", MC: "MC/ATTC", MR: "MR", LD: "LD", EX: "Excuse", LV: "Leave" })
+  const legend = Object.entries({ RSI: "RSI", RSO: "RSO", MC: "MC/ATTC", WD: "Warded", MR: "MR", LD: "LD", EX: "Excuse", LV: "Leave" })
     .map(([k, lbl]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px"><span style="width:11px;height:11px;border-radius:2px;background:${SB_CELL[k].bg};display:inline-block"></span>${lbl}</span>`).join("");
 
   const colspanAll = weeks.length * 7 + 3;   // 4D + Name + day cells + Total RS
