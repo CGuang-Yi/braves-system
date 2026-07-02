@@ -317,4 +317,16 @@ module.exports = async function run() {
     eq(H.toggleHATag("RM"), "RM, HA");
     eq(H.toggleHATag(undefined), "HA");                 // wizard rows have no tags field
   });
+
+  await test("toggleHATag removal agrees with conductHAEligible for space-separated tags", () => {
+    // conductHAEligible reads /\bha\b/i, so "HA RM" (space-separated, no comma)
+    // shows as HA ✓. The toggle-off must actually strip HA — an exact-token
+    // matcher would miss it and append a second HA instead of removing it.
+    eq(/\bha\b/i.test("HA RM"), true, "guard: the reader treats 'HA RM' as HA-eligible");
+    eq(H.toggleHATag("HA RM"), "RM");                   // removed, not doubled
+    eq(H.toggleHATag("RM HA"), "RM");
+    eq(H.toggleHATag("RM, HA, SW"), "RM, SW");          // strips the middle token
+    // After removal the row is no longer HA-eligible under the reader.
+    eq(/\bha\b/i.test(H.toggleHATag("HA RM")), false, "removal leaves no HA word");
+  });
 };

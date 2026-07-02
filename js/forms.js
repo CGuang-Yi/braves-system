@@ -4179,15 +4179,21 @@ async function saveLogConductWizard() {
   // conductDetail row for this (date, time, conductId). Legacy RSI rows are
   // preserved untouched — the wizard no longer manages RSI (the chat workflow
   // moved away from it), but historical rows shouldn't be silently deleted.
+  // `syncedRow` is the object that actually lands in STATE — and it's what we
+  // push to the sheet below. On an edit it's the mergeAttendanceEdit result
+  // (CSV-import-only participants/periods/currencyTags/source preserved), NOT
+  // the wizard's bare `attendanceEntry`: pushing attendanceEntry would re-strip
+  // those fields (the very bug the merge fixes) and carry a stale lms:0, since
+  // recomputeAttendanceLmsFromPolar below mutates the STATE row in place, not
+  // attendanceEntry. For a brand-new row attendanceEntry IS the STATE row.
+  let syncedRow;
   if (w.attendanceId) {
     const idx = STATE.attendance.findIndex(a => a.id === w.attendanceId);
-    // mergeAttendanceEdit (state.js) preserves the CSV-import-only fields
-    // (participants/periods/currencyTags/source) the wizard never collects —
-    // a bare replace here silently erased a CSV-imported conduct from HA.
-    if (idx >= 0) STATE.attendance[idx] = mergeAttendanceEdit(STATE.attendance[idx], attendanceEntry);
-    else STATE.attendance.push(attendanceEntry);
+    if (idx >= 0) syncedRow = STATE.attendance[idx] = mergeAttendanceEdit(STATE.attendance[idx], attendanceEntry);
+    else { STATE.attendance.push(attendanceEntry); syncedRow = attendanceEntry; }
   } else {
     STATE.attendance.push(attendanceEntry);
+    syncedRow = attendanceEntry;
   }
   STATE.conductDetail = STATE.conductDetail.filter(d =>
     !(d.date === displayDate && (d.time || "") === time && d.conductId === w.conductId && d.type !== "RSI")
@@ -4215,7 +4221,7 @@ async function saveLogConductWizard() {
   // detail rows, appendMany new detail/medical rows. Each fires through
   // autoSync so the indicator + dirty-tracking handle failures.
   if (STATE.apiUrl) {
-    autoSync("Attendance", { type: "upsert", row: attendanceEntry });
+    autoSync("Attendance", { type: "upsert", row: syncedRow });
     for (const id of obsoleteIds) {
       autoSync("ConductDetail", { type: "delete", id });
     }
