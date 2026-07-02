@@ -19,20 +19,8 @@ function pcDelete(arrayName, id, label, d4) {
 }
 
 // HA Activity Days grid — GitHub-contribution-style calendar (§13 display).
-// Status → colour: no activity (muted), trained 1 period / 2+ periods (two
-// shades of green, darker = more — GitHub's "more commits = darker" idiom),
-// medically excused (red, matching SB_CELL.MC's red so it reads consistently
-// with the Status Board grid), future (dim outline only).
-const HA_GRID_CELL = {
-  none:      { bg: "var(--surface2)", fg: "var(--dim)", label: "No activity" },
-  trained1:  { bg: "#2EA043", fg: "#04240D", label: "Trained · 1 period" },
-  trained2:  { bg: "#196C2E", fg: "#EAFFF0", label: "Trained · 2+ periods" },
-  excused:   { bg: "#E24B4A", fg: "#501313", label: "Medically excused" },
-  future:    { bg: "transparent", fg: "var(--border)", label: "Future" }
-};
-const HA_GRID_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const HA_GRID_MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
+// HA_GRID_CELL/HA_GRID_DOW/HA_GRID_MONTH live in helpers.js so any future grid
+// view can reuse the same colour scheme without duplicating it.
 function haActivityGridHtml(ha, d4) {
   const dayMap = ha.dayMap || {};
   const excluded = haExcludedDayMap(d4);
@@ -44,7 +32,11 @@ function haActivityGridHtml(ha, d4) {
 
   let lastMonth = null;
   const monthHead = weeks.map(w => {
-    const m = +w.monIso.slice(5, 7) - 1;
+    // Label the month where its 1st actually falls within this week, not just
+    // the week's Monday — otherwise a month starting mid-week gets its label
+    // delayed to the following column (the week whose Monday first reaches it).
+    const firstOfMonth = w.days.find(iso => iso.slice(8, 10) === "01");
+    const m = firstOfMonth ? +firstOfMonth.slice(5, 7) - 1 : +w.monIso.slice(5, 7) - 1;
     const label = m !== lastMonth ? HA_GRID_MONTH[m] : "";
     lastMonth = m;
     return `<th style="font-size:9px;font-weight:600;color:var(--muted);text-align:left;padding-left:1px">${label}</th>`;

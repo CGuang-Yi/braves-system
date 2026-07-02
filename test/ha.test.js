@@ -196,12 +196,20 @@ module.exports = async function run() {
     eq(Object.keys(H.haDayMap("0001")).length, 0);
   });
 
-  for (const status of ["MR", "Excuse Kneeling", "NIL", "Pending"]) {
+  for (const status of ["Excuse Kneeling", "NIL", "Pending"]) {
     await test(`${status} keeps the day — recruit still counts`, () => {
-      seedThreeDays([med("0001", status, iso(2026, 5, 2), iso(2026, 5, 2), status === "MR" ? "MR" : "RSI")]);
+      seedThreeDays([med("0001", status, iso(2026, 5, 2), iso(2026, 5, 2))]);
       eq(Object.keys(H.haDayMap("0001")).length, 3);
     });
   }
+
+  // MR is a visit *type* (RSI/RSO/MR), never a medical *status* — the MO always
+  // assigns a real status (e.g. NIL) during an MR review, so haDayMap must look
+  // only at `status` and ignore `type` when deciding whether a day disqualifies.
+  await test("an MR-type visit with a non-disqualifying status keeps the day", () => {
+    seedThreeDays([med("0001", "NIL", iso(2026, 5, 2), iso(2026, 5, 2), "MR")]);
+    eq(Object.keys(H.haDayMap("0001")).length, 3);
+  });
 
   await test("an MC for a DIFFERENT recruit does not touch 0001's days", () => {
     seedThreeDays([med("0002", "MC", iso(2026, 5, 2), iso(2026, 5, 2))]);

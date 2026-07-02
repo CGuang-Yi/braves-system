@@ -1189,6 +1189,22 @@ function haGridWeeks(minIso, maxIso) {
   return weeks;
 }
 
+// HA Activity Days grid display constants (§13) — shared here (not forms.js) so
+// any future grid view (e.g. a Status Board rollup) can reuse them without
+// duplicating the colour scheme. Status → colour: no activity (muted), trained
+// 1 period / 2+ periods (two shades of green, darker = more — GitHub's "more
+// commits = darker" idiom), medically excused (red, matching SB_CELL.MC's red
+// so it reads consistently with the Status Board grid), future (dim outline only).
+const HA_GRID_CELL = {
+  none:      { bg: "var(--surface2)", fg: "var(--dim)", label: "No activity" },
+  trained1:  { bg: "#2EA043", fg: "#04240D", label: "Trained · 1 period" },
+  trained2:  { bg: "#196C2E", fg: "#EAFFF0", label: "Trained · 2+ periods" },
+  excused:   { bg: "#E24B4A", fg: "#501313", label: "Medically excused" },
+  future:    { bg: "transparent", fg: "var(--border)", label: "Future" }
+};
+const HA_GRID_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const HA_GRID_MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 // §12.4 state machine. dateMap[iso] = periodSum (>0 ⇒ active day). mode "day" adds
 // 1 per active day (Single/Expanded, capped 1/day); "time" adds the periodSum
 // (Double — sums B5 time-periods, HA.md). Resets on break-limit breach.
