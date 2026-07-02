@@ -791,8 +791,8 @@ function submitMedical() {
   const noDurationStatuses = ["Pending", "NIL"];
   for (const st of statuses) {
     if (!st.status) { alert("Select a status for every row (or remove the empty one)."); return; }
-    // MR is a same-day in-camp visit — no duration window required.
-    if (!noDurationStatuses.includes(st.status) && type !== "MR" && !st.endIso) { alert(`End date is required for "${st.status}" (only Pending and NIL may be left blank).`); return; }
+    // End date is optional for every status — just remind, don't block save.
+    if (!noDurationStatuses.includes(st.status) && type !== "MR" && !st.endIso) { alert(`No end date entered for "${st.status}" — you should input one when it's known.`); }
     if (st.endIso && st.startIso && st.endIso < st.startIso) { alert(`End date cannot be before start date for "${st.status}".`); return; }
   }
 
