@@ -791,8 +791,8 @@ function submitMedical() {
   const noDurationStatuses = ["Pending", "NIL"];
   for (const st of statuses) {
     if (!st.status) { alert("Select a status for every row (or remove the empty one)."); return; }
-    // MR is a same-day in-camp visit — no duration window required.
-    if (!noDurationStatuses.includes(st.status) && type !== "MR" && !st.endIso) { alert(`End date is required for "${st.status}" (only Pending and NIL may be left blank).`); return; }
+    // End date is optional for every status — just remind, don't block save.
+    if (!noDurationStatuses.includes(st.status) && type !== "MR" && !st.endIso) { alert(`No end date entered for "${st.status}" — you should input one when it's known.`); }
     if (st.endIso && st.startIso && st.endIso < st.startIso) { alert(`End date cannot be before start date for "${st.status}".`); return; }
   }
 
@@ -1407,7 +1407,7 @@ function conductReviewSection_(p, idx) {
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Date: <strong>${escapeAttr(p.dateDisplay || "(none)")}</strong> · Periods (B5): <strong>${p.periods || 0}</strong> · Currency: <strong>${escapeAttr(p.currencyTags || "—")}</strong> · HA-eligible: ${haEligible ? `<span style="color:var(--green)">Yes</span>` : `<span style="color:var(--muted)">No</span>`}</div>
     <div style="margin-bottom:6px">${conductCtl}</div>
     <div style="font-size:11px">Present ${present.length} · Fall Out ${fallout.length} · MC ${mc.length} · Leave ${leave.length} · Off ${off.length} · Other ${other.length}${notFound.length ? ` · <span style="color:var(--orange)">not found ${notFound.length} (skipped)</span>` : ""}</div>
-    ${mc.length ? `<div style="margin-top:4px;font-size:11px;color:var(--teal)">↪ ${mc.length} MC ${mc.length === 1 ? "row" : "rows"} → a <strong>Pending</strong> report-sick record is auto-created for anyone not already logged in Medical (tagged "from conduct log").</div>` : ""}
+    ${mc.length ? `<div class="ci-pending-note" style="margin-top:4px;font-size:11px;color:var(--teal)">↪ ${mc.length} MC ${mc.length === 1 ? "row" : "rows"} → a <strong>Pending</strong> report-sick record is auto-created for anyone not already logged in Medical (tagged "from conduct log").</div>` : ""}
     ${flagList("Leave → Leave tab", leave, "var(--accent)")}
     ${flagList("Off (OIL) → Leave tab", off, "var(--accent)")}
     ${notFound.length ? `<div style="margin-top:4px;font-size:10px;color:var(--muted)">Unmatched: ${notFound.map(x => escapeAttr(x.userCell)).join(", ")}</div>` : ""}
@@ -1426,6 +1426,10 @@ function openConductImportModal() {
         <button class="btn" style="font-size:11px" onclick="showConductImportSchema()">ⓘ CSV format</button>
       </div>
       ${pend.errors.length ? `<div style="background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:6px 10px;font-size:11px;color:var(--orange)">${pend.errors.length} file(s) skipped: ${pend.errors.map(e => escapeAttr(e.error)).join("; ")}</div>` : ""}
+      <label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="ci-auto-medical" checked onchange="toggleCiAutoMedicalPreview(this.checked)" style="width:14px;height:14px;cursor:pointer">
+        Auto-create Pending Medical rows for MC rows without an existing entry
+      </label>
       <div style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto">
         ${cs.map((p, i) => conductReviewSection_(p, i)).join("")}
       </div>
@@ -1438,6 +1442,12 @@ function openConductImportModal() {
 }
 
 function cancelConductImport() { _conductImportPending = null; closeModal(); }
+
+// Grays out the per-conduct "Pending record auto-created" preview lines when
+// the auto-create checkbox is unchecked, so the modal doesn't show stale text.
+function toggleCiAutoMedicalPreview(checked) {
+  document.querySelectorAll(".ci-pending-note").forEach(el => el.style.display = checked ? "" : "none");
+}
 
 // Standalone schema reference (also reachable from the import button), so an
 // operator can see the expected CSV layout before exporting/picking a file.
@@ -1470,6 +1480,7 @@ function showConductImportSchema() {
 function confirmConductImport() {
   const pend = _conductImportPending;
   if (!pend || !pend.conducts.length) return;
+  const autoCreateMedical = document.getElementById("ci-auto-medical")?.checked !== false;
 
   const newNameToId = {};   // batch dedupe: two new files of the same name share one id
   let totPresent = 0, totFallout = 0, totStatus = 0, totUnmatched = 0;
@@ -1525,17 +1536,19 @@ function confirmConductImport() {
     // with NO existing Medical record on that date, create a Pending report-sick
     // record (origin "conductLog") so the gap is visible and an MO outcome can
     // be filled in later. Existing records are left untouched.
-    matched.filter(x => x.status === "MC").forEach(x => {
-      const pkey = `${x.resolvedId}|${date}`;
-      if (seenPending.has(pkey)) return;
-      const exists = STATE.medical.some(m => m.d4 === x.resolvedId && m.date === date);
-      if (exists) return;
-      seenPending.add(pkey);
-      pendingMedical.push({
-        id: nextId(), d4: x.resolvedId, date, reason: x.remarks || "Reported sick (from conduct log)",
-        status: "Pending", startDate: date, endDate: "", origin: "conductLog"
+    if (autoCreateMedical) {
+      matched.filter(x => x.status === "MC").forEach(x => {
+        const pkey = `${x.resolvedId}|${date}`;
+        if (seenPending.has(pkey)) return;
+        const exists = STATE.medical.some(m => m.d4 === x.resolvedId && m.date === date);
+        if (exists) return;
+        seenPending.add(pkey);
+        pendingMedical.push({
+          id: nextId(), d4: x.resolvedId, date, reason: x.remarks || "Reported sick (from conduct log)",
+          status: "Pending", startDate: date, endDate: "", origin: "conductLog"
+        });
       });
-    });
+    }
 
     // Purge any PRIOR-session rows for this key exactly once (re-import replace).
     if (!cleanedKeys.has(key)) {
