@@ -3866,10 +3866,22 @@ function rebuildLogConductStatus() {
   // conductDetail rows matching this attendance — so re-opening shows the
   // correct ticks. ("Status" = the pre-existing-status non-participation type,
   // formerly mislabelled "PX".)
+  //
+  // `statusReviewed` on the attendance row records whether the status checklist
+  // has been through the wizard at least once (set on save below). It matters
+  // because a CSV import lists a recruit as PRESENT even when they had a
+  // restrictive status that day (their LD/MC lives in Medical, not the CSV), so
+  // no Status row is created for them. Until the conduct is reviewed, "no Status
+  // row" must NOT be read as "participated despite status" — it just means the
+  // import never accounted for their medical status. So while unreviewed we fall
+  // back to the medical default (defaultNP, same as a brand-new conduct); once
+  // reviewed, an absent Status row is an explicit "participates" decision we honor.
   let existingPxByD4 = {};
+  let statusReviewed = false;
   if (_logConduct.attendanceId) {
     const a = STATE.attendance.find(x => x.id === _logConduct.attendanceId);
     if (a) {
+      statusReviewed = !!a.statusReviewed;
       STATE.conductDetail
         .filter(d => d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId && d.type === "Status")
         .forEach(d => { existingPxByD4[d.d4] = d.reason || ""; });
@@ -3893,10 +3905,12 @@ function rebuildLogConductStatus() {
       // Concatenate every active status so the user sees "MC + Excuse Heavy Load"
       statusTag: statuses.map(s => s.tag).join(" + "),
       reason: prev ? prev.reason : (existingPxByD4[d4] ?? top.record.reason ?? ""),
-      // First-time defaults from the per-status participation flag. Edit-mode
-      // honors whether there's an existing PX row.
+      // A recorded Status row always wins (ticked). Otherwise: an already
+      // reviewed conduct treats "no row" as a deliberate participates decision
+      // (unticked); a new or not-yet-reviewed conduct falls back to the medical
+      // default so a restrictive status (e.g. LD) is ticked on the first pass.
       notParticipating: prev ? prev.notParticipating
-        : (_logConduct.attendanceId ? (d4 in existingPxByD4) : defaultNP)
+        : ((d4 in existingPxByD4) || (statusReviewed ? false : defaultNP))
     };
   }).sort((a, b) => a.d4.localeCompare(b.d4));
 }
@@ -4137,7 +4151,13 @@ async function saveLogConductWizard() {
     lms: 0,  // recomputed from polar below
     px: totals.statusCount,
     fallout: totals.falloutCount,
-    remarks: w.remarks || ""
+    remarks: w.remarks || "",
+    // Mark the status checklist as reviewed so re-opens honor the recorded ticks
+    // exactly (an absent Status row = "participates despite status") instead of
+    // re-defaulting medically-restricted-but-present recruits back to ticked.
+    // The backend upsert auto-creates this column (ensureColumnsForKeys), and
+    // mergeAttendanceEdit carries it onto the CSV-imported row.
+    statusReviewed: true
   };
 
   // Build conductDetail rows. "Status" rows = only status entries marked
