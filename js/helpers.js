@@ -205,8 +205,16 @@ function commanderLeaveBalance(d4) {
   return { used, quota, remaining: quota - used };
 }
 
-// Short sequential IDs instead of timestamps
-let _idCounter = Math.floor(Math.random() * 9000) + 1000;
+// Short sequential IDs instead of timestamps. The random seed range must stay
+// huge: a small range let two independent sessions/devices pick overlapping
+// ids for unrelated rows in the same tab, and since appendMany doesn't check
+// for existing ids and upsertRow matches "first row with this id", the newer
+// row's edits silently landed on the OLDER, unrelated row instead (confirmed
+// incident: conduct-log Report Sick auto-created Medical rows whose ids
+// collided with pre-existing rows for different recruits, and editing them
+// overwrote the wrong recruit's record). ~9×10^11 values keeps collisions
+// astronomically unlikely for any realistic accumulated row count.
+let _idCounter = Math.floor(Math.random() * 900000000000) + 100000000000;
 const nextId = () => ++_idCounter;
 
 // Smart CSV column resolver — case-insensitive, handles aliases
