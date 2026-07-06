@@ -4099,6 +4099,40 @@ function wizUpdateRowReason(section, idx, v) {
   _logConduct[section][idx].reason = v;
 }
 
+// === Group resolution (Attendees card) ==================================
+//
+// Group semantics (user-confirmed):
+//   platoon:<code> — explicit-platoon recruits ONLY (commanders deliberately
+//                    excluded even if their roster row carries a platoon —
+//                    reachable via Commanders only / Entire company).
+//   company        — EVERYONE on the roster, commanders included.
+//   noncommanders  — all recruits, no commanders.
+//   commanders     — commanders only.
+function resolveConductGroup(value) {
+  const roster = STATE.roster || [];
+  if (value === "company") return roster.map(r => r.id);
+  if (value === "noncommanders") return roster.filter(r => !isCommander(r.id)).map(r => r.id);
+  if (value === "commanders") return roster.filter(r => isCommander(r.id)).map(r => r.id);
+  if (value.startsWith("platoon:")) {
+    const code = value.slice("platoon:".length);
+    return roster.filter(r => !isCommander(r.id) && personPlatoon(r) === code).map(r => r.id);
+  }
+  return [];
+}
+
+// Human label for a group value — dropdown option text + chip labels.
+function groupLabel(value) {
+  if (value === "company") return "Entire company";
+  if (value === "noncommanders") return "Non-Commanders";
+  if (value === "commanders") return "Commanders only";
+  if (value.startsWith("platoon:")) {
+    const code = value.slice("platoon:".length);
+    const p = activePlatoons().find(p => p.code === code);
+    return p ? p.displayName : code;
+  }
+  return value;
+}
+
 // === Totals / overlap helpers ===========================================
 
 function computeLogConductTotals() {

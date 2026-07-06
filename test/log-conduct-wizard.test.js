@@ -20,7 +20,7 @@
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
-const { suite, test, eq } = require("./_tap");
+const { suite, test, eq, ok } = require("./_tap");
 
 // Build a fresh vm context with forms.js loaded and the wizard collaborators
 // stubbed. currentMedicalEffectiveAll always surfaces 2415 on LD (a restrictive,
@@ -59,6 +59,49 @@ function tickFor(opts) {
   return row ? row.notParticipating : "(absent)";
 }
 
+// ─── Group resolution (resolveConductGroup / groupLabel) ───────────────────
+//
+// A fresh vm context with a small roster: commander 0001 (platoon PLT1 on the
+// roster row, per the plan's "commander whose row carries a platoon" case),
+// two PLT1 recruits, one PLT2 recruit, one HQ recruit. isCommander/personPlatoon
+// are the REAL helpers.js logic (re-implemented inline — helpers.js isn't loaded
+// into this sandbox) so the semantics under test match production.
+function loadGroupCtx() {
+  const target = {
+    console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+    RegExp, isNaN, parseInt, parseFloat, Symbol
+  };
+  const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+  target.isCommander = d4 => target.STATE.roster.find(r => r.id === d4)?.role === "Commander";
+  target.personPlatoon = r => r.platoon || "";
+  target.activePlatoons = () => [
+    { code: "PLT1", displayName: "Platoon 1" },
+    { code: "PLT2", displayName: "Platoon 2" },
+    { code: "HQ", displayName: "HQ" }
+  ];
+  target.STATE = {
+    roster: [
+      { id: "0001", role: "Commander", platoon: "PLT1" },
+      { id: "1001", role: "Recruit", platoon: "PLT1" },
+      { id: "1002", role: "Recruit", platoon: "PLT1" },
+      { id: "2001", role: "Recruit", platoon: "PLT2" },
+      { id: "3001", role: "Recruit", platoon: "HQ" }
+    ]
+  };
+  return { target, ctx };
+}
+function resolveGroup(value) {
+  const { ctx } = loadGroupCtx();
+  vm.runInContext(`_rg = resolveConductGroup(${JSON.stringify(value)});`, ctx);
+  return JSON.parse(vm.runInContext("JSON.stringify(_rg)", ctx));
+}
+function groupLabelFor(value) {
+  const { ctx } = loadGroupCtx();
+  return vm.runInContext(`groupLabel(${JSON.stringify(value)})`, ctx);
+}
+
 module.exports = async function run() {
   suite("Log Conduct wizard: rebuildLogConductStatus tick seeding");
 
@@ -79,5 +122,36 @@ module.exports = async function run() {
 
   await test("brand-new conduct (no attendanceId) default-ticks from medical status", () => {
     eq(tickFor({ newConduct: true }), true, "new conduct ⇒ defaultNP unchanged");
+  });
+
+  suite("Log Conduct wizard: resolveConductGroup / groupLabel");
+
+  await test("company includes the commander 0001", () => {
+    const ids = resolveGroup("company");
+    ok(ids.includes("0001"), "company group must include commanders");
+    eq(ids.length, 5, "company = entire roster");
+  });
+
+  await test("noncommanders excludes 0001", () => {
+    const ids = resolveGroup("noncommanders");
+    ok(!ids.includes("0001"), "noncommanders must exclude the commander");
+    eq(ids.length, 4, "all 4 recruits");
+  });
+
+  await test("commanders resolves to only 00xx ids", () => {
+    eq(resolveGroup("commanders"), ["0001"], "commanders-only group");
+  });
+
+  await test("platoon:PLT1 uses the explicit roster column and excludes the commander", () => {
+    const ids = resolveGroup("platoon:PLT1");
+    ok(!ids.includes("0001"), "commander's PLT1 roster row must not leak into platoon:PLT1");
+    eq(ids.sort(), ["1001", "1002"], "only the two PLT1 recruits");
+  });
+
+  await test("groupLabel resolves platoon display names and the three specials", () => {
+    eq(groupLabelFor("platoon:PLT2"), "Platoon 2");
+    eq(groupLabelFor("company"), "Entire company");
+    eq(groupLabelFor("noncommanders"), "Non-Commanders");
+    eq(groupLabelFor("commanders"), "Commanders only");
   });
 };
