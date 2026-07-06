@@ -4184,11 +4184,18 @@ function wizAddGroup(value, label) {
   if (_logConduct.addedGroups.some(g => g.value === value)) return;
   _logConduct.addedGroups.push({ label, value });
   wizRecomputeParticipants();
+  // The status checklist is scoped to participants (rebuildLogConductStatus) —
+  // it must be rebuilt whenever the participant set changes, or a newly added
+  // group's on-status recruits never appear until an unrelated rebuild (e.g. a
+  // date change) happens to run. Ticks/reasons for d4s still on the list are
+  // preserved by rebuildLogConductStatus's own prevByD4 carry-over.
+  rebuildLogConductStatus();
   renderLogConductWizard();
 }
 function wizRemoveGroup(value) {
   _logConduct.addedGroups = _logConduct.addedGroups.filter(g => g.value !== value);
   wizRecomputeParticipants();
+  rebuildLogConductStatus();
   renderLogConductWizard();
 }
 function wizToggleHA(checked) {

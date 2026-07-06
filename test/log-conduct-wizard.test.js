@@ -316,6 +316,12 @@ module.exports = async function run() {
   function loadHandlerCtx() {
     const { target, ctx } = loadGroupCtx(); // 5-person roster fixture from the group-resolution suite
     target.renderLogConductWizard = () => {}; // handlers call this; no-op for unit tests
+    // wizAddGroup/wizRemoveGroup also call rebuildLogConductStatus (checklist
+    // must stay in sync with the participant set) — give it harmless defaults;
+    // tests that care about the checklist itself override these.
+    target.STATE.medical = [];
+    target.currentMedicalEffectiveAll = () => [];
+    target.statusParticipates = () => true;
     return { target, ctx };
   }
 
@@ -367,6 +373,55 @@ module.exports = async function run() {
     ctx._lc = { participants: [], addedGroups: [], importedBaseline: [], haCounts: false, haPeriods: 1 };
     vm.runInContext("_logConduct = _lc; wizToggleHA(true);", ctx);
     eq(vm.runInContext("_logConduct.haCounts", ctx), true);
+  });
+
+  // Regression: wizAddGroup/wizRemoveGroup must rebuild the status checklist,
+  // not just recompute participants — otherwise a newly added group's
+  // on-status recruits never appear until an unrelated rebuild (e.g. a date
+  // change) happens to run. currentMedicalEffectiveAll here is a faithful
+  // mini-implementation of the real helpers.js function (active-LD-only,
+  // reading real STATE.medical DISPLAY-format dates via the real
+  // displayDateToISO) rather than a canned fixture, so the test actually
+  // exercises "seed a medical LD, add the group, see it show up."
+  await test("wizAddGroup rebuilds the status checklist; wizRemoveGroup clears it back out", () => {
+    const { target, ctx } = loadHandlerCtx();
+    // Real displayDateToISO (js/helpers.js) — needed because STATE.medical
+    // stores DISPLAY-format dates ("1 Jul 2026"), not ISO.
+    target.displayDateToISO = s => {
+      if (!s) return "";
+      const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+      const m = String(s).match(/^(\d{1,2})\s+(\w{3})(?:\s+(\d{4}))?/);
+      if (!m) return "";
+      const mon = months[m[2]];
+      if (!mon) return "";
+      const day = m[1].padStart(2, "0");
+      const year = m[3] || String(new Date().getFullYear());
+      return `${year}-${mon}-${day}`;
+    };
+    target.statusParticipates = () => false; // LD is restrictive ⇒ defaultNP true
+    // 1001 (PLT1 recruit, from the 5-person loadGroupCtx fixture) has an
+    // active LD spanning the wizard's date.
+    target.STATE.medical = [
+      { d4: "1001", status: "LD", startDate: "1 Jul 2026", endDate: "5 Jul 2026" }
+    ];
+    target.currentMedicalEffectiveAll = todayIso => {
+      const active = target.STATE.medical.filter(m => {
+        const start = target.displayDateToISO(m.startDate);
+        const end = target.displayDateToISO(m.endDate);
+        return start && end && todayIso >= start && todayIso <= end;
+      });
+      return active.map(m => ({ d4: m.d4, statuses: [{ tag: m.status, record: m }] }));
+    };
+    ctx._lc = { date: "2026-07-02", status: [], participants: [], addedGroups: [], importedBaseline: [] };
+    vm.runInContext("_logConduct = _lc;", ctx);
+
+    vm.runInContext("wizAddGroup('platoon:PLT1', 'Platoon 1');", ctx);
+    let status = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+    ok(status.some(s => s.d4 === "1001"), "adding PLT1 must rebuild the checklist to include 1001's active LD");
+
+    vm.runInContext("wizRemoveGroup('platoon:PLT1');", ctx);
+    status = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+    ok(!status.some(s => s.d4 === "1001"), "removing PLT1 must rebuild the checklist back out (1001 no longer a participant)");
   });
 
   await test("wizSetHAPeriods sets haPeriods, defaulting non-numeric input to 1", () => {
