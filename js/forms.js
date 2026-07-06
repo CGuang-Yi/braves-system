@@ -3911,9 +3911,14 @@ function rebuildLogConductStatus() {
     }
   }
   const dateIso = _logConduct.date;
-  // Commanders are not tracked in conduct attendance — exclude them from the
-  // status checklist entirely.
-  const effective = currentMedicalEffectiveAll(dateIso).filter(({ d4 }) => !isCommander(d4));
+  // Checklist is scoped to the selected participants (Attendees card), not a
+  // blanket commander exclusion — a commander whose group (Commanders only /
+  // Entire company) was added is a real attendee and belongs on the checklist.
+  // A legacy edited row with no group added yet (empty participants) shows an
+  // empty checklist — documented in the design doc; totals fallback keeps
+  // counts sane in that case.
+  const participantSet = new Set(_logConduct.participants || []);
+  const effective = currentMedicalEffectiveAll(dateIso).filter(({ d4 }) => participantSet.has(d4));
   _logConduct.status = effective.map(({ d4, statuses }) => {
     // Pick the most-severe active status as the canonical tag/reason.
     const top = statuses[0];

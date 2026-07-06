@@ -50,9 +50,12 @@ function tickFor(opts) {
       ? [{ id: "d1", date: "26 May 2026", time: "", conductId: "c1", d4: "2415", type: "Status", reason: "LD" }]
       : []
   };
+  // rebuildLogConductStatus now filters the checklist to _logConduct.participants
+  // (Task 3) — 2415 must be a participant for these seeding-behavior tests to
+  // still exercise the tick logic under test, not just an empty-checklist no-op.
   ctx._lc = opts.newConduct
-    ? { date: "2026-05-26", status: [] }                       // brand-new conduct: no attendanceId
-    : { attendanceId: "A1", date: "2026-05-26", status: [] };  // editing an existing one
+    ? { date: "2026-05-26", status: [], participants: ["2415"], importedBaseline: ["2415"] }                       // brand-new conduct: no attendanceId
+    : { attendanceId: "A1", date: "2026-05-26", status: [], participants: ["2415"], importedBaseline: ["2415"] };  // editing an existing one
   vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
   const status = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
   const row = status.find(s => s.d4 === "2415");
@@ -189,5 +192,49 @@ module.exports = async function run() {
   await test("addedGroups present but participants empty (e.g. a group resolving to nobody) skips the legacy fallback", () => {
     eq(totalsFor({ participants: [], addedGroups: [{ label: "Platoon 1", value: "platoon:PLT1" }] }).total, 0,
       "a real (if empty) group selection means 0 is the true count, not a legacy roster fallback");
+  });
+
+  suite("Log Conduct wizard: rebuildLogConductStatus filtered to participants");
+
+  // currentMedicalEffectiveAll surfaces two on-status people: recruit 2415 (LD)
+  // and commander 0001 (Excuse Heavy Load) — statusParticipates(false) for both
+  // so the OLD code's blanket !isCommander(d4) filter would have dropped 0001
+  // regardless of participants; the new filter is the only thing gating it.
+  function loadStatusFilterCtx() {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    target.isCommander = d4 => d4 === "0001";
+    target.statusParticipates = () => false;
+    target.currentMedicalEffectiveAll = () => [
+      { d4: "2415", statuses: [{ tag: "LD", record: { reason: "SORE THROAT" } }] },
+      { d4: "0001", statuses: [{ tag: "Excuse Heavy Load", record: { reason: "" } }] }
+    ];
+    target.STATE = { attendance: [], conductDetail: [] };
+    return { target, ctx };
+  }
+  function statusD4sFor(participants) {
+    const { ctx } = loadStatusFilterCtx();
+    ctx._lc = { date: "2026-05-26", status: [], participants };
+    vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
+    const status = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+    return status.map(s => s.d4).sort();
+  }
+
+  await test("non-participants are excluded from the checklist", () => {
+    eq(statusD4sFor(["2415"]), ["2415"], "0001 not in participants ⇒ absent from checklist");
+  });
+
+  await test("a commander included in participants appears on the checklist", () => {
+    eq(statusD4sFor(["2415", "0001"]), ["0001", "2415"],
+      "commander is no longer blanket-excluded — only the participant filter governs");
+  });
+
+  await test("empty participants ⇒ empty checklist", () => {
+    eq(statusD4sFor([]), [], "no participants ⇒ nothing to show");
   });
 };
