@@ -197,6 +197,29 @@ module.exports = async function run() {
     ok(c.notInCamp === true, "missing isInCamp must default to Not In Camp, not a reason-keyword guess");
   });
 
+  suite("backend: writeTab forces text format on coercion-prone columns");
+
+  await test("Attendance.participants column is forced to plain-text and round-trips verbatim", () => {
+    const b = loadBackend();
+    b.db.seed("Attendance", ["id", "date", "conductId", "participants", "source"], []);
+    // A comma-joined 4D roll. In real Sheets, General format coerces this into one
+    // number (commas as thousands separators) and zero-fills past ~15 sig-figs,
+    // destroying the roll. The fix forces the column to "@" so it survives.
+    const roll = "0110,0111,0023,0101,0310";
+    const r = b.writeTab("Attendance", [{ id: 1, date: "18 Jun 2026", conductId: 5, participants: roll, source: "csv" }]);
+    ok(r.ok, "write ok");
+    eq(b.db.rowsOf("Attendance")[0].participants, roll, "participants stored verbatim");
+    // participants is the 4th header (1-based col 4).
+    eq(b.db.numberFormat("Attendance", 4), "@", "participants column forced to plain text");
+  });
+
+  await test("a tab with no coercion-prone columns is left in default format", () => {
+    const b = loadBackend();
+    b.db.seed("Medical", ["id", "reason"], []);
+    b.writeTab("Medical", [{ id: 1, reason: "fever" }]);
+    eq(b.db.numberFormat("Medical", 1), null, "Medical columns not needlessly forced to text");
+  });
+
   suite("backend: bravesBackfillLeaveInCamp (one-off migration)");
 
   await test("fills blank isInCamp using the legacy guess, skips already-explicit rows", () => {

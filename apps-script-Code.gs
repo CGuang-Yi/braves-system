@@ -1480,6 +1480,18 @@ function readAllTabs(ctx) {
 
 // ─── WRITE OPERATIONS ──────────────────────────────────
 
+// Columns whose value is a string that merely LOOKS numeric to Sheets and must be
+// stored as plain text ("@") so setValues' input auto-coercion can't mangle it.
+// The Attendance `participants` field is a comma-joined 4D roll (e.g.
+// "0110,0111,0023"). In the default General format, Sheets reads those commas as
+// thousands separators, coerces the whole cell into ONE number, and — past ~15
+// significant figures — zero-fills the tail (IEEE-754 precision loss). That both
+// shifts the commas into 3-digit grouping AND turns the trailing 4Ds into 0000s,
+// so parseParticipantIds() then matches nobody and the conduct silently gives zero
+// HA credit. Forcing the column to "@" first makes the string round-trip verbatim.
+// (Same class of fix as bravesForceTextCols_ for the archive tabs.) Keyed by tab.
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"] };
+
 function writeTab(tabName, data) {
   if (!Array.isArray(data)) {
     return { error: "Data must be an array of objects" };
@@ -1508,6 +1520,12 @@ function writeTab(tabName, data) {
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
   sheet.setFrozenRows(1);
+
+  // sheet.clear() above wipes number formats, so re-apply the plain-text format to
+  // any coercion-prone column BEFORE writing data (setting it after setValues can't
+  // un-coerce an already-mangled number). Row-level writers (appendMany/upsertRow)
+  // don't clear formatting, so the "@" set here persists for their later writes too.
+  if (WRITE_TEXT_COLS_BY_TAB[tabName]) bravesForceTextCols_(ss, tabName, WRITE_TEXT_COLS_BY_TAB[tabName]);
 
   var rows = data.map(function (obj) {
     return headers.map(function (h) {
