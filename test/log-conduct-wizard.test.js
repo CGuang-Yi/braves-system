@@ -237,4 +237,133 @@ module.exports = async function run() {
   await test("empty participants ⇒ empty checklist", () => {
     eq(statusD4sFor([]), [], "no participants ⇒ nothing to show");
   });
+
+  suite("Log Conduct wizard: _logConduct state fields + edit seeding");
+
+  // openLogConductWizard needs isCommander/personPlatoon/activePlatoons (for
+  // resolveConductGroup/groupLabel, unused directly here but loaded alongside)
+  // plus rebuildLogConductStatus's own collaborators. currentMedicalEffectiveAll
+  // returns nothing so the checklist itself isn't under test here.
+  function loadOpenCtx() {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    target.isCommander = () => false;
+    target.statusParticipates = () => true;
+    target.currentMedicalEffectiveAll = () => [];
+    target.displayDateToISO = iso => iso; // dates already stored as "2026-05-26" in this fixture
+    target.todayISO = () => "2026-05-26";
+    target.renderLogConductWizard = () => {}; // no-op — DOM rendering isn't under test here
+    // Real calc.js parser (single canonical definition — see js/calc.js).
+    target.parseParticipantIds = participants =>
+      String(participants == null ? "" : participants).split(",").map(s => s.trim()).filter(Boolean);
+    return { target, ctx };
+  }
+
+  await test("edit-seeding: gross reconstruction from NET participants + non-RSI ConductDetail d4s, plus haCounts/haPeriods from currencyTags/periods", () => {
+    const { target, ctx } = loadOpenCtx();
+    target.STATE = {
+      roster: [],
+      attendance: [{ id: "A1", date: "2026-05-26", time: "", conductId: "c1", total: 2, remarks: "",
+        participants: "1234", currencyTags: "HA RM", periods: 2 }],
+      conductDetail: [
+        { id: "d1", date: "2026-05-26", time: "", conductId: "c1", d4: "1235", type: "Fallout", reason: "" },
+        { id: "d2", date: "2026-05-26", time: "", conductId: "c1", d4: "9999", type: "RSI", reason: "" }
+      ],
+      medical: []
+    };
+    vm.runInContext("openLogConductWizard('A1');", ctx);
+    const w = JSON.parse(vm.runInContext("JSON.stringify(_logConduct)", ctx));
+    eq(w.participants.sort(), ["1234", "1235"], "NET participant 1234 + Fallout detail 1235, RSI 9999 excluded");
+    eq(w.importedBaseline.sort(), ["1234", "1235"], "importedBaseline mirrors the gross seed");
+    eq(w.haCounts, true, "currencyTags 'HA RM' matches /\\bha\\b/i");
+    eq(w.haPeriods, 2, "periods column carried over");
+    eq(w.addedGroups, [], "addedGroups stays empty on edit — can't reverse-engineer groups from a snapshot");
+  });
+
+  await test("edit-seeding: haCounts false when currencyTags has no HA token; haPeriods defaults to 1", () => {
+    const { target, ctx } = loadOpenCtx();
+    target.STATE = {
+      roster: [],
+      attendance: [{ id: "A1", date: "2026-05-26", time: "", conductId: "c1", total: 1, remarks: "",
+        participants: "1234", currencyTags: "RM", periods: "" }],
+      conductDetail: [], medical: []
+    };
+    vm.runInContext("openLogConductWizard('A1');", ctx);
+    const w = JSON.parse(vm.runInContext("JSON.stringify(_logConduct)", ctx));
+    eq(w.haCounts, false, "'RM' has no HA token");
+    eq(w.haPeriods, 1, "blank periods ⇒ default 1");
+  });
+
+  await test("new-conduct seeding: empty participants/addedGroups/importedBaseline, haCounts false, haPeriods 1", () => {
+    const { target, ctx } = loadOpenCtx();
+    target.STATE = { roster: [], attendance: [], conductDetail: [], medical: [] };
+    vm.runInContext("openLogConductWizard();", ctx);
+    const w = JSON.parse(vm.runInContext("JSON.stringify(_logConduct)", ctx));
+    eq(w.participants, []);
+    eq(w.addedGroups, []);
+    eq(w.importedBaseline, []);
+    eq(w.haCounts, false);
+    eq(w.haPeriods, 1);
+  });
+
+  suite("Log Conduct wizard: wizAddGroup / wizRemoveGroup / wizToggleHA / wizSetHAPeriods");
+
+  function loadHandlerCtx() {
+    const { target, ctx } = loadGroupCtx(); // 5-person roster fixture from the group-resolution suite
+    target.renderLogConductWizard = () => {}; // handlers call this; no-op for unit tests
+    return { target, ctx };
+  }
+
+  await test("wizAddGroup unions the group's resolved ids into participants and records the chip", () => {
+    const { ctx } = loadHandlerCtx();
+    ctx._lc = { participants: [], addedGroups: [], importedBaseline: [] };
+    vm.runInContext("_logConduct = _lc; wizAddGroup('platoon:PLT1', 'Platoon 1');", ctx);
+    const w = JSON.parse(vm.runInContext("JSON.stringify(_logConduct)", ctx));
+    eq(w.participants.sort(), ["1001", "1002"]);
+    eq(w.addedGroups, [{ label: "Platoon 1", value: "platoon:PLT1" }]);
+  });
+
+  await test("wizAddGroup recomputes from importedBaseline + ALL addedGroups (never subtracts, groups overlap)", () => {
+    const { ctx } = loadHandlerCtx();
+    ctx._lc = { participants: ["9001"], addedGroups: [], importedBaseline: ["9001"] };
+    vm.runInContext("_logConduct = _lc;", ctx);
+    vm.runInContext("wizAddGroup('platoon:PLT1', 'Platoon 1');", ctx);
+    vm.runInContext("wizAddGroup('commanders', 'Commanders only');", ctx);
+    const w = JSON.parse(vm.runInContext("JSON.stringify(_logConduct)", ctx));
+    eq(w.participants.sort(), ["0001", "1001", "1002", "9001"], "baseline + both groups union");
+    eq(w.addedGroups.length, 2);
+  });
+
+  await test("wizRemoveGroup drops the chip and recomputes without it", () => {
+    const { ctx } = loadHandlerCtx();
+    ctx._lc = { participants: [], addedGroups: [], importedBaseline: [] };
+    vm.runInContext("_logConduct = _lc;", ctx);
+    vm.runInContext("wizAddGroup('platoon:PLT1', 'Platoon 1');", ctx);
+    vm.runInContext("wizAddGroup('platoon:PLT2', 'Platoon 2');", ctx);
+    vm.runInContext("wizRemoveGroup('platoon:PLT1');", ctx);
+    const w = JSON.parse(vm.runInContext("JSON.stringify(_logConduct)", ctx));
+    eq(w.participants.sort(), ["2001"], "PLT1 members dropped, PLT2 remains");
+    eq(w.addedGroups, [{ label: "Platoon 2", value: "platoon:PLT2" }]);
+  });
+
+  await test("wizToggleHA sets haCounts", () => {
+    const { ctx } = loadHandlerCtx();
+    ctx._lc = { participants: [], addedGroups: [], importedBaseline: [], haCounts: false, haPeriods: 1 };
+    vm.runInContext("_logConduct = _lc; wizToggleHA(true);", ctx);
+    eq(vm.runInContext("_logConduct.haCounts", ctx), true);
+  });
+
+  await test("wizSetHAPeriods sets haPeriods, defaulting non-numeric input to 1", () => {
+    const { ctx } = loadHandlerCtx();
+    ctx._lc = { participants: [], addedGroups: [], importedBaseline: [], haCounts: true, haPeriods: 1 };
+    vm.runInContext("_logConduct = _lc; wizSetHAPeriods('2');", ctx);
+    eq(vm.runInContext("_logConduct.haPeriods", ctx), 2);
+    vm.runInContext("wizSetHAPeriods('bogus');", ctx);
+    eq(vm.runInContext("_logConduct.haPeriods", ctx), 1);
+  });
 };

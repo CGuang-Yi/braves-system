@@ -3828,14 +3828,20 @@ function refreshLmsFromPolar() {
 //     date,                    // ISO "2026-05-29"
 //     time,                    // "0730" — empty until conduct picked
 //     conductId,               // c001 etc.
-//     totalOverride,           // null = derive from roster, else explicit number
+//     totalOverride,           // null = derive from participants, else explicit number
 //     remarks,                 // free text
-//     status: [                // pre-existing-status checklist
+//     status: [                // pre-existing-status checklist, filtered to participants
 //       { d4, statusTag, reason, notParticipating }
 //     ],
 //     rsi:        [{ d4, reason }],   // reported sick at FP (no participation)
 //     fallout:    [{ d4, reason }],   // dropped out mid-conduct, didn't go to MO
-//     reportSick: [{ d4, reason }]    // dropped out mid-conduct AND went to MO
+//     reportSick: [{ d4, reason }],   // dropped out mid-conduct AND went to MO
+//     participants:   [],      // gross accumulated 4D snapshot (source of truth
+//                               // for totals + checklist; NET is computed at save)
+//     addedGroups:    [],      // [{label, value}] display-only chips
+//     importedBaseline: [],    // seed from an edited row; survives group recomputes
+//     haCounts:  false,        // "Counts toward Heat Acclimatisation" checkbox
+//     haPeriods: 1             // Single (1) / Double (2) period selector
 //   }
 let _logConduct = null;
 
@@ -3853,6 +3859,11 @@ function openLogConductWizard(attendanceId) {
     rsi: [],
     fallout: [],
     reportSick: [],
+    participants: [],
+    addedGroups: [],
+    importedBaseline: [],
+    haCounts: false,
+    haPeriods: 1,
     // Original conductDetail row ids loaded into the wizard on edit. Save
     // diffs against the new set and deletes any id that's no longer present,
     // so the surgical sheet sync only touches rows that actually changed
@@ -3873,6 +3884,18 @@ function openLogConductWizard(attendanceId) {
       if (d.type === "Fallout") _logConduct.fallout.push({ d4: d.d4, reason: d.reason || "" });
       else if (d.type === "ReportSick") _logConduct.reportSick.push({ d4: d.d4, reason: d.reason || "" });
     });
+    // Gross reconstruction of the participant snapshot: the stored field is
+    // NET (Present list, absentees excluded per CSV convention — see the
+    // design doc), so re-add this conduct's non-RSI ConductDetail d4s to get
+    // back the gross set the Attendees card should show. addedGroups stays
+    // empty — a snapshot can't be reverse-engineered into the groups that
+    // built it; the UI renders a non-removable "Existing (N)" chip instead.
+    const detailD4s = matchDetails.filter(d => d.type !== "RSI").map(d => d.d4);
+    const seed = [...new Set([...parseParticipantIds(a.participants || ""), ...detailD4s])];
+    _logConduct.participants = seed;
+    _logConduct.importedBaseline = seed;
+    _logConduct.haCounts = /\bha\b/i.test(a.currencyTags || "");
+    _logConduct.haPeriods = Number(a.periods) || 1;
   }
   rebuildLogConductStatus();
   renderLogConductWizard();
@@ -4102,6 +4125,36 @@ function wizUpdateRowD4(section, idx, v) {
 function wizUpdateRowReason(section, idx, v) {
   if (!_logConduct[section][idx]) return;
   _logConduct[section][idx].reason = v;
+}
+
+// Recompute _logConduct.participants from importedBaseline + every added
+// group's resolved ids. Pure recompute (never subtract) — groups can overlap
+// (e.g. a platoon + Commanders only), so union is the only safe operation;
+// removing a chip re-runs this same union without it (see wizRemoveGroup).
+function wizRecomputeParticipants() {
+  const w = _logConduct;
+  w.participants = [...new Set([
+    ...(w.importedBaseline || []),
+    ...(w.addedGroups || []).flatMap(g => resolveConductGroup(g.value))
+  ])];
+}
+function wizAddGroup(value, label) {
+  _logConduct.addedGroups.push({ label, value });
+  wizRecomputeParticipants();
+  renderLogConductWizard();
+}
+function wizRemoveGroup(value) {
+  _logConduct.addedGroups = _logConduct.addedGroups.filter(g => g.value !== value);
+  wizRecomputeParticipants();
+  renderLogConductWizard();
+}
+function wizToggleHA(checked) {
+  _logConduct.haCounts = !!checked;
+  renderLogConductWizard();  // reveals/hides the period selector
+}
+function wizSetHAPeriods(v) {
+  const n = Number(v);
+  _logConduct.haPeriods = Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 // === Group resolution (Attendees card) ==================================
