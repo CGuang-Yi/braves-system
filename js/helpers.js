@@ -1158,11 +1158,23 @@ function haMedicallyExcusedOn(d4, iso) {
     String(m.d4) === String(d4) && haStatusDisqualifies(m.status) && medStatusActive(m, iso));
 }
 
+// Which attendance rows can establish HA participation:
+//  - CSV imports: always a candidate; eligibility follows the configured signal
+//    (conductHAEligible) → CSV behaviour bit-for-bit unchanged.
+//  - Wizard rows (source "wizard"): count IFF the wizard's HA checkbox stamped
+//    the HA token onto currencyTags. Deliberately IGNORES haEligibilitySource —
+//    the checkbox is explicit per-conduct user intent; under the legacy name-
+//    config an unticked wizard conduct must not leak into HA.
+//  - Legacy wizard rows (source ""): never count, exactly as before.
+function haCountsRow(a) {
+  if (a.source === "csv") return conductHAEligible(a);
+  return a.source === "wizard" && /\bha\b/i.test(a.currencyTags || "");
+}
+
 function haDayMap(d4) {
   const map = {};
   (STATE.attendance || []).forEach(a => {
-    if (a.source !== "csv") return;             // only CSV imports establish HA
-    if (!conductHAEligible(a)) return;
+    if (!haCountsRow(a)) return;
     const ids = parseParticipantIds(a.participants);
     if (!ids.includes(String(d4))) return;
     const iso = displayDateToISO(a.date);
@@ -1179,8 +1191,7 @@ function haDayMap(d4) {
 function haExcludedDayMap(d4) {
   const excluded = new Set();
   (STATE.attendance || []).forEach(a => {
-    if (a.source !== "csv") return;
-    if (!conductHAEligible(a)) return;
+    if (!haCountsRow(a)) return;
     const ids = parseParticipantIds(a.participants);
     if (!ids.includes(String(d4))) return;
     const iso = displayDateToISO(a.date);

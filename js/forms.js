@@ -3828,14 +3828,20 @@ function refreshLmsFromPolar() {
 //     date,                    // ISO "2026-05-29"
 //     time,                    // "0730" — empty until conduct picked
 //     conductId,               // c001 etc.
-//     totalOverride,           // null = derive from roster, else explicit number
+//     totalOverride,           // null = derive from participants, else explicit number
 //     remarks,                 // free text
-//     status: [                // pre-existing-status checklist
+//     status: [                // pre-existing-status checklist, filtered to participants
 //       { d4, statusTag, reason, notParticipating }
 //     ],
 //     rsi:        [{ d4, reason }],   // reported sick at FP (no participation)
 //     fallout:    [{ d4, reason }],   // dropped out mid-conduct, didn't go to MO
-//     reportSick: [{ d4, reason }]    // dropped out mid-conduct AND went to MO
+//     reportSick: [{ d4, reason }],   // dropped out mid-conduct AND went to MO
+//     participants:   [],      // gross accumulated 4D snapshot (source of truth
+//                               // for totals + checklist; NET is computed at save)
+//     addedGroups:    [],      // [{label, value}] display-only chips
+//     importedBaseline: [],    // seed from an edited row; survives group recomputes
+//     haCounts:  false,        // "Counts toward Heat Acclimatisation" checkbox
+//     haPeriods: 1             // Single (1) / Double (2) period selector
 //   }
 let _logConduct = null;
 
@@ -3853,6 +3859,11 @@ function openLogConductWizard(attendanceId) {
     rsi: [],
     fallout: [],
     reportSick: [],
+    participants: [],
+    addedGroups: [],
+    importedBaseline: [],
+    haCounts: false,
+    haPeriods: 1,
     // Original conductDetail row ids loaded into the wizard on edit. Save
     // diffs against the new set and deletes any id that's no longer present,
     // so the surgical sheet sync only touches rows that actually changed
@@ -3873,6 +3884,18 @@ function openLogConductWizard(attendanceId) {
       if (d.type === "Fallout") _logConduct.fallout.push({ d4: d.d4, reason: d.reason || "" });
       else if (d.type === "ReportSick") _logConduct.reportSick.push({ d4: d.d4, reason: d.reason || "" });
     });
+    // Gross reconstruction of the participant snapshot: the stored field is
+    // NET (Present list, absentees excluded per CSV convention — see the
+    // design doc), so re-add this conduct's non-RSI ConductDetail d4s to get
+    // back the gross set the Attendees card should show. addedGroups stays
+    // empty — a snapshot can't be reverse-engineered into the groups that
+    // built it; the UI renders a non-removable "Existing (N)" chip instead.
+    const detailD4s = matchDetails.filter(d => d.type !== "RSI").map(d => d.d4);
+    const seed = [...new Set([...parseParticipantIds(a.participants || ""), ...detailD4s])];
+    _logConduct.participants = seed;
+    _logConduct.importedBaseline = seed;
+    _logConduct.haCounts = /\bha\b/i.test(a.currencyTags || "");
+    _logConduct.haPeriods = Number(a.periods) || 1;
   }
   rebuildLogConductStatus();
   renderLogConductWizard();
@@ -3911,9 +3934,14 @@ function rebuildLogConductStatus() {
     }
   }
   const dateIso = _logConduct.date;
-  // Commanders are not tracked in conduct attendance — exclude them from the
-  // status checklist entirely.
-  const effective = currentMedicalEffectiveAll(dateIso).filter(({ d4 }) => !isCommander(d4));
+  // Checklist is scoped to the selected participants (Attendees card), not a
+  // blanket commander exclusion — a commander whose group (Commanders only /
+  // Entire company) was added is a real attendee and belongs on the checklist.
+  // A legacy edited row with no group added yet (empty participants) shows an
+  // empty checklist — documented in the design doc; totals fallback keeps
+  // counts sane in that case.
+  const participantSet = new Set(_logConduct.participants || []);
+  const effective = currentMedicalEffectiveAll(dateIso).filter(({ d4 }) => participantSet.has(d4));
   _logConduct.status = effective.map(({ d4, statuses }) => {
     // Pick the most-severe active status as the canonical tag/reason.
     const top = statuses[0];
@@ -4001,6 +4029,47 @@ function renderLogConductWizard() {
             <label>Conduct</label>
             ${conductPicker({ inputId: "wiz-conductId", selectedId: w.conductId, onChange: `wizSetConductId(document.getElementById('wiz-conductId').value)` })}
           </div>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:0">
+            <input type="checkbox" ${w.haCounts ? "checked" : ""} onchange="wizToggleHA(this.checked)" style="width:16px;height:16px;cursor:pointer">
+            Counts toward Heat Acclimatisation
+          </label>
+          ${w.haCounts ? `
+            <select id="wiz-ha-periods" onchange="wizSetHAPeriods(this.value)" style="padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+              <option value="1" ${w.haPeriods === 1 ? "selected" : ""}>Single (1h)</option>
+              <option value="2" ${w.haPeriods === 2 ? "selected" : ""}>Double (2h)</option>
+              ${(w.haPeriods !== 1 && w.haPeriods !== 2) ? `<option value="${escapeAttr(w.haPeriods)}" selected>${escapeAttr(w.haPeriods)} (imported)</option>` : ""}
+            </select>
+          ` : ""}
+        </div>
+      </div>
+
+      <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
+        <div style="margin-bottom:8px">
+          <strong style="color:var(--accent);font-size:13px">👥 Attendees</strong> <span style="color:var(--muted);font-size:11px">(${w.participants.length} in this conduct)</span>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">Add every group attending this conduct. Groups accumulate — add a platoon today, another tomorrow.</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="wiz-group-select" style="flex:1;min-width:180px;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+            <option value="" selected>Select a group to add…</option>
+            ${activePlatoons().map(p => `<option value="platoon:${escapeAttr(p.code)}">${escapeAttr(p.displayName)}</option>`).join("")}
+            <option value="company">Entire company</option>
+            <option value="noncommanders">Non-Commanders</option>
+            <option value="commanders">Commanders only</option>
+          </select>
+          <button type="button" class="btn" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="const sel = document.getElementById('wiz-group-select'); const v = sel.value; if (v) { wizAddGroup(v, sel.options[sel.selectedIndex].textContent); }">+ Add group</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+          ${(!w.participants.length && !w.addedGroups.length) ? "" :
+            (!w.addedGroups.length && w.participants.length) ? `
+              <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px 10px" title="Seeded from the saved row">Existing (${w.participants.length})</span>
+            ` : w.addedGroups.map(g => `
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px 6px 4px 10px">
+                ${escapeAttr(g.label)} (${resolveConductGroup(g.value).length})
+                <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveGroup('${escapeAttr(g.value)}')" title="Remove group" style="padding:1px 6px;font-size:10px;line-height:1">✕</button>
+              </span>
+            `).join("")}
         </div>
       </div>
 
@@ -4099,6 +4168,79 @@ function wizUpdateRowReason(section, idx, v) {
   _logConduct[section][idx].reason = v;
 }
 
+// Recompute _logConduct.participants from importedBaseline + every added
+// group's resolved ids. Pure recompute (never subtract) — groups can overlap
+// (e.g. a platoon + Commanders only), so union is the only safe operation;
+// removing a chip re-runs this same union without it (see wizRemoveGroup).
+function wizRecomputeParticipants() {
+  const w = _logConduct;
+  w.participants = [...new Set([
+    ...(w.importedBaseline || []),
+    ...(w.addedGroups || []).flatMap(g => resolveConductGroup(g.value))
+  ])];
+}
+function wizAddGroup(value, label) {
+  // Re-adding an already-added group is a no-op, not a duplicate chip.
+  if (_logConduct.addedGroups.some(g => g.value === value)) return;
+  _logConduct.addedGroups.push({ label, value });
+  wizRecomputeParticipants();
+  // The status checklist is scoped to participants (rebuildLogConductStatus) —
+  // it must be rebuilt whenever the participant set changes, or a newly added
+  // group's on-status recruits never appear until an unrelated rebuild (e.g. a
+  // date change) happens to run. Ticks/reasons for d4s still on the list are
+  // preserved by rebuildLogConductStatus's own prevByD4 carry-over.
+  rebuildLogConductStatus();
+  renderLogConductWizard();
+}
+function wizRemoveGroup(value) {
+  _logConduct.addedGroups = _logConduct.addedGroups.filter(g => g.value !== value);
+  wizRecomputeParticipants();
+  rebuildLogConductStatus();
+  renderLogConductWizard();
+}
+function wizToggleHA(checked) {
+  _logConduct.haCounts = !!checked;
+  renderLogConductWizard();  // reveals/hides the period selector
+}
+function wizSetHAPeriods(v) {
+  const n = Number(v);
+  _logConduct.haPeriods = Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+// === Group resolution (Attendees card) ==================================
+//
+// Group semantics (user-confirmed):
+//   platoon:<code> — explicit-platoon recruits ONLY (commanders deliberately
+//                    excluded even if their roster row carries a platoon —
+//                    reachable via Commanders only / Entire company).
+//   company        — EVERYONE on the roster, commanders included.
+//   noncommanders  — all recruits, no commanders.
+//   commanders     — commanders only.
+function resolveConductGroup(value) {
+  const roster = STATE.roster || [];
+  if (value === "company") return roster.map(r => r.id);
+  if (value === "noncommanders") return roster.filter(r => !isCommander(r.id)).map(r => r.id);
+  if (value === "commanders") return roster.filter(r => isCommander(r.id)).map(r => r.id);
+  if (value.startsWith("platoon:")) {
+    const code = value.slice("platoon:".length);
+    return roster.filter(r => !isCommander(r.id) && personPlatoon(r) === code).map(r => r.id);
+  }
+  return [];
+}
+
+// Human label for a group value — dropdown option text + chip labels.
+function groupLabel(value) {
+  if (value === "company") return "Entire company";
+  if (value === "noncommanders") return "Non-Commanders";
+  if (value === "commanders") return "Commanders only";
+  if (value.startsWith("platoon:")) {
+    const code = value.slice("platoon:".length);
+    const p = activePlatoons().find(p => p.code === code);
+    return p ? p.displayName : code;
+  }
+  return value;
+}
+
 // === Totals / overlap helpers ===========================================
 
 function computeLogConductTotals() {
@@ -4107,9 +4249,15 @@ function computeLogConductTotals() {
   const rsiCount = w.rsi.length;
   const falloutCount = w.fallout.length;
   const reportSickCount = w.reportSick.length;
-  // Default total: count of recruits in roster (commanders excluded — they
-  // don't typically appear in conduct attendance numbers).
-  const defaultTotal = STATE.roster.filter(r => r.role !== "Commander").length;
+  // Default total: the accumulated participant snapshot (gross — see the
+  // _logConduct shape doc). Legacy fallback to the old non-commander roster
+  // count ONLY when editing a pre-change wizard row that has neither a
+  // participant list nor any added group (so a group resolving to zero
+  // people is still trusted as "0", not silently replaced by the fallback).
+  const hasParticipantData = (w.participants && w.participants.length > 0) || (w.addedGroups && w.addedGroups.length > 0);
+  const defaultTotal = hasParticipantData
+    ? w.participants.length
+    : STATE.roster.filter(r => r.role !== "Commander").length;
   const total = w.totalOverride != null ? w.totalOverride : defaultTotal;
   const participating = Math.max(0, total - statusCount - rsiCount - falloutCount - reportSickCount);
   return { total, statusCount, rsiCount, falloutCount, reportSickCount, participating };
@@ -4158,10 +4306,20 @@ async function saveLogConductWizard() {
     alert(`Some rows have no recruit picked:\n  • ${bad.join("\n  • ")}\nPick a recruit or remove the row.`);
     return;
   }
+  // A brand-new conduct with no attendees selected is almost certainly a
+  // forgotten Attendees step, not an intentional zero-strength conduct.
+  // Legacy-row edits are exempt: a pre-change wizard row may never have had a
+  // group added, and re-saving it (e.g. just to tweak remarks) must not be
+  // newly blocked.
+  if (!w.attendanceId && (!w.participants || !w.participants.length)) {
+    alert("Add at least one group in the Attendees card before saving.");
+    return;
+  }
 
   const totals = computeLogConductTotals();
   const displayDate = isoToDisplayDate(w.date);
   const time = pad4Time(w.time || "");
+  const existing = w.attendanceId ? STATE.attendance.find(a => a.id === w.attendanceId) : null;
 
   // Build the attendance row.
   const attendanceEntry = {
@@ -4182,6 +4340,30 @@ async function saveLogConductWizard() {
     // mergeAttendanceEdit carries it onto the CSV-imported row.
     statusReviewed: true
   };
+
+  // participants: NET of exclusions (matches CSV semantics — stored field is
+  // the HA-credited Present list; absentees live in ConductDetail).
+  const excluded = new Set([
+    ...w.status.filter(s => s.notParticipating).map(s => s.d4),
+    ...w.fallout.map(r => r.d4),
+    ...w.reportSick.map(r => r.d4)
+  ]);
+  attendanceEntry.participants = (w.participants || []).filter(d4 => !excluded.has(d4)).join(",");
+
+  // source: "wizard" on new rows AND legacy-"" upgrades (haCountsRow needs it);
+  // NEVER on a CSV row — flipping "csv"→"wizard" is the past corruption class.
+  if (!existing || existing.source !== "csv") attendanceEntry.source = "wizard";
+
+  // currencyTags: reconcile checkbox vs existing tags via toggleHATag so
+  // sibling tokens ("HA RM") survive; unchanged tick state writes the
+  // identical string.
+  const baseTags = existing ? (existing.currencyTags || "") : "";
+  const hasHA = /\bha\b/i.test(baseTags);
+  attendanceEntry.currencyTags = (w.haCounts === hasHA) ? baseTags : toggleHATag(baseTags);
+
+  // periods: written only while ticked. Unticked → omit key, so an edited CSV
+  // row's B5 metadata survives the merge and a new row gets the "" default.
+  if (w.haCounts) attendanceEntry.periods = w.haPeriods;
 
   // Build conductDetail rows. "Status" rows = only status entries marked
   // "notParticipating" (the rest are participating despite their status).

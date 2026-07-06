@@ -1184,15 +1184,16 @@ function renderAttendance(el) {
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
       const time = fmtHrs(a.time) || '—';
-      // HA-eligibility cell (§14.3). Only CSV-imported rows can feed HA (§12.2:
-      // wizard rows carry no participant list), and the toggle only means
-      // anything when the currencyTag source is active — otherwise show the
-      // name-logic verdict read-only so the column never lies about what
-      // computeHA will do.
+      // HA-eligibility cell (§14.3). CSV imports and wizard-logged conducts
+      // (both now carry a real participant list, see haCountsRow) can feed HA;
+      // the toggle only means anything when the currencyTag source is active —
+      // otherwise show the name-logic verdict read-only so the column never
+      // lies about what computeHA will do. Legacy wizard rows (source "")
+      // predate participant tracking and are never HA-eligible.
       const tagSrc = configGet("haEligibilitySource") === "currencyTag";
       const haOn = conductHAEligible(a);
-      const haCell = a.source !== "csv"
-        ? `<span style="color:var(--dim)" title="Wizard-logged conduct — HA participation comes only from CSV imports (spec §12.2)">—</span>`
+      const haCell = (a.source !== "csv" && a.source !== "wizard")
+        ? `<span style="color:var(--dim)" title="Legacy wizard conduct — re-save it in the wizard with 'Counts toward HA' to include it">—</span>`
         : tagSrc
           ? `<button class="btn btn-icon" onclick="toggleConductHA(${a.id})" style="color:${haOn ? 'var(--green)' : 'var(--dim)'};font-weight:700" title="${haOn ? 'Counts toward HA — click to exclude' : 'Not an HA conduct — click to count it toward HA'}">${haOn ? 'HA ✓' : 'HA ✕'}</button>`
           : `<span style="color:${haOn ? 'var(--green)' : 'var(--dim)'}" title="Eligibility comes from the conduct name (Config haEligibilitySource = 'isHAExcluded'); set it to 'currencyTag' to toggle per conduct">${haOn ? 'HA' : '—'}</span>`;
