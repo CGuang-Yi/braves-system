@@ -329,4 +329,43 @@ module.exports = async function run() {
     // After removal the row is no longer HA-eligible under the reader.
     eq(/\bha\b/i.test(H.toggleHATag("HA RM")), false, "removal leaves no HA word");
   });
+
+  // ── haCountsRow — wizard-row HA gate (Log Conduct wizard HA checkbox) ────────
+  // Wizard rows are shape-identical to CSV rows (source/currencyTags/periods),
+  // but must count IFF the wizard's "Counts toward HA" checkbox stamped the HA
+  // token — never via the configured haEligibilitySource (that config is a
+  // CSV-only legacy knob). Legacy wizard rows (source "") never count.
+  suite("HA: haCountsRow — wizard-row gate (Log Conduct wizard HA checkbox)");
+
+  function wizAtt(dateIso, overrides) {
+    const [y, m, d] = dateIso.split("-").map(Number);
+    const disp = `${String(d).padStart(2, "0")} ${MON[m - 1]} ${y}`;
+    return Object.assign({ source: "wizard", conductId: "C1", date: disp, participants: "1234", currencyTags: "HA", periods: 2 }, overrides);
+  }
+
+  await test("ticked wizard row credits the day with its stored periods", () => {
+    seed([wizAtt(iso(2026, 5, 1))]);
+    const map = H.haDayMap("1234");
+    eq(Object.keys(map).length, 1);
+    eq(map[iso(2026, 5, 1)], 2);
+  });
+
+  await test("wizard row with empty currencyTags does not count", () => {
+    seed([wizAtt(iso(2026, 5, 1), { currencyTags: "" })]);
+    eq(Object.keys(H.haDayMap("1234")).length, 0);
+  });
+
+  await test("legacy wizard row (source '') never counts, even tagged HA", () => {
+    seed([wizAtt(iso(2026, 5, 1), { source: "" })]);
+    eq(Object.keys(H.haDayMap("1234")).length, 0);
+  });
+
+  await test("ticked wizard row counts even when Config uses the legacy isHAExcluded source", () => {
+    const prevCfg = H.configGet;
+    H.configGet = key => (key === "haEligibilitySource" ? "isHAExcluded" : undefined);
+    try {
+      seed([wizAtt(iso(2026, 5, 1))]);
+      eq(Object.keys(H.haDayMap("1234")).length, 1, "checkbox pierces the legacy name-config");
+    } finally { H.configGet = prevCfg; }
+  });
 };
