@@ -368,4 +368,50 @@ module.exports = async function run() {
       eq(Object.keys(H.haDayMap("1234")).length, 1, "checkbox pierces the legacy name-config");
     } finally { H.configGet = prevCfg; }
   });
+
+  // ── haProjection — minimum days to attain Single HA + projected days ─────────
+  suite("HA: haProjection — minimum days to Single HA");
+
+  await test("not started ⇒ 10 days, projected from tomorrow", () => {
+    H.todayISO = () => iso(2026, 5, 1);
+    seed([], [{ id: "0001", rank: "REC" }]);
+    const proj = H.haProjection(H.computeHA("0001"));
+    eq(proj.attained, false);
+    eq(proj.days, 10);
+    eq(proj.projectedDates.length, 10);
+    eq(proj.projectedDates[0], iso(2026, 5, 2));                  // tomorrow
+    eq(proj.projectedDates[9], iso(2026, 5, 11));
+  });
+
+  await test("in progress (4 periods, window alive) ⇒ 6 days remaining", () => {
+    // Active May 1-4, today May 6 (2 breaks — window not yet reset) ⇒ periods 4.
+    H.todayISO = () => iso(2026, 5, 6);
+    seed(daySeq(iso(2026, 5, 1), 4).map(k => att(k, 1)), [{ id: "0001", rank: "REC" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.single.periods, 4);
+    const proj = H.haProjection(ha);
+    eq(proj.attained, false);
+    eq(proj.days, 6);
+    eq(proj.projectedDates.length, 6);
+    eq(proj.projectedDates[0], iso(2026, 5, 7));
+  });
+
+  await test("Single complete ⇒ attained, 0 days, no projection", () => {
+    H.todayISO = () => iso(2026, 5, 15);
+    seed(daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1)), [{ id: "0001", rank: "REC" }]);
+    const proj = H.haProjection(H.computeHA("0001"));
+    eq(proj.attained, true);
+    eq(proj.days, 0);
+    eq(proj.projectedDates.length, 0);
+  });
+
+  await test("lapsed member still counts as attained (currency is separate)", () => {
+    H.todayISO = () => iso(2026, 7, 15);                          // long past the deadline
+    seed(daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1)), [{ id: "0001", rank: "REC" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.singleStatus, "Lapsed");
+    const proj = H.haProjection(ha);
+    eq(proj.attained, true);
+    eq(proj.days, 0);
+  });
 };

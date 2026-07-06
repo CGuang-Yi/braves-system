@@ -1239,7 +1239,15 @@ const HA_GRID_CELL = {
   trained1:  { bg: "#2EA043", fg: "#04240D", label: "Trained · 1 period" },
   trained2:  { bg: "#196C2E", fg: "#EAFFF0", label: "Trained · 2+ periods" },
   excused:   { bg: "#E24B4A", fg: "#501313", label: "Medically excused" },
-  future:    { bg: "transparent", fg: "var(--border)", label: "Future" }
+  future:    { bg: "transparent", fg: "var(--border)", label: "Future" },
+  // The day Single HA was attained — gold so it reads as a milestone even when
+  // it's also a trained day underneath. Lapse = the currency deadline (upcoming
+  // or already-lapsed) day, amber-warning. Projected = the minimum future
+  // training days still needed to reach Single HA (haProjection), dashed teal so
+  // it reads as a plan, not a logged day.
+  completed: { bg: "#E3B341", fg: "#3D2C00", label: "HA attained" },
+  lapse:     { bg: "#F0883E", fg: "#3D1E00", label: "Currency deadline" },
+  projected: { bg: "rgba(45,212,191,0.14)", fg: "#2DD4BF", border: "1px dashed #2DD4BF", label: "Projected HA day" }
 };
 const HA_GRID_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HA_GRID_MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -1410,5 +1418,27 @@ function computeHA(d4) {
     ...base, single, expanded, doubleTrack, singleStatus, singleTrack,
     doubleEligible, doubleStatus, overallStatus, currency, lastActivity: keys[keys.length - 1]
   };
+}
+
+// Minimum remaining training days to attain Single HA (the base §12
+// qualification), plus the ISO days that plan lands on. "Minimum" assumes the
+// recruit trains every day from tomorrow with no further breaks — Single (10
+// consecutive days) is always the fastest of the parallel paths, so days are
+// measured against it (10 − current Single periods) regardless of the Expanded
+// track. Someone already qualified (or lapsed — they DID attain it once; the
+// lapse is a separate currency concern) returns attained:true, days 0. The
+// person card renders `days` as a figure and `projectedDates` as tentative
+// grid cells (HA_GRID_CELL.projected). Pure — takes a computeHA() result.
+function haProjection(ha) {
+  if (!ha) return { attained: false, days: 0, projectedDates: [] };
+  if (ha.singleStatus === "Single HA Complete" || ha.singleStatus === "Lapsed") {
+    return { attained: true, days: 0, projectedDates: [] };
+  }
+  const p = ha.single ? ha.single.periods : 0;
+  const days = Math.max(0, 10 - p);
+  const start = todayISO();
+  const projectedDates = [];
+  for (let i = 1; i <= days; i++) projectedDates.push(_haAddDays(start, i));
+  return { attained: false, days, projectedDates };
 }
 
