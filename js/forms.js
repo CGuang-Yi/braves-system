@@ -3594,18 +3594,28 @@ function mergeConductInto(fromId, toId) {
   render();
 }
 
+// Deleting a conduct cascades: every Attendance / PolarFlow / ConductDetail
+// row referencing it is permanently removed too (not just unlinked), since
+// those rows are meaningless without the conduct they describe. Surgical
+// delete on the registry, full replace on the affected child tabs — same
+// pattern as mergeConductInto's bulk rewrite.
 function deleteConduct(id) {
   const c = STATE.conducts.find(x => x.id === id);
   if (!c) return;
   const usage = countConductUsage(id);
-  if (usage.total > 0) {
-    alert(`"${c.name}" is still used by ${usage.total} record${usage.total === 1 ? "" : "s"} (${usage.attendance} attendance, ${usage.polar} polar, ${usage.detail} detail). Merge it into another conduct first, or delete the records.`);
-    return;
-  }
-  if (!confirm(`Delete "${c.name}"? It has no records using it.`)) return;
+  const msg = usage.total > 0
+    ? `Delete "${c.name}"? This will permanently delete ${usage.total} record${usage.total === 1 ? "" : "s"} that reference it (${usage.attendance} attendance, ${usage.polar} polar, ${usage.detail} detail). This cannot be undone.`
+    : `Delete "${c.name}"? It has no records using it.`;
+  if (!confirm(msg)) return;
+  STATE.attendance = STATE.attendance.filter(r => r.conductId !== id);
+  STATE.polar = STATE.polar.filter(r => r.conductId !== id);
+  STATE.conductDetail = STATE.conductDetail.filter(r => r.conductId !== id);
   STATE.conducts = STATE.conducts.filter(x => x.id !== id);
   saveLocal();
   autoSync("Conducts", { type: "delete", id });
+  if (usage.attendance > 0) autoSync("Attendance", { type: "replace", data: STATE.attendance });
+  if (usage.polar > 0) autoSync("PolarFlow", { type: "replace", data: STATE.polar });
+  if (usage.detail > 0) autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
   render();
 }
 

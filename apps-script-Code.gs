@@ -1481,12 +1481,22 @@ function readAllTabs(ctx) {
 // ─── WRITE OPERATIONS ──────────────────────────────────
 
 function writeTab(tabName, data) {
-  if (!Array.isArray(data) || data.length === 0) {
-    return { error: "Data must be a non-empty array of objects" };
+  if (!Array.isArray(data)) {
+    return { error: "Data must be an array of objects" };
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
+
+  // A replace that legitimately zeroes out a tab (e.g. cascade-deleting a
+  // conduct's last remaining records) can't derive headers from data[0] since
+  // there isn't one — just clear the existing data rows and keep the header.
+  if (data.length === 0) {
+    if (!sheet) return { ok: true, tab: tabName, rowsWritten: 0 };
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) sheet.deleteRows(2, lastRow - 1);
+    return { ok: true, tab: tabName, rowsWritten: 0, timestamp: new Date().toISOString() };
+  }
 
   if (!sheet) {
     sheet = ss.insertSheet(tabName);
