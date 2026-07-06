@@ -154,4 +154,40 @@ module.exports = async function run() {
     eq(groupLabelFor("noncommanders"), "Non-Commanders");
     eq(groupLabelFor("commanders"), "Commanders only");
   });
+
+  suite("Log Conduct wizard: computeLogConductTotals (participant-based)");
+
+  // Same 5-person roster as the group-resolution suite (1 commander, 4 recruits).
+  function totalsFor(wizFields) {
+    const { target, ctx } = loadGroupCtx();
+    // _logConduct is a script-lexical `let` inside forms.js, not a global
+    // property — assign it in-context (see file header comment).
+    ctx._lc = {
+      status: [], rsi: [], fallout: [], reportSick: [],
+      totalOverride: null, participants: [], addedGroups: [],
+      ...wizFields
+    };
+    vm.runInContext("_logConduct = _lc;", ctx);
+    return JSON.parse(vm.runInContext("JSON.stringify(computeLogConductTotals())", ctx));
+  }
+
+  await test("participants drive the default total", () => {
+    eq(totalsFor({ participants: ["1001", "1002", "2001"] }).total, 3,
+      "3 participants ⇒ total 3");
+  });
+
+  await test("totalOverride still wins over participants", () => {
+    eq(totalsFor({ participants: ["1001", "1002", "2001"], totalOverride: 10 }).total, 10,
+      "explicit override beats participant count");
+  });
+
+  await test("legacy fallback: no participants and no addedGroups ⇒ non-commander roster count", () => {
+    eq(totalsFor({ participants: [], addedGroups: [] }).total, 4,
+      "4 non-commander recruits in the fixture roster");
+  });
+
+  await test("addedGroups present but participants empty (e.g. a group resolving to nobody) skips the legacy fallback", () => {
+    eq(totalsFor({ participants: [], addedGroups: [{ label: "Platoon 1", value: "platoon:PLT1" }] }).total, 0,
+      "a real (if empty) group selection means 0 is the true count, not a legacy roster fallback");
+  });
 };

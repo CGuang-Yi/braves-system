@@ -4141,9 +4141,15 @@ function computeLogConductTotals() {
   const rsiCount = w.rsi.length;
   const falloutCount = w.fallout.length;
   const reportSickCount = w.reportSick.length;
-  // Default total: count of recruits in roster (commanders excluded — they
-  // don't typically appear in conduct attendance numbers).
-  const defaultTotal = STATE.roster.filter(r => r.role !== "Commander").length;
+  // Default total: the accumulated participant snapshot (gross — see the
+  // _logConduct shape doc). Legacy fallback to the old non-commander roster
+  // count ONLY when editing a pre-change wizard row that has neither a
+  // participant list nor any added group (so a group resolving to zero
+  // people is still trusted as "0", not silently replaced by the fallback).
+  const hasParticipantData = (w.participants && w.participants.length > 0) || (w.addedGroups && w.addedGroups.length > 0);
+  const defaultTotal = hasParticipantData
+    ? w.participants.length
+    : STATE.roster.filter(r => r.role !== "Commander").length;
   const total = w.totalOverride != null ? w.totalOverride : defaultTotal;
   const participating = Math.max(0, total - statusCount - rsiCount - falloutCount - reportSickCount);
   return { total, statusCount, rsiCount, falloutCount, reportSickCount, participating };
