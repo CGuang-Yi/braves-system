@@ -46,7 +46,16 @@ function makeGoogle() {
         }
         return this;
       },
-      setFontWeight() { return this; }
+      setFontWeight() { return this; },
+      // Record per-column number format so tests can assert coercion-prone columns
+      // (e.g. Attendance.participants) are forced to plain text ("@"). The mock's
+      // setValues stores strings verbatim and does NOT simulate Sheets' real
+      // numeric coercion, so this records intent, not an emulated round-trip.
+      setNumberFormat(fmt) {
+        sheet.numberFormats = sheet.numberFormats || {};
+        for (let j = 0; j < nc; j++) sheet.numberFormats[c + j] = fmt;
+        return this;
+      }
     };
   }
 
@@ -63,7 +72,8 @@ function makeGoogle() {
       },
       appendRow(arr) { sheet.grid.push(arr.slice()); return this; },
       deleteRow(i) { sheet.grid.splice(i - 1, 1); return this; },
-      clear() { sheet.grid = []; return this; },
+      getMaxRows() { return Math.max(1000, sheet.grid.length); },
+      clear() { sheet.grid = []; sheet.numberFormats = {}; return this; },
       setFrozenRows() { return this; }
     };
   }
@@ -130,6 +140,11 @@ function makeGoogle() {
       return s.grid.slice(1).map(r => { const o = {}; h.forEach((k, i) => (o[k] = r[i])); return o; });
     },
     hasSheet(tab) { return sheets.has(tab); },
+    // The number format string recorded for a 1-based column of a tab (or null).
+    numberFormat(tab, col1Based) {
+      const s = sheets.get(tab);
+      return s && s.numberFormats ? (s.numberFormats[col1Based] || null) : null;
+    },
     setProp(k, v) { props.set(k, String(v)); },
     getProp(k) { return props.has(k) ? props.get(k) : null; },
     spy
