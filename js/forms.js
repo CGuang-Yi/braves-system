@@ -4256,10 +4256,20 @@ async function saveLogConductWizard() {
     alert(`Some rows have no recruit picked:\n  • ${bad.join("\n  • ")}\nPick a recruit or remove the row.`);
     return;
   }
+  // A brand-new conduct with no attendees selected is almost certainly a
+  // forgotten Attendees step, not an intentional zero-strength conduct.
+  // Legacy-row edits are exempt: a pre-change wizard row may never have had a
+  // group added, and re-saving it (e.g. just to tweak remarks) must not be
+  // newly blocked.
+  if (!w.attendanceId && (!w.participants || !w.participants.length)) {
+    alert("Add at least one group in the Attendees card before saving.");
+    return;
+  }
 
   const totals = computeLogConductTotals();
   const displayDate = isoToDisplayDate(w.date);
   const time = pad4Time(w.time || "");
+  const existing = w.attendanceId ? STATE.attendance.find(a => a.id === w.attendanceId) : null;
 
   // Build the attendance row.
   const attendanceEntry = {
@@ -4280,6 +4290,30 @@ async function saveLogConductWizard() {
     // mergeAttendanceEdit carries it onto the CSV-imported row.
     statusReviewed: true
   };
+
+  // participants: NET of exclusions (matches CSV semantics — stored field is
+  // the HA-credited Present list; absentees live in ConductDetail).
+  const excluded = new Set([
+    ...w.status.filter(s => s.notParticipating).map(s => s.d4),
+    ...w.fallout.map(r => r.d4),
+    ...w.reportSick.map(r => r.d4)
+  ]);
+  attendanceEntry.participants = (w.participants || []).filter(d4 => !excluded.has(d4)).join(",");
+
+  // source: "wizard" on new rows AND legacy-"" upgrades (haCountsRow needs it);
+  // NEVER on a CSV row — flipping "csv"→"wizard" is the past corruption class.
+  if (!existing || existing.source !== "csv") attendanceEntry.source = "wizard";
+
+  // currencyTags: reconcile checkbox vs existing tags via toggleHATag so
+  // sibling tokens ("HA RM") survive; unchanged tick state writes the
+  // identical string.
+  const baseTags = existing ? (existing.currencyTags || "") : "";
+  const hasHA = /\bha\b/i.test(baseTags);
+  attendanceEntry.currencyTags = (w.haCounts === hasHA) ? baseTags : toggleHATag(baseTags);
+
+  // periods: written only while ticked. Unticked → omit key, so an edited CSV
+  // row's B5 metadata survives the merge and a new row gets the "" default.
+  if (w.haCounts) attendanceEntry.periods = w.haPeriods;
 
   // Build conductDetail rows. "Status" rows = only status entries marked
   // "notParticipating" (the rest are participating despite their status).

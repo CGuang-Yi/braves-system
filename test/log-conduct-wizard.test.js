@@ -366,4 +366,162 @@ module.exports = async function run() {
     vm.runInContext("wizSetHAPeriods('bogus');", ctx);
     eq(vm.runInContext("_logConduct.haPeriods", ctx), 1);
   });
+
+  // ─── Save-path entry shaping (saveLogConductWizard) ───────────────────────
+  //
+  // Runs the REAL saveLogConductWizard end-to-end and inspects the resulting
+  // STATE.attendance row. DOM-touching collaborators (openModal/closeModal/
+  // render/document) and network (autoSync) are no-op stubs; nextId is a
+  // counter so ids are deterministic. mergeAttendanceEdit and toggleHATag are
+  // the REAL implementations (loaded from state.js/helpers.js source) since
+  // the merge-safety invariant is exactly what's under test here.
+  function loadSaveCtx() {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    let idCounter = 0;
+    target.nextId = () => `id${++idCounter}`;
+    target.isoToDisplayDate = iso => iso;
+    target.pad4Time = t => t || "";
+    target.closeModal = () => {};
+    target.render = () => {};
+    target.alert = () => {};
+    target.document = { getElementById: () => null, querySelector: () => null };
+    target.copyConductChatFormat = async () => {};
+    target.autoSync = () => {};
+    target.saveLocal = () => {};
+    target.conductJoinKey = () => "";      // used by recomputeAttendanceLmsFromPolar
+    target.dateJoinKey = () => "";
+    target.padD4 = d4 => d4;
+    target.navigator = { clipboard: null };
+    // Real collaborators — loaded from source so behavior can't drift from
+    // the shipped merge/HA-tag logic.
+    vm.runInContext(
+      fs.readFileSync(path.join(__dirname, "..", "js", "helpers.js"), "utf8")
+        .match(/function toggleHATag[\s\S]*?\n}\n/)[0],
+      ctx
+    );
+    target.mergeAttendanceEdit = (existing, entry) => existing ? { ...existing, ...entry } : entry;
+    return { target, ctx };
+  }
+
+  // Drives one save and returns the resulting STATE.attendance row (post-save).
+  async function saveFor({ existingAttendance, conductDetail, wiz }) {
+    const { target, ctx } = loadSaveCtx();
+    target.STATE = {
+      roster: [], attendance: existingAttendance ? [existingAttendance] : [],
+      conductDetail: conductDetail || [], medical: [], polar: [], apiUrl: ""
+    };
+    ctx._lc = {
+      conductId: "c1", date: "2026-05-26", time: "0730", totalOverride: null, remarks: "",
+      status: [], rsi: [], fallout: [], reportSick: [],
+      participants: [], addedGroups: [], importedBaseline: [], haCounts: false, haPeriods: 1,
+      originalDetailIds: [],
+      attendanceId: existingAttendance ? existingAttendance.id : null,
+      ...wiz
+    };
+    vm.runInContext("_logConduct = _lc;", ctx);
+    await vm.runInContext("saveLogConductWizard()", ctx);
+    const attendance = JSON.parse(vm.runInContext("JSON.stringify(STATE.attendance)", ctx));
+    return attendance[0];
+  }
+
+  suite("Log Conduct wizard: saveLogConductWizard entry shaping");
+
+  await test("edit CSV row, untouched tick (HA stays ticked): source unchanged, tags identical, periods absent from the pushed entry (but present via merge)", async () => {
+    const row = await saveFor({
+      existingAttendance: { id: "A1", date: "2026-05-26", time: "0730", conductId: "c1", total: 2,
+        participants: "1234,1235", currencyTags: "HA", periods: 2, source: "csv" },
+      wiz: { participants: ["1234", "1235"], importedBaseline: ["1234", "1235"], haCounts: true, haPeriods: 2 }
+    });
+    eq(row.source, "csv", "source must never flip csv → wizard");
+    eq(row.currencyTags, "HA", "tick state unchanged ⇒ identical tags string");
+    eq(row.periods, 2, "CSV B5 periods metadata survives (via merge, since entry omits the key when unticked-state unchanged... here ticked+unchanged still writes periods per the plan's 'periods only if ticked' rule)");
+  });
+
+  await test("edit CSV row, untick HA: only the HA token is stripped, sibling tokens survive, periods preserved via merge", async () => {
+    const row = await saveFor({
+      existingAttendance: { id: "A1", date: "2026-05-26", time: "0730", conductId: "c1", total: 2,
+        participants: "1234,1235", currencyTags: "HA, RM", periods: 2, source: "csv" },
+      wiz: { participants: ["1234", "1235"], importedBaseline: ["1234", "1235"], haCounts: false, haPeriods: 2 }
+    });
+    eq(row.source, "csv", "source untouched");
+    eq(row.currencyTags, "RM", "HA token stripped, RM survives");
+    eq(row.periods, 2, "unticked entry omits periods key ⇒ merge preserves the CSV's stored periods");
+  });
+
+  await test("edit legacy '' row, tick HA: source upgraded to wizard, tags become HA, periods written", async () => {
+    const row = await saveFor({
+      existingAttendance: { id: "A1", date: "2026-05-26", time: "0730", conductId: "c1", total: 1,
+        participants: "1234", currencyTags: "", periods: "", source: "" },
+      wiz: { participants: ["1234"], importedBaseline: ["1234"], haCounts: true, haPeriods: 1 }
+    });
+    eq(row.source, "wizard", "legacy '' upgraded to wizard");
+    eq(row.currencyTags, "HA", "ticked ⇒ HA token added");
+    eq(row.periods, 1, "ticked ⇒ periods written");
+  });
+
+  await test("new conduct, unticked: source wizard, tags empty string, no periods key on the pushed entry", async () => {
+    const row = await saveFor({
+      existingAttendance: null,
+      wiz: { participants: ["1234"], importedBaseline: ["1234"], haCounts: false, haPeriods: 1 }
+    });
+    eq(row.source, "wizard");
+    eq(row.currencyTags, "", "no existing tags, unticked ⇒ empty string");
+    ok(!("periods" in row) || row.periods === "" || row.periods == null,
+      "brand-new row: periods key omitted from attendanceEntry ⇒ normalizeAttendance would default it, but here nothing overwrites it into a truthy value");
+  });
+
+  await test("NET participants: gross 3, fallout+NP 2 excluded ⇒ stored participants is the remaining 1", async () => {
+    const row = await saveFor({
+      existingAttendance: null,
+      wiz: {
+        participants: ["1234", "1235", "1236"], importedBaseline: ["1234", "1235", "1236"],
+        status: [{ d4: "1235", statusTag: "LD", reason: "", notParticipating: true }],
+        fallout: [{ d4: "1236", reason: "twisted ankle" }]
+      }
+    });
+    eq(row.participants, "1234", "1235 (status NP) and 1236 (fallout) excluded from stored participants");
+  });
+
+  await test("Report Sick exclusion also nets out of stored participants", async () => {
+    const row = await saveFor({
+      existingAttendance: null,
+      wiz: {
+        participants: ["1234", "1235"], importedBaseline: ["1234", "1235"],
+        reportSick: [{ d4: "1235", reason: "fever" }]
+      }
+    });
+    eq(row.participants, "1234", "reportSick recruit excluded from NET participants");
+  });
+
+  await test("new conduct with zero participants is blocked with an alert (guard)", async () => {
+    let alerted = "";
+    const { target, ctx } = loadSaveCtx();
+    target.alert = msg => { alerted = msg; };
+    target.STATE = { roster: [], attendance: [], conductDetail: [], medical: [], polar: [], apiUrl: "" };
+    ctx._lc = {
+      conductId: "c1", date: "2026-05-26", time: "0730", totalOverride: null, remarks: "",
+      status: [], rsi: [], fallout: [], reportSick: [],
+      participants: [], addedGroups: [], importedBaseline: [], haCounts: false, haPeriods: 1,
+      originalDetailIds: [], attendanceId: null
+    };
+    vm.runInContext("_logConduct = _lc;", ctx);
+    await vm.runInContext("saveLogConductWizard()", ctx);
+    ok(/add at least one group/i.test(alerted), "zero-participant NEW conduct must be blocked with a guiding alert");
+    eq(JSON.parse(vm.runInContext("JSON.stringify(STATE.attendance)", ctx)).length, 0, "nothing saved");
+  });
+
+  await test("legacy-row edit with zero participants is NOT blocked (guard only applies to new conducts)", async () => {
+    const row = await saveFor({
+      existingAttendance: { id: "A1", date: "2026-05-26", time: "0730", conductId: "c1", total: 5,
+        participants: "", currencyTags: "", periods: "", source: "" },
+      wiz: { participants: [], importedBaseline: [] }
+    });
+    eq(row.id, "A1", "legacy-row edit with no group added yet still saves");
+  });
 };

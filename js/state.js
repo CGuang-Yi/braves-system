@@ -489,6 +489,16 @@ function normalizeAttendance(rows) {
 // CSV-imported conduct edited this way, which erased that conduct from
 // everyone's HA. Spread the existing row first so only entry's own keys move;
 // a brand-new row (no `existing`) has nothing to preserve.
+//
+// The Log Conduct wizard's save path (saveLogConductWizard, js/forms.js)
+// leans on this spread-merge to keep the HA-corruption class impossible by
+// construction: `source` is only ever set to "wizard" (never emitted for an
+// existing "csv" row, so `source` simply doesn't appear in `entry` and the
+// spread keeps "csv"); `periods` is only emitted while the wizard's "Counts
+// toward HA" box is ticked, so an unticked save omits the key and the CSV's
+// B5 metadata survives untouched; `currencyTags` is always reconciled against
+// the existing value via toggleHATag (never blindly overwritten), so sibling
+// tokens survive a tick/untick.
 function mergeAttendanceEdit(existing, entry) {
   return existing ? { ...existing, ...entry } : entry;
 }
