@@ -4180,6 +4180,8 @@ function wizRecomputeParticipants() {
   ])];
 }
 function wizAddGroup(value, label) {
+  // Re-adding an already-added group is a no-op, not a duplicate chip.
+  if (_logConduct.addedGroups.some(g => g.value === value)) return;
   _logConduct.addedGroups.push({ label, value });
   wizRecomputeParticipants();
   renderLogConductWizard();

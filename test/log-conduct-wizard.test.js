@@ -339,6 +339,17 @@ module.exports = async function run() {
     eq(w.addedGroups.length, 2);
   });
 
+  await test("wizAddGroup ignores re-adding an already-added group (no duplicate chip)", () => {
+    const { ctx } = loadHandlerCtx();
+    ctx._lc = { participants: [], addedGroups: [], importedBaseline: [] };
+    vm.runInContext("_logConduct = _lc;", ctx);
+    vm.runInContext("wizAddGroup('platoon:PLT1', 'Platoon 1');", ctx);
+    vm.runInContext("wizAddGroup('platoon:PLT1', 'Platoon 1');", ctx);
+    const w = JSON.parse(vm.runInContext("JSON.stringify(_logConduct)", ctx));
+    eq(w.addedGroups.length, 1, "second add of the same value is a no-op, not a duplicate chip");
+    eq(w.participants.sort(), ["1001", "1002"], "participants unchanged");
+  });
+
   await test("wizRemoveGroup drops the chip and recomputes without it", () => {
     const { ctx } = loadHandlerCtx();
     ctx._lc = { participants: [], addedGroups: [], importedBaseline: [] };
