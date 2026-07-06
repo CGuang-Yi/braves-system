@@ -4030,6 +4030,47 @@ function renderLogConductWizard() {
             ${conductPicker({ inputId: "wiz-conductId", selectedId: w.conductId, onChange: `wizSetConductId(document.getElementById('wiz-conductId').value)` })}
           </div>
         </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:0">
+            <input type="checkbox" ${w.haCounts ? "checked" : ""} onchange="wizToggleHA(this.checked)" style="width:16px;height:16px;cursor:pointer">
+            Counts toward Heat Acclimatisation
+          </label>
+          ${w.haCounts ? `
+            <select id="wiz-ha-periods" onchange="wizSetHAPeriods(this.value)" style="padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+              <option value="1" ${w.haPeriods === 1 ? "selected" : ""}>Single (1h)</option>
+              <option value="2" ${w.haPeriods === 2 ? "selected" : ""}>Double (2h)</option>
+              ${(w.haPeriods !== 1 && w.haPeriods !== 2) ? `<option value="${escapeAttr(w.haPeriods)}" selected>${escapeAttr(w.haPeriods)} (imported)</option>` : ""}
+            </select>
+          ` : ""}
+        </div>
+      </div>
+
+      <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
+        <div style="margin-bottom:8px">
+          <strong style="color:var(--accent);font-size:13px">👥 Attendees</strong> <span style="color:var(--muted);font-size:11px">(${w.participants.length} in this conduct)</span>
+          <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">Add every group attending this conduct. Groups accumulate — add a platoon today, another tomorrow.</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="wiz-group-select" style="flex:1;min-width:180px;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+            <option value="" selected>Select a group to add…</option>
+            ${activePlatoons().map(p => `<option value="platoon:${escapeAttr(p.code)}">${escapeAttr(p.displayName)}</option>`).join("")}
+            <option value="company">Entire company</option>
+            <option value="noncommanders">Non-Commanders</option>
+            <option value="commanders">Commanders only</option>
+          </select>
+          <button type="button" class="btn" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="const sel = document.getElementById('wiz-group-select'); const v = sel.value; if (v) { wizAddGroup(v, sel.options[sel.selectedIndex].textContent); }">+ Add group</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+          ${(!w.participants.length && !w.addedGroups.length) ? "" :
+            (!w.addedGroups.length && w.participants.length) ? `
+              <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px 10px" title="Seeded from the saved row">Existing (${w.participants.length})</span>
+            ` : w.addedGroups.map(g => `
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px 6px 4px 10px">
+                ${escapeAttr(g.label)} (${resolveConductGroup(g.value).length})
+                <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveGroup('${escapeAttr(g.value)}')" title="Remove group" style="padding:1px 6px;font-size:10px;line-height:1">✕</button>
+              </span>
+            `).join("")}
+        </div>
       </div>
 
       <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
