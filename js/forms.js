@@ -25,10 +25,25 @@ function haActivityGridHtml(ha, d4) {
   const dayMap = ha.dayMap || {};
   const excluded = haExcludedDayMap(d4);
   const keys = Object.keys(dayMap).concat(Array.from(excluded));
-  if (!keys.length) return "";
-  const minIso = keys.reduce((a, b) => (b < a ? b : a));
   const todayKey = todayISO();
-  const weeks = haGridWeeks(minIso, todayKey);
+
+  // Forecast markers: the minimum future training days to reach Single HA
+  // (projected cells), the day it was attained (gold), and the currency
+  // deadline / lapse day (amber). The grid is extended past today to cover
+  // whichever of these lands furthest out, so the plan is actually visible.
+  const proj = haProjection(ha);
+  const projSet = new Set(proj.projectedDates);
+  const completedIso = (ha.single && ha.single.completionDate) || (ha.expanded && ha.expanded.completionDate) || null;
+  const lapseIso = ha.currency ? (ha.currency.lapseDateIso || ha.currency.deadlineIso || null) : null;
+
+  if (!keys.length && !proj.projectedDates.length) return "";
+  // With no logged days yet (a not-started recruit), anchor the grid at today so
+  // the projected days still have a canvas to render on.
+  const minIso = keys.length ? keys.reduce((a, b) => (b < a ? b : a)) : todayKey;
+  let maxIso = todayKey;
+  if (proj.projectedDates.length && proj.projectedDates[proj.projectedDates.length - 1] > maxIso) maxIso = proj.projectedDates[proj.projectedDates.length - 1];
+  if (lapseIso && lapseIso > maxIso) maxIso = lapseIso;
+  const weeks = haGridWeeks(minIso, maxIso);
 
   let lastMonth = null;
   const monthHead = weeks.map(w => {
@@ -45,31 +60,48 @@ function haActivityGridHtml(ha, d4) {
   const rows = HA_GRID_DOW.map((dow, r) => {
     const cells = weeks.map(w => {
       const iso = w.days[r];
+      const disp = isoToDisplayDate(iso);
       let cell, title;
-      if (iso > todayKey) {
+      // Precedence: projected plan → lapse deadline (may be future) → other
+      // future → the attained day (gold, overlays a trained day) → excused →
+      // trained → nothing.
+      if (projSet.has(iso)) {
+        cell = HA_GRID_CELL.projected;
+        title = `${disp} — projected HA day (minimum plan)`;
+      } else if (iso === lapseIso) {
+        cell = HA_GRID_CELL.lapse;
+        title = `${disp} — ${ha.currency && ha.currency.lapsed ? "currency lapsed here" : "currency deadline"}`;
+      } else if (iso > todayKey) {
         cell = HA_GRID_CELL.future;
         title = "";
+      } else if (iso === completedIso) {
+        cell = HA_GRID_CELL.completed;
+        title = `${disp} — Single HA attained`;
       } else if (excluded.has(iso)) {
         cell = HA_GRID_CELL.excused;
-        title = `${isoToDisplayDate(iso)} — medically excused`;
+        title = `${disp} — medically excused`;
       } else if ((dayMap[iso] || 0) >= 2) {
         cell = HA_GRID_CELL.trained2;
-        title = `${isoToDisplayDate(iso)} — trained, ${dayMap[iso]} periods`;
+        title = `${disp} — trained, ${dayMap[iso]} periods`;
       } else if ((dayMap[iso] || 0) >= 1) {
         cell = HA_GRID_CELL.trained1;
-        title = `${isoToDisplayDate(iso)} — trained, 1 period`;
+        title = `${disp} — trained, 1 period`;
       } else {
         cell = HA_GRID_CELL.none;
-        title = `${isoToDisplayDate(iso)} — no activity`;
+        title = `${disp} — no activity`;
       }
       const dayNum = +iso.slice(8, 10);
-      return `<td class="ha-grid-td"><div class="ha-grid-cell" ${title ? `title="${escapeAttr(title)}"` : ""} style="background:${cell.bg};color:${cell.fg}">${dayNum}</div></td>`;
+      return `<td class="ha-grid-td"><div class="ha-grid-cell" ${title ? `title="${escapeAttr(title)}"` : ""} style="background:${cell.bg};color:${cell.fg}${cell.border ? `;border:${cell.border}` : ""}">${dayNum}</div></td>`;
     }).join("");
     return `<tr><td class="ha-grid-dow">${r % 2 === 0 ? dow : ""}</td>${cells}</tr>`;
   }).join("");
 
-  const legend = ["none", "trained1", "trained2", "excused"]
-    .map(k => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px;color:var(--muted)"><span style="width:11px;height:11px;border-radius:2px;background:${HA_GRID_CELL[k].bg};display:inline-block;border:1px solid var(--border)"></span>${HA_GRID_CELL[k].label}</span>`)
+  const legendKeys = ["none", "trained1", "trained2", "excused"];
+  if (completedIso) legendKeys.push("completed");
+  if (lapseIso) legendKeys.push("lapse");
+  if (proj.projectedDates.length) legendKeys.push("projected");
+  const legend = legendKeys
+    .map(k => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:10px;color:var(--muted)"><span style="width:11px;height:11px;border-radius:2px;background:${HA_GRID_CELL[k].bg};display:inline-block;border:${HA_GRID_CELL[k].border || "1px solid var(--border)"}"></span>${HA_GRID_CELL[k].label}</span>`)
     .join("");
 
   return `
@@ -294,6 +326,12 @@ function openPerson(d4) {
       ? `<div style="font-size:11px;color:var(--red);margin-top:6px">⚠ Currency lapsed${ha.currency.lapseDateIso ? " (deadline " + isoToDisplayDate(ha.currency.lapseDateIso) + ")" : ""} — re-qualify via any programme.</div>`
       : (ha.currency && ha.currency.deadlineIso ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Currency deadline: ${isoToDisplayDate(ha.currency.deadlineIso)}</div>` : "");
 
+    // Minimum-days-to-attain figure (mirrors the projected cells on the grid).
+    const proj = haProjection(ha);
+    const projLine = proj.attained
+      ? `<div style="font-size:11px;color:var(--green);margin-top:6px">✅ Single HA attained</div>`
+      : `<div style="font-size:11px;color:#2DD4BF;margin-top:6px">🎯 Minimum <strong>${proj.days}</strong> training day${proj.days === 1 ? "" : "s"} to Single HA${proj.projectedDates.length ? ` (by ${isoToDisplayDate(proj.projectedDates[proj.projectedDates.length - 1])} if trained daily)` : ""}</div>`;
+
     html += `
       <h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">🌡️ Heat Acclimatisation (HA)</h4>
       <div class="card" style="padding:14px;background:var(--surface2);margin-bottom:12px">
@@ -306,6 +344,7 @@ function openPerson(d4) {
         ${ha.doubleEligible
           ? bar("Double", ha.doubleTrack, 13, "#388BFD", ha.doubleTrack ? `, ${ha.doubleTrack.breaksUsed} breaks` : "")
           : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Double: 🔒 ${ha.singleStatus === "Single HA Complete" ? "not eligible (needs VocFit or ≥3SG/≥2LT)" : "locked until Single HA complete"}</div>`}
+        ${projLine}
         ${currLine}
         ${timelineHtml ? `
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">Activity Days</div>
@@ -670,7 +709,7 @@ function openMedicalForm(id) {
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
         ${e ? editHint : ""}
-        <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
+        <div class="form-group"><label>Recruit</label>${personSearchBox({ boxId: "med-person", valueId: "f-d4", placeholder: "Search recruit by name / 4D…", selected: e?.d4 || "" })}</div>
         <div class="form-group">
           <label>Visit type</label>
           <select id="f-type" onchange="medTypeChanged(this.value)">
@@ -797,6 +836,9 @@ function submitMedical() {
   }
 
   const d4 = gv("f-d4");
+  // The recruit is now picked via a search box (hidden input), so it can be
+  // left blank — guard here since a hidden input can't be HTML-`required`.
+  if (!d4) { alert("Pick a recruit (search by name / 4D)."); return; }
   const date = isoToDisplayDate(gv("f-date"));
   const reason = gv("f-reason");
   const location = gv("f-location").trim();
@@ -1402,6 +1444,20 @@ function conductReviewSection_(p, idx) {
   const flagList = (label, arr, color) => arr.length
     ? `<div style="margin-top:4px"><strong style="color:${color}">${label} (${arr.length})</strong>: <span style="font-size:11px;color:var(--muted)">${arr.map(x => escapeAttr((x.fourD ? x.fourD + " " : "") + (x.name || x.userCell || ""))).join(", ")}</span></div>`
     : "";
+
+  // Subset import: everyone on the roster (recruits only — commanders aren't
+  // tracked in conduct attendance) who is NOT in this file at all is assumed
+  // absent. Display-only for review — no ConductDetail rows, no change to the
+  // stored total/participants, so HA + participation math is untouched.
+  const listedIds = new Set(p.parsed.map(x => x.resolvedId).filter(Boolean));
+  const assumedAbsent = (STATE.roster || []).filter(r => !isCommander(r.id) && !listedIds.has(r.id));
+  const absentBlock = assumedAbsent.length
+    ? `<details style="margin-top:6px">
+         <summary style="cursor:pointer;font-size:11px;color:var(--muted)">Assumed absent (${assumedAbsent.length}) — not in this file</summary>
+         <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6">${assumedAbsent.map(r => `${displayId(r.id)} ${escapeHTML(r.name || "")}`).join(" · ")}</div>
+         <div style="font-size:10px;color:var(--dim);margin-top:3px">Shown for review only — not recorded, and they don't affect HA or participation totals.</div>
+       </details>`
+    : "";
   return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface)">
     <div style="font-weight:700;font-size:13px;margin-bottom:6px">📄 ${escapeAttr(p.activityName || "(unnamed)")} <span style="font-weight:400;color:var(--dim);font-size:11px">— ${escapeAttr(p.fileName || "")}</span></div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Date: <strong>${escapeAttr(p.dateDisplay || "(none)")}</strong> · Periods (B5): <strong>${p.periods || 0}</strong> · Currency: <strong>${escapeAttr(p.currencyTags || "—")}</strong> · HA-eligible: ${haEligible ? `<span style="color:var(--green)">Yes</span>` : `<span style="color:var(--muted)">No</span>`}</div>
@@ -1411,6 +1467,7 @@ function conductReviewSection_(p, idx) {
     ${flagList("Leave → Leave tab", leave, "var(--accent)")}
     ${flagList("Off (OIL) → Leave tab", off, "var(--accent)")}
     ${notFound.length ? `<div style="margin-top:4px;font-size:10px;color:var(--muted)">Unmatched: ${notFound.map(x => escapeAttr(x.userCell)).join(", ")}</div>` : ""}
+    ${absentBlock}
   </div>`;
 }
 
@@ -4060,6 +4117,10 @@ function renderLogConductWizard() {
           </select>
           <button type="button" class="btn" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="const sel = document.getElementById('wiz-group-select'); const v = sel.value; if (v) { wizAddGroup(v, sel.options[sel.selectedIndex].textContent); }">+ Add group</button>
         </div>
+        <div style="margin-top:8px">
+          <div style="font-size:10px;color:var(--dim);margin-bottom:3px">…or add one recruit by name / 4D:</div>
+          ${personSearchBox({ boxId: "wiz-individual", onPickFn: "wizPickIndividual", placeholder: "Search recruit to add…", roleFilter: "Recruit" })}
+        </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
           ${(!w.participants.length && !w.addedGroups.length) ? "" :
             (!w.addedGroups.length && w.participants.length) ? `
@@ -4216,6 +4277,7 @@ function wizSetHAPeriods(v) {
 //   company        — EVERYONE on the roster, commanders included.
 //   noncommanders  — all recruits, no commanders.
 //   commanders     — commanders only.
+//   individual:<d4> — one specific recruit (added via the Attendees search box).
 function resolveConductGroup(value) {
   const roster = STATE.roster || [];
   if (value === "company") return roster.map(r => r.id);
@@ -4224,6 +4286,10 @@ function resolveConductGroup(value) {
   if (value.startsWith("platoon:")) {
     const code = value.slice("platoon:".length);
     return roster.filter(r => !isCommander(r.id) && personPlatoon(r) === code).map(r => r.id);
+  }
+  if (value.startsWith("individual:")) {
+    const d4 = value.slice("individual:".length);
+    return roster.some(r => r.id === d4) ? [d4] : [];
   }
   return [];
 }
@@ -4238,7 +4304,72 @@ function groupLabel(value) {
     const p = activePlatoons().find(p => p.code === code);
     return p ? p.displayName : code;
   }
+  if (value.startsWith("individual:")) {
+    const d4 = value.slice("individual:".length);
+    return `${displayId(d4)} ${getName(d4)}`;
+  }
   return value;
+}
+
+// Attendees search box → add one recruit as an individual group. Re-adding an
+// already-present individual is a no-op (wizAddGroup dedupes), and the union
+// recompute keeps them credited even if a platoon covering them is added too.
+function wizPickIndividual(d4) {
+  if (!d4) return;
+  wizAddGroup("individual:" + d4, groupLabel("individual:" + d4));
+}
+
+// === Reusable person search (typeahead) =================================
+//
+// A search-as-you-type person picker shared by the Attendees card and the
+// medical log form — mirrors the topbar search (js/main.js): case-insensitive
+// substring on 4D or name, capped result list. The HTML-string architecture
+// rules out closures, so callers pass the NAME of a global pick handler
+// (onPickFn), invoked as onPickFn('<d4>'). The chosen 4D is mirrored into a
+// hidden input (valueId) so plain gv()/querySelector reads keep working.
+function personSearchBox({ boxId, onPickFn = "", valueId = "", placeholder = "Search name / 4D…", roleFilter = "", selected = "" }) {
+  valueId = valueId || `${boxId}-value`;
+  const chosen = selected ? `${displayId(selected)} ${getName(selected)}` : "";
+  return `
+    <div class="person-search" style="position:relative">
+      <input type="hidden" id="${valueId}" value="${escapeAttr(selected)}">
+      <input type="text" id="${boxId}-input" autocomplete="off" placeholder="${escapeAttr(placeholder)}"
+        value="${escapeAttr(chosen)}"
+        oninput="personSearchFilter('${boxId}','${onPickFn}','${valueId}',this.value,'${roleFilter}')"
+        style="width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
+      <div id="${boxId}-results" style="position:absolute;z-index:30;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:4px;margin-top:2px;max-height:200px;overflow:auto;display:none"></div>
+    </div>`;
+}
+
+function personSearchFilter(boxId, onPickFn, valueId, query, roleFilter) {
+  const res = document.getElementById(`${boxId}-results`);
+  if (!res) return;
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) { res.style.display = "none"; res.innerHTML = ""; return; }
+  let rows = STATE.roster || [];
+  if (roleFilter === "Recruit") rows = rows.filter(r => !isCommander(r.id));
+  const matches = rows
+    .filter(r => (r.id || "").toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
+    .slice(0, 6);
+  if (!matches.length) {
+    res.style.display = "block";
+    res.innerHTML = `<div style="padding:6px 10px;font-size:11px;color:var(--muted)">No match</div>`;
+    return;
+  }
+  res.style.display = "block";
+  res.innerHTML = matches.map(r =>
+    `<div onclick="personSearchPick('${boxId}','${onPickFn}','${valueId}','${r.id}')" style="padding:6px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)"><span class="mono" style="color:var(--accent);font-weight:700">${displayId(r.id)}</span> ${escapeHTML(r.name || "")}</div>`
+  ).join("");
+}
+
+function personSearchPick(boxId, onPickFn, valueId, d4) {
+  const hidden = document.getElementById(valueId);
+  const input = document.getElementById(`${boxId}-input`);
+  const res = document.getElementById(`${boxId}-results`);
+  if (hidden) hidden.value = d4;
+  if (input) input.value = `${displayId(d4)} ${getName(d4)}`;
+  if (res) { res.style.display = "none"; res.innerHTML = ""; }
+  if (onPickFn && typeof window[onPickFn] === "function") window[onPickFn](d4);
 }
 
 // === Totals / overlap helpers ===========================================

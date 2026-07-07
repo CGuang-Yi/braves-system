@@ -79,6 +79,8 @@ function loadGroupCtx() {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
   target.isCommander = d4 => target.STATE.roster.find(r => r.id === d4)?.role === "Commander";
   target.personPlatoon = r => r.platoon || "";
+  target.displayId = d4 => d4;
+  target.getName = d4 => "Name" + d4;
   target.activePlatoons = () => [
     { code: "PLT1", displayName: "Platoon 1" },
     { code: "PLT2", displayName: "Platoon 2" },
@@ -156,6 +158,15 @@ module.exports = async function run() {
     eq(groupLabelFor("company"), "Entire company");
     eq(groupLabelFor("noncommanders"), "Non-Commanders");
     eq(groupLabelFor("commanders"), "Commanders only");
+  });
+
+  await test("individual:<d4> resolves to just that recruit (and only when on roster)", () => {
+    eq(resolveGroup("individual:2001"), ["2001"], "one specific recruit");
+    eq(resolveGroup("individual:9999"), [], "unknown 4D resolves to nobody");
+  });
+
+  await test("groupLabel labels an individual with its id + name", () => {
+    eq(groupLabelFor("individual:1001"), "1001 Name1001");
   });
 
   suite("Log Conduct wizard: computeLogConductTotals (participant-based)");
