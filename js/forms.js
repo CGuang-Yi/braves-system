@@ -21,7 +21,7 @@ function pcDelete(arrayName, id, label, d4) {
 // HA Activity Days grid — GitHub-contribution-style calendar (§13 display).
 // HA_GRID_CELL/HA_GRID_DOW/HA_GRID_MONTH live in helpers.js so any future grid
 // view can reuse the same colour scheme without duplicating it.
-function haActivityGridHtml(ha, d4) {
+function haActivityGridHtml(ha, d4, proj) {
   const dayMap = ha.dayMap || {};
   const excluded = haExcludedDayMap(d4);
   const keys = Object.keys(dayMap).concat(Array.from(excluded));
@@ -31,7 +31,10 @@ function haActivityGridHtml(ha, d4) {
   // (projected cells), the day it was attained (gold), and the currency
   // deadline / lapse day (amber). The grid is extended past today to cover
   // whichever of these lands furthest out, so the plan is actually visible.
-  const proj = haProjection(ha);
+  // `proj` is passed in by openPerson (which needs the full projection anyway)
+  // so the expensive Double forward-simulation isn't run twice per card; fall
+  // back to computing it if a future caller omits it.
+  proj = proj || haProjection(ha);
   const projSet = new Set(proj.projectedDates);
   const completedIso = (ha.single && ha.single.completionDate) || (ha.expanded && ha.expanded.completionDate) || null;
   const lapseIso = ha.currency ? (ha.currency.lapseDateIso || ha.currency.deadlineIso || null) : null;
@@ -319,15 +322,20 @@ function openPerson(d4) {
       </div>`;
     };
 
+    // Minimum-days-to-attain projection — used by the figure lines below AND
+    // the activity grid's projected cells. Computed once and shared so the grid
+    // doesn't re-run the expensive Double forward-simulation.
+    const proj = haProjection(ha);
+
     // Activity grid: GitHub-contribution-style calendar of this recruit's HA days.
-    const timelineHtml = haActivityGridHtml(ha, d4);
+    const timelineHtml = haActivityGridHtml(ha, d4, proj);
 
     const currLine = ha.currency && ha.currency.lapsed
       ? `<div style="font-size:11px;color:var(--red);margin-top:6px">⚠ Currency lapsed${ha.currency.lapseDateIso ? " (deadline " + isoToDisplayDate(ha.currency.lapseDateIso) + ")" : ""} — re-qualify via any programme.</div>`
       : (ha.currency && ha.currency.deadlineIso ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Currency deadline: ${isoToDisplayDate(ha.currency.deadlineIso)}</div>` : "");
 
-    // Minimum-days-to-attain figure (mirrors the projected cells on the grid).
-    const proj = haProjection(ha);
+    // Minimum-days-to-attain figure (mirrors the projected cells on the grid;
+    // `proj` was computed once above and shared with haActivityGridHtml).
     const projLine = proj.attained
       ? `<div style="font-size:11px;color:var(--green);margin-top:6px">✅ Single HA attained</div>`
       : `<div style="font-size:11px;color:#2DD4BF;margin-top:6px">🎯 Minimum <strong>${proj.days}</strong> training day${proj.days === 1 ? "" : "s"} to Single HA${proj.projectedDates.length ? ` (by ${isoToDisplayDate(proj.projectedDates[proj.projectedDates.length - 1])} if trained daily)` : ""}</div>`;
@@ -4357,6 +4365,16 @@ function personSearchBox({ boxId, onPickFn = "", valueId = "", placeholder = "Se
 function personSearchFilter(boxId, onPickFn, valueId, query, roleFilter) {
   const res = document.getElementById(`${boxId}-results`);
   if (!res) return;
+  // Any manual edit to the search text invalidates a prior pick: the hidden id
+  // input is only trustworthy immediately after personSearchPick. Clear it on
+  // every keystroke so a stale/mismatched 4D — e.g. an edit-seeded recruit the
+  // user has started retyping over — can't be silently committed when they
+  // never click a suggestion (the caller's `if (!d4)` guard then fires instead
+  // of saving to the wrong recruit). Re-selecting from the dropdown repopulates
+  // it. personSearchPick sets input.value via JS, which does NOT fire oninput,
+  // so a genuine pick survives.
+  const hidden = document.getElementById(valueId);
+  if (hidden) hidden.value = "";
   const q = String(query || "").trim().toLowerCase();
   if (!q) { res.style.display = "none"; res.innerHTML = ""; return; }
   let rows = STATE.roster || [];
