@@ -332,6 +332,18 @@ function openPerson(d4) {
       ? `<div style="font-size:11px;color:var(--green);margin-top:6px">✅ Single HA attained</div>`
       : `<div style="font-size:11px;color:#2DD4BF;margin-top:6px">🎯 Minimum <strong>${proj.days}</strong> training day${proj.days === 1 ? "" : "s"} to Single HA${proj.projectedDates.length ? ` (by ${isoToDisplayDate(proj.projectedDates[proj.projectedDates.length - 1])} if trained daily)` : ""}</div>`;
 
+    // Double projection — shown only once Single is complete and the recruit is
+    // Double-eligible (haProjection.double is null otherwise, and the "locked"
+    // Double bar line already explains why). Forward-simulated from the live state
+    // machine at the standard 2-period session/day (helpers.js haProjectDouble).
+    const dblProjLine = (proj.double && proj.double.relevant)
+      ? (proj.double.attained
+          ? `<div style="font-size:11px;color:var(--green);margin-top:4px">✅ Double HA attained</div>`
+          : proj.double.reachable
+            ? `<div style="font-size:11px;color:#388BFD;margin-top:4px">🎯 Minimum <strong>${proj.double.days}</strong> training day${proj.double.days === 1 ? "" : "s"} to Double HA${proj.double.projectedDates.length ? ` (by ${isoToDisplayDate(proj.double.projectedDates[proj.double.projectedDates.length - 1])} if trained daily)` : ""}</div>`
+            : `<div style="font-size:11px;color:var(--muted);margin-top:4px">Double HA not attainable at the standard session rate</div>`)
+      : "";
+
     html += `
       <h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">🌡️ Heat Acclimatisation (HA)</h4>
       <div class="card" style="padding:14px;background:var(--surface2);margin-bottom:12px">
@@ -345,6 +357,7 @@ function openPerson(d4) {
           ? bar("Double", ha.doubleTrack, 13, "#388BFD", ha.doubleTrack ? `, ${ha.doubleTrack.breaksUsed} breaks` : "")
           : `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Double: 🔒 ${ha.singleStatus === "Single HA Complete" ? "not eligible (needs VocFit or ≥3SG/≥2LT)" : "locked until Single HA complete"}</div>`}
         ${projLine}
+        ${dblProjLine}
         ${currLine}
         ${timelineHtml ? `
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">Activity Days</div>

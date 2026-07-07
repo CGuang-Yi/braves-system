@@ -106,6 +106,14 @@ function groupLabelFor(value) {
   const { ctx } = loadGroupCtx();
   return vm.runInContext(`groupLabel(${JSON.stringify(value)})`, ctx);
 }
+// Drive the real wizRecomputeParticipants union: seed importedBaseline (CSV
+// snapshot) + addedGroups, run the recompute, read back the NET participant set.
+function recomputeParticipants({ importedBaseline = [], addedGroups = [] }) {
+  const { ctx } = loadGroupCtx();
+  ctx._lc = { importedBaseline, addedGroups, participants: [] };
+  vm.runInContext("_logConduct = _lc; wizRecomputeParticipants();", ctx);
+  return JSON.parse(vm.runInContext("JSON.stringify(_logConduct.participants)", ctx)).sort();
+}
 
 module.exports = async function run() {
   suite("Log Conduct wizard: rebuildLogConductStatus tick seeding");
@@ -167,6 +175,16 @@ module.exports = async function run() {
 
   await test("groupLabel labels an individual with its id + name", () => {
     eq(groupLabelFor("individual:1001"), "1001 Name1001");
+  });
+
+  await test("wizRecomputeParticipants unions baseline + overlapping groups without double-counting", () => {
+    // CSV baseline of 3001, then user adds individual:1001 AND platoon:PLT1
+    // (which already contains 1001). The union must keep 1001 exactly once and
+    // preserve the imported baseline — the guarantee wizPickIndividual documents.
+    eq(recomputeParticipants({
+      importedBaseline: ["3001"],
+      addedGroups: [{ value: "individual:1001" }, { value: "platoon:PLT1" }]
+    }), ["1001", "1002", "3001"], "overlap deduped, baseline preserved");
   });
 
   suite("Log Conduct wizard: computeLogConductTotals (participant-based)");

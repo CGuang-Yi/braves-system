@@ -414,4 +414,61 @@ module.exports = async function run() {
     eq(proj.attained, true);
     eq(proj.days, 0);
   });
+
+  // ── haProjection.double — earliest projected Double HA completion ─────────────
+  // Seeded from the live state machine (post-Single-qual periods + 7-active-day
+  // window), assuming the standard 2-period Double session daily from tomorrow.
+  suite("HA: haProjection — Double track projection");
+
+  await test("double is null until Single is complete", () => {
+    H.todayISO = () => iso(2026, 5, 6);
+    seed(daySeq(iso(2026, 5, 1), 4).map(k => att(k, 1)), [{ id: "0001", rank: "3SG" }]);
+    eq(H.haProjection(H.computeHA("0001")).double, null);
+  });
+
+  await test("double is null when Single is complete but the member is not eligible (enlistee)", () => {
+    H.todayISO = () => iso(2026, 5, 15);
+    seed(daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1)), [{ id: "0001", rank: "REC" }]);
+    eq(H.haProjection(H.computeHA("0001")).double, null);
+  });
+
+  await test("Single-complete + eligible ⇒ 7 fresh days at 2 periods/day", () => {
+    H.todayISO = () => iso(2026, 5, 15);
+    seed(daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1)), [{ id: "0001", rank: "3SG" }]);
+    const proj = H.haProjection(H.computeHA("0001"));
+    ok(proj.double, "double projection present");
+    eq(proj.double.relevant, true);
+    eq(proj.double.attained, false);
+    eq(proj.double.reachable, true);
+    eq(proj.double.days, 7);                                      // fresh window: 7×2 = 14 ≥ 13
+    eq(proj.double.dateIso, iso(2026, 5, 22));
+    eq(proj.double.projectedDates.length, 7);
+    eq(proj.double.projectedDates[0], iso(2026, 5, 16));          // tomorrow
+  });
+
+  await test("banked post-qual periods shorten the remaining Double days", () => {
+    H.todayISO = () => iso(2026, 5, 13);
+    // Single May 1-10, then two Double sessions May 11-12 (2 periods each = 4 banked).
+    const rows = daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1))
+      .concat([att(iso(2026, 5, 11), 2), att(iso(2026, 5, 12), 2)]);
+    seed(rows, [{ id: "0001", rank: "3SG" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.doubleTrack.periods, 4);                               // banked in the live window
+    const proj = H.haProjection(ha);
+    eq(proj.double.days, 5);                                     // ceil((13−4)/2) = 5 more days
+    eq(proj.double.dateIso, iso(2026, 5, 18));                   // today May 13 + 5
+  });
+
+  await test("already-complete Double ⇒ attained, 0 days", () => {
+    H.todayISO = () => iso(2026, 5, 20);
+    // Single May 1-10, then a full Double May 11-17 (7 days × 2 = 14 ≥ 13).
+    const rows = daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1))
+      .concat(daySeq(iso(2026, 5, 11), 7).map(k => att(k, 2)));
+    seed(rows, [{ id: "0001", rank: "3SG" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.doubleStatus, "Double HA Complete");
+    const proj = H.haProjection(ha);
+    eq(proj.double.attained, true);
+    eq(proj.double.days, 0);
+  });
 };
