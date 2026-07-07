@@ -1523,8 +1523,10 @@ function writeTab(tabName, data) {
 
   // sheet.clear() above wipes number formats, so re-apply the plain-text format to
   // any coercion-prone column BEFORE writing data (setting it after setValues can't
-  // un-coerce an already-mangled number). Row-level writers (appendMany/upsertRow)
-  // don't clear formatting, so the "@" set here persists for their later writes too.
+  // un-coerce an already-mangled number). The row-level writers no longer depend on
+  // this — they force "@" on their own target range via forceTextColsForRange_ — but
+  // formatting the whole column here keeps the sheet visually consistent after a
+  // full rewrite.
   if (WRITE_TEXT_COLS_BY_TAB[tabName]) bravesForceTextCols_(ss, tabName, WRITE_TEXT_COLS_BY_TAB[tabName]);
 
   var rows = data.map(function (obj) {
@@ -1568,6 +1570,26 @@ function ensureColumnsForKeys(sheet, keys) {
   return trimmed;
 }
 
+// Force plain-text ("@") number format on any WRITE_TEXT_COLS_BY_TAB column of
+// `tabName` within the row range [startRow, startRow+numRows), BEFORE setValues
+// writes it. writeTab formats the whole column (it owns the clear+rewrite), but
+// the row-level writers (appendRow/appendMany/upsertRow) don't — so a participants
+// roll appended past the last full writeTab, or written into a participants column
+// that ensureColumnsForKeys just created with the default format, would be coerced
+// (commas read as thousands separators, leading 4D zeros dropped) and silently zero
+// out that conduct's HA credit. Forcing "@" on just the target cells first makes the
+// string round-trip verbatim on EVERY write path. Setting format after setValues
+// can't un-coerce an already-mangled number, so every caller sets it beforehand.
+// `headers` is the up-to-date (post-ensureColumnsForKeys) trimmed header list.
+function forceTextColsForRange_(sheet, tabName, headers, startRow, numRows) {
+  var cols = WRITE_TEXT_COLS_BY_TAB[tabName];
+  if (!cols || numRows < 1) return;
+  cols.forEach(function (name) {
+    var idx = headers.indexOf(name);
+    if (idx >= 0) sheet.getRange(startRow, idx + 1, numRows, 1).setNumberFormat("@");
+  });
+}
+
 function appendRow(tabName, rowData) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
@@ -1579,7 +1601,11 @@ function appendRow(tabName, rowData) {
     return val !== undefined && val !== null ? val : "";
   });
 
-  sheet.appendRow(newRow);
+  // Explicit range write (not sheet.appendRow) so the coercion-prone columns can be
+  // forced to "@" before the value lands — appendRow would coerce on insert.
+  var targetRow = sheet.getLastRow() + 1;
+  forceTextColsForRange_(sheet, tabName, trimmed, targetRow, 1);
+  sheet.getRange(targetRow, 1, 1, trimmed.length).setValues([newRow]);
 
   return {
     ok: true,
@@ -1609,6 +1635,7 @@ function appendMany(tabName, rows) {
   });
 
   var startRow = sheet.getLastRow() + 1;
+  forceTextColsForRange_(sheet, tabName, trimmed, startRow, newRows.length);
   sheet.getRange(startRow, 1, newRows.length, trimmed.length).setValues(newRows);
 
   return {
@@ -1648,6 +1675,7 @@ function upsertRow(tabName, rowData) {
           var val = rowData[h];
           return val !== undefined && val !== null ? val : "";
         });
+        forceTextColsForRange_(sheet, tabName, trimmed, sheetRow, 1);
         sheet.getRange(sheetRow, 1, 1, trimmed.length).setValues([updatedRow]);
         return {
           ok: true,
@@ -1659,17 +1687,20 @@ function upsertRow(tabName, rowData) {
       }
     }
   }
-  // Not found — append a new row.
+  // Not found — append a new row. Explicit range write (not sheet.appendRow) so the
+  // coercion-prone columns can be forced to "@" before the value lands.
   var newRow = trimmed.map(function (h) {
     var val = rowData[h];
     return val !== undefined && val !== null ? val : "";
   });
-  sheet.appendRow(newRow);
+  var targetRow = sheet.getLastRow() + 1;
+  forceTextColsForRange_(sheet, tabName, trimmed, targetRow, 1);
+  sheet.getRange(targetRow, 1, 1, trimmed.length).setValues([newRow]);
   return {
     ok: true,
     tab: tabName,
     action: "appended",
-    rowIndex: sheet.getLastRow(),
+    rowIndex: targetRow,
     timestamp: new Date().toISOString()
   };
 }

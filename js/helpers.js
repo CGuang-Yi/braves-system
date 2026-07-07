@@ -1430,15 +1430,65 @@ function computeHA(d4) {
 // person card renders `days` as a figure and `projectedDates` as tentative
 // grid cells (HA_GRID_CELL.projected). Pure — takes a computeHA() result.
 function haProjection(ha) {
-  if (!ha) return { attained: false, days: 0, projectedDates: [] };
-  if (ha.singleStatus === "Single HA Complete" || ha.singleStatus === "Lapsed") {
-    return { attained: true, days: 0, projectedDates: [] };
+  if (!ha) return { attained: false, days: 0, projectedDates: [], double: null };
+  const single = (ha.singleStatus === "Single HA Complete" || ha.singleStatus === "Lapsed")
+    ? { attained: true, days: 0, projectedDates: [] }
+    : (() => {
+        const p = ha.single ? ha.single.periods : 0;
+        const days = Math.max(0, 10 - p);
+        const start = todayISO();
+        const projectedDates = [];
+        for (let i = 1; i <= days; i++) projectedDates.push(_haAddDays(start, i));
+        return { attained: false, days, projectedDates };
+      })();
+  return { ...single, double: haProjectDouble(ha) };
+}
+
+// Forward-simulate one HA track under "trained every day from tomorrow" to find the
+// earliest completion date, SEEDED with the recruit's real progress. Reuses
+// runHAStateMachine over the actual dayMap plus synthetic future active days, so
+// every rule — break limits, the Double 7-active-day window, the target — is honoured
+// exactly rather than re-derived by a formula that would drift from the machine.
+// perDay is the assumed periods on each future day (Single: any >0 — day mode caps at
+// 1; Double: 2, the standard "Double (2h)" session, since 1/day can never fit 13 in
+// 7 days). Returns { days, dateIso, projectedDates } for the first future completion,
+// or null if unreachable within maxDays. Call only for a track not yet complete.
+function haSimulateCompletion(dayMap, startIso, params, perDay, maxDays) {
+  const copy = Object.assign({}, dayMap);
+  const from = todayISO();
+  for (let i = 1; i <= maxDays; i++) {
+    const dayIso = _haAddDays(from, i);
+    copy[dayIso] = perDay;
+    const r = runHAStateMachine(copy, startIso || dayIso, dayIso, params);
+    if (r.status === "Completed") {
+      const projectedDates = [];
+      for (let k = 1; k <= i; k++) projectedDates.push(_haAddDays(from, k));
+      return { days: i, dateIso: dayIso, projectedDates };
+    }
   }
-  const p = ha.single ? ha.single.periods : 0;
-  const days = Math.max(0, 10 - p);
-  const start = todayISO();
-  const projectedDates = [];
-  for (let i = 1; i <= days; i++) projectedDates.push(_haAddDays(start, i));
-  return { attained: false, days, projectedDates };
+  return null;
+}
+
+// Double-HA projection for the person card (§12 + HA.md §3). Only meaningful once
+// Single is complete and the person is Double-eligible (VocFit or ≥3SG/≥2LT) — the
+// same gate computeHA uses, so a not-yet-Single or lapsed recruit returns null and
+// the card keeps showing the "locked" line. `relevant` lets the card decide whether
+// to render a Double projection at all. Counted from the day after first Single
+// qualification (dblStart), never reusing the pre-qualification sessions (HA.md §3).
+function haProjectDouble(ha) {
+  if (!ha || !ha.doubleEligible) return null;
+  if (ha.doubleStatus === "Double HA Complete") {
+    return { relevant: true, attained: true, reachable: true, days: 0, projectedDates: [] };
+  }
+  const comps = [...new Set([...((ha.single && ha.single.completions) || []),
+                             ...((ha.expanded && ha.expanded.completions) || [])])].sort();
+  const firstQual = comps[0];
+  if (!firstQual) return null;                        // defensive: eligible implies a qual exists
+  const dblStart = _haAddDays(firstQual, 1);
+  const sim = haSimulateCompletion(ha.dayMap, dblStart,
+    { target: 13, maxBreak: 2, maxActiveDays: 7, mode: "time" }, 2, 14);
+  return sim
+    ? { relevant: true, attained: false, reachable: true, days: sim.days, dateIso: sim.dateIso, projectedDates: sim.projectedDates }
+    : { relevant: true, attained: false, reachable: false, days: 0, projectedDates: [] };
 }
 

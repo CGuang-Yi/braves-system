@@ -220,6 +220,52 @@ module.exports = async function run() {
     eq(b.db.numberFormat("Medical", 1), null, "Medical columns not needlessly forced to text");
   });
 
+  // The wizard / individual-attendee / partial-platoon flow writes Attendance via
+  // the ROW-level primitives (upsertRow/appendMany), never writeTab. Those paths
+  // must apply the same "@" protection, or a partial participants roll appended
+  // after the last full writeTab (or into a participants column ensureColumnsForKeys
+  // just created) gets coerced on push and comes back mangled — the whole conduct
+  // then gives zero HA credit for everyone once the page reloads.
+  suite("backend: row-writers force text format on coercion-prone columns");
+
+  await test("upsertRow (append) forces Attendance.participants to plain text", () => {
+    const b = loadBackend();
+    b.db.seed("Attendance", ["id", "date", "conductId", "participants", "source"], []);
+    const roll = "0110,0111,0023,0044,0055";
+    const r = b.upsertRow("Attendance", { id: 7, date: "18 Jun 2026", conductId: 5, participants: roll, source: "wizard" });
+    eq(r.action, "appended", "new id ⇒ append branch");
+    eq(b.db.rowsOf("Attendance")[0].participants, roll, "roll stored verbatim");
+    eq(b.db.numberFormat("Attendance", 4), "@", "participants forced to '@' on upsert-append");
+  });
+
+  await test("upsertRow (update) forces Attendance.participants to plain text", () => {
+    const b = loadBackend();
+    b.db.seed("Attendance", ["id", "date", "conductId", "participants", "source"],
+      [[7, "18 Jun 2026", 5, "0001", "wizard"]]);
+    const roll = "0110,0111,0023";
+    const r = b.upsertRow("Attendance", { id: 7, date: "18 Jun 2026", conductId: 5, participants: roll, source: "wizard" });
+    eq(r.action, "updated", "matching id ⇒ update branch");
+    eq(b.db.rowsOf("Attendance")[0].participants, roll, "roll updated verbatim");
+    eq(b.db.numberFormat("Attendance", 4), "@", "participants forced to '@' on upsert-update");
+  });
+
+  await test("appendMany forces Attendance.participants to plain text", () => {
+    const b = loadBackend();
+    b.db.seed("Attendance", ["id", "date", "conductId", "participants", "source"], []);
+    const roll = "0110,0111,0023";
+    b.appendMany("Attendance", [{ id: 8, date: "19 Jun 2026", conductId: 5, participants: roll, source: "csv" }]);
+    eq(b.db.rowsOf("Attendance")[0].participants, roll, "roll stored verbatim");
+    eq(b.db.numberFormat("Attendance", 4), "@", "participants forced to '@' on appendMany");
+  });
+
+  await test("row-writers leave non-coercion-prone tabs in default format", () => {
+    const b = loadBackend();
+    b.db.seed("Medical", ["id", "reason"], []);
+    b.upsertRow("Medical", { id: 1, reason: "fever" });
+    b.appendMany("Medical", [{ id: 2, reason: "cough" }]);
+    eq(b.db.numberFormat("Medical", 1), null, "Medical not needlessly forced to text");
+  });
+
   suite("backend: bravesBackfillLeaveInCamp (one-off migration)");
 
   await test("fills blank isInCamp using the legacy guess, skips already-explicit rows", () => {
