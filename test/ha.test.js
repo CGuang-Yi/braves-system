@@ -96,6 +96,57 @@ module.exports = async function run() {
     eq(r.periods, 14);
   });
 
+  // ── Start-date optimiser: try every window start, not just the first ─────────
+  // The greedy pass seizes the first active day as the window start; when that
+  // start breaches (spending break budget on gaps that only exist because of it)
+  // and the post-reset restart lands too late, a start *inside* the failed window
+  // would still complete. The optimiser reports the earliest completion any start
+  // can reach. (Deliberate departure from HA.md's single-forward-pass wording.)
+  suite("HA: runHAStateMachine — start-date optimiser (best window start)");
+
+  await test("Single qualifies via a later start when the earliest start breaches", () => {
+    // Greedy seizes Jun 1, spends its 2 breaks on Jun 2-3, then Jun 5 is a 3rd
+    // break ⇒ reset lands on Jun 7 with only 9 active days left ⇒ never qualifies.
+    // Starting Jun 4: breaks Jun 5-6 (=2), then Jun 7-15 dense ⇒ Jun 4 + 9 = 10.
+    const map = {};
+    map[iso(2026, 6, 1)] = 1;
+    map[iso(2026, 6, 4)] = 1;
+    daySeq(iso(2026, 6, 7), 9).forEach(k => (map[k] = 1));     // Jun 7-15 dense
+    const r = H.runHAStateMachine(map, iso(2026, 6, 1), iso(2026, 6, 15), { target: 10, maxBreak: 2, mode: "day" });
+    eq(r.status, "Completed");
+    eq(r.completionDate, iso(2026, 6, 15));
+    eq(r.completions[0], iso(2026, 6, 15));
+  });
+
+  await test("Expanded qualifies via a later start that banks early active days", () => {
+    // From Jun 1 the window spends all 5 break days across the sparse early run
+    // and breaches on the 6th before reaching 14; greedy's post-reset start
+    // (Jun 10) has only 12 active days. Starting Jun 5 banks Jun 5 + Jun 8 ahead
+    // of the Jun 10-21 dense run ⇒ 14 active days ⇒ qualifies Jun 21.
+    const map = {};
+    map[iso(2026, 6, 1)] = 1;
+    map[iso(2026, 6, 5)] = 1;
+    map[iso(2026, 6, 8)] = 1;
+    daySeq(iso(2026, 6, 10), 12).forEach(k => (map[k] = 1));   // Jun 10-21 dense
+    const r = H.runHAStateMachine(map, iso(2026, 6, 1), iso(2026, 6, 21), { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
+    eq(r.status, "Completed");
+    eq(r.completionDate, iso(2026, 6, 21));
+  });
+
+  await test("Double qualifies via a later 7-day window start with denser periods", () => {
+    // Greedy starts Jun 1: Jun 1-7 fill the 7-active-day window with only 7
+    // periods, then Jun 8 forces a slide that drops them ⇒ 12 periods, no
+    // qualify. Starting Jun 3 captures the Jun 8-9 heavy sessions inside a 7-day
+    // window ⇒ 17 periods ⇒ qualifies Jun 9.
+    const map = {};
+    daySeq(iso(2026, 6, 1), 7).forEach(k => (map[k] = 1));     // Jun 1-7, 1 period each
+    map[iso(2026, 6, 8)] = 6;
+    map[iso(2026, 6, 9)] = 6;
+    const r = H.runHAStateMachine(map, iso(2026, 6, 1), iso(2026, 6, 9), { target: 13, maxBreak: 2, maxActiveDays: 7, mode: "time" });
+    eq(r.status, "Completed");
+    eq(r.completionDate, iso(2026, 6, 9));
+  });
+
   // ── Bug 1: currency lapse + recovery ───────────────────────────────────────
   suite("HA: computeHACurrency — lapse & recovery (bug 1)");
 

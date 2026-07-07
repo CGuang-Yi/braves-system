@@ -1252,25 +1252,22 @@ const HA_GRID_CELL = {
 const HA_GRID_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HA_GRID_MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-// §12.4 state machine. dateMap[iso] = periodSum (>0 ⇒ active day). mode "day" adds
-// 1 per active day (Single/Expanded, capped 1/day); "time" adds the periodSum
-// (Double — sums B5 time-periods, HA.md). Resets on break-limit breach.
+// §12.4 rules for ONE fixed-start attempt. dateMap[iso] = periodSum (>0 ⇒ active
+// day). mode "day" adds 1 per active day (Single/Expanded, capped 1/day); "time"
+// adds the periodSum (Double — sums B5 time-periods, HA.md). The window opens on the
+// first active day at/after startIso and steps forward WITHOUT auto-restart — this is
+// the primitive the optimiser tries from every candidate start. Returns exactly one:
+//   { outcome:"completed", completionDate, periods, breaksUsed, consec }
+//   { outcome:"breached" }                                    — hit a limit before target
+//   { outcome:"open", periods, windowStart, breaksUsed, consec } — alive at endIso, short
 //
-// params.maxActiveDays (optional) caps the active-day span of one attempt: Double is
-// "13 periods across 7 days, not inclusive of breaks" (HA.md §3) — the periods may be
-// many per day but must land within 7 *active* days. Reaching that many active days
-// without hitting the target restarts the window from the current day. Single/Expanded
-// omit it (their target == active-day count, so the span is self-bounding).
-//
-// Unlike a single-completion return, the machine scans the full [start..end] range and
-// records EVERY completion (resetting after each) in `completions`. computeHACurrency
-// needs all qualification dates so a programme completed *after* a lapse can re-qualify
-// the person (HA.md "Lapse recovery"). `status`/`completionDate`/`periods` keep their
-// first-completion meaning for the existing display callers.
-function runHAStateMachine(dateMap, startIso, endIso, params) {
+// params.maxActiveDays (optional) caps the active-day span: Double is "13 periods across
+// 7 days, not inclusive of breaks" (HA.md §3) — periods may be many per day but must land
+// within 7 *active* days. An 8th active day before the target ⇒ this start can't fit it,
+// so the attempt is `breached` (a later start is a separate candidate the optimiser tries).
+// Single/Expanded omit it (target == active-day count, so the span is self-bounding).
+function simulateFrom(dateMap, startIso, endIso, params) {
   let periods = 0, breaksUsed = 0, consec = 0, activeDays = 0, windowStart = null;
-  let firstCompletion = null, firstCompletionPeriods = 0;
-  const completions = [];
   const d = new Date(startIso + "T00:00:00"), end = new Date(endIso + "T00:00:00");
   while (d <= end) {
     const key = _haKey(d);
@@ -1281,33 +1278,88 @@ function runHAStateMachine(dateMap, startIso, endIso, params) {
       if (active) { windowStart = key; periods = step; activeDays = 1; }
     } else if (active) {
       if (params.maxActiveDays !== undefined && activeDays >= params.maxActiveDays) {
-        // Active-day span exhausted without completing — restart from this day.
-        periods = step; breaksUsed = 0; consec = 0; activeDays = 1; windowStart = key;
-      } else {
-        periods += step; consec = 0; activeDays++;
+        return { outcome: "breached" };            // can't fit target within the active-day span
       }
+      periods += step; consec = 0; activeDays++;
     } else {
       breaksUsed++; consec++;
       if (breaksUsed > params.maxBreak || (params.maxConsec !== undefined && consec > params.maxConsec)) {
-        periods = 0; breaksUsed = 0; consec = 0; activeDays = 0; windowStart = null;
+        return { outcome: "breached" };
       }
     }
-    if (periods >= params.target) {
-      completions.push(key);
-      if (firstCompletion === null) { firstCompletion = key; firstCompletionPeriods = periods; }
-      // Reset so a later full programme (a re-qualification) is detected too.
-      periods = 0; breaksUsed = 0; consec = 0; activeDays = 0; windowStart = null;
+    if (windowStart !== null && periods >= params.target) {
+      return { outcome: "completed", completionDate: key, periods, breaksUsed, consec };
     }
     d.setDate(d.getDate() + 1);
   }
-  const completed = firstCompletion !== null;
-  return {
-    status: completed ? "Completed" : (windowStart ? "In Progress" : "Not Started"),
-    completionDate: firstCompletion,
-    completions,
-    periods: completed ? firstCompletionPeriods : periods,
-    breaksUsed, consecutiveBreak: consec, windowStart
-  };
+  return windowStart === null
+    ? { outcome: "open", periods: 0, windowStart: null, breaksUsed: 0, consec: 0 }
+    : { outcome: "open", periods, windowStart, breaksUsed, consec };
+}
+
+// runHAStateMachine — start-date OPTIMISER (replaces the earlier greedy single forward
+// pass). For each programme it tries every active day as a candidate window start and
+// reports the earliest completion any start can reach, chained for re-qualifications so
+// `completions` still carries EVERY qualification date computeHACurrency needs (HA.md
+// "Lapse recovery"). When nothing completes it reports the best still-open window (max
+// periods ⇒ fewest projected days) so haProjection stays consistent. The return shape is
+// unchanged — every caller (computeHA, computeHACurrency, haProjection, the person-card
+// bars) is a drop-in.
+//
+// The greedy pass seized the FIRST active day as the window start; when that start
+// breaches (spending break budget on gaps that only exist because of it) and the
+// post-reset restart lands too late, a start *inside* the failed window could still
+// complete. The optimiser finds it.
+//
+// NOTE: HA.md / spec §12 describe a single forward pass; this optimiser is a deliberate,
+// user-approved departure. The programme RULES (targets, break limits, the Double
+// 7-active-day window, currency) are unchanged — only WHICH start date the scan adopts.
+// See docs/superpowers/specs/2026-07-07-ha-start-date-optimizer-design.md.
+function runHAStateMachine(dateMap, startIso, endIso, params) {
+  // Candidate starts: every active day in range, ascending (a window must open on an
+  // active day). Scanning ascending, the first start that completes gives the earliest
+  // completion — a later start reaches its target-th active day no sooner, never earlier.
+  const activeDays = Object.keys(dateMap)
+    .filter(k => (dateMap[k] || 0) > 0 && k >= startIso && k <= endIso)
+    .sort();
+
+  const completions = [];
+  let firstCompletion = null, firstCompletionPeriods = 0, firstBreaks = 0, firstConsec = 0;
+  let cursor = startIso;
+  for (;;) {
+    let hit = null;
+    for (const s of activeDays) {
+      if (s < cursor) continue;                      // past a recorded completion — no reuse
+      const res = simulateFrom(dateMap, s, endIso, params);
+      if (res.outcome === "completed") { hit = res; break; }
+    }
+    if (!hit) break;
+    completions.push(hit.completionDate);
+    if (firstCompletion === null) {
+      firstCompletion = hit.completionDate; firstCompletionPeriods = hit.periods;
+      firstBreaks = hit.breaksUsed; firstConsec = hit.consec;
+    }
+    cursor = _haAddDays(hit.completionDate, 1);       // reset after each completion
+  }
+
+  if (firstCompletion !== null) {
+    return {
+      status: "Completed", completionDate: firstCompletion, completions,
+      periods: firstCompletionPeriods, breaksUsed: firstBreaks,
+      consecutiveBreak: firstConsec, windowStart: firstCompletion
+    };
+  }
+
+  // Nothing completes ⇒ surface the best still-open window (most progressed partial) so
+  // the "days remaining" projection reads the optimistic, optimiser-consistent figure.
+  let best = null;
+  for (const s of activeDays) {
+    const res = simulateFrom(dateMap, s, endIso, params);
+    if (res.outcome === "open" && res.windowStart && (best === null || res.periods > best.periods)) best = res;
+  }
+  return best
+    ? { status: "In Progress", completionDate: null, completions: [], periods: best.periods, breaksUsed: best.breaksUsed, consecutiveBreak: best.consec, windowStart: best.windowStart }
+    : { status: "Not Started", completionDate: null, completions: [], periods: 0, breaksUsed: 0, consecutiveBreak: 0, windowStart: null };
 }
 
 // HA currency (HA.md "Clarifications" / DECISIONS #3,#4 — authoritative over the
