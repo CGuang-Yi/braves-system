@@ -276,4 +276,39 @@ module.exports = async function run() {
     const sb = loadParade();
     eq(sb.bpSickFollowUp({ status: "Pending", startDate: TODAY }), "");
   });
+
+  suite("parade classifier: an ENDED MC persists under ATT C until manually booked in (roster-status mirror)");
+
+  await test("MC ended + roster.status still 'MC' → stays under ATT C, not in camp", () => {
+    // MC 25–27 Jun, TODAY is 29 Jun (ended two days ago); nobody has booked them
+    // back in, so the roster mirror still reads "MC".
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-25", endDate: "2026-06-27" }]);
+    person(sb).status = "MC";
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 1, "ended MC should persist under ATT C");
+    ok(c.sections.attC[0].includes("3D MC"), `expected the real 3D MC dates, got: ${c.sections.attC[0]}`);
+    ok(c.notInCamp, "a persisted MC still counts as out of camp");
+  });
+
+  await test("MC ended + roster.status 'Active' (booked in) → dropped from ATT C, present", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-25", endDate: "2026-06-27" }]);
+    person(sb).status = "Active";   // manually booked back in — mirror cleared
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 0, "a booked-in recruit must not persist as MC");
+    ok(!c.notInCamp, "a booked-in recruit is in camp");
+  });
+
+  await test("active MC + roster.status 'MC' → single ATT C entry (persistence must not double it)", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: TODAY, endDate: "2026-07-03" }]);
+    person(sb).status = "MC";
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 1, "an active MC should not be doubled by the persistence rule");
+  });
+
+  await test("roster.status 'MC' but the date is BEFORE the MC ended → no back-dated ATT C", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-25", endDate: "2026-06-27" }]);
+    person(sb).status = "MC";
+    const c = sb.bpClassifyPerson(person(sb), "2026-06-20");
+    eq(c.sections.attC.length, 0, "persistence must not back-date onto pre-MC days on the Status Board");
+  });
 };
