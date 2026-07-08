@@ -1184,17 +1184,21 @@ function renderAttendance(el) {
       const rateColor = r >= 95 ? 'var(--green)' : r >= 70 ? 'var(--orange)' : 'var(--red)';
       const lmsRateColor = a.participating ? (lmsRate >= 95 ? 'var(--green)' : lmsRate >= 70 ? 'var(--orange)' : 'var(--red)') : 'var(--muted)';
       const time = fmtHrs(a.time) || '—';
-      // HA-eligibility cell (§14.3). CSV imports and wizard-logged conducts
-      // (both now carry a real participant list, see haCountsRow) can feed HA;
-      // the toggle only means anything when the currencyTag source is active —
-      // otherwise show the name-logic verdict read-only so the column never
-      // lies about what computeHA will do. Legacy wizard rows (source "")
-      // predate participant tracking and are never HA-eligible.
+      // HA-eligibility cell (§14.3). The verdict shown must mirror what computeHA
+      // (haCountsRow) actually does, or the column lies. For WIZARD rows that is
+      // ALWAYS the currencyTags HA token — the per-conduct "Counts toward HA"
+      // checkbox stamped it, independent of haEligibilitySource — so the toggle
+      // stays live even under the legacy isHAExcluded name-config. CSV rows follow
+      // the configured source: a live toggle under 'currencyTag', else a read-only
+      // name-logic verdict. Legacy wizard rows (source "") predate participant
+      // tracking and are never HA-eligible.
       const tagSrc = configGet("haEligibilitySource") === "currencyTag";
-      const haOn = conductHAEligible(a);
+      const isWizard = a.source === "wizard";
+      const haOn = isWizard ? haCountsRow(a) : conductHAEligible(a);
+      const toggleable = isWizard || tagSrc;   // the currencyTags token is the live signal
       const haCell = (a.source !== "csv" && a.source !== "wizard")
         ? `<span style="color:var(--dim)" title="Legacy wizard conduct — re-save it in the wizard with 'Counts toward HA' to include it">—</span>`
-        : tagSrc
+        : toggleable
           ? `<button class="btn btn-icon" onclick="toggleConductHA(${a.id})" style="color:${haOn ? 'var(--green)' : 'var(--dim)'};font-weight:700" title="${haOn ? 'Counts toward HA — click to exclude' : 'Not an HA conduct — click to count it toward HA'}">${haOn ? 'HA ✓' : 'HA ✕'}</button>`
           : `<span style="color:${haOn ? 'var(--green)' : 'var(--dim)'}" title="Eligibility comes from the conduct name (Config haEligibilitySource = 'isHAExcluded'); set it to 'currencyTag' to toggle per conduct">${haOn ? 'HA' : '—'}</span>`;
       return `<tr><td>${a.date}</td><td class="mono" style="color:${a.time ? 'var(--text)' : 'var(--dim)'}">${time}</td><td style="text-align:left">${escapeHTML(conductName(a.conductId))}</td><td>${haCell}</td><td>${a.total}</td><td>${a.participating}</td><td style="color:${lms > 0 ? 'var(--accent)' : 'var(--muted)'}">${lms}</td><td style="color:${a.px > 0 ? 'var(--orange)' : 'var(--muted)'}">${a.px}</td><td style="color:${a.fallout > 0 ? 'var(--red)' : 'var(--muted)'}">${a.fallout}</td><td style="font-weight:700;color:${rateColor}">${r}%</td><td style="font-weight:700;color:${lmsRateColor}">${a.participating ? lmsRate + '%' : '—'}</td><td style="text-align:left;color:${a.remarks ? 'var(--yellow)' : 'var(--muted)'};max-width:200px;white-space:normal;font-size:11px">${escapeHTML(a.remarks || '')}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="copyConductChatFormat(${a.id})" title="Copy WhatsApp-format parade state message">📋</button> <button class="btn btn-icon" onclick="openLogConductWizard(${a.id})" title="Edit conduct (wizard)">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('attendance', ${a.id}, 'attendance entry')" title="Delete">✕</button></td></tr>`;
