@@ -3072,6 +3072,26 @@ function bpClassifyPerson(r, dateIso) {
     }
   });
 
+  // Persist an ENDED MC until manual book-in. `r.status` mirrors the recruit's
+  // latest medical status (submitMedical writes MC/LD/… back onto the roster
+  // row); if it still reads "MC" yet no MC is active today, their MC has lapsed
+  // with no follow-up and nobody has booked them back in — keep them under ATT C
+  // (still counted OUT of camp) using their most recent ended MC's real dates.
+  // A manual code change in the Parade State tab (or any new MO status) rewrites
+  // r.status and drops them. Only fires AFTER the MC's end date (endDate < today)
+  // so it can't back-date onto pre-MC days on the Status Board.
+  if (String(r.status || "").trim() === "MC" && !out.attC.length) {
+    const endedMc = STATE.medical
+      .filter(m => m.d4 === r.id && m.status === "MC" && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
+      .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
+    if (endedMc) {
+      const days = bpInclusiveDays(endedMc);
+      const label = days ? `${days}D MC` : "MC";
+      out.attC.push(`${rn} - ${label} ${bpRange(endedMc, false)}`.trim());
+      notInCamp = true;
+    }
+  }
+
   // Medical appointments (MA) dated today → OTHERS. The stored `outOfCamp` bit
   // (set when booking, toggled live by the parade presence-tick) drives the
   // sub-type: out of camp → NOT IN CAMP (and subtracts from current strength);

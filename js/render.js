@@ -26,6 +26,7 @@ function render() {
 
   switch (STATE.nav) {
     case "dashboard": renderDashboard(el); break;
+    case "parade": renderParade(el); break;
     case "roster": renderRoster(el); break;
     case "attendance": renderAttendance(el); break;
     case "detail": renderConductDetail(el); break;
@@ -258,8 +259,6 @@ function renderDashboard(el) {
       <div class="dropdown-wrapper">
         <button class="btn btn-primary" onclick="toggleReportMenu(event)">📋 Generate Report ▾</button>
         <div id="report-menu" class="dropdown-menu hidden">
-          <button type="button" onclick="openReportModal('FP'); closeReportMenu()">📋 First Parade State</button>
-          <button type="button" onclick="openReportModal('LP'); closeReportMenu()">📋 Last Parade State</button>
           <button type="button" onclick="openReportModal('RS'); closeReportMenu()">🤒 RS Format (Sick Report)</button>
           <button type="button" onclick="openReportModal('RSIP'); closeReportMenu()">🤒 RSI Personnel (by Platoon)</button>
           <button type="button" onclick="openReportModal('MED'); closeReportMenu()">🏥 Medical Status List</button>
