@@ -118,29 +118,68 @@ function refreshParade() {
 }
 
 // ── COMPANY VIEW — the canonical §8–9 message, editable + copyable ───────────
+// The company message concatenates the aggregate summary + HQ block + one block
+// per platoon. Per-platoon copy buttons let a commander grab a single block's
+// standalone text (byte-identical to that block inside the full message, since
+// both go through bpBuildBlock). The button set mirrors the blocks the message
+// actually emits: HQ (always) + each active platoon that has personnel — no
+// aggregate/summary button.
+function paradeCompanyBlocks() {
+  const hasPeople = code => STATE.roster.some(r => personPlatoon(r) === code);
+  const out = [{ code: "HQ", label: configGet("hqLabel") || "HQ" }];
+  activePlatoons().forEach(p => {
+    if (p.code === "HQ" || !hasPeople(p.code)) return;
+    out.push({ code: p.code, label: p.displayName || p.code });
+  });
+  return out;
+}
+
 function renderParadeCompany(host) {
   const dateIso = paradeCurrentDateISO();
   const text = generateBravesParadeState({ level: "company" }, _paradeType, dateIso, _paradeTime);
+  const blockBtns = paradeCompanyBlocks().map((b, i) =>
+    `<button type="button" id="parade-copy-${i}" class="btn" style="font-size:12px"
+       onclick="copyParadeBlock('${escapeAttr(b.code)}','parade-copy-${i}')">📋 ${escapeHTML(b.label)}</button>`
+  ).join("");
   host.innerHTML = `
     <div class="card" style="padding:14px">
       <textarea id="parade-text" rows="26" spellcheck="false"
         style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(text)}</textarea>
       <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" onclick="copyParadeText()">📋 Copy to Clipboard</button>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:11px;color:var(--muted)">Copy per platoon:</span>
+        ${blockBtns}
+      </div>
     </div>`;
 }
 
-// Clipboard with the same select-and-alert fallback as the old report modal.
-async function copyParadeText() {
-  const ta = document.getElementById("parade-text");
-  const btn = document.getElementById("parade-copy-btn");
-  if (!ta) return;
+// Copy an arbitrary string, with a transient "✓ Copied!" on the given button and
+// the same select-and-alert fallback as the old report modal (drops the text into
+// the textarea so the user can Cmd+C when the clipboard API is blocked).
+async function paradeCopyString(text, btnId) {
+  const btn = btnId ? document.getElementById(btnId) : null;
   try {
-    await navigator.clipboard.writeText(ta.value);
+    await navigator.clipboard.writeText(text);
     if (btn) { const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => { btn.textContent = o; }, 1800); }
   } catch {
-    ta.focus(); ta.select();
+    const ta = document.getElementById("parade-text");
+    if (ta) { ta.value = text; ta.focus(); ta.select(); }
     alert("Copy blocked — text is selected, press Cmd+C / Ctrl+C to copy.");
   }
+}
+
+// Copy the whole company message (the textarea, which stays editable).
+async function copyParadeText() {
+  const ta = document.getElementById("parade-text");
+  if (!ta) return;
+  await paradeCopyString(ta.value, "parade-copy-btn");
+}
+
+// Copy a single platoon/HQ block's standalone parade-state text. Reads the
+// current toolbar state (type/date/time) so it always matches what's shown.
+async function copyParadeBlock(code, btnId) {
+  const text = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, paradeCurrentDateISO(), _paradeTime);
+  await paradeCopyString(text, btnId);
 }
 
 // ── PLATOON VIEW — bento header + editable grid ──────────────────────────────
@@ -203,10 +242,18 @@ function renderParadePlatoon(host, code) {
       <div class="stat"><label>Others</label><div class="val">${sec.others}</div></div>
     </div>`;
 
-  // Sort: non-present first (by code order), then present, then by name — keeps
-  // the people who need attention at the top like a real parade state.
-  const codeRank = c => c === "Present" ? 99 : PARADE_CODES.indexOf(c);
-  rows.sort((a, b) => (codeRank(a.code) - codeRank(b.code)) || String(getName(a.r.id)).localeCompare(String(getName(b.r.id))));
+  // Sort: commanders to the BOTTOM rows; everyone else by 4D ascending. Sorting
+  // by 4D (not by attendance code) keeps MC / RS / STATUS / etc. personnel in
+  // their natural 4D position interleaved with the present bulk, instead of being
+  // collected at the top. Commanders carry 00xx 4Ds so ascending-4D would sort
+  // them first — force them last so they sit at the bottom (still 4D-ordered among
+  // themselves). Name breaks ties (e.g. a commander with no numeric 4D).
+  const isCmdr = r => r.role === "Commander";
+  const fourDNum = r => { const n = parseInt(String(r.fourD || r.id || "").replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : Infinity; };
+  rows.sort((a, b) =>
+    ((isCmdr(a.r) ? 1 : 0) - (isCmdr(b.r) ? 1 : 0))
+    || (fourDNum(a.r) - fourDNum(b.r))
+    || String(getName(a.r.id)).localeCompare(String(getName(b.r.id))));
 
   const body = rows.map(x => {
     const opts = PARADE_CODES.map(c => `<option value="${c}"${c === x.code ? " selected" : ""}>${c}</option>`).join("");
