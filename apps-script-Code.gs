@@ -3078,13 +3078,20 @@ function bpClassifyPerson(r, dateIso) {
   // with no follow-up and nobody has booked them back in — keep them under ATT C
   // (still counted OUT of camp) using their most recent ended MC's real dates.
   // A manual code change in the Parade State tab (or any new MO status) rewrites
-  // r.status and drops them. Only fires AFTER the MC's end date (endDate < today)
-  // so it can't back-date onto pre-MC days on the Status Board.
+  // r.status and drops them. Only fires on days AFTER the persisted MC ended, so
+  // it can't back-date onto pre-MC days on the Status Board.
+  //
+  // Select the LATEST MC (by end date) — the one the roster-status mirror is
+  // reflecting — then gate on ITS OWN end date. Picking "the most recent MC that
+  // ended before this date" instead would paint a present GAP between two separate
+  // MC episodes (e.g. an early-June MC and a late-June one) with the earlier MC on
+  // every Status Board cell in between; keying off the latest MC confines the
+  // persistence to the trailing not-booked-in tail after that MC.
   if (String(r.status || "").trim() === "MC" && !out.attC.length) {
     const endedMc = STATE.medical
-      .filter(m => m.d4 === r.id && m.status === "MC" && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
+      .filter(m => m.d4 === r.id && m.status === "MC" && displayDateToISO(m.endDate || ""))
       .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
-    if (endedMc) {
+    if (endedMc && displayDateToISO(endedMc.endDate) < dateIso) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
       out.attC.push(`${rn} - ${label} ${bpRange(endedMc, false)}`.trim());
