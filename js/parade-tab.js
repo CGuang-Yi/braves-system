@@ -342,7 +342,12 @@ function saveParadeCode(d4, code) {
     const status = code === "MC" ? "MC" : gvi("pe-status");
     if (!status) { alert("Select a status."); return; }
     const startIso = gvi("pe-start"), endIso = gvi("pe-end");
-    if (endIso && startIso && endIso < startIso) { alert("End date cannot be before start date."); return; }
+    // Both dates are required: an MC/STATUS with a blank end never reads as active
+    // (medStatusActive needs an end) and isn't caught by the ended-MC persistence
+    // either, so it would save + mirror the roster status but leave the person
+    // showing "Present" — a silent no-op that misreports the parade state.
+    if (!startIso || !endIso) { alert("Enter both a start and end date."); return; }
+    if (endIso < startIso) { alert("End date cannot be before start date."); return; }
     const existing = code === "MC"
       ? paradeActiveMed(d4, m => m.status === "MC")
       : paradeActiveMed(d4, m => m.status === status);
@@ -423,7 +428,7 @@ function openParadeClearConfirm(d4) {
   const name = displayPersonLabel(d4);
   const iso = paradeCurrentDateISO();
   openModal(`Mark Present — ${name}`, `
-    <div style="font-size:13px;margin-bottom:14px">End all active MC / status / leave for <strong>${escapeHTML(name)}</strong> as of <strong>${escapeHTML(iso)}</strong> and mark them present? Records are ended (kept for history), not deleted.</div>
+    <div style="font-size:13px;margin-bottom:14px">End all active MC / status / leave / today's MR for <strong>${escapeHTML(name)}</strong> as of <strong>${escapeHTML(iso)}</strong> and mark them present? Records are ended (kept for history), not deleted.</div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" onclick="paradeClearPerson('${escapeAttr(d4)}')">Mark Present</button>
       <button class="btn" onclick="closeParadeEditor()">Cancel</button>
@@ -433,6 +438,14 @@ function openParadeClearConfirm(d4) {
 function paradeClearPerson(d4) {
   const changed = [];
   paradeEndActiveContributors(d4, null, changed);
+  // Marking Present means nothing is outstanding, so also resolve a same-day
+  // pending MR. MR is normally additive (a person can be on LD AND MR), so
+  // applying another code leaves it alone — but a blank-status MR carries no end
+  // date, so medStatusActive never sees it and paradeEndActiveContributors can't
+  // reach it. Without this the row would snap straight back to "MR" after the
+  // commander clicked "Present". Resolve (Pending/blank → NIL) rather than delete.
+  const mr = paradeActiveMr(d4);
+  if (mr) { mr.status = "NIL"; changed.push(["Medical", mr]); }
   const r = mirrorRoster(d4, "Active");
   if (r) changed.push(["Roster", r]);
 

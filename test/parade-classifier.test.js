@@ -311,4 +311,22 @@ module.exports = async function run() {
     const c = sb.bpClassifyPerson(person(sb), "2026-06-20");
     eq(c.sections.attC.length, 0, "persistence must not back-date onto pre-MC days on the Status Board");
   });
+
+  await test("two ended MCs with a present gap → no ATT C in the gap (persistence keys off the LATEST MC)", () => {
+    // MC1 01–03 Jun, MC2 20–22 Jun, both ended; roster mirror still reads "MC"
+    // (from MC2). A Status Board cell in the 04–19 Jun gap — when the recruit was
+    // booked in and present — must NOT be painted with MC1's dates.
+    const sb = loadParade([
+      { id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-01", endDate: "2026-06-03" },
+      { id: 2, d4: "0001", type: "", status: "MC", startDate: "2026-06-20", endDate: "2026-06-22" }
+    ]);
+    person(sb).status = "MC";
+    const gap = sb.bpClassifyPerson(person(sb), "2026-06-10");
+    eq(gap.sections.attC.length, 0, "a present gap between two MC episodes must not persist the earlier MC");
+    ok(!gap.notInCamp, "present in the gap → in camp");
+    // …but after the LATEST MC (MC2) ends, the not-booked-in tail still persists.
+    const tail = sb.bpClassifyPerson(person(sb), "2026-06-25");
+    eq(tail.sections.attC.length, 1, "the tail after the latest ended MC still persists");
+    ok(tail.sections.attC[0].includes("200626-220626"), `expected MC2's dates, got: ${tail.sections.attC[0]}`);
+  });
 };
