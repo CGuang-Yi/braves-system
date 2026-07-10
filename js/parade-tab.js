@@ -248,7 +248,7 @@ function renderParadePlatoon(host, code) {
   // collected at the top. Commanders carry 00xx 4Ds so ascending-4D would sort
   // them first — force them last so they sit at the bottom (still 4D-ordered among
   // themselves). Name breaks ties (e.g. a commander with no numeric 4D).
-  const isCmdr = r => r.role === "Commander";
+  const isCmdr = r => isCommander(r.id);
   const fourDNum = r => { const n = parseInt(String(r.fourD || r.id || "").replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : Infinity; };
   rows.sort((a, b) =>
     ((isCmdr(a.r) ? 1 : 0) - (isCmdr(b.r) ? 1 : 0))
