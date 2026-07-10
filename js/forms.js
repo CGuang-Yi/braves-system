@@ -2112,7 +2112,7 @@ function openLeaveForm(id) {
           <div><strong>Off-in-Lieu</strong> — counts against the commander's quota.</div>
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
-        <div class="form-group"><label>Person</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
+        <div class="form-group"><label>Person</label>${personSearchBox({ boxId: "leave-person", valueId: "f-d4", placeholder: "Search person by name / 4D…", selected: e?.d4 || "" })}</div>
         <div class="form-group"><label>Type</label><select id="f-type" required onchange="updateLeaveInCampDefault()">${LEAVE_TYPES.map(([val, lab]) => `<option value="${val}" ${val === initialType ? "selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="form-row">
           ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
@@ -2162,12 +2162,14 @@ function medExtraRecalcEnd(el) {
 }
 function submitLeave() {
   const editId = +gv("f-entry-id");
+  const d4 = gv("f-d4");
+  if (!d4) { alert("Pick a person (search by name / 4D)."); return; }
   const startIso = gv("f-start");
   const endIso = gv("f-end");
   if (endIso < startIso) { alert("End date must be on or after start date."); return; }
   const entry = {
     id: editId || nextId(),
-    d4: gv("f-d4"),
+    d4,
     type: gv("f-type"),
     startDate: isoToDisplayDate(startIso),
     endDate: isoToDisplayDate(endIso),
