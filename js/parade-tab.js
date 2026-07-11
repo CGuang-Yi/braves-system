@@ -267,11 +267,30 @@ function renderParadePlatoon(host, code) {
     </tr>`;
   }).join("");
 
+  // Standalone platoon parade-state message — the same block this platoon
+  // contributes to the full company message (byte-identical to the company
+  // view's per-platoon copy button, since both go through
+  // generateBravesParadeState at level:"platoon"). Editable free-text + a Copy
+  // button, mirroring the company view. Reuses the company view's #parade-text /
+  // #parade-copy-btn ids and copyParadeText() — safe because the company and
+  // platoon views never render at the same time (both fill #parade-body), and
+  // the clipboard fallback in paradeCopyString looks up #parade-text.
+  // Note: a grid edit calls refreshParade(), which regenerates this textarea
+  // from fresh data — so grid edits flow into the message, but any free-text
+  // edits typed here are discarded on the next grid edit (same as the company
+  // textarea; the normal flow is edit-grid-then-copy, or free-text edit last).
+  const msg = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, dateIso, _paradeTime);
+
   host.innerHTML = bento + `
     <div class="table-wrap"><table>
       <thead><tr><th style="width:70px">4D</th><th>Name</th><th style="width:120px">Attendance Code</th><th>Remarks</th></tr></thead>
       <tbody>${body || `<tr><td colspan="4" class="empty-state">No personnel in this platoon.</td></tr>`}</tbody>
-    </table></div>`;
+    </table></div>
+    <div class="card" style="padding:14px;margin-top:14px">
+      <textarea id="parade-text" rows="20" spellcheck="false"
+        style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(msg)}</textarea>
+      <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" onclick="copyParadeText()">📋 Copy to Clipboard</button>
+    </div>`;
 }
 
 // ── Edit → write-back ────────────────────────────────────────────────────────
