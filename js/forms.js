@@ -2263,9 +2263,15 @@ function findBorderlineReturnees(dateIso) {
   if (!dateIso) return [];
   const y = new Date(dateIso); y.setDate(y.getDate() - 1);
   const yIso = y.toISOString().slice(0, 10);
+  const away = m => (m.status === "MC" || m.status === "Warded");
   return STATE.medical.filter(m =>
-    (m.status === "MC" || m.status === "Warded") &&
-    displayDateToISO(m.endDate || "") === yIso
+    away(m) && displayDateToISO(m.endDate || "") === yIso &&
+    // An extended MC is logged as a SECOND report-sick record (endDate yesterday
+    // on the first, a fresh record covering today on the second). If any OTHER
+    // away MC/Warded for this 4D is still active on the parade date, the recruit
+    // hasn't actually returned — they're out on the extension — so they are not
+    // a borderline candidate (they already surface in ATTC as an active record).
+    !STATE.medical.some(o => o !== m && o.d4 === m.d4 && away(o) && medStatusActive(o, dateIso))
   );
 }
 
