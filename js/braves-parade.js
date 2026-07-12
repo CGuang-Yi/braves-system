@@ -92,9 +92,12 @@ function bpRange(record, spaced) {
 }
 
 // ── R/N formatting (spec §7, DECISIONS #30) ─────────────────────────────────
-// 4D personnel: "MARTIN TAN B1411" (name + prefix + 4D). No-4D personnel:
-// "LCP CALVIN LEE" (rank + name) or just "TREVOR LEE". Names rendered as stored
-// (not force-uppercased) per the sample.
+// 4D personnel: "REC MARTIN TAN B1411" (rank + name + prefix + 4D). No-4D
+// personnel: "LCP CALVIN LEE" (rank + name) or just "TREVOR LEE". Names rendered
+// as stored (not force-uppercased) per the sample. The rank prefix on 4D
+// personnel is a Braves-requested divergence from Message Formats.md (which
+// shows name + 4D only) — rank comes from the roster's rank column, dropped when
+// blank.
 function bravesParadeRN(personId) {
   const r = STATE.roster.find(x => x.id == personId);
   if (!r) return String(personId);
@@ -102,7 +105,7 @@ function bravesParadeRN(personId) {
   const prefix = configGet("companyPrefix") || "B";
   // Duplicates isCommander/displayPersonLabel (helpers.js) — can't reuse: this needs B<fourD> tagging, not plain name.
   if (r.role !== "Commander" && r.fourD && String(r.fourD).trim() !== "") {
-    return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
+    return [r.rank, `${name} ${prefix}${String(r.fourD).trim()}`].filter(Boolean).join(" ").trim();
   }
   return [r.rank, name].filter(Boolean).join(" ").trim();
 }

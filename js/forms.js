@@ -177,6 +177,9 @@ function openPerson(d4) {
 
   if (p.allergies) html += `<div style="background:#E3B34122;border:1px solid #E3B34144;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;color:var(--yellow)"><strong>Allergies:</strong> ${escapeHTML(p.allergies)}</div>`;
   if (p.msk) html += `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--red)"><strong>MSK history:</strong> ${escapeHTML(p.msk)}</div>`;
+  // Roster Notes column — free-text remarks kept on the roster row (neutral,
+  // not a warning like allergies/MSK). Rendered verbatim; skipped when blank.
+  if (p.notes) html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:12px;color:var(--text);white-space:pre-wrap"><strong style="color:var(--muted)">Notes:</strong> ${escapeHTML(p.notes)}</div>`;
 
   // RSIs stat is clickable when there are records — opens an inline patterns
   // panel below the stats strip with day-of-week, status mix, timeline, reasons.

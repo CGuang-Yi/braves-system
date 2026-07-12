@@ -302,16 +302,19 @@ function renderParadePlatoon(host, code) {
   // textarea; the normal flow is edit-grid-then-copy, or free-text edit last).
   const msg = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, dateIso, _paradeTime);
 
+  // Message textarea sits ABOVE the grid so a commander lands on the copy-ready
+  // parade text first; the editable grid (which regenerates the textarea on every
+  // code change — see refreshParade) follows below.
   host.innerHTML = bento + `
-    <div class="table-wrap"><table>
-      <thead><tr><th style="width:70px">4D</th><th>Name</th><th style="width:120px">Attendance Code</th><th>Remarks</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="4" class="empty-state">No personnel in this platoon.</td></tr>`}</tbody>
-    </table></div>
-    <div class="card" style="padding:14px;margin-top:14px">
+    <div class="card" style="padding:14px;margin-bottom:14px">
       <textarea id="parade-text" rows="20" spellcheck="false"
         style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(msg)}</textarea>
       <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" onclick="copyParadeText()">📋 Copy to Clipboard</button>
-    </div>`;
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th style="width:70px">4D</th><th>Name</th><th style="width:120px">Attendance Code</th><th>Remarks</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="4" class="empty-state">No personnel in this platoon.</td></tr>`}</tbody>
+    </table></div>`;
 }
 
 // ── Edit → write-back ────────────────────────────────────────────────────────
