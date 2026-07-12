@@ -3640,6 +3640,24 @@ function bravesArchiveParade_(dateIso, slot, type) {
   appendMany(BRAVES_PARADE_ARCHIVE_TAB, [row]);
   return row;
 }
+
+// Archive the client's EXACT parade text (Copy-to-Clipboard, incl. hand edits).
+// Unlike bravesArchiveParade_ this does NOT regenerate and does NOT dedup by
+// date+slot alone — the whole point is capturing what was actually sent, and a
+// commander may copy several edited versions in one slot. Deduped only against
+// an identical (date, slot, type, text) row so re-copying unchanged text is a
+// no-op.
+function bravesArchiveParadeText_(dateIso, slot, type, scope, text) {
+  var existing = bravesArr_(readTab(BRAVES_PARADE_ARCHIVE_TAB));
+  var dup = existing.some(function (r) {
+    return String(r.date) === String(dateIso) && String(r.slot) === String(slot)
+      && String(r.type || "") === String(type || "") && String(r.message || "") === String(text);
+  });
+  if (dup) return null;
+  var row = { timestamp: new Date().toISOString(), date: dateIso, slot: String(slot), type: type || "", scope: scope || "company", message: String(text) };
+  appendMany(BRAVES_PARADE_ARCHIVE_TAB, [row]);
+  return row;
+}
 function bravesArchiveSick_(dateIso, slot) {
   if (bravesAlreadyArchived_(BRAVES_SICK_ARCHIVE_TAB, dateIso, slot)) return null;
   bravesLoadState_();
@@ -3714,7 +3732,15 @@ function bravesArchiveNow(body, ctx) {
       var match = bravesParseParadeSlots_(cfg.archiveParadeTimes).filter(function (p) { return p.slot === slot; })[0];
       type = match ? match.type : bravesSlotType_(slot);
     }
-    out.parade = bravesArchiveParade_(dateIso, slot, type);
+    // If the client supplied the exact copied text (the Parade State tab's
+    // Copy-to-Clipboard, including hand edits), archive THAT verbatim — a past
+    // parade state can't be regenerated faithfully (manual overrides are session-
+    // only). Otherwise regenerate from live state (manual "Archive now" / cron).
+    if (typeof body.text === "string" && body.text.replace(/\s/g, "") !== "") {
+      out.parade = bravesArchiveParadeText_(dateIso, slot, type, body.scope || "company", body.text);
+    } else {
+      out.parade = bravesArchiveParade_(dateIso, slot, type);
+    }
   }
   if (kind === "sick" || kind === "both") out.sick = bravesArchiveSick_(dateIso, slot);
   return { ok: true, archived: out, date: dateIso, slot: slot };
