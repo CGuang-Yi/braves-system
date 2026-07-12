@@ -332,4 +332,83 @@ module.exports = async function run() {
     eq(tail.sections.attC.length, 1, "the tail after the latest ended MC still persists");
     ok(tail.sections.attC[0].includes("200626-220626"), `expected MC2's dates, got: ${tail.sections.attC[0]}`);
   });
+
+  suite("parade classifier: overlapping same-type statuses collapse to the one ending last");
+
+  await test("two overlapping Excuse Running rows → only the later-ending one shows (STATUS)", () => {
+    const sb = loadParade([
+      { id: 1, d4: "0001", type: "", status: "Excuse Running", startDate: "2026-06-27", endDate: "2026-06-30" },
+      { id: 2, d4: "0001", type: "", status: "Excuse Running", startDate: "2026-06-28", endDate: "2026-07-04" }
+    ]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.status.length, 1, "same-label overlap must collapse to a single STATUS line");
+    ok(c.sections.status[0].includes("040726"), `the later-ending row (04 Jul) must win, got: ${c.sections.status[0]}`);
+    ok(!c.sections.status[0].includes("300626"), "the earlier-ending row (30 Jun) must be dropped");
+  });
+
+  await test("Excuse Running + Excuse RMJ (different labels) → both survive (folded, not superseded)", () => {
+    const sb = loadParade([
+      { id: 1, d4: "0001", type: "", status: "Excuse Running", startDate: "2026-06-27", endDate: "2026-07-04" },
+      { id: 2, d4: "0001", type: "", status: "Excuse RMJ", startDate: "2026-06-28", endDate: "2026-07-02" }
+    ]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    ok(c.sections.status[0].includes("Excuse Running") && c.sections.status[0].includes("Excuse RMJ"),
+      `distinct labels must both remain, got: ${c.sections.status[0]}`);
+  });
+
+  await test("two overlapping AL/OIL rows of the same type → only the later-ending one shows", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [
+      { id: 1, d4: "0001", type: "Leave", startDate: "2026-06-27", endDate: "2026-06-29" },
+      { id: 2, d4: "0001", type: "Leave", startDate: "2026-06-28", endDate: "2026-07-02" }
+    ];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.alOil.length, 1, "same-type AL/OIL overlap must collapse to one line");
+    ok(c.sections.alOil[0].includes("020726"), `the later-ending leave (02 Jul) must win, got: ${c.sections.alOil[0]}`);
+    ok(!c.sections.alOil[0].includes("290626"), "the earlier-ending leave (29 Jun) must be dropped");
+  });
+
+  await test("two overlapping OTHERS rows of the same type → only the later-ending one shows", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [
+      { id: 1, d4: "0001", type: "Course", startDate: "2026-06-27", endDate: "2026-06-29", reason: "Course A", isInCamp: false },
+      { id: 2, d4: "0001", type: "Course", startDate: "2026-06-28", endDate: "2026-07-02", reason: "Course B", isInCamp: false }
+    ];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 1, "same-type OTHERS overlap must collapse to one line");
+    ok(c.sections.others[0].includes("Course B"), `the later-ending OTHERS row must win, got: ${c.sections.others[0]}`);
+    ok(!c.sections.others[0].includes("Course A"), "the earlier-ending OTHERS row must be dropped");
+  });
+
+  await test("OTHERS rows of different types (Course + Guard Duty) → both survive", () => {
+    const sb = loadParade();
+    sb.STATE.leave = [
+      { id: 1, d4: "0001", type: "Course", startDate: "2026-06-27", endDate: "2026-06-30", reason: "APSC", isInCamp: false },
+      { id: 2, d4: "0001", type: "Guard Duty", startDate: "2026-06-28", endDate: "2026-07-02", reason: "gate", isInCamp: false }
+    ];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 2, "distinct OTHERS types must not supersede each other");
+  });
+
+  await test("two overlapping Warded rows → only the later-ending one shows (OTHERS)", () => {
+    const sb = loadParade([
+      { id: 1, d4: "0001", type: "", status: "Warded", startDate: "2026-06-27", endDate: "2026-06-29", reason: "Warded A" },
+      { id: 2, d4: "0001", type: "", status: "Warded", startDate: "2026-06-28", endDate: "2026-07-02", reason: "Warded B" }
+    ]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 1, "same-type Warded overlap must collapse to one line");
+    ok(c.sections.others[0].includes("Warded B"), `the later-ending Warded row must win, got: ${c.sections.others[0]}`);
+    ok(!c.sections.others[0].includes("Warded A"), "the earlier-ending Warded row must be dropped");
+  });
+
+  await test("two overlapping MC rows → only the later-ending one shows (ATT C)", () => {
+    const sb = loadParade([
+      { id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-27", endDate: "2026-06-29" },
+      { id: 2, d4: "0001", type: "", status: "MC", startDate: "2026-06-28", endDate: "2026-07-02" }
+    ]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 1, "same-type MC overlap must collapse to one line");
+    ok(c.sections.attC[0].includes("020726"), `the later-ending MC (02 Jul) must win, got: ${c.sections.attC[0]}`);
+    ok(!c.sections.attC[0].includes("290626"), "the earlier-ending MC (29 Jun) must be dropped");
+  });
 };
