@@ -1502,6 +1502,18 @@ function renderIPPT(el) {
 
   // ── D2: table view selector (All / by attempt # / by date) ────────────────
   const attemptsAvail = [...new Set(scoped.map(e => e.attempt).filter(a => a !== "" && a != null))].sort((a, b) => (+a) - (+b));
+
+  // ── Cross-attempt cohort (progression / compare / award-mix charts) ────────
+  // Shared model so all three cross-attempt charts agree on who counts.
+  const ipptSeries = ipptSeriesByRecruit(scoped);
+  const attemptNums = attemptsAvail.map(Number).filter(n => n > 0);
+  const hasMultiAttempt = attemptNums.length >= 2;
+  // Compare picker A→B: default first vs last available attempt; re-validate the
+  // stored pick against the current attempt set so a stale value can't survive a
+  // scope/data change.
+  let cmpA = +_ipptCmpA, cmpB = +_ipptCmpB;
+  if (!attemptNums.includes(cmpA)) cmpA = attemptNums[0];
+  if (!attemptNums.includes(cmpB) || cmpB === cmpA) cmpB = attemptNums[attemptNums.length - 1];
   const datesAvail = [...new Set(scoped.map(e => e.date).filter(Boolean))].sort((a, b) => (displayDateToISO(b) || "").localeCompare(displayDateToISO(a) || ""));
   const ipptView = _ipptView || "all";
   let tableRows = scoped;
@@ -1622,6 +1634,27 @@ function renderIPPT(el) {
       </div>
     </div>
 
+    ${hasMultiAttempt ? `
+    <div class="grid-2">
+      <div class="card">
+        <h3>Attempt Progression <span style="color:var(--muted);font-weight:400;font-size:10px">per recruit · <span style="color:var(--green)">green</span> up / <span style="color:var(--red)">red</span> down vs first · bold = company avg</span></h3>
+        <div class="chart-box tall"><canvas id="chart-ippt-progress"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Award Mix by Attempt <span style="color:var(--muted);font-weight:400;font-size:10px">% of takers per attempt</span></h3>
+        <div class="chart-box tall"><canvas id="chart-ippt-awardmix"></canvas></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">Compare Attempts
+        <select id="ippt-cmp-a" class="topbar-select" onchange="ipptComparePick()">${attemptNums.map(n => `<option value="${n}" ${n === cmpA ? "selected" : ""}>IPPT ${n}</option>`).join("")}</select>
+        <span style="color:var(--muted)">→</span>
+        <select id="ippt-cmp-b" class="topbar-select" onchange="ipptComparePick()">${attemptNums.map(n => `<option value="${n}" ${n === cmpB ? "selected" : ""}>IPPT ${n}</option>`).join("")}</select>
+        <span id="ippt-cmp-summary" style="color:var(--muted);font-weight:400;font-size:11px"></span>
+      </h3>
+      <div class="chart-box tall"><canvas id="chart-ippt-compare"></canvas></div>
+    </div>` : ""}
+
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       ${listSearchInput("ippt", "Search name / 4D…")}
       <select onchange="setIpptView(this.value)" class="topbar-select" title="Filter the table to one attempt number or one date">
@@ -1640,9 +1673,22 @@ function renderIPPT(el) {
   buildIPPTAwardsChart(stats);
   buildIPPTDistributionChart(buckets);
   buildIPPTTrendChart(ipptTrend);
+  if (hasMultiAttempt) {
+    buildIPPTProgressChart(ipptSeries);
+    buildIPPTAwardMixChart(scoped, attemptNums);
+    buildIPPTCompareChart(ipptSeries, cmpA, cmpB);
+  }
 }
 let _ipptView = "all";
 function setIpptView(v) { _ipptView = v; render(); }
+// Compare-picker view state (attempt A → B). View-only; re-validated in
+// renderIPPT against the live attempt set.
+let _ipptCmpA = "", _ipptCmpB = "";
+function setIpptCompare(a, b) { _ipptCmpA = a; _ipptCmpB = b; render(); }
+function ipptComparePick() {
+  const a = document.getElementById("ippt-cmp-a"), b = document.getElementById("ippt-cmp-b");
+  if (a && b) setIpptCompare(a.value, b.value);
+}
 
 function buildIPPTTrendChart(trend) {
   const canvas = document.getElementById("chart-ippt-trend");
@@ -1707,6 +1753,119 @@ function buildIPPTDistributionChart(buckets) {
       scales: {
         y: { beginAtZero: true, grid: { color: "#30363D" }, ticks: { color: "#8B949E", stepSize: 1 } },
         x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// One line per recruit across their attempts (colour = net journey direction:
+// green up / red down / grey flat), plus a bold company-average overlay. Legend
+// off — one line per recruit would swamp it.
+function buildIPPTProgressChart(series) {
+  const canvas = document.getElementById("chart-ippt-progress");
+  if (!canvas || !series.length) return;
+  const allAttempts = [...new Set(series.flatMap(r => Object.keys(r.byAttempt).map(Number)))].sort((a, b) => a - b);
+  if (!allAttempts.length) return;
+  const colorFor = d => d > 0 ? "#3FB95088" : d < 0 ? "#F8514988" : "#484F5888";
+  const datasets = series.map(r => {
+    const c = colorFor(ipptNetDelta(r));
+    return {
+      label: r.d4,
+      data: allAttempts.map(n => r.byAttempt[n] != null ? r.byAttempt[n] : null),
+      borderColor: c, backgroundColor: c, borderWidth: 1.5, pointRadius: 2, tension: .2, spanGaps: true
+    };
+  });
+  const avg = allAttempts.map(n => {
+    const vals = series.map(r => r.byAttempt[n]).filter(v => v != null);
+    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  });
+  datasets.push({ label: "Company avg", data: avg, borderColor: "#C9D1D9", backgroundColor: "#C9D1D9", borderWidth: 3, pointRadius: 3, tension: .2, spanGaps: true });
+  STATE.charts.ipptProgress = new Chart(canvas, {
+    type: "line",
+    data: { labels: allAttempts.map(n => "IPPT " + n), datasets },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, suggestedMax: 100, grid: { color: "#30363D" }, ticks: { color: "#8B949E" } },
+        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// 100%-stacked bars, one per attempt, segmented by award tier. Percent-of-takers
+// (not raw counts) so a smaller later cohort still compares honestly; tooltips
+// carry the raw counts. Takers = non-YTT entries with a real run time.
+function buildIPPTAwardMixChart(scoped, attemptNums) {
+  const canvas = document.getElementById("chart-ippt-awardmix");
+  if (!canvas || !attemptNums.length) return;
+  const tiers = [
+    { key: "Gold★", color: "#BC8CFF" }, { key: "Gold", color: "#E3B341" },
+    { key: "Silver", color: "#58A6FF" }, { key: "Pass", color: "#3FB950" }, { key: "Fail", color: "#F85149" }
+  ];
+  const pct = {}, counts = {};
+  tiers.forEach(t => { pct[t.key] = []; counts[t.key] = []; });
+  attemptNums.forEach(n => {
+    const takers = scoped.filter(e => +e.attempt === n && !isYTT(e) && parseRunTimeToSeconds(e.runTime) > 0);
+    const tally = {}; tiers.forEach(t => tally[t.key] = 0);
+    takers.forEach(e => { const a = getAward(+e.score || 0); if (tally[a] != null) tally[a]++; });
+    tiers.forEach(t => {
+      counts[t.key].push(tally[t.key]);
+      pct[t.key].push(takers.length ? Math.round(tally[t.key] / takers.length * 100) : 0);
+    });
+  });
+  STATE.charts.ipptAwardMix = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: attemptNums.map(n => "IPPT " + n),
+      datasets: tiers.map(t => ({ label: t.key, data: pct[t.key], backgroundColor: t.color, _counts: counts[t.key] }))
+    },
+    options: {
+      plugins: {
+        legend: { labels: { color: "#8B949E", font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}% (${ctx.dataset._counts[ctx.dataIndex]})` } }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { color: "#8B949E" } },
+        y: { stacked: true, min: 0, max: 100, grid: { color: "#30363D" }, ticks: { color: "#8B949E", callback: v => v + "%" } }
+      }
+    }
+  });
+}
+
+// Paired A→B cohort: a diverging bar of each recruit's score delta (sorted),
+// green up / red down. Fills the header summary with the up/down split.
+function buildIPPTCompareChart(series, a, b) {
+  const canvas = document.getElementById("chart-ippt-compare");
+  if (!canvas) return;
+  const cohort = ipptPairedCohort(series, a, b).slice().sort((x, y) => y.delta - x.delta);
+  const sumEl = document.getElementById("ippt-cmp-summary");
+  if (sumEl) {
+    const up = cohort.filter(c => c.delta > 0).length, down = cohort.filter(c => c.delta < 0).length;
+    sumEl.innerHTML = cohort.length
+      ? `${cohort.length} took both · <span style="color:var(--green)">${up} up</span> · <span style="color:var(--red)">${down} down</span>`
+      : "no recruit took both attempts";
+  }
+  if (!cohort.length) return;
+  STATE.charts.ipptCompare = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: cohort.map(c => displayId(c.d4) || c.d4),
+      datasets: [{
+        label: `IPPT ${a} → ${b} Δ`,
+        data: cohort.map(c => c.delta),
+        backgroundColor: cohort.map(c => c.delta >= 0 ? "#3FB950" : "#F85149"),
+        borderWidth: 0, borderRadius: 3
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => { const c = cohort[ctx.dataIndex]; return `${c.s1} → ${c.s2} (${c.delta >= 0 ? "+" : ""}${c.delta})`; } } }
+      },
+      scales: {
+        y: { grid: { color: "#30363D" }, ticks: { color: "#8B949E" }, title: { display: true, text: "Δ score", color: "#8B949E" } },
+        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 9 }, maxRotation: 90 } }
       }
     }
   });
