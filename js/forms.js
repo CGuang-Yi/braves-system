@@ -2102,6 +2102,27 @@ function openLeaveForm(id) {
   // here so the In Camp smart-prefill agrees with what the browser shows.
   const initialType = e?.type || LEAVE_TYPES[0][0];
   const inCampDefault = e ? (e.isInCamp === true) : leaveInCampGuess(initialType, e?.reason || "");
+  // Bulk "Apply to" scope options (add mode only). Company + each platoon + each
+  // platoon-section, labelled with the recruit count in that scope. Selecting a
+  // non-"person" scope hides the single-person picker (onLeaveScopeChange) and
+  // one Log creates a row per recruit (submitLeave → appendMany).
+  const scopeOpts = e ? "" : (() => {
+    const coy = scopeRecruits("company").length;
+    const opts = [
+      `<option value="person">One person…</option>`,
+      `<option value="company">Whole company (${coy})</option>`
+    ];
+    activePlatoons().forEach(p => {
+      const n = scopeRecruits("plt:" + p.code).length;
+      if (!n) return;
+      opts.push(`<option value="plt:${escapeAttr(p.code)}">${escapeAttr(p.displayName || p.code)} (${n})</option>`);
+      sectionsInPlatoon(p.code).forEach(s => {
+        const sn = scopeRecruits("sect:" + p.code + ":" + s).length;
+        if (sn) opts.push(`<option value="sect:${escapeAttr(p.code)}:${escapeAttr(s)}">&nbsp;&nbsp;↳ ${escapeAttr(p.displayName || p.code)} Sect ${escapeAttr(s)} (${sn})</option>`);
+      });
+    });
+    return opts.join("");
+  })();
   openModal(e ? "Edit Leave/Out Entry" : "Log Leave / Out", `
     <form onsubmit="event.preventDefault(); submitLeave(); return false">
       <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
@@ -2112,7 +2133,8 @@ function openLeaveForm(id) {
           <div><strong>Off-in-Lieu</strong> — counts against the commander's quota.</div>
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
-        <div class="form-group"><label>Person</label>${personSearchBox({ boxId: "leave-person", valueId: "f-d4", placeholder: "Search person by name / 4D…", selected: e?.d4 || "" })}</div>
+        ${e ? "" : `<div class="form-group"><label>Apply to</label><select id="f-leave-scope" onchange="onLeaveScopeChange()">${scopeOpts}</select></div>`}
+        <div class="form-group" id="f-leave-person-wrap"><label>Person</label>${personSearchBox({ boxId: "leave-person", valueId: "f-d4", placeholder: "Search person by name / 4D…", selected: e?.d4 || "" })}</div>
         <div class="form-group"><label>Type</label><select id="f-type" required onchange="updateLeaveInCampDefault()">${LEAVE_TYPES.map(([val, lab]) => `<option value="${val}" ${val === initialType ? "selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="form-row">
           ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
@@ -2127,6 +2149,13 @@ function openLeaveForm(id) {
         <button type="submit" class="btn btn-primary">${e ? "Save" : "Log"}</button>
       </div>
     </form>`);
+}
+// Show the single-person picker only for the "One person…" scope; a platoon/
+// section/company scope hides it (submitLeave reads scopeRecruits instead).
+function onLeaveScopeChange() {
+  const scope = gv("f-leave-scope") || "person";
+  const wrap = document.getElementById("f-leave-person-wrap");
+  if (wrap) wrap.style.display = scope === "person" ? "" : "none";
 }
 // Auto-recompute the days field from the start/end date inputs on the leave
 // form. Half-day edge case: users override after this fires.
@@ -2162,6 +2191,32 @@ function medExtraRecalcEnd(el) {
 }
 function submitLeave() {
   const editId = +gv("f-entry-id");
+  // Bulk "Apply to" scope (add mode only): one Leave row per recruit in the
+  // scope, pushed as a SINGLE appendMany rather than N upserts. Editing an
+  // entry is always single-person (no scope selector rendered).
+  const scope = editId ? "person" : (gv("f-leave-scope") || "person");
+  if (scope !== "person") {
+    const startIso = gv("f-start"), endIso = gv("f-end");
+    if (endIso < startIso) { alert("End date must be on or after start date."); return; }
+    const ids = scopeRecruits(scope);
+    if (!ids.length) { alert("No recruits in that scope."); return; }
+    const type = gv("f-type");
+    if (!confirm(`Log "${type}" for ${ids.length} recruit${ids.length === 1 ? "" : "s"}?`)) return;
+    const base = {
+      type,
+      startDate: isoToDisplayDate(startIso),
+      endDate: isoToDisplayDate(endIso),
+      days: +gv("f-days") || 0,
+      reason: gv("f-reason") || "",
+      isInCamp: gv("f-in-camp") === "true",
+      isInCampReviewed: true
+    };
+    const rows = ids.map(d4 => Object.assign({ id: nextId(), d4 }, base));
+    rows.forEach(r => STATE.leave.push(r));
+    saveLocal(); closeModal(); render();
+    if (STATE.apiUrl) autoSync("Leave", { type: "appendMany", rows });
+    return;
+  }
   const d4 = gv("f-d4");
   if (!d4) { alert("Pick a person (search by name / 4D)."); return; }
   const startIso = gv("f-start");
