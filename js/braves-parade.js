@@ -133,6 +133,31 @@ function bpOthersNotInCamp(reasonText, override) {
   return false; // default IN CAMP
 }
 
+// Collapse overlapping same-label entries within one person's section down to the
+// one whose status ENDS LAST. Entries are tagged at push time with supKey (the
+// exact label two rows must share to count as the same status) and supEnd (their
+// end date). Among rows sharing a supKey, the latest supEnd wins; a blank/open-
+// ended supEnd counts as ending last; ties keep the first. Untagged entries (no
+// supKey — e.g. appointments) are left alone, so distinct labels never merge.
+function bpSupersedeSameType(out, meta, section) {
+  const entries = meta[section];
+  if (!entries || entries.length < 2) return;
+  const endVal = e => (e ? e : "9999-99-99"); // blank end date = ends last
+  const winner = {};   // supKey → index of the current best (latest-ending) entry
+  const drop = new Set();
+  entries.forEach((m, i) => {
+    if (!m || m.supKey == null) return; // untagged: never superseded
+    const prev = winner[m.supKey];
+    if (prev == null) { winner[m.supKey] = i; return; }
+    if (endVal(m.supEnd) > endVal(entries[prev].supEnd)) { drop.add(prev); winner[m.supKey] = i; }
+    else { drop.add(i); }
+  });
+  if (!drop.size) return;
+  const o = [], mt = [];
+  entries.forEach((m, i) => { if (!drop.has(i)) { o.push(out[section][i]); mt.push(m); } });
+  out[section] = o; meta[section] = mt;
+}
+
 // ── Per-person classification (spec §8) ─────────────────────────────────────
 // Multi-section: a person may appear under several sections. Returns the section
 // → entry-line map for this one person, plus a binary notInCamp flag (counted
@@ -150,10 +175,14 @@ function bpClassifyPerson(r, dateIso, idx) {
   // Push to both `out` and `meta`, keeping the formatted line and its structured
   // record aligned. `body` is the text after "RN - "; the line is built exactly as
   // before (`${rn} - ${body}` trimmed) so output is unchanged.
-  const push2 = (section, body, type) => {
+  // `extra` (optional) carries the supersede tags {supKey, supEnd} used by
+  // bpSupersedeSameType below: supKey is the exact label two entries must share
+  // to be considered the same status, supEnd their end date (blank = open-ended).
+  // Untagged entries (no supKey) are never superseded.
+  const push2 = (section, body, type, extra) => {
     const line = `${rn} - ${body}`.trim();
     out[section].push(line);
-    meta[section].push({ line, reason: bpStripRN(line, rn), type });
+    meta[section].push(Object.assign({ line, reason: bpStripRN(line, rn), type }, extra || {}));
   };
 
   // Per-person rows: use the prebuilt d4→rows index when supplied (the Status
@@ -184,8 +213,9 @@ function bpClassifyPerson(r, dateIso, idx) {
     const reason = l.reason || l.type || "";
     const inCamp = l.isInCamp === true;
     if (inCamp) leaveOverride = true;
+    const leaveSup = { supKey: String(l.type || "").trim().toUpperCase(), supEnd: displayDateToISO(l.endDate || "") };
     if (bpIsAlOilType(l.type)) {
-      push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL");
+      push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL", leaveSup);
       notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
     } else {
       // Non-AL/OIL leave → OTHERS; the commander picks In Camp/Not In Camp
@@ -193,7 +223,7 @@ function bpClassifyPerson(r, dateIso, idx) {
       // where the old guess logic now only applies — form prefill/migration).
       const label = inCamp ? "OTHERS (IN CAMP)" : "OTHERS (NOT IN CAMP)";
       const rng = bpRange(l, false);
-      push2("others", `${reason}${rng ? " " + rng : ""} (${label})`, "OTHERS");
+      push2("others", `${reason}${rng ? " " + rng : ""} (${label})`, "OTHERS", leaveSup);
       if (!inCamp) notInCamp = true;
     }
   });
@@ -234,7 +264,7 @@ function bpClassifyPerson(r, dateIso, idx) {
     if (m.status === "MC" && medStatusActive(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D MC` : "MC";
-      push2("attC", `${label} ${bpRange(m, false)}`.trim(), "MC");
+      push2("attC", `${label} ${bpRange(m, false)}`.trim(), "MC", { supKey: "MC", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
 
@@ -247,14 +277,14 @@ function bpClassifyPerson(r, dateIso, idx) {
         && m.status !== "Pending" && m.status !== "NIL") {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D ${m.status}` : m.status;
-      push2("status", `${label} ${bpRange(m, true)}`.trim(), m.status);
+      push2("status", `${label} ${bpRange(m, true)}`.trim(), m.status, { supKey: String(m.status).trim(), supEnd: displayDateToISO(m.endDate || "") });
     }
 
     // Warded → OTHERS (NOT IN CAMP). Tagged type "WD" (not the generic "OTHERS")
     // so the Status Board grid/list can colour it as away rather than leaving it
     // indistinguishable from an in-camp OTHERS entry — see bpGridCell/bpPrimaryForDay.
     if (m.status === "Warded" && medStatusActive(m, dateIso)) {
-      push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "WD");
+      push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "WD", { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
   });
@@ -280,7 +310,7 @@ function bpClassifyPerson(r, dateIso, idx) {
     if (endedMc) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
-      push2("attC", `${label} ${bpRange(endedMc, false)}`.trim(), "MC");
+      push2("attC", `${label} ${bpRange(endedMc, false)}`.trim(), "MC", { supKey: "MC", supEnd: displayDateToISO(endedMc.endDate || "") });
       notInCamp = true;
     }
   }
@@ -307,6 +337,14 @@ function bpClassifyPerson(r, dateIso, idx) {
     });
     out[k] = o; meta[k] = mt;
   });
+  // Supersede overlapping same-label entries: when this person has two entries in
+  // a section that share the exact same status label (both active today, so they
+  // overlap by definition — the classifier only emits today's-active rows), keep
+  // only the one ENDING LAST and drop the earlier-ending duplicate(s). Runs before
+  // the STATUS collapse below so that surviving DISTINCT labels still fold into one
+  // "RN - a, b" line. Only the duration-bearing sections carry supKey/supEnd tags;
+  // untagged entries (appointments) pass through untouched.
+  ["alOil", "attC", "status", "others"].forEach(k => bpSupersedeSameType(out, meta, k));
   // STATUS multi-status collapse (DECISIONS #44): a recruit on several restricted
   // statuses from one visit (e.g. LD + Excuse RMJ) produced one line per row, so
   // they showed up as separate numbered entries. Since this classifier is per-

@@ -2976,10 +2976,40 @@ function bpOthersNotInCamp(reasonText, override) {
 // Multi-section: a person may appear under several sections. Returns the section
 // → entry-line map for this one person, plus a binary notInCamp flag (counted
 // once). Dedupe within a section is by exact line text.
+// Collapse overlapping same-label entries in one person's section down to the one
+// whose status ENDS LAST (js/braves-parade.js twin — keep both identical). `sup`
+// holds {supKey, supEnd} tags parallel to out[section]; among rows sharing a
+// supKey the latest supEnd wins, a blank supEnd counts as ending last, ties keep
+// the first. Untagged (null) entries — appointments — are never superseded.
+function bpSupersedeSameType(out, sup, section) {
+  const tags = sup[section];
+  if (!tags || tags.length < 2) return;
+  const endVal = e => (e ? e : "9999-99-99"); // blank end date = ends last
+  const winner = {}, drop = new Set();
+  tags.forEach((t, i) => {
+    if (!t || t.supKey == null) return; // untagged: never superseded
+    const prev = winner[t.supKey];
+    if (prev == null) { winner[t.supKey] = i; return; }
+    if (endVal(t.supEnd) > endVal(tags[prev].supEnd)) { drop.add(prev); winner[t.supKey] = i; }
+    else { drop.add(i); }
+  });
+  if (!drop.size) return;
+  const o = [], s = [];
+  out[section].forEach((line, i) => { if (!drop.has(i)) { o.push(line); s.push(tags[i]); } });
+  out[section] = o; sup[section] = s;
+}
+
 function bpClassifyPerson(r, dateIso) {
   const rn = bravesParadeRN(r.id);
   const out = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
   let notInCamp = false;
+
+  // Supersede tags, parallel to out[] for the duration-bearing sections only
+  // (js/braves-parade.js carries these on its `meta` twin — this file has no
+  // meta, so track them alongside). Every push into these four sections must go
+  // through pushS so the arrays stay index-aligned for bpSupersedeSameType.
+  const sup = { alOil: [], attC: [], status: [], others: [] };
+  const pushS = (section, line, tag) => { out[section].push(line); sup[section].push(tag || null); };
 
   // Leave → AL/OIL (in the AL/OIL type set) or OTHERS. Every leave row now
   // carries an explicit isInCamp — see js/braves-parade.js for the frontend
@@ -2999,15 +3029,16 @@ function bpClassifyPerson(r, dateIso) {
     const reason = l.reason || l.type || "";
     const inCamp = l.isInCamp === true;
     if (inCamp) leaveOverride = true;
+    const leaveSup = { supKey: String(l.type || "").trim().toUpperCase(), supEnd: displayDateToISO(l.endDate || "") };
     if (bpIsAlOilType(l.type)) {
-      out.alOil.push(`${rn} - ${reason} ${bpRange(l, true)}`.trim());
+      pushS("alOil", `${rn} - ${reason} ${bpRange(l, true)}`.trim(), leaveSup);
       notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
     } else {
       // Non-AL/OIL leave → OTHERS; the commander picks In Camp/Not In Camp
       // explicitly on every record (no more reason-keyword guessing here).
       const label = inCamp ? "OTHERS (IN CAMP)" : "OTHERS (NOT IN CAMP)";
       const rng = bpRange(l, false);
-      out.others.push(`${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim());
+      pushS("others", `${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim(), leaveSup);
       if (!inCamp) notInCamp = true;
     }
   });
@@ -3049,7 +3080,7 @@ function bpClassifyPerson(r, dateIso) {
     if (m.status === "MC" && medStatusActive(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D MC` : "MC";
-      out.attC.push(`${rn} - ${label} ${bpRange(m, false)}`.trim());
+      pushS("attC", `${rn} - ${label} ${bpRange(m, false)}`.trim(), { supKey: "MC", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
 
@@ -3062,12 +3093,12 @@ function bpClassifyPerson(r, dateIso) {
         && m.status !== "Pending" && m.status !== "NIL") {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D ${m.status}` : m.status;
-      out.status.push(`${rn} - ${label} ${bpRange(m, true)}`.trim());
+      pushS("status", `${rn} - ${label} ${bpRange(m, true)}`.trim(), { supKey: String(m.status).trim(), supEnd: displayDateToISO(m.endDate || "") });
     }
 
     // Warded → OTHERS (NOT IN CAMP).
     if (m.status === "Warded" && medStatusActive(m, dateIso)) {
-      out.others.push(`${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim());
+      pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
   });
@@ -3093,7 +3124,7 @@ function bpClassifyPerson(r, dateIso) {
     if (endedMc) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
-      out.attC.push(`${rn} - ${label} ${bpRange(endedMc, false)}`.trim());
+      pushS("attC", `${rn} - ${label} ${bpRange(endedMc, false)}`.trim(), { supKey: "MC", supEnd: displayDateToISO(endedMc.endDate || "") });
       notInCamp = true;
     }
   }
@@ -3107,12 +3138,22 @@ function bpClassifyPerson(r, dateIso) {
     if (displayDateToISO(a.date) !== dateIso) return;
     const outOfCamp = !!a.outOfCamp;
     const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
-    out.others.push(`${rn} - ${a.reason || "Appointment"} (${label})`.trim());
+    pushS("others", `${rn} - ${a.reason || "Appointment"} (${label})`.trim(), null); // appointments: point events, never superseded
     if (outOfCamp) notInCamp = true;
   });
 
-  // Dedupe each section by exact line first.
-  BP_SECTIONS.forEach(k => { out[k] = [...new Set(out[k])]; });
+  // Dedupe each section by exact line first, keeping the sup tags aligned for the
+  // four superseded sections (so bpSupersedeSameType below reads the right dates).
+  BP_SECTIONS.forEach(k => {
+    if (!sup[k]) { out[k] = [...new Set(out[k])]; return; }
+    const seen = new Set(), o = [], s = [];
+    out[k].forEach((line, i) => { if (seen.has(line)) return; seen.add(line); o.push(line); s.push(sup[k][i]); });
+    out[k] = o; sup[k] = s;
+  });
+  // Supersede overlapping same-label entries down to the one ending last (user
+  // rule; see the js/braves-parade.js twin for the full rationale). Runs before
+  // the STATUS collapse so surviving distinct labels still fold into one line.
+  ["alOil", "attC", "status", "others"].forEach(k => bpSupersedeSameType(out, sup, k));
   // STATUS multi-status collapse (DECISIONS #44): a recruit on several restricted
   // statuses from one visit (e.g. LD + Excuse RMJ) produced one line per row, so
   // they showed up as separate numbered entries. Since this classifier is per-
