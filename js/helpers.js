@@ -713,6 +713,45 @@ function ipptNetDelta(row) {
   return row.byAttempt[ns[ns.length - 1]] - row.byAttempt[ns[0]];
 }
 
+// ─── Parade-state compare (admin archive) ────────────────────
+// Line-level diff of two parade-state messages via LCS, so the compare view can
+// highlight what changed between two archived snapshots. Returns an ordered list
+// of { type: "same" | "add" | "del", text } — "del" = in a (base) only, "add" =
+// in b (compare) only. Parade texts are short (≤ a few hundred lines), so the
+// O(n·m) table is fine. No Array.from (test sandbox lacks it).
+function diffLines(aText, bText) {
+  const a = String(aText == null ? "" : aText).split("\n");
+  const b = String(bText == null ? "" : bText).split("\n");
+  const n = a.length, m = b.length;
+  const dp = [];
+  for (let i = 0; i <= n; i++) dp.push(new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ type: "same", text: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ type: "del", text: a[i] }); i++; }
+    else { out.push({ type: "add", text: b[j] }); j++; }
+  }
+  while (i < n) out.push({ type: "del", text: a[i++] });
+  while (j < m) out.push({ type: "add", text: b[j++] });
+  return out;
+}
+
+// True if an identical parade snapshot (same date + slot + type + message) is
+// already in the archive — so re-copying unchanged text doesn't pile up rows.
+function paradeSnapshotDup(archive, row) {
+  return (archive || []).some(r =>
+    String(r.date) === String(row.date) &&
+    String(r.slot) === String(row.slot) &&
+    String(r.type || "") === String(row.type || "") &&
+    String(r.message || "") === String(row.message || ""));
+}
+
 // Tallies aggregated entries by award tier. Returns ready-to-render counts
 // plus avg score (excluding YTT) and avg run seconds (excluding YTT).
 function computeIPPTStats(entries) {

@@ -53,8 +53,12 @@ function render() {
 // non-admin STATE never renders them.
 let _archiveTab = "parade";   // "parade" | "sick"
 let _archiveQuery = "";
-function setArchiveTab(t) { _archiveTab = t; render(); }
+let _archiveCompare = false;  // parade tab: list view vs two-snapshot diff view
+let _cmpLeft = 0, _cmpRight = 1;   // indices into the (newest-first) parade archive
+function setArchiveTab(t) { _archiveTab = t; _archiveCompare = false; render(); }
 function setArchiveQuery(q) { _archiveQuery = q; renderArchiveList(); }
+function setArchiveCompareMode(on) { _archiveCompare = on; renderArchive(document.getElementById("content")); }
+function setArchiveCmp(side, val) { if (side === "left") _cmpLeft = +val; else _cmpRight = +val; renderArchiveList(); }
 
 async function doArchiveNow(kind) {
   if (!STATE.apiUrl || !STATE.authToken) { alert("Not connected to the sheet — can't archive."); return; }
@@ -100,6 +104,7 @@ function renderArchive(el) {
       <div style="display:flex;gap:4px">
         <button class="btn ${_archiveTab === "parade" ? "btn-primary" : ""}" onclick="setArchiveTab('parade')">Parade State (${(STATE.paradeArchive || []).length})</button>
         <button class="btn ${_archiveTab === "sick" ? "btn-primary" : ""}" onclick="setArchiveTab('sick')">Report Sick (${(STATE.sickArchive || []).length})</button>
+        ${_archiveTab === "parade" ? `<button class="btn ${_archiveCompare ? "btn-primary" : ""}" onclick="setArchiveCompareMode(${!_archiveCompare})" title="Compare two archived parade states line-by-line">⇄ Compare</button>` : ""}
       </div>
       <input id="archive-search" placeholder="Filter by date / slot / text…" value="${escapeAttr(_archiveQuery)}" oninput="setArchiveQuery(this.value)"
         style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
@@ -112,6 +117,7 @@ function renderArchive(el) {
 function renderArchiveList() {
   const host = document.getElementById("archive-list");
   if (!host) return;
+  if (_archiveTab === "parade" && _archiveCompare) { renderArchiveCompare(host); return; }
   const rows = (_archiveTab === "parade" ? STATE.paradeArchive : STATE.sickArchive) || [];
   const q = _archiveQuery.trim().toLowerCase();
   // Newest first by timestamp (ISO); fall back to insertion order.
@@ -143,6 +149,39 @@ function renderArchiveList() {
       <pre id="${id}" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;max-height:320px;overflow:auto">${escapeAttr(r.message || "")}</pre>
     </div>`;
   }).join("");
+}
+
+// Compare two archived parade states line-by-line (admin only; the whole Archive
+// nav is already admin-gated). Reuses diffLines (helpers.js) over the stored
+// messages — including the exact hand-edited text captured at copy time.
+function renderArchiveCompare(host) {
+  const rows = (STATE.paradeArchive || []).slice()
+    .sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
+  if (rows.length < 2) {
+    host.innerHTML = `<div class="empty-state">Need at least two archived parade states to compare. Copy a parade state (or use “Archive Parade now”) to capture snapshots.</div>`;
+    return;
+  }
+  const li = Math.min(Math.max(_cmpLeft, 0), rows.length - 1);
+  const ri = Math.min(Math.max(_cmpRight, 0), rows.length - 1);
+  const optLabel = r => `${r.date || ""} ${r.slot || ""} ${r.type || ""}${r.timestamp ? " · " + new Date(r.timestamp).toLocaleString() : ""}`.trim();
+  const opts = sel => rows.map((r, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${escapeAttr(optLabel(r))}</option>`).join("");
+  const diff = diffLines(rows[li].message || "", rows[ri].message || "");
+  const added = diff.filter(d => d.type === "add").length;
+  const removed = diff.filter(d => d.type === "del").length;
+  const diffHtml = diff.map(d => {
+    const bg = d.type === "add" ? "rgba(63,185,80,.15)" : d.type === "del" ? "rgba(248,81,73,.15)" : "transparent";
+    const col = d.type === "add" ? "var(--green)" : d.type === "del" ? "var(--red)" : "var(--text)";
+    const mark = d.type === "add" ? "+" : d.type === "del" ? "−" : " ";
+    return `<div style="background:${bg};white-space:pre-wrap;word-break:break-word"><span style="color:${col};user-select:none">${mark} </span><span style="color:${col}">${escapeAttr(d.text)}</span></div>`;
+  }).join("");
+  host.innerHTML = `
+    <div class="card" style="margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <label style="font-size:12px;color:var(--muted)">Base <select class="topbar-select" onchange="setArchiveCmp('left', this.value)">${opts(li)}</select></label>
+      <span style="color:var(--muted)">→</span>
+      <label style="font-size:12px;color:var(--muted)">Compare <select class="topbar-select" onchange="setArchiveCmp('right', this.value)">${opts(ri)}</select></label>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto"><span style="color:var(--green)">+${added}</span> / <span style="color:var(--red)">−${removed}</span> lines</span>
+    </div>
+    ${li === ri ? `<div class="empty-state">Pick two different snapshots to see a diff.</div>` : `<div class="card" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.5;max-height:60vh;overflow:auto">${diffHtml}</div>`}`;
 }
 
 // Delete one archived message (admin-only; backend re-checks the role). Matches

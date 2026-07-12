@@ -173,6 +173,27 @@ async function copyParadeText() {
   const ta = document.getElementById("parade-text");
   if (!ta) return;
   await paradeCopyString(ta.value, "parade-copy-btn");
+  archiveParadeSnapshot(ta.value);
+}
+
+// Archive the exact copied parade text (incl. hand edits) so it can be compared
+// later in the admin Archive → Compare view. Copy is the "this is what was sent"
+// moment. Admin-only (paradeArchive is admin-only) and fire-and-forget — a failed
+// or blocked archive must NEVER interfere with the copy. Optimistically prepends
+// the row to STATE.paradeArchive so the compare picker sees it immediately;
+// deduped so re-copying identical text doesn't pile up rows.
+function archiveParadeSnapshot(text) {
+  if (!text || typeof isAdminRole !== "function" || !isAdminRole()) return;
+  if (!STATE.apiUrl || !STATE.authToken) return;
+  const row = {
+    timestamp: new Date().toISOString(),
+    date: paradeCurrentDateISO(), slot: String(_paradeTime || ""),
+    type: _paradeType || "", scope: "company", message: String(text)
+  };
+  if (paradeSnapshotDup(STATE.paradeArchive, row)) return;
+  STATE.paradeArchive = [row, ...(STATE.paradeArchive || [])];
+  Promise.resolve(API.archiveNow("parade", { text: row.message, type: row.type, date: row.date, slot: row.slot, scope: row.scope }))
+    .catch(() => { /* quiet by design — the copy already succeeded */ });
 }
 
 // Copy a single platoon/HQ block's standalone parade-state text. Reads the
