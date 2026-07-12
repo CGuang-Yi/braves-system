@@ -158,6 +158,30 @@ function sectionsInPlatoon(platoonCode) {
   });
 }
 
+// Resolve a bulk-scope selector to recruit ids, for the Leave/Out form's
+// "Apply to" feature. Commanders are excluded — bulk leave targets recruits.
+// NOT camp-filtered: an out-of-camp recruit can still be put on leave.
+//   scope = "company" | "plt:<code>" | "sect:<code>:<section>"
+// where <code> is a personPlatoon value ("PLT1"/"HQ") and <section> a
+// personSection value. Unknown/blank scope → [].
+function scopeRecruits(scope) {
+  const recruits = (STATE.roster || []).filter(r => r.role !== "Commander");
+  if (!scope || scope === "company") return recruits.map(r => r.id);
+  if (scope.indexOf("plt:") === 0) {
+    const code = scope.slice(4);
+    return recruits.filter(r => personPlatoon(r) === code).map(r => r.id);
+  }
+  if (scope.indexOf("sect:") === 0) {
+    const rest = scope.slice(5);
+    const cut = rest.lastIndexOf(":");
+    const code = rest.slice(0, cut), sect = rest.slice(cut + 1);
+    return recruits
+      .filter(r => personPlatoon(r) === code && String(personSection(r)) === String(sect))
+      .map(r => r.id);
+  }
+  return [];
+}
+
 // URTI auto-classification from PURPOSE keywords (spec §10.3). Pre-fills the
 // medical form's urtiType; always commander-overridable.
 function classifyURTI(purpose) {
