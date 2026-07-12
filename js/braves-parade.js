@@ -490,6 +490,12 @@ function bpBuildBlock(people, dateIso, type, opts) {
   [...people].sort((a, b) => bp4DNum(a) - bp4DNum(b)).forEach(r => {
     if (!bpIsActive(r)) return;
     const c = bpClassifyPerson(r, dateIso);
+    // A person is listed under EVERY section their classification populates —
+    // multi-section listing is the rule (spec §"Listing is multi-section"): e.g.
+    // active MC (ATT C) + a non-AL/OIL leave (OTHERS), or STATUS + MR. Do NOT add
+    // cross-section suppression here — upstream cougar-system dedupes ATTC vs
+    // OTHERS, which would violate the Braves spec. The only dedup is per-person
+    // WITHIN a section (bpClassifyPerson/bpSupersedeSameType already handle it).
     BP_SECTIONS.forEach(k => { c.sections[k].forEach(line => buckets[k].push(line)); });
   });
 
