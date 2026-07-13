@@ -4138,7 +4138,7 @@ function renderLogConductWizard() {
     const rows = (w[key] || []).map((row, i) => `
       <div class="lc-wiz-bulk-row" style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 32px;gap:8px;align-items:center;padding:8px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
         <span class="mono" style="color:var(--muted);font-size:12px;font-weight:700">${String(i + 1).padStart(2, "0")}</span>
-        <div style="min-width:0">${rosterSelect(`wiz-${key}-d4-${i}`, true, row.d4, "Recruit", { onchange: `wizUpdateRowD4('${key}', ${i}, this.value)` })}</div>
+        <div style="min-width:0">${personSearchBox({ boxId: `wiz-${key}-d4-${i}`, onPickFn: "wizPickRow", roleFilter: "Recruit", selected: row.d4, placeholder: "Search name / 4D…" })}</div>
         <input type="text" value="${escapeAttr(row.reason)}" placeholder="reason" oninput="wizUpdateRowReason('${key}', ${i}, this.value)" style="min-width:0;width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
         <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveRow('${key}', ${i})" title="Remove" style="padding:4px 8px">✕</button>
       </div>
@@ -4311,6 +4311,14 @@ function wizUpdateRowD4(section, idx, v) {
   _logConduct[section][idx].d4 = v;
   updateLogConductOverlapWarning();
 }
+// personSearchBox pick handler for the report-sick/fallout row typeaheads.
+// One handler serves every row; the section key + row index are recovered from
+// the box id (`wiz-<section>-d4-<idx>`, set in sectionList above).
+function wizPickRow(d4, boxId) {
+  const m = /^wiz-(\w+)-d4-(\d+)$/.exec(boxId || "");
+  if (!m) return;
+  wizUpdateRowD4(m[1], Number(m[2]), d4);
+}
 function wizUpdateRowReason(section, idx, v) {
   if (!_logConduct[section][idx]) return;
   _logConduct[section][idx].reason = v;
@@ -4412,7 +4420,9 @@ function wizPickIndividual(d4) {
 // medical log form — mirrors the topbar search (js/main.js): case-insensitive
 // substring on 4D or name, capped result list. The HTML-string architecture
 // rules out closures, so callers pass the NAME of a global pick handler
-// (onPickFn), invoked as onPickFn('<d4>'). The chosen 4D is mirrored into a
+// (onPickFn), invoked as onPickFn('<d4>', '<boxId>') — the boxId lets one
+// shared handler serve many boxes (e.g. the report-sick/fallout row lists).
+// The chosen 4D is mirrored into a
 // hidden input (valueId) so plain gv()/querySelector reads keep working.
 function personSearchBox({ boxId, onPickFn = "", valueId = "", placeholder = "Search name / 4D…", roleFilter = "", selected = "" }) {
   valueId = valueId || `${boxId}-value`;
@@ -4466,7 +4476,11 @@ function personSearchPick(boxId, onPickFn, valueId, d4) {
   if (hidden) hidden.value = d4;
   if (input) input.value = `${displayId(d4)} ${getName(d4)}`;
   if (res) { res.style.display = "none"; res.innerHTML = ""; }
-  if (onPickFn && typeof window[onPickFn] === "function") window[onPickFn](d4);
+  // Pass boxId as a 2nd arg so a shared handler can tell WHICH box was picked
+  // (the report-sick/fallout rows all route to one wizPickRow and parse the
+  // row index out of the boxId). Single-box callers like wizPickIndividual
+  // just ignore the extra arg.
+  if (onPickFn && typeof window[onPickFn] === "function") window[onPickFn](d4, boxId);
 }
 
 // === Totals / overlap helpers ===========================================
