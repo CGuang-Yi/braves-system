@@ -207,7 +207,7 @@
  *                Roster platoon dropdown derive options from active rows.)
  */
 
-var FRONTEND_BASE_URL = "https://coon-hound.github.io/cougar-system/";
+var FRONTEND_BASE_URL = "https://cguang-yi.github.io/braves-system/";
 
 // ─── ROUTING ───────────────────────────────────────────
 
