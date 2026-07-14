@@ -1387,6 +1387,27 @@ function renderConductDetail(el) {
     </div>`;
 }
 
+// Report Sick Log date-range filter (by the REPORTED date). Both bounds
+// optional; ISO strings straight from the <input type="date"> controls, which
+// live in the toolbar (outside #med-results) so they survive a rows-only re-render.
+let _medDateFrom = "", _medDateTo = "";
+function medSetDateFrom(v) { _medDateFrom = v; renderMedicalRows(); }
+function medSetDateTo(v) { _medDateTo = v; renderMedicalRows(); }
+function medClearDates() {
+  _medDateFrom = ""; _medDateTo = "";
+  const f = document.getElementById("med-date-from"); if (f) f.value = "";
+  const t = document.getElementById("med-date-to"); if (t) t.value = "";
+  renderMedicalRows();
+}
+// Short weekday for a display date ("15 Jun 2026" → "Mon"). Fixed array rather
+// than toLocaleDateString so it's locale-stable. "" when the date can't parse.
+const _DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function medDayOfWeek(displayDate) {
+  const iso = displayDateToISO(displayDate) || "";
+  if (!iso) return "";
+  return _DOW_SHORT[new Date(iso + "T00:00:00").getDay()] || "";
+}
+
 function renderMedical(el) {
   const visible = visibleD4Set();
   const scoped = STATE.medical.filter(m => passesFilter(m.d4, visible));
@@ -1442,6 +1463,12 @@ function renderMedical(el) {
         <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻<span class="btn-label"> Re-push all</span></button>
         <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥<span class="btn-label"> Import Sick History (xlsx)</span><input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
         ${listSearchInput("medical", "Search name / 4D…")}
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)" title="Filter the list by reported date">
+          <input type="date" id="med-date-from" value="${_medDateFrom}" onchange="medSetDateFrom(this.value)" style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:11px">
+          <span>–</span>
+          <input type="date" id="med-date-to" value="${_medDateTo}" onchange="medSetDateTo(this.value)" style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:11px">
+          <button class="btn btn-icon" onclick="medClearDates()" title="Clear date filter">✕</button>
+        </span>
         <button class="btn btn-primary" onclick="openMedicalForm()">+<span class="btn-label"> Log Report Sick</span></button>
       </div>
     </div>
@@ -1471,6 +1498,18 @@ function renderMedicalRows() {
   let medRows = _medQ
     ? rowsWithTag.filter(({ m }) => { const nm = (getName(m.d4) || "").toLowerCase(); return nm.includes(_medQ) || String(m.d4).toLowerCase().includes(_medQ); })
     : rowsWithTag;
+  // Reported-date range (list rows only — mirrors how the search box scopes the
+  // list but not the stats tiles / "Most Reports Sick" panel). ISO compares work
+  // directly since both the bounds and displayDateToISO output are YYYY-MM-DD.
+  if (_medDateFrom || _medDateTo) {
+    medRows = medRows.filter(({ m }) => {
+      const iso = displayDateToISO(m.date) || "";
+      if (!iso) return false;
+      if (_medDateFrom && iso < _medDateFrom) return false;
+      if (_medDateTo && iso > _medDateTo) return false;
+      return true;
+    });
+  }
   medRows = listApplySort("medical", medRows, {
     reported: x => displayDateToISO(x.m.startDate || x.m.date) || "",
     fourD: x => x.m.d4 || "",
@@ -1488,7 +1527,7 @@ function renderMedicalRows() {
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${medRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("medical", "reported", "Reported")}${sortTh("medical", "fourD", "4D")}${sortTh("medical", "name", "Name", "left")}<th style="text-align:left">Reason</th>${sortTh("medical", "status", "Status")}<th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td>${m.date || ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(m.d4))}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${escapeHTML(m.reason || "")}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${escapeHTML(m.urtiType)}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; const _dow = m.date ? medDayOfWeek(m.date) : ""; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td style="white-space:nowrap">${m.date || ""}${_dow ? ` <span style="color:var(--dim);font-size:10px">${_dow}</span>` : ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(m.d4))}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${escapeHTML(m.reason || "")}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${escapeHTML(m.urtiType)}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
         </tbody></table></div>` : `<div class="empty-state">${_medQ ? "No records match the search." : (STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet.")}</div>`}
       </div>
       <div class="card">
@@ -2788,8 +2827,8 @@ function renderSBGrid() {
       cells += `<td class="sb-td${i === 0 ? " sb-wkstart" : ""}${i >= 5 ? " sb-weekend" : ""}">${inner}</td>`;
     }));
     body += `<tr>
-      <td class="sb-id">${r.role !== "Commander" && r.fourD ? `${configGet("companyPrefix")}${r.fourD}` : escapeAttr(r.id)}</td>
-      <td class="sb-name">${escapeAttr(r.name || "")}</td>
+      <td class="sb-id" data-person="${escapeAttr(r.id)}" style="cursor:pointer" title="Open person card">${r.role !== "Commander" && r.fourD ? `${configGet("companyPrefix")}${r.fourD}` : escapeAttr(r.id)}</td>
+      <td class="sb-name" data-person="${escapeAttr(r.id)}" style="cursor:pointer" title="Open person card">${escapeAttr(r.name || "")}</td>
       ${cells}
       <td style="font-weight:700;text-align:center">${c.rsi + c.rso}</td>
     </tr>`;
@@ -2819,6 +2858,9 @@ function renderSBGrid() {
 // instead of an inline onclick per ~35×N cells — far less HTML + far fewer
 // closures, which is what made iOS Chrome lag on the company-wide grid.
 function sbGridClick(e) {
+  // 4D / Name column → full person card; day cell → lightweight day-detail popover.
+  const person = e.target.closest("[data-person]");
+  if (person) { openPerson(person.dataset.person); return; }
   const cell = e.target.closest("[data-iso]");
   if (cell && cell.dataset.d4) openSBCellDetail(cell.dataset.d4, cell.dataset.iso);
 }

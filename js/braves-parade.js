@@ -320,7 +320,12 @@ function bpClassifyPerson(r, dateIso, idx) {
     if (endedMc && sinceEnd <= 2) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
-      push2("attC", `${label} ${bpRange(endedMc, false)}`.trim(), "MC", { supKey: "MC", supEnd: displayDateToISO(endedMc.endDate || "") });
+      // `persisted:true` marks this as the book-in tail (MC ended, roster mirror
+      // still "MC"), not a genuinely-active MC today. Parade state / strength /
+      // the A7 live list still treat it as ATT C (they don't read this flag), but
+      // the Status Board calendar grid uses it to stop colouring MC past the real
+      // end date — the grid shows the MC's actual duration, not the un-booked tail.
+      push2("attC", `${label} ${bpRange(endedMc, false)}`.trim(), "MC", { supKey: "MC", supEnd: displayDateToISO(endedMc.endDate || ""), persisted: true });
       notInCamp = true;
     }
   }
@@ -425,8 +430,13 @@ function bpGridCell(r, dateIso, idx) {
   const hasRSI = c.meta.reportingSick.some(x => x.type === "RSI");
   const hasWarded = c.meta.others.some(x => x.type === "WD");
   let primary = null;
+  // Only colour MC for a genuinely-active MC that day — skip the "persisted"
+  // book-in tail (MC ended, nobody booked them in). The grid shows the MC's real
+  // duration; the person still counts as ATT C in parade state / A7 (those don't
+  // read this flag). If the only ATT C entry is the persisted tail, fall through.
+  const activeMC = c.meta.attC.some(x => !x.persisted);
   if (s.alOil.length) primary = "LV";
-  else if (s.attC.length) primary = "MC";
+  else if (activeMC) primary = "MC";
   else if (hasWarded) primary = "WD";   // OTHERS-section but away-not-in-camp, same tier as ATT C
   else if (s.status.length) {
     // type is "LD" for an LD row; for the collapsed multi-status line it becomes
