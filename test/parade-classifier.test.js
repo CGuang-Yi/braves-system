@@ -277,17 +277,29 @@ module.exports = async function run() {
     eq(sb.bpSickFollowUp({ status: "Pending", startDate: TODAY }), "");
   });
 
-  suite("parade classifier: an ENDED MC persists under ATT C until manually booked in (roster-status mirror)");
+  suite("parade classifier: an ENDED MC persists under ATT C through the MC+1/MC+2 window, then auto-hides");
 
-  await test("MC ended + roster.status still 'MC' → stays under ATT C, not in camp", () => {
-    // MC 25–27 Jun, TODAY is 29 Jun (ended two days ago); nobody has booked them
-    // back in, so the roster mirror still reads "MC".
+  await test("MC ended two days ago (MC+2) + roster.status still 'MC' → stays under ATT C, not in camp", () => {
+    // MC 25–27 Jun, TODAY is 29 Jun (ended two days ago, so still inside the
+    // MC+1/MC+2 recovery window); nobody has booked them back in, so the roster
+    // mirror still reads "MC".
     const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-25", endDate: "2026-06-27" }]);
     person(sb).status = "MC";
     const c = sb.bpClassifyPerson(person(sb), TODAY);
-    eq(c.sections.attC.length, 1, "ended MC should persist under ATT C");
+    eq(c.sections.attC.length, 1, "ended MC within the ghost window should persist under ATT C");
     ok(c.sections.attC[0].includes("3D MC"), `expected the real 3D MC dates, got: ${c.sections.attC[0]}`);
     ok(c.notInCamp, "a persisted MC still counts as out of camp");
+  });
+
+  await test("MC ended three days ago (past MC+2) + stale roster.status 'MC' → AUTO-HIDDEN, present", () => {
+    // MC 24–26 Jun, TODAY is 29 Jun (ended three days ago → past the MC+1/MC+2
+    // window). The mirror is a stale "MC" nobody cleared; it must no longer park
+    // the recruit under ATT C ("shows MC but not actually on MC" fix).
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-24", endDate: "2026-06-26" }]);
+    person(sb).status = "MC";
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 0, "a long-lapsed MC must auto-hide from ATT C");
+    ok(!c.notInCamp, "a long-lapsed MC no longer counts as out of camp");
   });
 
   await test("MC ended + roster.status 'Active' (booked in) → dropped from ATT C, present", () => {
@@ -312,25 +324,25 @@ module.exports = async function run() {
     eq(c.sections.attC.length, 0, "persistence must not back-date onto pre-MC days on the Status Board");
   });
 
-  await test("roster.status still 'MC' in the gap before a later MC → persist the earlier ENDED MC (mirror is the source of truth)", () => {
-    // MC1 01–03 Jun, MC2 20–22 Jun. The roster mirror still reads "MC", so the
-    // recruit was NEVER booked in — a later MC episode does not imply book-in.
-    // Every day the mirror reads "MC" and no MC is active, they stay out of camp
-    // on their most recent ENDED MC's dates, until someone marks them present.
+  await test("mirror 'MC' with a later MC → persist only within that MC's ghost window, auto-hide after", () => {
+    // MC1 01–03 Jun, MC2 20–22 Jun. The mirror still reads "MC" (never booked in).
+    // The ghost window is now bounded to MC+1/MC+2 of the MOST RECENT ended MC.
     const sb = loadParade([
       { id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-01", endDate: "2026-06-03" },
       { id: 2, d4: "0001", type: "", status: "MC", startDate: "2026-06-20", endDate: "2026-06-22" }
     ]);
     person(sb).status = "MC";
-    // In the gap (10 Jun) MC1 has ended and MC2 is still in the future → persist MC1.
+    // 10 Jun: MC1 ended 7 days ago (past MC+2), MC2 still future → auto-hidden.
     const gap = sb.bpClassifyPerson(person(sb), "2026-06-10");
-    eq(gap.sections.attC.length, 1, "an un-booked-in recruit stays out of camp in the gap");
-    ok(gap.notInCamp, "a persisted MC in the gap still counts as out of camp");
-    ok(gap.sections.attC[0].includes("010626-030626"), `expected MC1's dates, got: ${gap.sections.attC[0]}`);
-    // After the latest MC (MC2) ends, its dates drive the persisted tail.
-    const tail = sb.bpClassifyPerson(person(sb), "2026-06-25");
-    eq(tail.sections.attC.length, 1, "the tail after the latest ended MC still persists");
+    eq(gap.sections.attC.length, 0, "a long-lapsed MC in the gap must auto-hide");
+    ok(!gap.notInCamp, "auto-hidden gap MC is not out of camp");
+    // 24 Jun: MC2 ended two days ago (MC+2) → still within the window, persists.
+    const tail = sb.bpClassifyPerson(person(sb), "2026-06-24");
+    eq(tail.sections.attC.length, 1, "the MC+2 tail after the latest ended MC persists");
     ok(tail.sections.attC[0].includes("200626-220626"), `expected MC2's dates, got: ${tail.sections.attC[0]}`);
+    // 26 Jun: MC2 ended four days ago (past MC+2) → auto-hidden.
+    const after = sb.bpClassifyPerson(person(sb), "2026-06-26");
+    eq(after.sections.attC.length, 0, "past the window the tail auto-hides too");
   });
 
   suite("parade classifier: overlapping same-type statuses collapse to the one ending last");
