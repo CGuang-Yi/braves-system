@@ -3106,25 +3106,32 @@ function bpClassifyPerson(r, dateIso) {
     }
   });
 
-  // Persist an ENDED MC until manual book-in. `r.status` mirrors the recruit's
-  // latest medical status (submitMedical writes MC/LD/… back onto the roster
-  // row); if it still reads "MC" yet no MC is active today, their MC has lapsed
-  // with no follow-up and nobody has booked them back in — keep them under ATT C
-  // (still counted OUT of camp) using their most recent ended MC's real dates.
-  // A manual code change in the Parade State tab (or any new MO status) rewrites
-  // r.status and drops them. Only fires AFTER an MC's end date (endDate < dateIso)
-  // so it can't back-date onto pre-MC or still-active days on the Status Board.
+  // Persist an ENDED MC through the MC+1/MC+2 recovery window, then AUTO-HIDE.
+  // `r.status` mirrors the recruit's latest medical status (submitMedical writes
+  // MC/LD/… back onto the roster row); if it still reads "MC" yet no MC is active
+  // today, their MC has lapsed with no follow-up and nobody booked them back in.
+  // For the first two days after the end date we keep them under ATT C (still
+  // counted OUT of camp) using their most recent ended MC's real dates — the same
+  // MC+1/MC+2 grace the ghost tags mark. Once the MC ended MORE than 2 days ago we
+  // STOP persisting: a stale mirror that was never cleared should not park the
+  // recruit under ATT C forever (that produced the "shows MC but not actually on
+  // MC" rows on the Status Board). A manual book-in or any new MO status still
+  // rewrites r.status; this bound only stops the *display* from clinging to a
+  // long-dead MC.
   //
-  // The roster-status mirror is the SOLE source of truth for "booked in": while it
-  // still reads "MC", the recruit is out of camp — even across a gap before a later
-  // MC episode. A future/later MC does NOT imply they booked in from the earlier one
-  // (only a manual "mark present" clears the mirror to Active), so persist the most
-  // recent ALREADY-ENDED MC's dates, not the latest MC overall.
+  // This affects CURRENT strength only (in/out of camp). roster.status="MC" still
+  // counts toward TOTAL strength via bpIsActive, so PR #42's protection (MC people
+  // must not drop out of total strength) is untouched. Only the most recent
+  // ALREADY-ENDED MC is considered (endDate < dateIso) — a future/later MC does
+  // not imply book-in from an earlier one.
   if (String(r.status || "").trim() === "MC" && !out.attC.length) {
     const endedMc = STATE.medical
       .filter(m => m.d4 === r.id && m.status === "MC" && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
       .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
-    if (endedMc) {
+    const endIso = endedMc ? displayDateToISO(endedMc.endDate || "") : "";
+    // Days since the MC ended; the ghost window is offsets 1–2 (MC+1 / MC+2).
+    const sinceEnd = endIso ? Math.round((new Date(dateIso + "T00:00:00") - new Date(endIso + "T00:00:00")) / 86400000) : 99;
+    if (endedMc && sinceEnd <= 2) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
       pushS("attC", `${rn} - ${label} ${bpRange(endedMc, false)}`.trim(), { supKey: "MC", supEnd: displayDateToISO(endedMc.endDate || "") });
