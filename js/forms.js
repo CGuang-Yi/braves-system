@@ -1178,15 +1178,40 @@ function submitSOC() {
 
 function importIPPT(input) {
   Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => {
-    const missing = checkCols(r.meta.fields, ["4D", "Score"]);
-    if (missing.length) { alert("CSV missing required columns: " + missing.join(", ") + "\n\nExpected: 4D, Attempt, Date, Push-ups, Sit-ups, 2.4km, Score"); return; }
-    r.data.forEach(row => STATE.ippt.push({
-      id: nextId(), d4: col(row, "4D", "id"), attempt: colNum(row, "Attempt", "#", "attempt"),
-      date: col(row, "Date", "date"), pushups: colNum(row, "Push-ups", "Pushups", "PU", "push-ups"),
-      situps: colNum(row, "Sit-ups", "Situps", "SU", "sit-ups"), runTime: col(row, "2.4km", "Run", "RunTime", "run time", "2.4"),
-      score: colNum(row, "Score", "Total", "Total Score", "score")
-    }));
-    saveLocal(); render(); alert(`Imported ${r.data.length} IPPT rows`);
+    // Score is optional: when the cell is blank we derive it from the reps/run
+    // time + roster age via the same calculateIPPTScore() the manual form uses.
+    const missing = checkCols(r.meta.fields, ["4D"]);
+    if (missing.length) { alert("CSV missing required column: " + missing.join(", ") + "\n\nExpected: 4D, Attempt, Date, Push-ups, Sit-ups, 2.4km, Score\n(Score is optional — auto-calculated from stations + roster age when blank.)"); return; }
+    let autoScored = 0;
+    const uncalculated = [];  // 4Ds imported with a blank score we couldn't derive
+    r.data.forEach(row => {
+      const d4 = col(row, "4D", "id");
+      const pushups = colNum(row, "Push-ups", "Pushups", "PU", "push-ups");
+      const situps = colNum(row, "Sit-ups", "Situps", "SU", "sit-ups");
+      const runTime = col(row, "2.4km", "Run", "RunTime", "run time", "2.4");
+      const rawScore = col(row, "Score", "Total", "Total Score", "score");
+      // A CSV "0" is a real score (YTT/Fail) — only a truly empty cell triggers calc.
+      let score;
+      if (String(rawScore).trim() !== "") {
+        score = +rawScore || 0;
+      } else {
+        // padD4 so the roster lookup canonicalizes the same way stored ids do.
+        const person = STATE.roster.find(x => x.id === padD4(d4));
+        const result = person?.age ? calculateIPPTScore(person.age, pushups, situps, runTime) : null;
+        if (result) { score = result.total; autoScored++; }
+        else { score = ""; uncalculated.push(d4); }
+      }
+      STATE.ippt.push({
+        id: nextId(), d4, attempt: colNum(row, "Attempt", "#", "attempt"),
+        date: col(row, "Date", "date"), pushups, situps, runTime, score
+      });
+    });
+    saveLocal(); render();
+    let msg = `Imported ${r.data.length} IPPT rows`;
+    if (autoScored) msg += ` (${autoScored} auto-scored)`;
+    msg += ".";
+    if (uncalculated.length) msg += `\n\n${uncalculated.length} row(s) had no score and couldn't be auto-calculated (age missing from roster or incomplete stations):\n${uncalculated.join(", ")}`;
+    alert(msg);
   } }); input.value = "";
 }
 function importRM(input) {
