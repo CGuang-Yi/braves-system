@@ -1185,19 +1185,31 @@ function importIPPT(input) {
     let autoScored = 0;
     const uncalculated = [];  // 4Ds imported with a blank score we couldn't derive
     r.data.forEach(row => {
-      const d4 = col(row, "4D", "id");
-      const pushups = colNum(row, "Push-ups", "Pushups", "PU", "push-ups");
-      const situps = colNum(row, "Sit-ups", "Situps", "SU", "sit-ups");
+      // padD4 up front so the stored id and the roster lookup canonicalize the
+      // same way — a "123"/"C0123" CSV id otherwise renders blank (no roster
+      // join) until the next server pull re-pads the layer.
+      const d4 = padD4(col(row, "4D", "id"));
+      const pushupsRaw = col(row, "Push-ups", "Pushups", "PU", "push-ups");
+      const situpsRaw = col(row, "Sit-ups", "Situps", "SU", "sit-ups");
       const runTime = col(row, "2.4km", "Run", "RunTime", "run time", "2.4");
       const rawScore = col(row, "Score", "Total", "Total Score", "score");
-      // A CSV "0" is a real score (YTT/Fail) — only a truly empty cell triggers calc.
+      const pushups = +pushupsRaw || 0;
+      const situps = +situpsRaw || 0;
+      // A CSV "0" is a real score (YTT/Fail) and is kept verbatim. A blank OR
+      // non-numeric placeholder ("N/A", "-", "TBC") is treated as no-score and
+      // falls through to auto-calc rather than being coerced to a bogus 0.
+      const hasScore = String(rawScore).trim() !== "" && Number.isFinite(+rawScore);
       let score;
-      if (String(rawScore).trim() !== "") {
-        score = +rawScore || 0;
+      if (hasScore) {
+        score = +rawScore;
       } else {
-        // padD4 so the roster lookup canonicalizes the same way stored ids do.
-        const person = STATE.roster.find(x => x.id === padD4(d4));
-        const result = person?.age ? calculateIPPTScore(person.age, pushups, situps, runTime) : null;
+        // Auto-calc only when the roster age AND all three stations are present.
+        // A blank station coerces to 0 reps, which calculateIPPTScore happily
+        // scores (lookupRepScore never returns null for low reps) — that would
+        // silently understate the total instead of reporting it uncalculable.
+        const stationsComplete = [pushupsRaw, situpsRaw, runTime].every(v => String(v).trim() !== "");
+        const person = STATE.roster.find(x => x.id === d4);
+        const result = (person?.age && stationsComplete) ? calculateIPPTScore(person.age, pushups, situps, runTime) : null;
         if (result) { score = result.total; autoScored++; }
         else { score = ""; uncalculated.push(d4); }
       }
