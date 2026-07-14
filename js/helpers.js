@@ -607,6 +607,16 @@ function medTagBadge(tag) {
   return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:${p.bg};color:${p.fg};border:1px solid ${p.bd}">${tag}</span>`;
 }
 
+// Small grey pill for a medical record's VISIT type (RSI/RSO/MR/…), shown before
+// the reason. Appends the MR timing ("MR AM") when present. "" when no type.
+// Shared by the Medical list rows (render.js) and the person-card medical
+// history (forms.js) — keep the two call sites reading from this one badge.
+function medTypeBadge(m) {
+  if (!m || !m.type) return "";
+  const timing = m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : "";
+  return `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${timing}</span>`;
+}
+
 // Format a record's date range as "16 May – 20 May (5D)" for display.
 function medDurationLabel(record) {
   if (record.status === "Pending") return `${record.startDate || record.date || ""} · awaiting MO`;

@@ -89,9 +89,17 @@ ordered.forEach(({ r, group }) => {
   const plClean = plt === "HQ" || /^PLT\d+$/.test(plt) || plt === "";
   const secClean = sect === "" || sect === "Command" || /^\d+$/.test(sect);
   if (!plClean || !secClean) flags.order.push(`${r.id}: plt="${plt}" sect="${sect}"`);
-  // Stale-mirror persisted ATT C: cell says MC but no medical row is active today
-  if (cell.primary === "MC" && !activeMeds.some(m => m.status === "MC"))
-    flags.stale.push(`${r.id}: shows MC via roster.status="${r.status}" but no MC active today`);
+  // Stale roster.status mirror: reads "MC" while no MC medical row is active
+  // today. Keyed off the mirror + active meds, NOT cell.primary — PR #57's grid
+  // stops colouring the persisted MC+1/MC+2 tail (cell.primary goes null there),
+  // so a cell-colour check would miss exactly the stale-mirror people this flag
+  // exists to surface. Note whether parade still parks them under ATT C (inside
+  // the MC+1/MC+2 persist window) or they've auto-hidden with the mirror uncleared.
+  if (String(r.status || "").trim() === "MC" && !activeMeds.some(m => m.status === "MC")) {
+    const parked = p.primary && p.primary.key === "attC";
+    flags.stale.push(`${r.id}: roster.status="MC" but no MC active today` +
+      (parked ? " (parked under ATT C — MC+1/MC+2 persist window)" : " (auto-hidden; mirror never cleared)"));
+  }
   meds.forEach(m => {
     if (!sb.medStatusActive(m, TODAY)) return;
     const d = sb.bpInclusiveDays(m);
@@ -102,7 +110,7 @@ ordered.forEach(({ r, group }) => {
 console.log(`\n\n===== FLAGS =====`);
 console.log(`\nORDER anomalies (won't group cleanly) — ${flags.order.length}:`);
 flags.order.forEach(x => console.log("  " + x));
-console.log(`\nSTALE-mirror persisted MC (shown today with no active MC row) — ${flags.stale.length}:`);
+console.log(`\nSTALE roster.status="MC" mirror (no active MC row today) — ${flags.stale.length}:`);
 flags.stale.slice(0, 40).forEach(x => console.log("  " + x));
 console.log(`\nLONG durations (>21D, likely blank startDate) — ${flags.longdur.length}:`);
 flags.longdur.slice(0, 40).forEach(x => console.log("  " + x));

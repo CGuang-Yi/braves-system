@@ -148,20 +148,26 @@ function cmdr_(id, name, rank, rankGroup, platoon, section) {
   };
 }
 
-function buildRoster_(people, rng) {
+function buildRoster_(people, rng, mirrorMcD4s) {
   var headers = ["4d", "name", "age", "status", "notes", "phone", "email",
     "ration", "allergies", "msk", "highest education level",
     "motorcycle license", "height", "weight", "role", "rank",
     "leaveQuota", "platoon", "section", "rankGroup", "fourD"];
   var EDU = ["ITE", "Poly Diploma", "A Levels", "Degree", "O Levels"];
   var RATION = ["", "", "", "No Pork No Lard", "Vegetarian"];
+  // submitMedical mirrors a recruit's latest medical status onto roster.status,
+  // so recruits on (or with an uncleared) MC carry status "MC" here — everyone
+  // else is "Active". Reproduces the stale-mirror ended-MC state the Status Board
+  // classifier handles (see buildMedical_'s mirrorMcD4s).
+  var mirrorMc = {};
+  (mirrorMcD4s || []).forEach(function (d4) { mirrorMc[d4] = true; });
   var rows = people.map(function (pp) {
     var isCmd = pp.role === "Commander";
     return {
       "4d": pp.id,
       name: pp.name,
       age: isCmd ? randint_(rng, 24, 38) : randint_(rng, 18, 22),
-      status: "Active",
+      status: mirrorMc[pp.id] ? "MC" : "Active",
       notes: "",
       phone: "9" + randint_(rng, 1000000, 9999999),
       email: "",
@@ -196,24 +202,35 @@ function buildMedical_(people, rng) {
     "shoulder strain", "blisters"];
   var rows = [];
   var n = 0;
-  // ~18 medical events across distinct recruits.
-  var picks = shuffle_(recruits.slice(), rng).slice(0, 18);
+  // Recruits whose roster.status mirror should read "MC" (buildRoster_ reads this
+  // set). Two flavours are seeded so the Status Board's ended-MC handling is
+  // actually exercised: a CURRENT MC (legit active mirror) and a LAPSED MC whose
+  // mirror was never cleared — the "shows MC but not actually on MC" stale case
+  // the parade classifier's MC+1/MC+2 persist-then-auto-hide bound handles.
+  var mirrorMcD4s = [];
+  // ~21 medical events across distinct recruits.
+  var picks = shuffle_(recruits.slice(), rng).slice(0, 21);
   picks.forEach(function (r, i) {
     n++;
-    var kind = i % 6; // rotate through the status archetypes
+    var kind = i % 7; // rotate through the status archetypes
     var startOff, endOff, status, type, urti = "", loc = "";
-    if (kind === 0) {            // current MC
+    if (kind === 0) {            // current MC (mirror legitimately reads "MC")
       startOff = -1; endOff = 2; status = "MC"; type = "RSO"; urti = "URTI"; loc = "PTMC";
-    } else if (kind === 1) {     // just-ended MC → ghost MC+1/MC+2
+      mirrorMcD4s.push(r.fourD);
+    } else if (kind === 1) {     // just-ended MC → ghost MC+1/MC+2, mirror still "MC"
       startOff = -4; endOff = -2; status = "MC"; type = "RSI"; urti = "URTI";
+      mirrorMcD4s.push(r.fourD);
     } else if (kind === 2) {     // current LD (light duty)
       startOff = -2; endOff = 4; status = "LD"; type = "RSI";
     } else if (kind === 3) {     // Excuse (partial)
       startOff = -1; endOff = 6; status = pick_(rng, ["Excuse RMJ", "Excuse Lower Limb", "Excuse Heavy Load"]); type = "RSI";
     } else if (kind === 4) {     // Warded (out of camp)
       startOff = -1; endOff = 3; status = "Warded"; type = "RSO"; loc = "Changi General Hospital";
-    } else {                     // Pending (reported, awaiting MO)
+    } else if (kind === 5) {     // Pending (reported, awaiting MO)
       startOff = 0; endOff = null; status = "Pending"; type = "RSI";
+    } else {                     // long-lapsed MC, mirror never cleared (auto-hide case)
+      startOff = -9; endOff = -5; status = "MC"; type = "RSI";
+      mirrorMcD4s.push(r.fourD);
     }
     rows.push({
       id: "MED" + n, d4: r.fourD, date: dayOffset_(startOff),
@@ -223,7 +240,7 @@ function buildMedical_(people, rng) {
       type: type, urtiType: urti, mrTiming: "", visitId: "V" + n, origin: "manual"
     });
   });
-  return { headers: headers, rows: rows };
+  return { headers: headers, rows: rows, mirrorMcD4s: mirrorMcD4s };
 }
 
 // Conducts registry (id | name). Referenced by conductId everywhere else.
@@ -509,8 +526,10 @@ function seedSynthetic() {
 
   // 2. Build the synthetic company.
   var people = buildPeople_(rng);
-  var roster = buildRoster_(people, rng);
+  // Medical first: it decides which recruits carry a "MC" roster.status mirror,
+  // which buildRoster_ then stamps onto their rows (see buildRoster_).
   var medical = buildMedical_(people, rng);
+  var roster = buildRoster_(people, rng, medical.mirrorMcD4s);
   var conducts = buildConducts_();
   var conductData = buildConductData_(people, rng);
   var ippt = buildIppt_(people, rng);

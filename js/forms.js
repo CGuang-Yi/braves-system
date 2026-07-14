@@ -261,7 +261,7 @@ function openPerson(d4) {
       const todayLabel = tagInfo ? `<span style="margin-left:6px">${medTagBadge(tagInfo.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
       return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <span>${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
+          <span>${medTypeBadge(m)}${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
           <span style="display:inline-flex;align-items:center;gap:4px">${todayLabel}${pcBtns("openMedicalForm", "medical", m.id, "medical record")}</span>
         </div>
         <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
