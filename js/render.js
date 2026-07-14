@@ -1391,13 +1391,27 @@ function renderConductDetail(el) {
 // optional; ISO strings straight from the <input type="date"> controls, which
 // live in the toolbar (outside #med-results) so they survive a rows-only re-render.
 let _medDateFrom = "", _medDateTo = "";
-function medSetDateFrom(v) { _medDateFrom = v; renderMedicalRows(); }
-function medSetDateTo(v) { _medDateTo = v; renderMedicalRows(); }
+function medDatesActive() { return !!(_medDateFrom || _medDateTo); }
+// Highlight the date-filter control while a bound is set. The filter state lives
+// in module vars that survive tab navigation and scope changes, so without a
+// visible cue a filter set earlier keeps silently hiding rows. The toolbar isn't
+// re-rendered on a rows-only refresh, so we restyle the container directly here
+// (mirrors main.js's pltSel.classList.toggle("active") pattern).
+function medSyncDateFilterUI() {
+  const box = document.getElementById("med-date-filter");
+  if (!box) return;
+  const on = medDatesActive();
+  box.style.borderColor = on ? "var(--accent)" : "var(--border)";
+  box.style.color = on ? "var(--accent)" : "var(--muted)";
+}
+function medSetDateFrom(v) { _medDateFrom = v; renderMedicalRows(); medSyncDateFilterUI(); }
+function medSetDateTo(v) { _medDateTo = v; renderMedicalRows(); medSyncDateFilterUI(); }
 function medClearDates() {
   _medDateFrom = ""; _medDateTo = "";
   const f = document.getElementById("med-date-from"); if (f) f.value = "";
   const t = document.getElementById("med-date-to"); if (t) t.value = "";
   renderMedicalRows();
+  medSyncDateFilterUI();
 }
 // Short weekday for a display date ("15 Jun 2026" → "Mon"). Fixed array rather
 // than toLocaleDateString so it's locale-stable. "" when the date can't parse.
@@ -1463,7 +1477,7 @@ function renderMedical(el) {
         <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻<span class="btn-label"> Re-push all</span></button>
         <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥<span class="btn-label"> Import Sick History (xlsx)</span><input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
         ${listSearchInput("medical", "Search name / 4D…")}
-        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)" title="Filter the list by reported date">
+        <span id="med-date-filter" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${medDatesActive() ? "var(--accent)" : "var(--muted)"};border:1px solid ${medDatesActive() ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:2px 6px" title="Filter the list by reported date">
           <input type="date" id="med-date-from" value="${_medDateFrom}" onchange="medSetDateFrom(this.value)" style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:11px">
           <span>–</span>
           <input type="date" id="med-date-to" value="${_medDateTo}" onchange="medSetDateTo(this.value)" style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:11px">
@@ -1503,7 +1517,12 @@ function renderMedicalRows() {
   // directly since both the bounds and displayDateToISO output are YYYY-MM-DD.
   if (_medDateFrom || _medDateTo) {
     medRows = medRows.filter(({ m }) => {
-      const iso = displayDateToISO(m.date) || "";
+      // Fall back to startDate when `date` (the reported date) is blank — some
+      // imported/auto-created rows carry only a status window — so a record with
+      // a real date range isn't silently dropped the moment a bound is set.
+      // Mirrors the "reported" sort key (startDate || date). Only rows with no
+      // usable date at all fall out.
+      const iso = displayDateToISO(m.date) || displayDateToISO(m.startDate) || "";
       if (!iso) return false;
       if (_medDateFrom && iso < _medDateFrom) return false;
       if (_medDateTo && iso > _medDateTo) return false;
@@ -1527,7 +1546,7 @@ function renderMedicalRows() {
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
         ${medRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("medical", "reported", "Reported")}${sortTh("medical", "fourD", "4D")}${sortTh("medical", "name", "Name", "left")}<th style="text-align:left">Reason</th>${sortTh("medical", "status", "Status")}<th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; const _dow = m.date ? medDayOfWeek(m.date) : ""; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td style="white-space:nowrap">${m.date || ""}${_dow ? ` <span style="color:var(--dim);font-size:10px">${_dow}</span>` : ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(m.d4))}</td><td style="text-align:left">${m.type ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : ""}</span>` : ""}${escapeHTML(m.reason || "")}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${escapeHTML(m.urtiType)}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; const _dow = m.date ? medDayOfWeek(m.date) : ""; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td style="white-space:nowrap">${m.date || ""}${_dow ? ` <span style="color:var(--dim);font-size:10px">${_dow}</span>` : ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(m.d4))}</td><td style="text-align:left">${medTypeBadge(m)}${escapeHTML(m.reason || "")}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${escapeHTML(m.urtiType)}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
         </tbody></table></div>` : `<div class="empty-state">${_medQ ? "No records match the search." : (STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet.")}</div>`}
       </div>
       <div class="card">
