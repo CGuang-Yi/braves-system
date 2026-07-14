@@ -267,6 +267,22 @@ function padD4(d4) {
   return s;
 }
 
+// Canonicalize a platoon CODE. Step 5 (§11) switched the whole app from a bare
+// digit ("1") to a platoon code ("PLT1"/"HQ") — see loadFilter's legacy-discard
+// comment. Rosters imported/entered before that migration still store the bare
+// digit in the `platoon` column, so a person read from the sheet would carry
+// "1" while everything else (filter, activePlatoons codes, parade grouping,
+// personPlatoon's own 4D fallback which already emits "PLT"+digit) speaks
+// "PLT1". That mismatch blanks the platoon filter and prints "1 · Sect 1" group
+// labels. Fold a pure-digit code up to "PLT<n>" here so both the roster and the
+// Platoons tab join the canonical form; non-numeric codes ("PLT1"/"HQ"/blank)
+// pass through untouched. Mirrors padD4: canonicalize on read, don't rewrite the
+// sheet (an edited row round-trips the canonical value out on its next push).
+function canonicalPlatoonCode(v) {
+  const s = String(v ?? "").trim();
+  return /^\d+$/.test(s) ? "PLT" + s : s;
+}
+
 function normalizeRoster(roster) {
   return (roster || []).map(r => {
     const { conditions, ...rest } = r;
@@ -293,7 +309,7 @@ function normalizeRoster(roster) {
       id,
       role,
       rank: rest.rank || "",
-      platoon: rest.platoon || "",
+      platoon: canonicalPlatoonCode(rest.platoon),
       section: rest.section != null ? String(rest.section) : "",
       rankGroup: rest.rankGroup || "",
       fourD,
@@ -450,7 +466,7 @@ function normalizePlatoons(rows) {
     const a = r.active;
     const active = a === true || String(a).toUpperCase() === "TRUE" || a === "" || a == null;
     return {
-      code: String(r.code || r.Code || "").trim(),
+      code: canonicalPlatoonCode(r.code || r.Code || ""),
       displayName: r.displayName || r.DisplayName || r.code || "",
       active,
       createdAt: r.createdAt || r.CreatedAt || ""
