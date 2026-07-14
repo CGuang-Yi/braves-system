@@ -4451,6 +4451,14 @@ function personSearchFilter(boxId, onPickFn, valueId, query, roleFilter) {
   // so a genuine pick survives.
   const hidden = document.getElementById(valueId);
   if (hidden) hidden.value = "";
+  // Mirror the same invalidation into any external per-box state. Handlers like
+  // wizPickRow copy the picked 4D into their own store (_logConduct rows) rather
+  // than reading the hidden input at save time, so clearing the hidden input
+  // alone would leave a stale prior pick that gets silently committed once the
+  // user retypes without re-picking. Firing onPickFn('') clears that store too.
+  // No-op for single-shot callers (wizPickIndividual guards with `if (!d4)`);
+  // medical/leave forms pass no onPickFn and are unaffected.
+  if (onPickFn && typeof window[onPickFn] === "function") window[onPickFn]("", boxId);
   const q = String(query || "").trim().toLowerCase();
   if (!q) { res.style.display = "none"; res.innerHTML = ""; return; }
   let rows = STATE.roster || [];
