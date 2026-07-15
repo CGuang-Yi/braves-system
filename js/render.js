@@ -1009,8 +1009,21 @@ function renderLeave(el) {
 // overlapping the window, cells filled per-day with the leave type's color.
 // Answers "who is taking off when" at a glance — much more useful than a
 // running total of off-in-lieu days.
+// The timeline always re-renders collapsed. Expansion is deliberately local to
+// this card so a scope change or refresh cannot retain stale row visibility.
+function toggleLeaveTimeline(button) {
+  const timeline = button.closest("[data-leave-timeline]");
+  const overflowRows = timeline.querySelectorAll("[data-leave-overflow]");
+  const expanded = button.getAttribute("aria-expanded") === "true";
+
+  overflowRows.forEach(row => { row.hidden = expanded; });
+  button.setAttribute("aria-expanded", String(!expanded));
+  button.textContent = expanded ? `Show all (${overflowRows.length} more)` : "Show less";
+}
+
 function renderLeaveTimeline(scoped, todayIso) {
   const TIMELINE_DAYS = 21;
+  const COLLAPSED_PEOPLE = 5;
   const start = new Date(todayIso);
   const days = Array.from({ length: TIMELINE_DAYS }, (_, i) => {
     const d = new Date(start); d.setDate(d.getDate() + i);
@@ -1046,7 +1059,7 @@ function renderLeaveTimeline(scoped, todayIso) {
     return `<th style="padding:2px 0;font-size:9px;color:${isToday ? 'var(--red)' : 'var(--muted)'};font-weight:${isToday ? 700 : 400};width:18px;text-align:center;border-left:${isWeekStart ? '1px solid var(--border)' : 'none'}">${label}</th>`;
   }).join("");
 
-  const personRows = people.map(d4 => {
+  const personRows = people.map((d4, personIndex) => {
     const personLeave = byPerson[d4];
     const cells = dayIso.map((iso, i) => {
       const match = personLeave.find(l => l.startIso <= iso && iso <= l.endIso);
@@ -1062,20 +1075,28 @@ function renderLeaveTimeline(scoped, todayIso) {
       const todayMark = isToday ? "background:#F8514922;" : "";
       return `<td style="padding:0;border-left:${borderLeft};${todayMark}height:18px"></td>`;
     }).join("");
-    return `<tr onclick="openPerson('${d4}')" style="cursor:pointer"><td style="padding:3px 8px;white-space:nowrap;font-size:11px;font-weight:600;background:var(--surface);border-right:2px solid var(--border);position:sticky;left:0;z-index:1">${escapeHTML(displayPersonLabel(d4))}</td>${cells}</tr>`;
+    const overflowAttrs = personIndex >= COLLAPSED_PEOPLE ? " data-leave-overflow hidden" : "";
+    return `<tr${overflowAttrs} onclick="openPerson('${d4}')" style="cursor:pointer"><td style="padding:3px 8px;white-space:nowrap;font-size:11px;font-weight:600;background:var(--surface);border-right:2px solid var(--border);position:sticky;left:0;z-index:1">${escapeHTML(displayPersonLabel(d4))}</td>${cells}</tr>`;
   }).join("");
+
+  const hiddenCount = Math.max(people.length - COLLAPSED_PEOPLE, 0);
+  const expansionControl = hiddenCount ? `
+    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+      <button type="button" class="btn" aria-expanded="false" onclick="toggleLeaveTimeline(this)">Show all (${hiddenCount} more)</button>
+    </div>` : "";
 
   // Legend mirrors the type-color palette so users can decode the bars.
   const legend = ["Off-in-Lieu", "Leave", "Compassionate", "Weekend", "Night's Out", "Course", "Guard Duty", "NDP", "Other"]
     .map(t => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)"><span style="width:10px;height:10px;background:${typeBg(t)};border-radius:2px;opacity:.85"></span>${t}</span>`)
     .join(" ");
 
-  return `<div class="card" style="margin-bottom:12px">
+  return `<div class="card" data-leave-timeline style="margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
       <h3 style="margin:0">Leave Timeline <span style="color:var(--dim);font-weight:400;font-size:11px">(next ${TIMELINE_DAYS} days · ${people.length} ${people.length === 1 ? 'person' : 'people'})</span></h3>
       <div style="display:flex;gap:10px;flex-wrap:wrap">${legend}</div>
     </div>
     <div style="overflow-x:auto"><table style="border-collapse:collapse"><thead><tr><th style="background:var(--surface);position:sticky;left:0;z-index:2"></th>${headerCells}</tr></thead><tbody>${personRows}</tbody></table></div>
+    ${expansionControl}
   </div>`;
 }
 
