@@ -71,6 +71,35 @@ function loadSubmit(values, roster, selectedD4s) {
   return { sb: sandbox, pushes, alerts, confirmations, STATE };
 }
 
+function loadSelectedPicker() {
+  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const names = ["renderLeaveSelectedPeople", "leavePickSelectedPerson", "leaveRemoveSelectedPerson"];
+  if (names.some(name => !forms.includes("function " + name))) return { missing: true };
+
+  const elements = {
+    "leave-selected-person-value": { value: "picked" },
+    "leave-selected-person-input": { value: "picked", focus() {} },
+    "f-leave-selected-list": { innerHTML: "" },
+    "f-leave-selected-count": { textContent: "" }
+  };
+  const namesByD4 = { "0001": "Commander One", "1101": "Recruit One" };
+  const sandbox = {
+    console, JSON, Math, String, Number, Array, Object, Boolean, Set, RegExp,
+    document: { getElementById: id => elements[id] || null },
+    displayPersonLabel: d4 => `${d4} ${namesByD4[d4] || ""}`.trim(),
+    escapeHTML: value => String(value),
+    escapeAttr: value => String(value)
+  };
+  vm.createContext(sandbox);
+  const src = "let _leaveSelectedD4s = [];\n"
+    + names.map(name => extractFunction(forms, name)).join("\n")
+    + "\n;this.pick = leavePickSelectedPerson;"
+    + "\n;this.remove = leaveRemoveSelectedPerson;"
+    + "\n;this.selected = () => _leaveSelectedD4s.slice();";
+  vm.runInContext(src, sandbox, { filename: "leave-picker-slice.js" });
+  return { sb: sandbox, elements, missing: false };
+}
+
 module.exports = async function run() {
   suite("leave bulk: scopeRecruits resolves company / platoon / section to recruit ids");
 
@@ -96,6 +125,49 @@ module.exports = async function run() {
     const sb = load(ROSTER);
     eq(sb.scopeRecruits("bogus").length, 0);
     ok(Array.isArray(sb.scopeRecruits("company")), "returns an array");
+  });
+
+  suite("leave selected-people picker: accumulates unique full-roster IDs as removable chips");
+
+  await test("picker accumulates a commander and recruit without duplicates", () => {
+    const picker = loadSelectedPicker();
+    ok(!picker.missing, "selected-people picker handlers exist");
+    if (picker.missing) return;
+
+    picker.sb.pick("0001");
+    picker.sb.pick("1101");
+    picker.sb.pick("0001");
+
+    eq(picker.sb.selected().join(","), "0001,1101");
+    eq(picker.elements["f-leave-selected-count"].textContent, "2 selected");
+    ok(picker.elements["f-leave-selected-list"].innerHTML.includes("Commander One"));
+    ok(picker.elements["f-leave-selected-list"].innerHTML.includes("Recruit One"));
+    eq(picker.elements["leave-selected-person-input"].value, "", "search is cleared for the next pick");
+  });
+
+  await test("picker removes a selected person", () => {
+    const picker = loadSelectedPicker();
+    ok(!picker.missing, "selected-people picker handlers exist");
+    if (picker.missing) return;
+
+    picker.sb.pick("0001");
+    picker.sb.pick("1101");
+    picker.sb.remove("0001");
+
+    eq(picker.sb.selected().join(","), "1101");
+    eq(picker.elements["f-leave-selected-count"].textContent, "1 selected");
+    ok(!picker.elements["f-leave-selected-list"].innerHTML.includes("Commander One"));
+  });
+
+  await test("leave form wires Selected people to the reusable full-roster typeahead", () => {
+    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const openSrc = extractFunction(forms, "openLeaveForm");
+    const scopeSrc = extractFunction(forms, "onLeaveScopeChange");
+
+    ok(openSrc.includes('<option value="selected">Selected people…</option>'), "selected scope option is rendered");
+    ok(openSrc.includes('onPickFn: "leavePickSelectedPerson"'), "reusable picker calls the Leave handler");
+    ok(openSrc.includes('id="f-leave-selected-wrap"'), "selected-person wrapper is add-mode markup");
+    ok(scopeSrc.includes('scope === "selected"'), "scope switch shows the selected-person wrapper");
   });
 
   suite("leave bulk: submitLeave batches a scoped entry into ONE appendMany");
