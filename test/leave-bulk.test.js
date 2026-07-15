@@ -44,8 +44,8 @@ const ROSTER = [
 
 // Load submitLeave (forms.js) + its real scope deps (helpers.js) into a sandbox
 // with the DOM/side-effect deps stubbed, spying every autoSync call.
-function loadSubmit(values, roster) {
-  const pushes = [];
+function loadSubmit(values, roster, selectedD4s) {
+  const pushes = [], alerts = [], confirmations = [];
   let idc = 5000;
   const STATE = { roster: roster || [], leave: [], apiUrl: "https://x" };
   const sandbox = {
@@ -55,18 +55,20 @@ function loadSubmit(values, roster) {
     isoToDisplayDate: s => s,                 // identity is enough for these assertions
     nextId: () => String(++idc),
     saveLocal: () => {}, closeModal: () => {}, render: () => {},
-    alert: () => {}, confirm: () => true,
+    alert: message => alerts.push(message),
+    confirm: message => { confirmations.push(message); return true; },
     autoSync: (tab, mode) => pushes.push({ tab, mode })
   };
   vm.createContext(sandbox);
   const helpers = fs.readFileSync(path.join(__dirname, "..", "js", "helpers.js"), "utf8");
   const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
-  const src = ["getPlt", "getSect", "personPlatoon", "personSection", "scopeRecruits"]
-    .map(n => extractFunction(helpers, n)).join("\n")
+  const src = `let _leaveSelectedD4s = ${JSON.stringify(selectedD4s || [])};\n`
+    + ["getPlt", "getSect", "personPlatoon", "personSection", "scopeRecruits"]
+      .map(n => extractFunction(helpers, n)).join("\n")
     + "\n" + extractFunction(forms, "submitLeave")
     + "\n;this.submitLeave = submitLeave;";
   vm.runInContext(src, sandbox, { filename: "submit-slice.js" });
-  return { sb: sandbox, pushes, STATE };
+  return { sb: sandbox, pushes, alerts, confirmations, STATE };
 }
 
 module.exports = async function run() {
@@ -111,6 +113,39 @@ module.exports = async function run() {
     eq(pushes[0].mode.type, "appendMany", "bulk uses appendMany, not N upserts");
     eq(pushes[0].mode.rows.length, 2);
     ok(STATE.leave.every(l => l.type === "Course" && l.isInCamp === false), "fields applied to every row");
+  });
+
+  await test("selected people include commanders, dedupe IDs, and use one appendMany", () => {
+    const { sb, pushes, confirmations, STATE } = loadSubmit({
+      "f-entry-id": "", "f-leave-scope": "selected", "f-type": "Course",
+      "f-start": "2026-07-01", "f-end": "2026-07-02", "f-days": "2",
+      "f-reason": "APSC", "f-in-camp": "false"
+    }, ROSTER, ["1101", "0001", "1101"]);
+
+    sb.submitLeave();
+
+    eq(STATE.leave.length, 2, "duplicate selected IDs create only two rows");
+    eq(STATE.leave.map(l => l.d4).sort().join(","), "0001,1101", "commander and recruit are both retained");
+    eq(pushes.length, 1, "selected group sends exactly one network write");
+    eq(pushes[0].tab, "Leave");
+    eq(pushes[0].mode.type, "appendMany");
+    eq(pushes[0].mode.rows.length, 2);
+    ok(STATE.leave.every(l => l.type === "Course" && l.isInCamp === false), "shared fields apply to every row");
+    eq(confirmations[0], 'Log "Course" for 2 people?');
+  });
+
+  await test("empty selected-people group alerts and writes nothing", () => {
+    const { sb, pushes, alerts, STATE } = loadSubmit({
+      "f-entry-id": "", "f-leave-scope": "selected", "f-type": "Leave",
+      "f-start": "2026-07-01", "f-end": "2026-07-02", "f-days": "2",
+      "f-reason": "", "f-in-camp": "false"
+    }, ROSTER, []);
+
+    sb.submitLeave();
+
+    eq(STATE.leave.length, 0);
+    eq(pushes.length, 0);
+    eq(alerts[0], "Add at least one person to the selected group.");
   });
 
   await test("single-person add still uses a single upsert (unchanged path)", () => {

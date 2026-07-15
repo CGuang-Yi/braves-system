@@ -2127,6 +2127,10 @@ function markLeaveInCampTouched() {
   const el = document.getElementById("f-in-camp");
   if (el) el.dataset.touched = "1";
 }
+// Add-mode scratch state for the Leave/Out "Selected people…" scope. It is
+// reset whenever the modal opens and is never persisted independently; only
+// the final per-person Leave rows enter STATE and sync.
+let _leaveSelectedD4s = [];
 function openLeaveForm(id) {
   const e = id ? STATE.leave.find(x => x.id === id) : null;
   const startVal = e ? displayDateToISO(e.startDate) || todayISO() : todayISO();
@@ -2238,10 +2242,20 @@ function submitLeave() {
   if (scope !== "person") {
     const startIso = gv("f-start"), endIso = gv("f-end");
     if (endIso < startIso) { alert("End date must be on or after start date."); return; }
-    const ids = scopeRecruits(scope);
-    if (!ids.length) { alert("No recruits in that scope."); return; }
+    const ids = scope === "selected"
+      ? [...new Set(_leaveSelectedD4s)]
+      : scopeRecruits(scope);
+    if (!ids.length) {
+      alert(scope === "selected"
+        ? "Add at least one person to the selected group."
+        : "No recruits in that scope.");
+      return;
+    }
     const type = gv("f-type");
-    if (!confirm(`Log "${type}" for ${ids.length} recruit${ids.length === 1 ? "" : "s"}?`)) return;
+    const noun = scope === "selected"
+      ? (ids.length === 1 ? "person" : "people")
+      : `recruit${ids.length === 1 ? "" : "s"}`;
+    if (!confirm(`Log "${type}" for ${ids.length} ${noun}?`)) return;
     const base = {
       type,
       startDate: isoToDisplayDate(startIso),
