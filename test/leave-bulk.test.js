@@ -44,8 +44,8 @@ const ROSTER = [
 
 // Load submitLeave (forms.js) + its real scope deps (helpers.js) into a sandbox
 // with the DOM/side-effect deps stubbed, spying every autoSync call.
-function loadSubmit(values, roster) {
-  const pushes = [];
+function loadSubmit(values, roster, selectedD4s) {
+  const pushes = [], alerts = [], confirmations = [];
   let idc = 5000;
   const STATE = { roster: roster || [], leave: [], apiUrl: "https://x" };
   const sandbox = {
@@ -55,18 +55,49 @@ function loadSubmit(values, roster) {
     isoToDisplayDate: s => s,                 // identity is enough for these assertions
     nextId: () => String(++idc),
     saveLocal: () => {}, closeModal: () => {}, render: () => {},
-    alert: () => {}, confirm: () => true,
+    alert: message => alerts.push(message),
+    confirm: message => { confirmations.push(message); return true; },
     autoSync: (tab, mode) => pushes.push({ tab, mode })
   };
   vm.createContext(sandbox);
   const helpers = fs.readFileSync(path.join(__dirname, "..", "js", "helpers.js"), "utf8");
   const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
-  const src = ["getPlt", "getSect", "personPlatoon", "personSection", "scopeRecruits"]
-    .map(n => extractFunction(helpers, n)).join("\n")
+  const src = `let _leaveSelectedD4s = ${JSON.stringify(selectedD4s || [])};\n`
+    + ["getPlt", "getSect", "personPlatoon", "personSection", "scopeRecruits"]
+      .map(n => extractFunction(helpers, n)).join("\n")
     + "\n" + extractFunction(forms, "submitLeave")
     + "\n;this.submitLeave = submitLeave;";
   vm.runInContext(src, sandbox, { filename: "submit-slice.js" });
-  return { sb: sandbox, pushes, STATE };
+  return { sb: sandbox, pushes, alerts, confirmations, STATE };
+}
+
+function loadSelectedPicker() {
+  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const names = ["renderLeaveSelectedPeople", "leavePickSelectedPerson", "leaveRemoveSelectedPerson"];
+  if (names.some(name => !forms.includes("function " + name))) return { missing: true };
+
+  const elements = {
+    "leave-selected-person-value": { value: "picked" },
+    "leave-selected-person-input": { value: "picked", focus() {} },
+    "f-leave-selected-list": { innerHTML: "" },
+    "f-leave-selected-count": { textContent: "" }
+  };
+  const namesByD4 = { "0001": "Commander One", "1101": "Recruit One" };
+  const sandbox = {
+    console, JSON, Math, String, Number, Array, Object, Boolean, Set, RegExp,
+    document: { getElementById: id => elements[id] || null },
+    displayPersonLabel: d4 => `${d4} ${namesByD4[d4] || ""}`.trim(),
+    escapeHTML: value => String(value),
+    escapeAttr: value => String(value)
+  };
+  vm.createContext(sandbox);
+  const src = "let _leaveSelectedD4s = [];\n"
+    + names.map(name => extractFunction(forms, name)).join("\n")
+    + "\n;this.pick = leavePickSelectedPerson;"
+    + "\n;this.remove = leaveRemoveSelectedPerson;"
+    + "\n;this.selected = () => _leaveSelectedD4s.slice();";
+  vm.runInContext(src, sandbox, { filename: "leave-picker-slice.js" });
+  return { sb: sandbox, elements, missing: false };
 }
 
 module.exports = async function run() {
@@ -96,6 +127,49 @@ module.exports = async function run() {
     ok(Array.isArray(sb.scopeRecruits("company")), "returns an array");
   });
 
+  suite("leave selected-people picker: accumulates unique full-roster IDs as removable chips");
+
+  await test("picker accumulates a commander and recruit without duplicates", () => {
+    const picker = loadSelectedPicker();
+    ok(!picker.missing, "selected-people picker handlers exist");
+    if (picker.missing) return;
+
+    picker.sb.pick("0001");
+    picker.sb.pick("1101");
+    picker.sb.pick("0001");
+
+    eq(picker.sb.selected().join(","), "0001,1101");
+    eq(picker.elements["f-leave-selected-count"].textContent, "2 selected");
+    ok(picker.elements["f-leave-selected-list"].innerHTML.includes("Commander One"));
+    ok(picker.elements["f-leave-selected-list"].innerHTML.includes("Recruit One"));
+    eq(picker.elements["leave-selected-person-input"].value, "", "search is cleared for the next pick");
+  });
+
+  await test("picker removes a selected person", () => {
+    const picker = loadSelectedPicker();
+    ok(!picker.missing, "selected-people picker handlers exist");
+    if (picker.missing) return;
+
+    picker.sb.pick("0001");
+    picker.sb.pick("1101");
+    picker.sb.remove("0001");
+
+    eq(picker.sb.selected().join(","), "1101");
+    eq(picker.elements["f-leave-selected-count"].textContent, "1 selected");
+    ok(!picker.elements["f-leave-selected-list"].innerHTML.includes("Commander One"));
+  });
+
+  await test("leave form wires Selected people to the reusable full-roster typeahead", () => {
+    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const openSrc = extractFunction(forms, "openLeaveForm");
+    const scopeSrc = extractFunction(forms, "onLeaveScopeChange");
+
+    ok(openSrc.includes('<option value="selected">Selected people…</option>'), "selected scope option is rendered");
+    ok(openSrc.includes('onPickFn: "leavePickSelectedPerson"'), "reusable picker calls the Leave handler");
+    ok(openSrc.includes('id="f-leave-selected-wrap"'), "selected-person wrapper is add-mode markup");
+    ok(scopeSrc.includes('scope === "selected"'), "scope switch shows the selected-person wrapper");
+  });
+
   suite("leave bulk: submitLeave batches a scoped entry into ONE appendMany");
 
   await test("platoon scope creates one Leave row per recruit and pushes a single appendMany", () => {
@@ -111,6 +185,39 @@ module.exports = async function run() {
     eq(pushes[0].mode.type, "appendMany", "bulk uses appendMany, not N upserts");
     eq(pushes[0].mode.rows.length, 2);
     ok(STATE.leave.every(l => l.type === "Course" && l.isInCamp === false), "fields applied to every row");
+  });
+
+  await test("selected people include commanders, dedupe IDs, and use one appendMany", () => {
+    const { sb, pushes, confirmations, STATE } = loadSubmit({
+      "f-entry-id": "", "f-leave-scope": "selected", "f-type": "Course",
+      "f-start": "2026-07-01", "f-end": "2026-07-02", "f-days": "2",
+      "f-reason": "APSC", "f-in-camp": "false"
+    }, ROSTER, ["1101", "0001", "1101"]);
+
+    sb.submitLeave();
+
+    eq(STATE.leave.length, 2, "duplicate selected IDs create only two rows");
+    eq(STATE.leave.map(l => l.d4).sort().join(","), "0001,1101", "commander and recruit are both retained");
+    eq(pushes.length, 1, "selected group sends exactly one network write");
+    eq(pushes[0].tab, "Leave");
+    eq(pushes[0].mode.type, "appendMany");
+    eq(pushes[0].mode.rows.length, 2);
+    ok(STATE.leave.every(l => l.type === "Course" && l.isInCamp === false), "shared fields apply to every row");
+    eq(confirmations[0], 'Log "Course" for 2 people?');
+  });
+
+  await test("empty selected-people group alerts and writes nothing", () => {
+    const { sb, pushes, alerts, STATE } = loadSubmit({
+      "f-entry-id": "", "f-leave-scope": "selected", "f-type": "Leave",
+      "f-start": "2026-07-01", "f-end": "2026-07-02", "f-days": "2",
+      "f-reason": "", "f-in-camp": "false"
+    }, ROSTER, []);
+
+    sb.submitLeave();
+
+    eq(STATE.leave.length, 0);
+    eq(pushes.length, 0);
+    eq(alerts[0], "Add at least one person to the selected group.");
   });
 
   await test("single-person add still uses a single upsert (unchanged path)", () => {
