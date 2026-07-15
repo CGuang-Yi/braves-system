@@ -1037,13 +1037,15 @@ function renderLeaveTimeline(scoped, todayIso) {
     return `<div class="card" style="margin-bottom:12px"><h3>Leave Timeline <span style="color:var(--dim);font-weight:400;font-size:11px">(next ${TIMELINE_DAYS} days)</span></h3><div style="color:var(--muted);font-size:12px;padding:8px 0">No upcoming leave in the next ${TIMELINE_DAYS} days.</div></div>`;
   }
 
-  // Group by person; sort people by earliest upcoming entry.
+  // Group by person; sort by earliest upcoming entry, then canonical 4D so
+  // collapsed tied rows do not depend on source/object-key insertion order.
   const byPerson = {};
   overlapping.forEach(l => { (byPerson[l.d4] = byPerson[l.d4] || []).push(l); });
   const people = Object.keys(byPerson).sort((a, b) => {
     const aEarliest = byPerson[a].reduce((m, l) => l.startIso < m ? l.startIso : m, "9999");
     const bEarliest = byPerson[b].reduce((m, l) => l.startIso < m ? l.startIso : m, "9999");
-    return aEarliest < bEarliest ? -1 : 1;
+    if (aEarliest !== bEarliest) return aEarliest < bEarliest ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
   });
 
   const typeBg = t => ({

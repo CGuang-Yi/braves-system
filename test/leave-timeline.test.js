@@ -83,6 +83,13 @@ module.exports = async function run() {
     ok(html.includes("6 people"), "heading should show all people, not only the visible five");
   });
 
+  await test("six people tied on earliest leave date use canonical 4D order", () => {
+    const tied = ["1006", "1002", "0001", "1004", "1001", "1003"].map(d4 => leave(d4, 0));
+    const rows = timelineRows(load().renderLeaveTimeline(tied, "2026-07-15"));
+    eq(rows.map(row => row.d4).join(","), "0001,1001,1002,1003,1004,1006");
+    eq(rows.find(row => row.overflow).d4, "1006", "the sixth canonical 4D should be collapsed");
+  });
+
   await test("the renderer uses only the already-scoped input when counting overflow", () => {
     const scoped = entries(7).filter(row => row.d4 !== "1002");
     const html = load().renderLeaveTimeline(scoped, "2026-07-15");
