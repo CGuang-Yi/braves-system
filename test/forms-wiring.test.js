@@ -31,4 +31,21 @@ module.exports = async function run() {
     ok(/syncedRow\s*=\s*STATE\.attendance\[idx\]\s*=\s*mergeAttendanceEdit\(/.test(forms),
       "syncedRow is not tied to the mergeAttendanceEdit result on the edit path");
   });
+
+  suite("forms wiring: submitMedical no longer mirrors medical status onto the Roster (item 4a)");
+
+  await test("submitMedical does not push a Roster upsert or carry the rosterEdit mirror", () => {
+    const body = forms.slice(forms.indexOf("function submitMedical"), forms.indexOf("function openAttendanceForm"));
+    ok(!/autoSync\(\s*"Roster"/.test(body), "submitMedical still pushes a Roster upsert");
+    ok(!/rosterEdit/.test(body), "submitMedical still carries the rosterEdit roster-mirror plumbing");
+    ok(!/r\.status\s*=\s*main\.status/.test(body), "submitMedical still writes r.status = main.status");
+  });
+
+  suite("parade-tab wiring: the roster mirror is gone (item 4a)");
+  const paradeTab = fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8");
+
+  await test("mirrorRoster is fully removed from parade-tab.js", () => {
+    ok(!/mirrorRoster/.test(paradeTab), "parade-tab.js still references mirrorRoster");
+    ok(!/rosterStatus/.test(paradeTab), "saveParadeCode still carries the unused rosterStatus var");
+  });
 };

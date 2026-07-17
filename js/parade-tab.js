@@ -426,7 +426,6 @@ function saveParadeCode(d4, code) {
   const gvi = id => (document.getElementById(id)?.value || "").trim();
   const changed = [];
   let targetId = null;          // the record we KEEP; every OTHER active contributor is ended
-  let rosterStatus = "Active";  // status to mirror onto the roster row
 
   if (code === "MC" || code === "STATUS") {
     const status = code === "MC" ? "MC" : gvi("pe-status");
@@ -449,7 +448,7 @@ function saveParadeCode(d4, code) {
       visitId: existing?.visitId || "", origin: existing?.origin || "manual"
     };
     upsertLocal("medical", rec); changed.push(["Medical", rec]);
-    targetId = rec.id; rosterStatus = status;
+    targetId = rec.id;
   } else if (code === "RS") {
     const rsType = gvi("pe-rstype") || "RSI";
     const existing = paradeActiveMed(d4, m => (m.type === "RSI" || m.type === "RSO") && (!m.status || m.status === "Pending"));
@@ -460,7 +459,7 @@ function saveParadeCode(d4, code) {
       type: rsType, urtiType: existing?.urtiType || "", mrTiming: "", visitId: existing?.visitId || "", origin: existing?.origin || "manual"
     };
     upsertLocal("medical", rec); changed.push(["Medical", rec]);
-    targetId = rec.id; rosterStatus = "Pending";
+    targetId = rec.id;
   } else if (code === "MR") {
     // MR (Medical Review) is independent/additive — a person can be MR AND still
     // carry an LD/excuse. So we write a blank-status MR row (blank status keeps it
@@ -490,19 +489,17 @@ function saveParadeCode(d4, code) {
       days: days > 0 ? days : 0, reason: gvi("pe-reason"), isInCamp: inCamp, isInCampReviewed: true
     };
     upsertLocal("leave", rec); changed.push(["Leave", rec]);
-    targetId = rec.id; rosterStatus = "Active";
+    targetId = rec.id;
   }
 
   // Changing a person's code means they should end up with ONLY the new code, so
   // end every OTHER active contributor (the old MC when switching to LD, a
   // lingering leave row, a same-day out appointment). Otherwise a higher-priority
   // stale record would mask the new code and the edit would appear to do nothing.
-  // MR is the exception — it's additive (coexists with LD/excuse), so it neither
-  // ends other statuses nor rewrites the roster mirror.
+  // MR is the exception — it's additive (coexists with LD/excuse), so it
+  // doesn't end other statuses.
   if (code !== "MR") {
     paradeEndActiveContributors(d4, targetId, changed);
-    const rr = mirrorRoster(d4, rosterStatus);
-    if (rr) changed.push(["Roster", rr]);
   }
 
   saveLocal();
@@ -512,8 +509,8 @@ function saveParadeCode(d4, code) {
 }
 
 // Clear a person back to Present: end every active parade-contributing record at
-// the parade date (Pending → NIL), resolve same-day out-of-camp appointments,
-// and reset the roster mirror to Active. Never hard-deletes (preserves history).
+// the parade date (Pending → NIL), resolve same-day out-of-camp appointments.
+// Never hard-deletes (preserves history).
 function openParadeClearConfirm(d4) {
   const name = displayPersonLabel(d4);
   const iso = paradeCurrentDateISO();
@@ -536,8 +533,6 @@ function paradeClearPerson(d4) {
   // commander clicked "Present". Resolve (Pending/blank → NIL) rather than delete.
   const mr = paradeActiveMr(d4);
   if (mr) { mr.status = "NIL"; changed.push(["Medical", mr]); }
-  const r = mirrorRoster(d4, "Active");
-  if (r) changed.push(["Roster", r]);
 
   saveLocal();
   if (STATE.apiUrl) changed.forEach(([tab, row]) => { if (row) autoSync(tab, { type: "upsert", row }); });
@@ -581,12 +576,4 @@ function upsertLocal(key, rec) {
   const arr = STATE[key] || (STATE[key] = []);
   const i = arr.findIndex(x => x.id === rec.id);
   if (i >= 0) arr[i] = rec; else arr.push(rec);
-}
-// Mirror the roster status field (the app keeps roster.status as a live copy of
-// the person's current medical status; see submitMedical / bpIsActive comments).
-// Returns the mutated roster row (or null) so the caller can push it.
-function mirrorRoster(d4, status) {
-  const r = STATE.roster.find(x => x.id === d4);
-  if (r) { r.status = status; return r; }
-  return null;
 }

@@ -895,19 +895,9 @@ function submitMedical() {
     }
   });
 
-  // Roster status mirrors the primary (first) status, as before.
-  let rosterEdit = null;
-  const main = records[0];
-  if (main.d4 && main.status) {
-    const r = STATE.roster.find(x => x.id === main.d4);
-    if (r) { r.status = main.status; rosterEdit = r; }
-  }
   saveLocal(); closeModal(); render();
   if (STATE.apiUrl) {
     records.forEach(rec => autoSync("Medical", { type: "upsert", row: rec }));
-    // Status field on the roster row also changes — push that update too,
-    // otherwise the recruit's roster row goes out of sync until next pull.
-    if (rosterEdit) autoSync("Roster", { type: "upsert", row: rosterEdit });
   }
 }
 
