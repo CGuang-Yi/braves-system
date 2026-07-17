@@ -317,7 +317,7 @@ tr:hover{background:var(--surface2)}
     text-overflow:clip!important;
     justify-self:start;
   }
-  .lc-wiz-status-row > input[type="text"]{grid-area:reason;padding:8px 10px!important;font-size:12px!important;height:auto}
+  .lc-wiz-status-row > input[type="text"]{grid-area:reason;padding:8px 10px!important;font-size:16px!important;height:auto}
 
   /* Bulk-add rows (Report Sick / Fallout): SN + recruit dropdown + ✕ on
      top row; reason field on its own row below for full-width typing. */
@@ -331,7 +331,7 @@ tr:hover{background:var(--surface2)}
   }
   .lc-wiz-bulk-row > span:first-child{grid-area:sn;font-size:12px!important;align-self:center}
   .lc-wiz-bulk-row > div{grid-area:select}
-  .lc-wiz-bulk-row > input[type="text"]{grid-area:reason;padding:8px 10px!important;font-size:12px!important;height:auto}
+  .lc-wiz-bulk-row > input[type="text"]{grid-area:reason;padding:8px 10px!important;font-size:16px!important;height:auto}
   .lc-wiz-bulk-row > button{grid-area:remove;padding:4px 8px!important;align-self:center}
 
   /* Stats strip: Total Str takes its own full-width row, then Status /
@@ -339,7 +339,7 @@ tr:hover{background:var(--surface2)}
      + LMS) keeps 2 cols so the Participating count stays prominent. */
   .lc-wiz-stats-top{grid-template-columns:repeat(3,1fr)!important;gap:6px!important}
   .lc-wiz-stats-top > div:first-child{grid-column:1 / -1}
-  .lc-wiz-stats-top > div:first-child input{padding:8px 10px!important;font-size:15px!important}
+  .lc-wiz-stats-top > div:first-child input{padding:8px 10px!important;font-size:16px!important}
   .lc-wiz-stats-top .stat .val{font-size:20px!important}
   .lc-wiz-stats-bot{grid-template-columns:1fr 1fr!important}
   .lc-wiz-stats-bot .stat .val{font-size:22px!important}
@@ -361,6 +361,15 @@ tr:hover{background:var(--surface2)}
      when needed (that's the one place where it's intentional). */
   #content,.card{overflow-x:hidden}
   .table-wrap{overflow-x:auto}  /* re-assert — explicit > inherited */
+
+  /* iOS Safari zooms the page when a focused form control's font-size is < 16px.
+     Force every text-entry control to 16px on mobile so focusing a field never
+     triggers auto-zoom (we keep pinch-zoom / accessibility — no maximum-scale).
+     !important defeats the inline font-size (11–15px) on the person-search and
+     wizard inputs. The three wizard-row input rules below are bumped to 16px in
+     the same pass because their selectors are MORE specific than a bare `input`
+     and would otherwise win this cascade. */
+  input,select,textarea{font-size:16px!important}
 }
 
 /* ── Login overlay (Step 1 auth) ──────────────────────────
