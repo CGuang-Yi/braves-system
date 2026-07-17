@@ -4187,8 +4187,15 @@ function rebuildLogConductStatus() {
   // empty checklist — documented in the design doc; totals fallback keeps
   // counts sane in that case.
   const participantSet = new Set(_logConduct.participants || []);
-  const effective = currentMedicalEffectiveAll(dateIso).filter(({ d4 }) => participantSet.has(d4));
-  _logConduct.status = effective.map(({ d4, statuses }) => {
+  // Full active-medical layer (unfiltered) so a union-only d4 that ISN'T a
+  // participant can still borrow its live tags; `effective` is the participant
+  // slice used for the base rows.
+  const allEffective = currentMedicalEffectiveAll(dateIso);
+  const effByD4 = {};
+  allEffective.forEach(e => { effByD4[e.d4] = e; });
+  const effective = allEffective.filter(({ d4 }) => participantSet.has(d4));
+
+  const rows = effective.map(({ d4, statuses }) => {
     // Pick the most-severe active status as the canonical tag/reason.
     const top = statuses[0];
     const prev = prevByD4[d4];
@@ -4209,7 +4216,31 @@ function rebuildLogConductStatus() {
       notParticipating: prev ? prev.notParticipating
         : ((d4 in existingPxByD4) || (statusReviewed ? false : defaultNP))
     };
-  }).sort((a, b) => a.d4.localeCompare(b.d4));
+  });
+
+  // UNION in everyone with a saved "Status" ConductDetail row who isn't already
+  // on the list above. existingPxByD4 is empty for a brand-new conduct (edit-only
+  // by construction — see :4173), so this never affects new conducts. Someone
+  // counted in the attendance px total (a CSV Off/Leave, or a status no longer
+  // active on this date) has a Status row but no active medical status and was
+  // being dropped, making the checklist shorter than the count. Re-add them so
+  // list length == px. Synthesize the tag from the live medical layer if any
+  // status is active for them, else fall back to the ConductDetail reason label.
+  const present = new Set(rows.map(r => r.d4));
+  Object.keys(existingPxByD4).forEach(d4 => {
+    if (present.has(d4)) return;
+    const prev = prevByD4[d4];
+    const eff = effByD4[d4];
+    rows.push({
+      d4,
+      statusTag: eff ? eff.statuses.map(s => s.tag).join(" + ") : (existingPxByD4[d4] || "Status"),
+      reason: prev ? prev.reason : (existingPxByD4[d4] || ""),
+      // Recorded as a status absence at import ⇒ default ticked (not participating).
+      notParticipating: prev ? prev.notParticipating : true
+    });
+  });
+
+  _logConduct.status = rows.sort((a, b) => a.d4.localeCompare(b.d4));
 }
 
 // Builds the modal HTML and opens it. Re-rendering is full-replace; row-level
