@@ -35,6 +35,18 @@ document.getElementById("search-input").addEventListener("input", e => {
   res.innerHTML = matches.map(r => `<button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openPerson('${r.id}')">${r.id}</button>`).join("");
 });
 
+// Enter in the topbar search opens the current top match (same scope-filtered
+// substring the input handler renders). preventDefault so Enter never submits an
+// ambient form or reloads.
+document.getElementById("search-input").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const q = e.target.value.toLowerCase();
+  if (!q) return;
+  const match = filteredRoster().find(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  if (match) openPerson(match.id);
+});
+
 // ── Global platoon/section filter ────────────────────────
 
 function refreshFilterUI() {

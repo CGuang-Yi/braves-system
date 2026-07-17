@@ -4535,9 +4535,38 @@ function personSearchBox({ boxId, onPickFn = "", valueId = "", placeholder = "Se
       <input type="text" id="${boxId}-input" autocomplete="off" placeholder="${escapeAttr(placeholder)}"
         value="${escapeAttr(chosen)}"
         oninput="personSearchFilter('${boxId}','${onPickFn}','${valueId}',this.value,'${roleFilter}')"
+        onkeydown="personSearchEnter(event,'${boxId}','${onPickFn}','${valueId}','${roleFilter}')"
         style="width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
       <div id="${boxId}-results" style="position:absolute;z-index:30;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:4px;margin-top:2px;max-height:200px;overflow:auto;display:none"></div>
     </div>`;
+}
+
+// Shared match list for the person typeaheads: the dropdown (personSearchFilter)
+// and the Enter key (personSearchEnter) must select from the EXACT same set, or
+// "the top match" would mean two different rows. Case-insensitive substring on
+// 4D or name, role-filtered, capped at 6 — identical to what the dropdown shows.
+function personSearchMatches(query, roleFilter) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  let rows = STATE.roster || [];
+  if (roleFilter === "Recruit") rows = rows.filter(r => !isCommander(r.id));
+  return rows
+    .filter(r => (r.id || "").toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
+    .slice(0, 6);
+}
+
+// Enter in a person typeahead picks the CURRENT top match and stops the keypress
+// from submitting the enclosing <form> (the medical/leave forms wrap these boxes,
+// so a bare Enter would otherwise fire a half-filled submit). Nothing is picked
+// when there's no match — personSearchFilter has already cleared the hidden id on
+// the keystroke, and only personSearchPick re-sets it, so a stray Enter can never
+// commit the wrong recruit.
+function personSearchEnter(e, boxId, onPickFn, valueId, roleFilter) {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const input = document.getElementById(`${boxId}-input`);
+  const matches = personSearchMatches(input ? input.value : "", roleFilter);
+  if (matches.length) personSearchPick(boxId, onPickFn, valueId, matches[0].id);
 }
 
 function personSearchFilter(boxId, onPickFn, valueId, query, roleFilter) {
@@ -4563,11 +4592,7 @@ function personSearchFilter(boxId, onPickFn, valueId, query, roleFilter) {
   if (onPickFn && typeof window[onPickFn] === "function") window[onPickFn]("", boxId);
   const q = String(query || "").trim().toLowerCase();
   if (!q) { res.style.display = "none"; res.innerHTML = ""; return; }
-  let rows = STATE.roster || [];
-  if (roleFilter === "Recruit") rows = rows.filter(r => !isCommander(r.id));
-  const matches = rows
-    .filter(r => (r.id || "").toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
-    .slice(0, 6);
+  const matches = personSearchMatches(query, roleFilter);
   if (!matches.length) {
     res.style.display = "block";
     res.innerHTML = `<div style="padding:6px 10px;font-size:11px;color:var(--muted)">No match</div>`;
