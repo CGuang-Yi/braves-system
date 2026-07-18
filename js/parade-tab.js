@@ -10,16 +10,18 @@
 //     (generateBravesParadeState in braves-parade.js) — byte-identical to what
 //     the old modal produced; this view only relocates it into the tab.
 //
-//   • PLATOON — a strength/counts bento header plus a spreadsheet-style grid
-//     (4D · Name · Attendance Code · Remarks). The Attendance Code cell is an
-//     editable <select>; changing it opens a small prefilled editor that writes
-//     the REAL source record (Medical/Leave/Appointment) and mirrors the roster
-//     status, so the strength and counts update the same way the rest of the app
-//     computes them. A recruit whose MC has ENDED keeps showing as MC (out of
-//     camp) until the commander manually changes their code — that persistence
-//     now lives in the shared §8 classifier (bpClassifyPerson keys it off the
-//     roster-status mirror), so the grid, the copy-paste message and the Telegram
-//     bot all agree. MR (Medical Review) is its own code / MR section.
+//     • PLATOON — a strength/counts bento header plus a spreadsheet-style grid
+//     (4D · Name · Attendance Code · Remarks). The Attendance Code cell is
+//     editable ONLY for the away-codes MC / AL/OIL / OTHERS (item 5), and the
+//     one change offered is → Present (book-in); every other code renders as
+//     read-only text. Booking a person in sets `bookInDate` on their REAL source
+//     record (Medical/Leave) WITHOUT rewriting its dates, so the classifier reads
+//     them Present from that date on while history/HA keep the true range. A
+//     recruit whose MC has ENDED keeps showing as MC (out of camp) through the
+//     MC+1/MC+2 grace window — that persistence lives in the shared §8 classifier
+//     (bpClassifyPerson's ended-MC tail, gated on the record NOT being booked in),
+//     so the grid, the copy-paste message and the Telegram bot all agree. MR
+//     (Medical Review) is its own code / MR section.
 //
 // All per-person classification and strength math is reused from braves-parade.js
 // (bpPrimaryForDay / bpStrength / bpIsActive / rankGroupOf) — this file is a view
