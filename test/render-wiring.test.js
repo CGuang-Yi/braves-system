@@ -97,4 +97,18 @@ module.exports = async function run() {
     ok(/graceMc[\s\S]{0,200}bookInDate\s*=\s*isoToDisplayDate\(iso\)/.test(paradeTab),
       "the grace-window ended MC is not booked in on Mark Present");
   });
+
+  suite("parade grid wiring: only MC / AL·OIL / OTHERS rows are editable (item 5)");
+
+  await test("renderParadePlatoon gates the <select> behind the editable-code set", () => {
+    ok(/const PARADE_EDITABLE_CODES\s*=\s*\["MC",\s*"AL\/OIL",\s*"OTHERS"\]/.test(paradeTab),
+      "no PARADE_EDITABLE_CODES gate defined");
+    ok(/PARADE_EDITABLE_CODES\.includes\(x\.code\)/.test(paradeTab),
+      "renderParadePlatoon does not gate the code cell on PARADE_EDITABLE_CODES");
+    // The editable branch offers exactly the current code + Present, not the full list.
+    ok(/<option value="Present">Present<\/option>/.test(paradeTab),
+      "the editable select no longer offers a Present option");
+    ok(!/PARADE_CODES\.map\(c =>[\s\S]{0,120}onParadeCodeChange/.test(paradeTab),
+      "the grid still renders the full PARADE_CODES <select> for every row");
+  });
 };

@@ -40,6 +40,12 @@ let _paradeTime = "";              // free-text HHMM for the company header
 // statuses — see saveParadeCode.
 const PARADE_CODES = ["Present", "MC", "RS", "MR", "AL/OIL", "STATUS", "OTHERS"];
 
+// Parade-grid edit lock (item 5): only these away-codes are editable from the
+// grid, and the ONLY change offered is → Present (book-in). Every other code
+// (Present, RS, MR, STATUS) renders as read-only text — no new statuses are
+// assigned from this tab. See renderParadePlatoon.
+const PARADE_EDITABLE_CODES = ["MC", "AL/OIL", "OTHERS"];
+
 // §8 primary-section key → grid code. bpPrimaryForDay's chain is
 // REPORTING SICK > ATT C(MC) > AL/OIL > STATUS > OTHERS.
 const PARADE_SECTION_TO_CODE = {
@@ -271,13 +277,19 @@ function renderParadePlatoon(host, code) {
     || String(getName(a.r.id)).localeCompare(String(getName(b.r.id))));
 
   const body = rows.map(x => {
-    const opts = PARADE_CODES.map(c => `<option value="${c}"${c === x.code ? " selected" : ""}>${c}</option>`).join("");
     const remarkColor = x.remark ? "var(--yellow)" : "var(--muted)";
+    // Editable rows get a 2-option select (current away-code + Present); choosing
+    // Present routes through onParadeCodeChange → openParadeClearConfirm (book-in).
+    // Locked rows render static text styled to match the disabled control so the
+    // column still reads uniformly.
+    const codeCell = PARADE_EDITABLE_CODES.includes(x.code)
+      ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
+            style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"><option value="${escapeHTML(x.code)}" selected>${escapeHTML(x.code)}</option><option value="Present">Present</option></select>`
+      : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(x.code)}</span>`;
     return `<tr>
       <td class="mono">${escapeHTML(x.r.id)}</td>
       <td>${escapeHTML(displayPersonLabel(x.r.id))}</td>
-      <td><select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-            style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">${opts}</select></td>
+      <td>${codeCell}</td>
       <td style="color:${remarkColor};white-space:normal;font-size:12px">${escapeHTML(x.remark)}</td>
     </tr>`;
   }).join("");
