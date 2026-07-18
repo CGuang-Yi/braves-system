@@ -493,12 +493,18 @@ function bpIsActive(r) {
 // people: array of in-scope roster rows. Returns totals + per-rankGroup ratios.
 function bpStrength(people, dateIso) {
   const active = people.filter(bpIsActive);
+  // Build the d4→rows index ONCE and reuse it for every classification below.
+  // Without it each bpClassifyPerson call full-scans STATE.medical/leave/
+  // appointments, making strength O(people × records) — a real cost since the
+  // topbar counter (render.js) recomputes this on every render, and it also
+  // speeds up the Dashboard / per-platoon callers. Same index bpGridCell uses.
+  const idx = bpBuildIndex();
   const groups = { Officer: { cur: 0, tot: 0 }, WOSPEC: { cur: 0, tot: 0 }, Enlistee: { cur: 0, tot: 0 } };
   let total = 0, current = 0;
   active.forEach(r => {
     const g = rankGroupOf(r);
     const bucket = groups[g] || groups.Enlistee;
-    const inCamp = !bpClassifyPerson(r, dateIso).notInCamp;
+    const inCamp = !bpClassifyPerson(r, dateIso, idx).notInCamp;
     total++; bucket.tot++;
     if (inCamp) { current++; bucket.cur++; }
   });

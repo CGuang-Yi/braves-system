@@ -35,13 +35,6 @@ let _paradeDate = "";              // ISO yyyy-mm-dd; lazily defaulted to today
 let _paradeType = "FP";            // "FP" | "LP"
 let _paradeTime = "";              // free-text HHMM for the company header
 
-// The editable attendance codes. These map 1:1 to the parade-state sections a
-// person can fall into, plus "Present" = in camp, no restriction. MR (Medical
-// Review) is its own code and lands in the MR section; it's independent/additive
-// (a person can be on LD and go for MR), so setting it does NOT end their other
-// statuses — see saveParadeCode.
-const PARADE_CODES = ["Present", "MC", "RS", "MR", "AL/OIL", "STATUS", "OTHERS"];
-
 // Parade-grid edit lock (item 5): only these away-codes are editable from the
 // grid, and the ONLY change offered is → Present (book-in). Every other code
 // (Present, RS, MR, STATUS) renders as read-only text — no new statuses are
@@ -326,29 +319,13 @@ function renderParadePlatoon(host, code) {
 }
 
 // ── Edit → write-back ────────────────────────────────────────────────────────
-// Changing a grid code opens a small prefilled editor (shared modal) that writes
-// the real record. Cancelling re-renders the grid so the <select> snaps back to
-// the person's true current code.
+// The locked grid (item 5) only ever offers → Present, so book-in is the only
+// action reachable from a code cell. Anything else is ignored (the arbitrary-code
+// status editor was removed — statuses are set from the Medical/Leave forms).
 function onParadeCodeChange(d4, code) {
-  if (code === "Present") { openParadeClearConfirm(d4); return; }
-  openParadeCodeEditor(d4, code);
+  if (code === "Present") openParadeClearConfirm(d4);
 }
 
-// Find an active Medical row for this person matching a predicate (to edit in
-// place rather than stack a duplicate when adjusting an existing status).
-function paradeActiveMed(d4, pred) {
-  const iso = paradeCurrentDateISO();
-  return (STATE.medical || []).find(m => m.d4 === d4 && pred(m) && medStatusActive(m, iso));
-}
-function paradeActiveLeave(d4, wantAlOil) {
-  const iso = paradeCurrentDateISO();
-  return (STATE.leave || []).find(l => {
-    if (l.d4 !== d4) return false;
-    const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
-    if (!(s && e && s <= iso && iso <= e)) return false;
-    return bpIsAlOilType(l.type) === wantAlOil;
-  });
-}
 // An MR row for today, still pending (blank/Pending status). MR carries no end
 // date so medStatusActive doesn't apply — match on the report date instead.
 function paradeActiveMr(d4) {
@@ -357,164 +334,8 @@ function paradeActiveMr(d4) {
     m.d4 === d4 && m.type === "MR" && displayDateToISO(m.date) === iso && (!m.status || m.status === "Pending"));
 }
 
-// The status options offered for the STATUS code — every restricted in-camp
-// status (excludes MC/Warded/Pending/NIL which are their own codes) plus any
-// custom statuses the unit has defined.
-function paradeStatusOptions(selected) {
-  const std = MED_STATUSES.filter(s => !["MC", "Warded", "Pending", "NIL"].includes(s));
-  const custom = (STATE.customStatuses || []).map(c => c.name);
-  const all = [...std, ...custom];
-  return all.map(s => `<option value="${escapeAttr(s)}"${s === selected ? " selected" : ""}>${escapeHTML(s)}</option>`).join("");
-}
-
-function openParadeCodeEditor(d4, code) {
-  const iso = paradeCurrentDateISO();
-  const name = displayPersonLabel(d4);
-  const dateField = (id, label, val) =>
-    `<div class="form-group"><label>${label}</label><input type="date" id="${id}" value="${escapeAttr(val || "")}" style="width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text)"></div>`;
-  const textField = (id, label, val, ph) =>
-    `<div class="form-group"><label>${label}</label><input type="text" id="${id}" value="${escapeAttr(val || "")}" placeholder="${escapeAttr(ph || "")}" style="width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text)"></div>`;
-  const selField = (id, label, optsHTML) =>
-    `<div class="form-group"><label>${label}</label><select id="${id}" style="width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text)">${optsHTML}</select></div>`;
-
-  let fields = "";
-  if (code === "MC") {
-    const cur = paradeActiveMed(d4, m => m.status === "MC");
-    fields =
-      textField("pe-reason", "Reason", cur?.reason, "e.g. Fever") +
-      dateField("pe-start", "Start (inclusive)", cur ? displayDateToISO(cur.startDate) : iso) +
-      dateField("pe-end", "End (inclusive)", cur ? displayDateToISO(cur.endDate) : "");
-  } else if (code === "STATUS") {
-    const cur = paradeActiveMed(d4, m => !["MC", "Warded", "Pending", "NIL"].includes(m.status) && m.status);
-    fields =
-      selField("pe-status", "Status", paradeStatusOptions(cur?.status || "LD")) +
-      textField("pe-reason", "Reason", cur?.reason, "e.g. Sprained ankle") +
-      dateField("pe-start", "Start (inclusive)", cur ? displayDateToISO(cur.startDate) : iso) +
-      dateField("pe-end", "End (inclusive)", cur ? displayDateToISO(cur.endDate) : "");
-  } else if (code === "RS") {
-    const cur = paradeActiveMed(d4, m => (m.type === "RSI" || m.type === "RSO") && (!m.status || m.status === "Pending"));
-    fields =
-      selField("pe-rstype", "Type", `<option value="RSI"${cur?.type === "RSI" ? " selected" : ""}>RSI (report sick inside)</option><option value="RSO"${cur?.type === "RSO" ? " selected" : ""}>RSO (report sick outside)</option>`) +
-      textField("pe-reason", "Reason", cur?.reason, "e.g. Cough & flu");
-  } else if (code === "MR") {
-    const cur = paradeActiveMr(d4);
-    fields =
-      textField("pe-reason", "Reason", cur?.reason, "e.g. Physio review") +
-      textField("pe-mrtiming", "Timing (optional)", cur?.mrTiming, "e.g. AM / 1400");
-  } else if (code === "AL/OIL") {
-    const cur = paradeActiveLeave(d4, true);
-    fields =
-      selField("pe-altype", "Type", `<option value="AL"${cur?.type === "AL" ? " selected" : ""}>AL (annual leave)</option><option value="OIL"${cur?.type === "OIL" ? " selected" : ""}>OIL (off-in-lieu)</option>`) +
-      textField("pe-reason", "Reason / label", cur?.reason, "e.g. 48HR BO") +
-      dateField("pe-start", "Start (inclusive)", cur ? displayDateToISO(cur.startDate) : iso) +
-      dateField("pe-end", "End (inclusive)", cur ? displayDateToISO(cur.endDate) : iso);
-  } else if (code === "OTHERS") {
-    const cur = paradeActiveLeave(d4, false);
-    fields =
-      textField("pe-reason", "Reason / detail", cur?.reason, "e.g. Course, Interview") +
-      selField("pe-incamp", "In / out of camp", `<option value="false"${cur && cur.isInCamp === false ? " selected" : ""}>Not in camp (out)</option><option value="true"${cur && cur.isInCamp === true ? " selected" : ""}>In camp</option>`) +
-      dateField("pe-start", "Start (inclusive)", cur ? displayDateToISO(cur.startDate) : iso) +
-      dateField("pe-end", "End (inclusive)", cur ? displayDateToISO(cur.endDate) : iso);
-  }
-
-  openModal(`Set ${code} — ${name}`, `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Writes the real ${code === "AL/OIL" || code === "OTHERS" ? "leave" : "medical"} record for <strong>${escapeHTML(name)}</strong> and updates the parade state.</div>
-    ${fields}
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn btn-primary" onclick="saveParadeCode('${escapeAttr(d4)}','${escapeAttr(code)}')">Save</button>
-      <button class="btn" onclick="closeParadeEditor()">Cancel</button>
-    </div>`);
-}
-
-// Cancel: close the modal and refresh so the <select> resets to the true state.
+// Cancel: close the Mark-Present modal and refresh so the grid resets to state.
 function closeParadeEditor() { closeModal(); refreshParade(); }
-
-function saveParadeCode(d4, code) {
-  const iso = paradeCurrentDateISO();
-  const gvi = id => (document.getElementById(id)?.value || "").trim();
-  const changed = [];
-  let targetId = null;          // the record we KEEP; every OTHER active contributor is ended
-
-  if (code === "MC" || code === "STATUS") {
-    const status = code === "MC" ? "MC" : gvi("pe-status");
-    if (!status) { alert("Select a status."); return; }
-    const startIso = gvi("pe-start"), endIso = gvi("pe-end");
-    // Both dates are required: an MC/STATUS with a blank end never reads as active
-    // (medStatusActive needs an end) and isn't caught by the ended-MC persistence
-    // either, so it would save the record but leave the person showing "Present"
-    // — a silent no-op that misreports the parade state.
-    if (!startIso || !endIso) { alert("Enter both a start and end date."); return; }
-    if (endIso < startIso) { alert("End date cannot be before start date."); return; }
-    const existing = code === "MC"
-      ? paradeActiveMed(d4, m => m.status === "MC")
-      : paradeActiveMed(d4, m => m.status === status);
-    const rec = {
-      id: existing ? existing.id : nextId(),
-      d4, date: existing?.date || isoToDisplayDate(iso), reason: gvi("pe-reason"), location: existing?.location || "",
-      status, startDate: startIso ? isoToDisplayDate(startIso) : "", endDate: endIso ? isoToDisplayDate(endIso) : "",
-      type: existing?.type || "", urtiType: existing?.urtiType || "", mrTiming: existing?.mrTiming || "",
-      visitId: existing?.visitId || "", origin: existing?.origin || "manual"
-    };
-    upsertLocal("medical", rec); changed.push(["Medical", rec]);
-    targetId = rec.id;
-  } else if (code === "RS") {
-    const rsType = gvi("pe-rstype") || "RSI";
-    const existing = paradeActiveMed(d4, m => (m.type === "RSI" || m.type === "RSO") && (!m.status || m.status === "Pending"));
-    const rec = {
-      id: existing ? existing.id : nextId(),
-      d4, date: isoToDisplayDate(iso), reason: gvi("pe-reason"), location: "",
-      status: "Pending", startDate: isoToDisplayDate(iso), endDate: "",
-      type: rsType, urtiType: existing?.urtiType || "", mrTiming: "", visitId: existing?.visitId || "", origin: existing?.origin || "manual"
-    };
-    upsertLocal("medical", rec); changed.push(["Medical", rec]);
-    targetId = rec.id;
-  } else if (code === "MR") {
-    // MR (Medical Review) is independent/additive — a person can be MR AND still
-    // carry an LD/excuse. So we write a blank-status MR row (blank status keeps it
-    // in the MR section only, never double-listed as REPORTING SICK / STATUS) and
-    // do NOT end their other statuses or book them in.
-    const existing = paradeActiveMr(d4);
-    const rec = {
-      id: existing ? existing.id : nextId(),
-      d4, date: isoToDisplayDate(iso), reason: gvi("pe-reason"), location: "",
-      status: "", startDate: isoToDisplayDate(iso), endDate: "",
-      type: "MR", urtiType: "", mrTiming: gvi("pe-mrtiming"), visitId: existing?.visitId || "", origin: existing?.origin || "manual"
-    };
-    upsertLocal("medical", rec); changed.push(["Medical", rec]);
-    targetId = rec.id;
-  } else if (code === "AL/OIL" || code === "OTHERS") {
-    const startIso = gvi("pe-start"), endIso = gvi("pe-end");
-    if (endIso && startIso && endIso < startIso) { alert("End date cannot be before start date."); return; }
-    const wantAlOil = code === "AL/OIL";
-    const existing = paradeActiveLeave(d4, wantAlOil);
-    const type = wantAlOil ? (gvi("pe-altype") || "AL") : "Others";
-    const inCamp = wantAlOil ? false : (gvi("pe-incamp") === "true");
-    const days = (startIso && endIso)
-      ? Math.round((new Date(endIso) - new Date(startIso)) / 86400000) + 1 : 0;
-    const rec = {
-      id: existing ? existing.id : nextId(),
-      d4, type, startDate: isoToDisplayDate(startIso || iso), endDate: isoToDisplayDate(endIso || iso),
-      days: days > 0 ? days : 0, reason: gvi("pe-reason"), isInCamp: inCamp, isInCampReviewed: true
-    };
-    upsertLocal("leave", rec); changed.push(["Leave", rec]);
-    targetId = rec.id;
-  }
-
-  // Changing a person's code means they should end up with ONLY the new code, so
-  // end every OTHER active contributor (the old MC when switching to LD, a
-  // lingering leave row, a same-day out appointment). Otherwise a higher-priority
-  // stale record would mask the new code and the edit would appear to do nothing.
-  // MR is the exception — it's additive (coexists with LD/excuse), so it
-  // doesn't end other statuses.
-  if (code !== "MR") {
-    paradeEndActiveContributors(d4, targetId, changed);
-  }
-
-  saveLocal();
-  if (STATE.apiUrl) changed.forEach(([tab, row]) => { if (row) autoSync(tab, { type: "upsert", row }); });
-  closeModal();
-  refreshParade();
-}
 
 // Clear a person back to Present: book every active parade-contributing record
 // IN from the parade date (bookInDate, keeping the record's real dates), resolve
@@ -534,7 +355,7 @@ function openParadeClearConfirm(d4) {
 function paradeClearPerson(d4) {
   const iso = paradeCurrentDateISO();
   const changed = [];
-  paradeEndActiveContributors(d4, null, changed);
+  paradeEndActiveContributors(d4, changed);
   // paradeEndActiveContributors only books in records ACTIVE today. A recruit in
   // the MC+1/MC+2 grace tail (their MC ended 1–2 days ago but the classifier
   // still parks them under ATT C) has no active record to touch — book in the
@@ -573,13 +394,12 @@ function paradeClearPerson(d4) {
 // on/after bookInDate (bookedInBy). Pending Medical has no range to preserve, so
 // it still resolves to NIL. Active Leave (AL/OIL or OTHERS-from-leave) is booked
 // in the same way. Same-day out-of-camp Appointments are single-day events with
-// no range to keep, so they still resolve. The record whose id === exceptId is
-// left untouched (unused now the grid only offers →Present, kept for the
-// arbitrary-code caller). Mutated rows are appended to `changed` as [tab, row].
-function paradeEndActiveContributors(d4, exceptId, changed) {
+// no range to keep, so they still resolve. Mutated rows are appended to `changed`
+// as [tab, row]. Only reached from Mark-Present (paradeClearPerson) now.
+function paradeEndActiveContributors(d4, changed) {
   const iso = paradeCurrentDateISO();
   (STATE.medical || []).forEach(m => {
-    if (m.d4 !== d4 || m.id === exceptId || m.status === "NIL") return;
+    if (m.d4 !== d4 || m.status === "NIL") return;
     if (!medStatusActive(m, iso)) return;
     // Pending has no date range → resolve to NIL. Everything else keeps its
     // dates and is simply marked booked-in from the parade date.
@@ -587,14 +407,14 @@ function paradeEndActiveContributors(d4, exceptId, changed) {
     changed.push(["Medical", m]);
   });
   (STATE.leave || []).forEach(l => {
-    if (l.d4 !== d4 || l.id === exceptId) return;
+    if (l.d4 !== d4) return;
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!(s && e && s <= iso && iso <= e)) return;
     l.bookInDate = isoToDisplayDate(iso);   // keep the leave's real range; Present on/after
     changed.push(["Leave", l]);
   });
   (STATE.appointments || []).forEach(a => {
-    if (a.d4 !== d4 || a.resolved || a.id === exceptId) return;
+    if (a.d4 !== d4 || a.resolved) return;
     if (displayDateToISO(a.date) !== iso) return;
     a.resolved = true;
     changed.push(["Appointments", a]);
