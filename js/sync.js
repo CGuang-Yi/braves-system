@@ -422,17 +422,20 @@ async function drainTab(tabName) {
 
 // Dispatch one write to the backend. Each carries STATE.rev[tab] as baseRev
 // (added inside the API.* helpers; appendMany posts directly so it's added here).
-//   { type: "append",     row  } → API.appendRow
-//   { type: "appendMany", rows } → API.post appendMany
-//   { type: "upsert",     row  } → API.upsertRow (id-based, cross-device safe)
-//   { type: "delete",     id   } → API.deleteRowById
-//   { type: "replace",    data } → API.pushTab (full overwrite, bulk only)
+//   { type: "append",         row         } → API.appendRow
+//   { type: "appendMany",     rows        } → API.post appendMany
+//   { type: "replaceConduct", match, rows } → API.post replaceConductRows (atomic
+//        per-conduct swap: deletes match's non-RSI rows + appends rows in one op)
+//   { type: "upsert",         row         } → API.upsertRow (id-based, cross-device safe)
+//   { type: "delete",         id          } → API.deleteRowById
+//   { type: "replace",        data        } → API.pushTab (full overwrite, bulk only)
 function dispatchWrite(tabName, mode) {
   if (!STATE.authToken) return Promise.reject(new Error("Not authenticated"));
   // `mode.imported` (bulk import) rides through to the POST body so the backend
   // can admin-gate imports without throttling normal commander edits.
   if (mode.type === "append")      return API.appendRow(tabName, mode.row);
   if (mode.type === "appendMany")  return API.post({ action: "appendMany", tab: tabName, rows: mode.rows, baseRev: STATE.rev[tabName], imported: mode.imported });
+  if (mode.type === "replaceConduct") return API.post({ action: "replaceConductRows", tab: tabName, match: mode.match, rows: mode.rows, baseRev: STATE.rev[tabName], imported: mode.imported });
   if (mode.type === "upsert")      return API.upsertRow(tabName, mode.row);
   if (mode.type === "delete")      return API.deleteRowById(tabName, mode.id);
   if (mode.type === "replace")     return API.pushTab(tabName, mode.data, mode.imported);

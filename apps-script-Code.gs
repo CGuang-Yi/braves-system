@@ -928,6 +928,7 @@ function routeAuthedPost(action, tab, body, ctx) {
   if (action === "write" && tab && body.data)                    res = withRevLock(tab, body.baseRev, true,  function () { return writeTab(tab, body.data); });
   else if (action === "append" && tab && body.row)               res = withRevLock(tab, body.baseRev, false, function () { return appendRow(tab, body.row); });
   else if (action === "appendMany" && tab && body.rows)          res = withRevLock(tab, body.baseRev, false, function () { return appendMany(tab, body.rows); });
+  else if (action === "replaceConductRows" && tab && body.match)  res = withRevLock(tab, body.baseRev, false, function () { return replaceConductRows(tab, body.match, body.rows || []); });
   else if (action === "upsertRow" && tab && body.row)            res = withRevLock(tab, body.baseRev, false, function () { return upsertRow(tab, body.row); });
   else if (action === "deleteRowById" && tab && body.id !== undefined) res = withRevLock(tab, body.baseRev, false, function () { return deleteRowById(tab, body.id); });
   else if (action === "deleteRow" && tab && body.rowIndex !== undefined) res = withRevLock(tab, body.baseRev, false, function () { return deleteRow(tab, body.rowIndex); });
@@ -950,7 +951,7 @@ function routeAuthedPost(action, tab, body, ctx) {
 
   // Best-effort audit of data writes to the tabs called out in A2.3.
   if (res && !res.error && tab &&
-      ["write", "append", "appendMany", "upsertRow", "updateRow", "deleteRowById", "deleteRow"].indexOf(action) >= 0) {
+      ["write", "append", "appendMany", "replaceConductRows", "upsertRow", "updateRow", "deleteRowById", "deleteRow"].indexOf(action) >= 0) {
     writeAuditLog(ctx.email, ctx.personId, auditActionForTab(tab), tab, action, body.auth);
   }
   return res;
@@ -1644,6 +1645,89 @@ function appendMany(tabName, rows) {
     rowsAppended: newRows.length,
     timestamp: new Date().toISOString()
   };
+}
+
+// Atomic per-conduct rewrite. Within ONE lock, deletes every existing row that
+// matches (date, time, conductId) and is NOT an RSI row, then appends `rows`.
+// This is the conduct-wizard save primitive: it replaces the old client-side
+// "delete every old id + appendMany" pair, which fired as SEPARATE writes on
+// the sync queue and could partially fail (the deletes commit, the append does
+// not) — leaving that conduct's Status/Fallout detail rows deleted-but-not-
+// re-added on the sheet. Doing both here under a single withRevLock call means
+// the sheet is never observed half-written. Legacy RSI rows are preserved (the
+// wizard no longer manages RSI). Idempotent: replaying with the same rows/ids
+// yields the same sheet (the just-appended rows match and are re-appended), so a
+// post-reload retry is safe. Column- and coercion-safe via the shared helpers.
+function replaceConductRows(tabName, match, rows) {
+  if (!match || match.conductId === undefined || match.conductId === null || match.conductId === "") {
+    return { error: "replaceConductRows requires a match.conductId" };
+  }
+  if (!Array.isArray(rows)) return { error: "rows must be an array" };
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return { error: "Tab '" + tabName + "' not found" };
+
+  // Ensure columns exist for the match fields AND every key we'll append, so a
+  // brand-new field persists instead of being silently dropped.
+  var keySet = { id: true, date: true, time: true, conductId: true, d4: true, type: true, reason: true };
+  rows.forEach(function (r) { Object.keys(r).forEach(function (k) { keySet[k] = true; }); });
+  var trimmed = ensureColumnsForKeys(sheet, Object.keys(keySet));
+  var idxDate = trimmed.indexOf("date"), idxTime = trimmed.indexOf("time"),
+      idxConduct = trimmed.indexOf("conductId"), idxType = trimmed.indexOf("type");
+
+  var mDate = String(match.date == null ? "" : match.date);
+  var mTime = String(match.time == null ? "" : match.time);
+  var mConduct = String(match.conductId);
+
+  // Delete the matching non-RSI rows, bottom-up so indices stay valid.
+  // CRITICAL: the match values (mDate/mTime/mConduct) come from the client, and
+  // the client only ever sees what readTab RETURNS — which reformats Date-typed
+  // cells to "dd MMM yyyy" (real dates) or the display string (time-only cells).
+  // ConductDetail's date/time columns are NOT text-forced, so Sheets happily
+  // stores "01 Jan 2099" as a Date object; a raw getValues() here would then
+  // yield a Date whose String() ("Mon Jan 01 2099…") never equals the client's
+  // "01 Jan 2099", so the delete would silently no-op and every save would
+  // DUPLICATE rows. We must normalize each compared cell EXACTLY as readTab does.
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2 && idxConduct >= 0) {
+    var rng = sheet.getRange(2, 1, lastRow - 1, trimmed.length);
+    var grid = rng.getValues();
+    var disp = rng.getDisplayValues();
+    var normCell = function (v, d) {
+      if (v instanceof Date) {
+        return v.getFullYear() < 1900
+          ? d   // time-only cell → whatever the sheet displays (mirrors readTab)
+          : Utilities.formatDate(v, Session.getScriptTimeZone(), "dd MMM yyyy");
+      }
+      return String(v);
+    };
+    for (var i = grid.length - 1; i >= 0; i--) {
+      var rConduct = normCell(grid[i][idxConduct], disp[i][idxConduct]);
+      var rDate = idxDate >= 0 ? normCell(grid[i][idxDate], disp[i][idxDate]) : "";
+      var rTime = idxTime >= 0 ? normCell(grid[i][idxTime], disp[i][idxTime]) : "";
+      var rType = idxType >= 0 ? normCell(grid[i][idxType], disp[i][idxType]) : "";
+      if (rConduct === mConduct && rDate === mDate && rTime === mTime && rType !== "RSI") {
+        sheet.deleteRow(i + 2);
+      }
+    }
+  }
+
+  // Append the replacement rows (if any) — explicit range write with "@" forced
+  // on the coercion-prone columns first, exactly like appendMany.
+  if (rows.length) {
+    var newRows = rows.map(function (rowData) {
+      return trimmed.map(function (h) {
+        var val = rowData[h];
+        return val !== undefined && val !== null ? val : "";
+      });
+    });
+    var startRow = sheet.getLastRow() + 1;
+    forceTextColsForRange_(sheet, tabName, trimmed, startRow, newRows.length);
+    sheet.getRange(startRow, 1, newRows.length, trimmed.length).setValues(newRows);
+  }
+
+  return { ok: true, tab: tabName, replaced: rows.length, timestamp: new Date().toISOString() };
 }
 
 // ID-based upsert. Finds the row whose `id` column matches `rowData.id`,

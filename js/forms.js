@@ -4100,10 +4100,11 @@ function openLogConductWizard(attendanceId) {
     importedBaseline: [],
     haCounts: false,
     haPeriods: 1,
-    // Original conductDetail row ids loaded into the wizard on edit. Save
-    // diffs against the new set and deletes any id that's no longer present,
-    // so the surgical sheet sync only touches rows that actually changed
-    // (vs full-tab replace which would risk clobbering parallel edits).
+    // Non-RSI conductDetail row ids loaded into the wizard on edit — used only
+    // for the "was N rows" figure in the save confirmation now. The sheet sync
+    // no longer diffs against this: saveLogConductWizard replaces this conduct's
+    // detail rows atomically (a single replaceConduct op keyed on
+    // date/time/conductId), so there are no obsolete ids to delete individually.
     originalDetailIds: []
   };
   // Edit mode: pre-load every conductDetail row matching this attendance's
@@ -4829,28 +4830,23 @@ async function saveLogConductWizard() {
 
   const savedId = attendanceEntry.id;
   const isNew = !w.attendanceId;
-  // Compute the obsolete child rows BEFORE we null out the wizard state:
-  // originalDetailIds are the ConductDetail row ids that were loaded when
-  // the wizard opened. Any that aren't in the new detailRows set need to
-  // be surgically deleted from the sheet (they've already been removed
-  // from local STATE by the filter above).
-  const newDetailIds = new Set(detailRows.map(r => r.id));
-  const obsoleteIds = (w.originalDetailIds || []).filter(id => !newDetailIds.has(id));
+  const priorDetailCount = (w.originalDetailIds || []).length;
   _logConduct = null;
   closeModal();
   render();
 
-  // Auto-push everything: attendance upsert, surgical delete of obsolete
-  // detail rows, appendMany new detail/medical rows. Each fires through
-  // autoSync so the indicator + dirty-tracking handle failures.
+  // Auto-push everything: attendance upsert, an ATOMIC per-conduct rewrite of the
+  // detail rows, and appendMany for any new medical rows. The ConductDetail write
+  // is a single replaceConduct op (delete this conduct's non-RSI rows + append the
+  // rebuilt set, server-side under one lock) — NOT the old delete-every-old-id +
+  // appendMany pair, which fired as separate queued writes and could partially
+  // fail (deletes commit, append doesn't), leaving the conduct's rows deleted-but-
+  // not-re-added on the sheet. One op = the sheet is never observed half-written.
+  // Each fires through autoSync so the indicator + dirty-tracking handle failures.
   if (STATE.apiUrl) {
     autoSync("Attendance", { type: "upsert", row: syncedRow });
-    for (const id of obsoleteIds) {
-      autoSync("ConductDetail", { type: "delete", id });
-    }
-    if (detailRows.length) {
-      autoSync("ConductDetail", { type: "appendMany", rows: detailRows });
-    }
+    autoSync("ConductDetail", { type: "replaceConduct",
+      match: { date: displayDate, time, conductId: w.conductId }, rows: detailRows });
     if (newMedicalRows.length) {
       autoSync("Medical", { type: "appendMany", rows: newMedicalRows });
     }
@@ -4863,11 +4859,11 @@ async function saveLogConductWizard() {
       : "";
     alert(`Saved & syncing. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} created.${medMsg}\n\nChat-format message copied to clipboard${navigator.clipboard ? "" : " (or shown in fallback prompt)"}.`);
   } else {
-    const obsoleteNote = obsoleteIds.length ? ` ${obsoleteIds.length} removed.` : "";
+    const changeNote = priorDetailCount !== detailRows.length ? ` (was ${priorDetailCount}).` : "";
     const medNote = newMedicalRows.length
       ? `\n\n${newMedicalRows.length} new Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} added.`
       : "";
-    alert(`Saved & syncing. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} total.${obsoleteNote}${medNote}`);
+    alert(`Saved & syncing. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} total.${changeNote}${medNote}`);
   }
 }
 

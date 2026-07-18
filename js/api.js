@@ -27,6 +27,14 @@ const PULL_ASSIGN = {
   conducts:      d => STATE.conducts = d
 };
 
+// Reverse of TAB_TO_STATE (STATE-array-key → sheet name), used by pullAll to test
+// a PULL_ASSIGN key against the sheet-keyed STATE.dirty / STATE.rev. Built from
+// the single source of truth in state.js so the two never drift.
+const STATE_KEY_TO_TAB = Object.keys(TAB_TO_STATE).reduce((m, sheet) => {
+  m[TAB_TO_STATE[sheet]] = sheet;
+  return m;
+}, {});
+
 const API = {
   async get(action, tab) {
     const auth = encodeURIComponent(STATE.authToken || "");
@@ -96,10 +104,24 @@ const API = {
     // deleting all rows of a tab in the Sheet left stale rows stuck in the cache
     // because a full pull skipped the empty payload. Mirrors the config/vocfit/
     // platoons presence-gating just below.
+    // Never overwrite a tab that carries unsynced local edits (dirty). The launch
+    // full pull would otherwise clobber a failed-but-cached write BEFORE the user
+    // can retry it — the mechanism that permanently lost conduct-detail rows after
+    // a reload. autoRefreshTick already guards dirty tabs; pullAll must too. Its
+    // rev is left at our stale baseline so the pending retry still OCC-merges, and
+    // forceResync (which clears dirty first) still gets a clean authoritative pull.
+    const dirty = (STATE.dirty && STATE.dirty.size) ? STATE.dirty : null;
     for (const key in PULL_ASSIGN) {
+      if (dirty && dirty.has(STATE_KEY_TO_TAB[key])) continue;
       if (Array.isArray(data[key])) PULL_ASSIGN[key](data[key]);
     }
-    if (data.revs) STATE.rev = data.revs;   // baseline per-tab revisions (sheet-keyed)
+    if (data.revs) {
+      // Merge per-tab (not wholesale) so a dirty tab keeps its stale baseline.
+      for (const sheet in data.revs) {
+        if (dirty && dirty.has(sheet)) continue;
+        STATE.rev[sheet] = data.revs[sheet];
+      }
+    }
     // Braves reference tabs (spec §4/§12/A6). Assigned unconditionally (not
     // length-gated) so clearing a tab in the Sheet actually clears it here —
     // config especially must reflect deletions, not stick to a stale cache.
