@@ -1681,15 +1681,32 @@ function replaceConductRows(tabName, match, rows) {
   var mConduct = String(match.conductId);
 
   // Delete the matching non-RSI rows, bottom-up so indices stay valid.
+  // CRITICAL: the match values (mDate/mTime/mConduct) come from the client, and
+  // the client only ever sees what readTab RETURNS — which reformats Date-typed
+  // cells to "dd MMM yyyy" (real dates) or the display string (time-only cells).
+  // ConductDetail's date/time columns are NOT text-forced, so Sheets happily
+  // stores "01 Jan 2099" as a Date object; a raw getValues() here would then
+  // yield a Date whose String() ("Mon Jan 01 2099…") never equals the client's
+  // "01 Jan 2099", so the delete would silently no-op and every save would
+  // DUPLICATE rows. We must normalize each compared cell EXACTLY as readTab does.
   var lastRow = sheet.getLastRow();
   if (lastRow >= 2 && idxConduct >= 0) {
-    var grid = sheet.getRange(2, 1, lastRow - 1, trimmed.length).getValues();
+    var rng = sheet.getRange(2, 1, lastRow - 1, trimmed.length);
+    var grid = rng.getValues();
+    var disp = rng.getDisplayValues();
+    var normCell = function (v, d) {
+      if (v instanceof Date) {
+        return v.getFullYear() < 1900
+          ? d   // time-only cell → whatever the sheet displays (mirrors readTab)
+          : Utilities.formatDate(v, Session.getScriptTimeZone(), "dd MMM yyyy");
+      }
+      return String(v);
+    };
     for (var i = grid.length - 1; i >= 0; i--) {
-      var row = grid[i];
-      var rConduct = String(row[idxConduct]);
-      var rDate = idxDate >= 0 ? String(row[idxDate]) : "";
-      var rTime = idxTime >= 0 ? String(row[idxTime]) : "";
-      var rType = idxType >= 0 ? String(row[idxType]) : "";
+      var rConduct = normCell(grid[i][idxConduct], disp[i][idxConduct]);
+      var rDate = idxDate >= 0 ? normCell(grid[i][idxDate], disp[i][idxDate]) : "";
+      var rTime = idxTime >= 0 ? normCell(grid[i][idxTime], disp[i][idxTime]) : "";
+      var rType = idxType >= 0 ? normCell(grid[i][idxType], disp[i][idxType]) : "";
       if (rConduct === mConduct && rDate === mDate && rTime === mTime && rType !== "RSI") {
         sheet.deleteRow(i + 2);
       }

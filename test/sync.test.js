@@ -353,4 +353,27 @@ module.exports = async function run() {
     const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id));
     eq(ids, ["10"], "replay yields the same single row — no duplicate, no loss");
   });
+
+  // Regression for a bug the string-only mock originally hid (caught on the live
+  // sandbox): ConductDetail date/time columns are NOT text-forced, so Sheets
+  // stores "01 Jan 2026" as a Date object. readTab reformats it to "dd MMM yyyy"
+  // for the client, so the client's match.date is a clean string — but the
+  // delete phase reads RAW getValues() (a Date), and String(Date) never equals
+  // "01 Jan 2026". Without normalizing the compared cell the same way readTab
+  // does, the delete no-ops and every save DUPLICATES rows. The mock seeds a
+  // real Date cell + stubs Utilities.formatDate→"01 Jan 2026" to reproduce it.
+  await test("replaceConduct matches Date-coerced date cells (Sheets coercion trap)", async () => {
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [
+      ["1", new Date(2026, 0, 1), "", "c1", "1101", "Status", "old"]   // date cell is a Date object
+    ]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+    const mode = { type: "replaceConduct", match: { date: "01 Jan 2026", time: "", conductId: "c1" },
+      rows: [{ id: "10", date: "01 Jan 2026", time: "", conductId: "c1", d4: "1101", type: "Status", reason: "new" }] };
+    await A.sb.autoSync("ConductDetail", mode);
+    await A.sb.autoSync("ConductDetail", mode);   // replay
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
+    eq(ids, ["10"], "Date-coerced original removed; replay idempotent (no dup, no loss)");
+  });
 };
