@@ -333,8 +333,8 @@ function bpClassifyPerson(r, dateIso, idx) {
     if (endedMc && sinceEnd <= 2) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
-      // `persisted:true` marks this as the book-in tail (MC ended, roster mirror
-      // still "MC"), not a genuinely-active MC today. Parade state / strength /
+      // `persisted:true` marks this as the ended-MC grace tail (MC ended in the
+      // last 1–2 days, not booked in), not a genuinely-active MC today. Parade state / strength /
       // the A7 live list still treat it as ATT C (they don't read this flag), but
       // the Status Board calendar grid uses it to stop colouring MC past the real
       // end date — the grid shows the MC's actual duration, not the un-booked tail.

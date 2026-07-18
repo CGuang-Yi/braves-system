@@ -48,12 +48,6 @@ const PARADE_SECTION_TO_CODE = {
 
 function paradeCurrentDateISO() { return _paradeDate || todayISO(); }
 
-function paradeDayBeforeISO(iso) {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
 // ── Control-bar setters (each re-renders only the body, keeping the toolbar) ──
 function setParadeScope(v) { _paradeScope = v; refreshParade(); }
 function setParadeDate(v) { _paradeDate = v; refreshParade(); }
@@ -433,8 +427,8 @@ function saveParadeCode(d4, code) {
     const startIso = gvi("pe-start"), endIso = gvi("pe-end");
     // Both dates are required: an MC/STATUS with a blank end never reads as active
     // (medStatusActive needs an end) and isn't caught by the ended-MC persistence
-    // either, so it would save + mirror the roster status but leave the person
-    // showing "Present" — a silent no-op that misreports the parade state.
+    // either, so it would save the record but leave the person showing "Present"
+    // — a silent no-op that misreports the parade state.
     if (!startIso || !endIso) { alert("Enter both a start and end date."); return; }
     if (endIso < startIso) { alert("End date cannot be before start date."); return; }
     const existing = code === "MC"
@@ -464,7 +458,7 @@ function saveParadeCode(d4, code) {
     // MR (Medical Review) is independent/additive — a person can be MR AND still
     // carry an LD/excuse. So we write a blank-status MR row (blank status keeps it
     // in the MR section only, never double-listed as REPORTING SICK / STATUS) and
-    // do NOT end their other statuses or touch the roster mirror (see the tail).
+    // do NOT end their other statuses or book them in.
     const existing = paradeActiveMr(d4);
     const rec = {
       id: existing ? existing.id : nextId(),
@@ -508,14 +502,15 @@ function saveParadeCode(d4, code) {
   refreshParade();
 }
 
-// Clear a person back to Present: end every active parade-contributing record at
-// the parade date (Pending → NIL), resolve same-day out-of-camp appointments.
-// Never hard-deletes (preserves history).
+// Clear a person back to Present: book every active parade-contributing record
+// IN from the parade date (bookInDate, keeping the record's real dates), resolve
+// a same-day pending MR, and resolve same-day out-of-camp appointments. Never
+// rewrites dates or hard-deletes (preserves history — see paradeEndActiveContributors).
 function openParadeClearConfirm(d4) {
   const name = displayPersonLabel(d4);
   const iso = paradeCurrentDateISO();
   openModal(`Mark Present — ${name}`, `
-    <div style="font-size:13px;margin-bottom:14px">End all active MC / status / leave / today's MR for <strong>${escapeHTML(name)}</strong> as of <strong>${escapeHTML(iso)}</strong> and mark them present? Records are ended (kept for history), not deleted.</div>
+    <div style="font-size:13px;margin-bottom:14px">Mark <strong>${escapeHTML(name)}</strong> present from <strong>${escapeHTML(iso)}</strong>? Their MC / status / leave records are kept on file with their real dates (record dates kept) — they simply read Present from this date onward.</div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" onclick="paradeClearPerson('${escapeAttr(d4)}')">Mark Present</button>
       <button class="btn" onclick="closeParadeEditor()">Cancel</button>
@@ -523,8 +518,24 @@ function openParadeClearConfirm(d4) {
 }
 
 function paradeClearPerson(d4) {
+  const iso = paradeCurrentDateISO();
   const changed = [];
   paradeEndActiveContributors(d4, null, changed);
+  // paradeEndActiveContributors only books in records ACTIVE today. A recruit in
+  // the MC+1/MC+2 grace tail (their MC ended 1–2 days ago but the classifier
+  // still parks them under ATT C) has no active record to touch — book in the
+  // most-recent already-ended MC directly so the tail drops out from the parade
+  // date onward (bookedInBy). Matches the classifier's recovery-tail window
+  // (endDate < parade date, within 2 days) and only touches an un-booked MC.
+  const graceMc = (STATE.medical || [])
+    .filter(m => m.d4 === d4 && m.status === "MC" && !m.bookInDate
+      && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < iso)
+    .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
+  if (graceMc) {
+    const endIso = displayDateToISO(graceMc.endDate || "");
+    const sinceEnd = endIso ? Math.round((new Date(iso + "T00:00:00") - new Date(endIso + "T00:00:00")) / 86400000) : 99;
+    if (sinceEnd <= 2) { graceMc.bookInDate = isoToDisplayDate(iso); changed.push(["Medical", graceMc]); }
+  }
   // Marking Present means nothing is outstanding, so also resolve a same-day
   // pending MR. MR is normally additive (a person can be on LD AND MR), so
   // applying another code leaves it alone — but a blank-status MR carries no end
@@ -540,26 +551,32 @@ function paradeClearPerson(d4) {
   refreshParade();
 }
 
-// End every active parade-contributing record for a person as of the parade date
-// — active Medical (Pending → NIL, else endDate set to yesterday), active Leave
-// (endDate → yesterday), and same-day out-of-camp Appointments (resolved). The
-// record whose id === exceptId is left untouched (used when applying a new code:
-// keep the just-written target, end everything else). Mutated rows are appended
-// to `changed` as [tab, row] for the caller to persist/sync. Never hard-deletes.
+// Book every ACTIVE parade-contributing record for a person IN as of the parade
+// date — WITHOUT rewriting the record's real dates (item 4c). An active Medical
+// status (MC/Warded/LD/Excuse/…) gets `bookInDate = parade date` instead of
+// endDate → yesterday: the record keeps its true range (correct for HA / history
+// / viewing past parade dates) while the classifier reads the person Present
+// on/after bookInDate (bookedInBy). Pending Medical has no range to preserve, so
+// it still resolves to NIL. Active Leave (AL/OIL or OTHERS-from-leave) is booked
+// in the same way. Same-day out-of-camp Appointments are single-day events with
+// no range to keep, so they still resolve. The record whose id === exceptId is
+// left untouched (unused now the grid only offers →Present, kept for the
+// arbitrary-code caller). Mutated rows are appended to `changed` as [tab, row].
 function paradeEndActiveContributors(d4, exceptId, changed) {
   const iso = paradeCurrentDateISO();
-  const yest = isoToDisplayDate(paradeDayBeforeISO(iso));
   (STATE.medical || []).forEach(m => {
     if (m.d4 !== d4 || m.id === exceptId || m.status === "NIL") return;
     if (!medStatusActive(m, iso)) return;
-    if (m.status === "Pending") m.status = "NIL"; else m.endDate = yest;
+    // Pending has no date range → resolve to NIL. Everything else keeps its
+    // dates and is simply marked booked-in from the parade date.
+    if (m.status === "Pending") m.status = "NIL"; else m.bookInDate = isoToDisplayDate(iso);
     changed.push(["Medical", m]);
   });
   (STATE.leave || []).forEach(l => {
     if (l.d4 !== d4 || l.id === exceptId) return;
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!(s && e && s <= iso && iso <= e)) return;
-    l.endDate = yest;
+    l.bookInDate = isoToDisplayDate(iso);   // keep the leave's real range; Present on/after
     changed.push(["Leave", l]);
   });
   (STATE.appointments || []).forEach(a => {

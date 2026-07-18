@@ -82,4 +82,19 @@ module.exports = async function run() {
     ok(/function sbGridNav[\s\S]{0,120}_sbGridShown = true/.test(render),
       "sbGridNav re-defers the grid instead of keeping it shown");
   });
+
+  suite("parade-tab wiring: Mark Present books in via bookInDate, never truncates (item 4c)");
+  const paradeTab = fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8");
+
+  await test("paradeEndActiveContributors sets bookInDate and no longer truncates active records to yesterday", () => {
+    ok(/m\.bookInDate\s*=\s*isoToDisplayDate\(iso\)/.test(paradeTab), "active Medical is not booked in via bookInDate");
+    ok(/l\.bookInDate\s*=\s*isoToDisplayDate\(iso\)/.test(paradeTab), "active Leave is not booked in via bookInDate");
+    ok(!/l\.endDate\s*=\s*yest/.test(paradeTab), "active Leave is still truncated to yesterday");
+    ok(!/else\s+m\.endDate\s*=\s*yest/.test(paradeTab), "active Medical is still truncated to yesterday");
+  });
+
+  await test("paradeClearPerson books in a grace-window ended MC", () => {
+    ok(/graceMc[\s\S]{0,200}bookInDate\s*=\s*isoToDisplayDate\(iso\)/.test(paradeTab),
+      "the grace-window ended MC is not booked in on Mark Present");
+  });
 };
