@@ -247,4 +247,110 @@ module.exports = async function run() {
     await C.sb.autoSyncOnLaunch();
     ok(C.fetchSpy.map(r => r.action).includes("readAll"), "full pull when no rev baseline");
   });
+
+  suite("sync: launch pull preserves unsynced (dirty) tabs");
+
+  // Regression for the ConductDetail-vanishes-on-reload bug: the launch full
+  // pull (pullAndRender → API.pullAll) used to overwrite EVERY tab, including
+  // one carrying an unsynced local edit (dirty). That permanently destroyed the
+  // cached-but-not-yet-pushed rows before the user could retry. autoRefreshTick
+  // already protects dirty tabs — pullAll must too.
+  await test("pullAll does NOT clobber a dirty tab; preserves its rev", async () => {
+    const CD_HEADERS = ["id", "date", "time", "conductId", "d4", "type", "reason"];
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [["1", "26 May 2026", "", "c1", "1101", "Status", "LD"]]);
+    const A = makeClient(backend), B = makeClient(backend);
+    await A.sb.API.pullAll();
+    await B.sb.API.pullAll();
+
+    // A has an unsynced local ConductDetail row (a push that failed → dirty).
+    A.sb.STATE.conductDetail.push({ id: "2", date: "26 May 2026", time: "", conductId: "c1", d4: "1102", type: "Fallout", reason: "tummy" });
+    A.sb.STATE.dirty = new Set(["ConductDetail"]);
+    const revBefore = A.sb.STATE.rev.ConductDetail;
+
+    // Another device advances the ConductDetail server rev meanwhile.
+    await B.sb.autoSync("ConductDetail", { type: "upsert", row: { id: "9", date: "27 May 2026", time: "", conductId: "c2", d4: "1109", type: "Status", reason: "MC" } });
+
+    // A relaunches → full pull. The dirty tab must be left untouched.
+    await A.sb.API.pullAll();
+    ok(A.sb.STATE.conductDetail.find(r => String(r.id) === "2"), "A's unsynced row survived the launch pull");
+    eq(A.sb.STATE.rev.ConductDetail, revBefore, "dirty tab's rev preserved (not advanced past the unsynced edit)");
+  });
+
+  await test("pullAll still refreshes NON-dirty tabs normally", async () => {
+    const CD_HEADERS = ["id", "date", "time", "conductId", "d4", "type", "reason"];
+    const backend = loadBackend();
+    backend.db.seed("Medical", MED_HEADERS, [["1", "1101", "", "orig", "", "", "", ""]]);
+    backend.db.seed("ConductDetail", CD_HEADERS, [["1", "26 May 2026", "", "c1", "1101", "Status", "LD"]]);
+    const A = makeClient(backend), B = makeClient(backend);
+    await A.sb.API.pullAll();
+    await B.sb.API.pullAll();
+
+    A.sb.STATE.dirty = new Set(["Medical"]);          // Medical dirty, ConductDetail clean
+    A.sb.STATE.medical[0].reason = "A-local";
+    await B.sb.autoSync("ConductDetail", { type: "upsert", row: { id: "2", date: "27 May 2026", time: "", conductId: "c2", d4: "1102", type: "Fallout", reason: "new" } });
+
+    await A.sb.API.pullAll();
+    eq(A.sb.STATE.medical[0].reason, "A-local", "dirty Medical preserved");
+    ok(A.sb.STATE.conductDetail.find(r => String(r.id) === "2"), "clean ConductDetail refreshed to server");
+  });
+
+  suite("sync: atomic per-conduct ConductDetail rewrite (replaceConduct)");
+
+  // Fix #1: the wizard save now rewrites a conduct's detail rows with a SINGLE
+  // atomic op instead of delete-every-old-id + appendMany (which could partially
+  // fail and leave the sheet half-written). replaceConduct removes the matching
+  // (date,time,conductId) non-RSI rows and appends the new set under one lock.
+  const CD_HEADERS = ["id", "date", "time", "conductId", "d4", "type", "reason"];
+
+  await test("replaceConduct swaps only matching non-RSI rows; keeps RSI + other conduct/date", async () => {
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [
+      ["1", "26 May 2026", "", "c1", "1101", "Status", "LD"],
+      ["2", "26 May 2026", "", "c1", "1102", "Fallout", "tummy"],
+      ["3", "26 May 2026", "", "c1", "1103", "RSI", "legacy"],   // RSI preserved
+      ["4", "26 May 2026", "", "c2", "1104", "Status", "MC"],    // other conduct preserved
+      ["5", "27 May 2026", "", "c1", "1105", "Status", "LD"]     // other DATE preserved
+    ]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+    const revBefore = A.sb.STATE.rev.ConductDetail;
+
+    const newRows = [
+      { id: "10", date: "26 May 2026", time: "", conductId: "c1", d4: "1101", type: "Status", reason: "LD-updated" },
+      { id: "11", date: "26 May 2026", time: "", conductId: "c1", d4: "1199", type: "Fallout", reason: "new" }
+    ];
+    await A.sb.autoSync("ConductDetail", { type: "replaceConduct", match: { date: "26 May 2026", time: "", conductId: "c1" }, rows: newRows });
+
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
+    eq(ids, ["10", "11", "3", "4", "5"].sort(), "c1/26-May non-RSI rows swapped; RSI + other conduct/date untouched");
+    eq(A.sb.STATE.rev.ConductDetail, revBefore + 1, "single rev bump (one atomic op)");
+    eq(A.sb.STATE.dirty.size, 0, "not dirty");
+  });
+
+  await test("replaceConduct with empty rows clears the conduct's non-RSI detail", async () => {
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [
+      ["1", "26 May 2026", "", "c1", "1101", "Status", "LD"],
+      ["2", "26 May 2026", "", "c1", "1103", "RSI", "legacy"]
+    ]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+    await A.sb.autoSync("ConductDetail", { type: "replaceConduct", match: { date: "26 May 2026", time: "", conductId: "c1" }, rows: [] });
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id));
+    eq(ids, ["2"], "non-RSI rows cleared, RSI kept");
+  });
+
+  await test("replaceConduct is idempotent — safe to replay after a reload", async () => {
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [["1", "26 May 2026", "", "c1", "1101", "Status", "LD"]]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+    const mode = { type: "replaceConduct", match: { date: "26 May 2026", time: "", conductId: "c1" },
+      rows: [{ id: "10", date: "26 May 2026", time: "", conductId: "c1", d4: "1101", type: "Status", reason: "x" }] };
+    await A.sb.autoSync("ConductDetail", mode);
+    await A.sb.autoSync("ConductDetail", mode);   // replay (what a post-reload retry would do)
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id));
+    eq(ids, ["10"], "replay yields the same single row — no duplicate, no loss");
+  });
 };
