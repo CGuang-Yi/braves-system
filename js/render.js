@@ -1208,7 +1208,13 @@ function renderRoster(el) {
       </div>
     </div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Plt · Sect</th><th>Role</th><th>Status</th><th>BMI</th><th>RSIs</th></tr></thead><tbody>
-    ${scoped.map(r => {
+    ${(() => {
+      // Build the effective-medical map ONCE for the whole list so each row's
+      // status badge (rosterDisplayStatus) is an O(1) lookup instead of rebuilding
+      // the full medical layer per row (O(roster × medical) — see helpers.js).
+      const effByD4 = {};
+      currentMedicalEffectiveAll(todayISO()).forEach(e => { effByD4[e.d4] = e; });
+      return scoped.map(r => {
       const bmi = calcBMI(r);
       const isCmd = r.role === "Commander";
       const nameCell = isCmd ? `${escapeHTML(r.rank ? r.rank + " " : "")}${escapeHTML(r.name)}` : escapeHTML(r.name);
@@ -1219,8 +1225,9 @@ function renderRoster(el) {
       const plt = personPlatoon(r);
       const sect = personSection(r);
       const orgCell = (plt || sect) ? `${plt || "—"}${sect ? " · " + sect : ""}` : "—";
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td style="font-size:11px;color:var(--muted)">${orgCell}</td><td>${roleCell}</td><td>${rosterDisplayStatus(r)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
-    }).join("")}
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td style="font-size:11px;color:var(--muted)">${orgCell}</td><td>${roleCell}</td><td>${rosterDisplayStatus(r, effByD4)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
+      }).join("");
+    })()}
     </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No personnel in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "No invite redeemed on this device yet.")}</div>`}`;
 }
 

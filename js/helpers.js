@@ -641,10 +641,15 @@ const statusBadge = s => badge(s, s === "Active" ? "green" : s === "Warded" ? "r
 // from, so they always show the stored value. BP_DEPARTED_STATUSES lives in
 // braves-parade.js (loaded after helpers.js) but this runs at render time, long
 // after every script has loaded, so the reference resolves fine.
-function rosterDisplayStatus(r) {
+function rosterDisplayStatus(r, effByD4) {
   const stored = (r && r.status != null) ? String(r.status).trim() : "";
   if (BP_DEPARTED_STATUSES.has(stored)) return statusBadge(stored);
-  const eff = currentMedicalEffectiveAll(todayISO()).find(e => e.d4 === r.id);
+  // Prefer a caller-supplied d4→effective-status map (renderRoster builds it
+  // ONCE for the whole list). Without it every row rebuilds the entire medical
+  // layer via currentMedicalEffectiveAll — O(roster × medical) per render; the
+  // lone-caller fallback keeps this usable for a one-off lookup.
+  const eff = effByD4 ? effByD4[r.id]
+    : currentMedicalEffectiveAll(todayISO()).find(e => e.d4 === r.id);
   if (eff && eff.statuses.length) return medTagBadge(eff.statuses[0].tag);
   // No active medical status → fall back to the stored roster value (usually
   // "Active"/blank; a stale medical-mirror value left from before item 4a just

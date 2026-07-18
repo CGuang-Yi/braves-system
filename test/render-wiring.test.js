@@ -115,7 +115,8 @@ module.exports = async function run() {
   suite("render wiring: roster status badge derives from the medical layer (item 4b)");
 
   await test("the Roster list badges rosterDisplayStatus, not the raw stored status", () => {
-    ok(render.includes("rosterDisplayStatus(r)"), "render.js Roster list no longer calls rosterDisplayStatus(r)");
+    ok(render.includes("rosterDisplayStatus(r,") || render.includes("rosterDisplayStatus(r)"),
+      "render.js Roster list no longer badges via rosterDisplayStatus");
     ok(helpers.includes("function rosterDisplayStatus"), "rosterDisplayStatus is not defined in helpers.js");
     ok(!/<td>\$\{statusBadge\(r\.status\)\}<\/td>/.test(render), "render.js still badges the raw stored r.status in the Roster row");
   });
