@@ -20,7 +20,14 @@ function render() {
 
   const el = document.getElementById("content");
   const scoped = filteredRoster();
-  const active = scoped.filter(r => r.status === "Active").length;
+  // "Active" = present in camp today. Before item 4a this was read straight off
+  // roster.status, which mirrored the person's current medical status; that mirror
+  // is gone (roster.status now only marks departures), so we reuse the canonical
+  // current-strength count — the same bpStrength(...).current the Dashboard shows
+  // — which derives presence from the Medical / Leave / Appointment layers via
+  // bpClassifyPerson (and so respects parade book-ins, the leave In-Camp override
+  // and out-of-camp appointments). Keeps the topbar and Dashboard figures in step.
+  const active = bpStrength(scoped, todayISO()).current;
   const scopeLabel = isFilterActive() ? ` [${filterLabel()}]` : "";
   document.getElementById("str-counter").textContent = `Str: ${scoped.length} | Active: ${active}${scopeLabel}`;
 

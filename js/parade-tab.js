@@ -542,7 +542,7 @@ function paradeClearPerson(d4) {
   // date onward (bookedInBy). Matches the classifier's recovery-tail window
   // (endDate < parade date, within 2 days) and only touches an un-booked MC.
   const graceMc = (STATE.medical || [])
-    .filter(m => m.d4 === d4 && m.status === "MC" && !m.bookInDate
+    .filter(m => m.d4 === d4 && m.status === "MC" && !bookedInBy(m, iso)
       && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < iso)
     .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
   if (graceMc) {

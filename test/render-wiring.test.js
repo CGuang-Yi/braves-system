@@ -119,4 +119,12 @@ module.exports = async function run() {
     ok(helpers.includes("function rosterDisplayStatus"), "rosterDisplayStatus is not defined in helpers.js");
     ok(!/<td>\$\{statusBadge\(r\.status\)\}<\/td>/.test(render), "render.js still badges the raw stored r.status in the Roster row");
   });
+
+  suite("render wiring: topbar Active counter derives presence live (item 4a fallout)");
+
+  await test("the Active counter reuses bpStrength(...).current, not roster.status === Active", () => {
+    ok(!/r\.status === "Active"/.test(render), "the Active counter still reads the raw roster.status mirror");
+    ok(/const active = bpStrength\(scoped, todayISO\(\)\)\.current/.test(render),
+      "the Active counter is not derived from the canonical bpStrength(...).current");
+  });
 };
