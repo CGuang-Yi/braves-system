@@ -161,6 +161,19 @@ function bpSupersedeSameType(out, meta, section) {
   out[section] = o; meta[section] = mt;
 }
 
+// Shared "booked in" predicate (item 4c). A date-range parade contributor
+// (active MC, Warded, AL/OIL, OTHERS-from-leave) that carries a `bookInDate`
+// counts toward its section ONLY for parade dates BEFORE that date; on/after it
+// the person reads Present for that record while the record keeps its real dates
+// on file (correct for HA / history / viewing past parade dates). Works on ANY
+// record — medical or leave — that carries bookInDate. Blank/absent = not booked
+// in. bookInDate is stored in DISPLAY format like every other date, so it is run
+// through displayDateToISO before the string compare.
+function bookedInBy(rec, dateIso) {
+  const b = displayDateToISO(rec && rec.bookInDate || "");
+  return !!b && dateIso >= b;
+}
+
 // ── Per-person classification (spec §8) ─────────────────────────────────────
 // Multi-section: a person may appear under several sections. Returns the section
 // → entry-line map for this one person, plus a binary notInCamp flag (counted
@@ -210,6 +223,7 @@ function bpClassifyPerson(r, dateIso, idx) {
   leaveRows.forEach(l => {
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
+    if (bookedInBy(l, dateIso)) return;   // booked in ⇒ Present from bookInDate onward
     // The entry text is the free-text reason ("48HR BO"), falling back to the
     // leave type when no reason was recorded. (NOT "type — reason" — the sample
     // shows a single clean label.)
@@ -264,7 +278,7 @@ function bpClassifyPerson(r, dateIso, idx) {
     }
 
     // ATT C — active MC (not-in-camp). Warded handled as OTHERS below.
-    if (m.status === "MC" && medStatusActive(m, dateIso)) {
+    if (m.status === "MC" && medStatusActive(m, dateIso) && !bookedInBy(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D MC` : "MC";
       push2("attC", `${label} ${bpRange(m, false)}`.trim(), "MC", { supKey: "MC", supEnd: displayDateToISO(m.endDate || "") });
@@ -277,7 +291,7 @@ function bpClassifyPerson(r, dateIso, idx) {
     // "RN - " STATUS line (and double-list someone already in REPORTING SICK).
     // Every status here gets the same "{days}D {status}" duration prefix.
     if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
-        && m.status !== "Pending" && m.status !== "NIL") {
+        && m.status !== "Pending" && m.status !== "NIL" && !bookedInBy(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D ${m.status}` : m.status;
       push2("status", `${label} ${bpRange(m, true)}`.trim(), m.status, { supKey: String(m.status).trim(), supEnd: displayDateToISO(m.endDate || "") });
@@ -286,33 +300,32 @@ function bpClassifyPerson(r, dateIso, idx) {
     // Warded → OTHERS (NOT IN CAMP). Tagged type "WD" (not the generic "OTHERS")
     // so the Status Board grid/list can colour it as away rather than leaving it
     // indistinguishable from an in-camp OTHERS entry — see bpGridCell/bpPrimaryForDay.
-    if (m.status === "Warded" && medStatusActive(m, dateIso)) {
+    if (m.status === "Warded" && medStatusActive(m, dateIso) && !bookedInBy(m, dateIso)) {
       push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "WD", { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
   });
 
   // Persist an ENDED MC through the MC+1/MC+2 recovery window, then AUTO-HIDE.
-  // `r.status` mirrors the recruit's latest medical status (submitMedical writes
-  // MC/LD/… back onto the roster row); if it still reads "MC" yet no MC is active
-  // today, their MC has lapsed with no follow-up and nobody booked them back in.
-  // For the first two days after the end date we keep them under ATT C (still
-  // counted OUT of camp) using their most recent ended MC's real dates — the same
-  // MC+1/MC+2 grace the ghost tags mark (helpers.js medStatusTag). Once the MC
-  // ended MORE than 2 days ago we STOP persisting: a stale mirror that was never
-  // cleared should not park the recruit under ATT C forever (that produced the
-  // "shows MC but not actually on MC" rows on the Status Board). A manual book-in
-  // or any new MO status still rewrites r.status; this bound only stops the
-  // *display* from clinging to a long-dead MC.
-  //
-  // This affects CURRENT strength only (in/out of camp). roster.status="MC" still
-  // counts toward TOTAL strength via bpIsActive, so PR #42's protection (MC people
-  // must not drop out of total strength) is untouched. Only the most recent
-  // ALREADY-ENDED MC is considered (endDate < dateIso) — a future/later MC does
+  // A recruit whose MC ended in the last 1–2 days is still counted OUT of camp
+  // (the MC+1/MC+2 grace the ghost tags mark, helpers.js medStatusTag) UNLESS
+  // they have been booked in. Book-in is now signalled by `bookInDate` on the
+  // medical record (set when a commander marks them Present on the parade grid),
+  // NOT by a roster.status mirror — that mirror was removed (item 4a), so this
+  // tail no longer reads r.status at all. It fires when there is no active MC
+  // today (!out.attC.length) and the most-recent already-ended MC (endDate <
+  // dateIso) is within the 2-day window and is NOT booked in. Once the MC ended
+  // MORE than 2 days ago we STOP persisting (a long-dead MC must not park the
+  // recruit under ATT C forever — the "shows MC but not actually on MC" fix).
+  // Only the most recent ALREADY-ENDED MC is considered; a future/later MC does
   // not imply book-in from an earlier one.
-  if (String(r.status || "").trim() === "MC" && !out.attC.length) {
+  //
+  // Strength: affects CURRENT strength (in/out of camp) only — TOTAL strength is
+  // unchanged (bpIsActive keys off roster departure statuses, not this tail).
+  if (!out.attC.length) {
     const endedMc = medRows
-      .filter(m => m.status === "MC" && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
+      .filter(m => m.status === "MC" && !bookedInBy(m, dateIso)
+        && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
       .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
     const endIso = endedMc ? displayDateToISO(endedMc.endDate || "") : "";
     // Days since the MC ended; the ghost window is offsets 1–2 (MC+1 / MC+2).
@@ -320,8 +333,8 @@ function bpClassifyPerson(r, dateIso, idx) {
     if (endedMc && sinceEnd <= 2) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
-      // `persisted:true` marks this as the book-in tail (MC ended, roster mirror
-      // still "MC"), not a genuinely-active MC today. Parade state / strength /
+      // `persisted:true` marks this as the ended-MC grace tail (MC ended in the
+      // last 1–2 days, not booked in), not a genuinely-active MC today. Parade state / strength /
       // the A7 live list still treat it as ATT C (they don't read this flag), but
       // the Status Board calendar grid uses it to stop colouring MC past the real
       // end date — the grid shows the MC's actual duration, not the un-booked tail.

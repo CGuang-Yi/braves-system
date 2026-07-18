@@ -302,14 +302,6 @@ module.exports = async function run() {
     ok(!c.notInCamp, "a long-lapsed MC no longer counts as out of camp");
   });
 
-  await test("MC ended + roster.status 'Active' (booked in) → dropped from ATT C, present", () => {
-    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-25", endDate: "2026-06-27" }]);
-    person(sb).status = "Active";   // manually booked back in — mirror cleared
-    const c = sb.bpClassifyPerson(person(sb), TODAY);
-    eq(c.sections.attC.length, 0, "a booked-in recruit must not persist as MC");
-    ok(!c.notInCamp, "a booked-in recruit is in camp");
-  });
-
   await test("active MC + roster.status 'MC' → single ATT C entry (persistence must not double it)", () => {
     const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: TODAY, endDate: "2026-07-03" }]);
     person(sb).status = "MC";
@@ -422,5 +414,71 @@ module.exports = async function run() {
     eq(c.sections.attC.length, 1, "same-type MC overlap must collapse to one line");
     ok(c.sections.attC[0].includes("020726"), `the later-ending MC (02 Jul) must win, got: ${c.sections.attC[0]}`);
     ok(!c.sections.attC[0].includes("290626"), "the earlier-ending MC (29 Jun) must be dropped");
+  });
+
+  suite("parade classifier: bookInDate marks a person present without rewriting record dates (item 4c/4e)");
+
+  await test("(a) MC ended 1–2 days ago, no bookInDate, no roster.status → grace ATT C preserved", () => {
+    // MC 25–27 Jun, TODAY 29 Jun (MC+2). No bookInDate; roster row carries no
+    // status at all — the grace tail no longer depends on a roster mirror.
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-25", endDate: "2026-06-27" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 1, "ended MC within the ghost window persists under ATT C");
+    ok(c.sections.attC[0].includes("3D MC"), `expected the real 3D MC dates, got: ${c.sections.attC[0]}`);
+    ok(c.notInCamp, "a persisted grace MC still counts as out of camp");
+  });
+
+  await test("(b) ended MC with bookInDate ≤ parade date → Present immediately (no grace)", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-25", endDate: "2026-06-27", bookInDate: "2026-06-28" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 0, "a booked-in ended MC does not persist under ATT C");
+    ok(!c.notInCamp, "booked in ⇒ in camp");
+  });
+
+  await test("(c) active MC 16–20 booked in 18 → ATT C on 16/17, Present 18–20, endDate kept", () => {
+    const mc = { id: 1, d4: "0001", type: "", status: "MC", startDate: "2026-06-16", endDate: "2026-06-20", bookInDate: "2026-06-18" };
+    const sb = loadParade([mc]);
+    const on16 = sb.bpClassifyPerson(person(sb), "2026-06-16");
+    eq(on16.sections.attC.length, 1, "before bookInDate the MC still shows under ATT C");
+    ok(on16.notInCamp, "…and still counts out of camp");
+    eq(sb.bpClassifyPerson(person(sb), "2026-06-18").sections.attC.length, 0, "on the bookInDate the person reads Present");
+    const on20 = sb.bpClassifyPerson(person(sb), "2026-06-20");
+    eq(on20.sections.attC.length, 0, "still Present on the last real MC day");
+    ok(!on20.notInCamp, "…and in camp");
+    eq(mc.endDate, "2026-06-20", "bookInDate must NOT rewrite the record's endDate");
+  });
+
+  await test("(d) roster.status 'MC' with NO medical MC record → no ATT C (mirror no longer forces it)", () => {
+    const sb = loadParade([]);        // no medical rows at all
+    person(sb).status = "MC";         // a stale roster mirror value
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.attC.length, 0, "roster.status alone must not park a person under ATT C");
+    ok(!c.notInCamp, "…and must not count them out of camp");
+  });
+
+  await test("(e) active AL/OIL leave 16–20 booked in 18 → AL/OIL on 16/17, Present 18–20, endDate kept", () => {
+    const lv = { id: 1, d4: "0001", type: "Leave", reason: "48HR BO", startDate: "2026-06-16", endDate: "2026-06-20", isInCamp: false, bookInDate: "2026-06-18" };
+    const sb = loadParade();
+    sb.STATE.leave = [lv];
+    const on17 = sb.bpClassifyPerson(person(sb), "2026-06-17");
+    eq(on17.sections.alOil.length, 1, "before bookInDate the leave still shows under AL/OIL");
+    ok(on17.notInCamp, "…and still counts out of camp");
+    const on18 = sb.bpClassifyPerson(person(sb), "2026-06-18");
+    eq(on18.sections.alOil.length, 0, "from the bookInDate the person reads Present");
+    ok(!on18.notInCamp, "booked in ⇒ in camp");
+    eq(lv.endDate, "2026-06-20", "bookInDate must NOT rewrite the leave's endDate");
+  });
+
+  await test("(e-mirror) OTHERS-from-leave booked in → OTHERS before, Present on/after, endDate kept", () => {
+    const lv = { id: 1, d4: "0001", type: "Course", reason: "APSC", startDate: "2026-06-16", endDate: "2026-06-20", isInCamp: false, bookInDate: "2026-06-18" };
+    const sb = loadParade();
+    sb.STATE.leave = [lv];
+    const before = sb.bpClassifyPerson(person(sb), "2026-06-17");
+    eq(before.sections.others.length, 1, "before bookInDate the course shows under OTHERS");
+    ok(before.notInCamp, "…not in camp");
+    const after = sb.bpClassifyPerson(person(sb), "2026-06-18");
+    eq(after.sections.others.length, 0, "on/after bookInDate the person is Present");
+    ok(!after.notInCamp, "booked in ⇒ in camp");
+    eq(lv.endDate, "2026-06-20", "leave endDate untouched");
   });
 };

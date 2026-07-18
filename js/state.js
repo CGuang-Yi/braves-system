@@ -341,6 +341,11 @@ function normalizeMedical(records) {
       status,
       startDate: r.startDate || "",
       endDate: r.endDate || "",
+      // Book-in marker (item 4c): the parade date (DISPLAY format) from which a
+      // booked-in recruit reads Present WITHOUT truncating this record's real
+      // dates. Empty = not booked in. Carried through read/write so writeTab
+      // (headers = Object.keys(data[0])) can't strip the column.
+      bookInDate: r.bookInDate || "",
       // Braves §6 fields. `type` is the visit type (RSI/RSO/MR + legacy values),
       // distinct from `status` (the MO outcome: MC/LD/Excuse…). All default
       // blank so legacy rows keep working; the parade-state classifier (Step 3)
@@ -363,6 +368,16 @@ function normalizeMedical(records) {
 // stay 4 digits regardless of how Sheets mangles them on round-trip.
 function padD4OnLayer(records) {
   return (records || []).map(r => r && r.d4 != null ? { ...r, d4: padD4(r.d4) } : r);
+}
+
+// Leave has no rich normalizer — pad the 4D (padD4OnLayer) and default the
+// bookInDate marker (item 4c) so EVERY row carries the key. writeTab derives
+// sheet headers from Object.keys(data[0]); without a guaranteed bookInDate on the
+// first row a full push would strip the column (same reason medical `origin` is
+// defaulted at its own read boundary).
+function normalizeLeave(records) {
+  return padD4OnLayer(records).map(r =>
+    (r && typeof r === "object") ? { ...r, bookInDate: r.bookInDate || "" } : r);
 }
 
 // ConductDetail rows. Pads the 4D like every other layer, then migrates the
@@ -557,7 +572,7 @@ function loadLocal() {
     STATE.polar = padD4OnLayer(d.polar);
     STATE.conductDetail = normalizeConductDetail(d.conductDetail);
     STATE.appointments = padD4OnLayer(d.appointments);
-    STATE.leave = padD4OnLayer(d.leave);
+    STATE.leave = normalizeLeave(d.leave);
     STATE.msk = normalizeMSK(d.msk);
     STATE.conducts = Array.isArray(d.conducts) ? d.conducts : [];
     STATE.config = d.config && typeof d.config === "object" ? d.config : {};

@@ -82,4 +82,49 @@ module.exports = async function run() {
     ok(/function sbGridNav[\s\S]{0,120}_sbGridShown = true/.test(render),
       "sbGridNav re-defers the grid instead of keeping it shown");
   });
+
+  suite("parade-tab wiring: Mark Present books in via bookInDate, never truncates (item 4c)");
+  const paradeTab = fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8");
+
+  await test("paradeEndActiveContributors sets bookInDate and no longer truncates active records to yesterday", () => {
+    ok(/m\.bookInDate\s*=\s*isoToDisplayDate\(iso\)/.test(paradeTab), "active Medical is not booked in via bookInDate");
+    ok(/l\.bookInDate\s*=\s*isoToDisplayDate\(iso\)/.test(paradeTab), "active Leave is not booked in via bookInDate");
+    ok(!/l\.endDate\s*=\s*yest/.test(paradeTab), "active Leave is still truncated to yesterday");
+    ok(!/else\s+m\.endDate\s*=\s*yest/.test(paradeTab), "active Medical is still truncated to yesterday");
+  });
+
+  await test("paradeClearPerson books in a grace-window ended MC", () => {
+    ok(/graceMc[\s\S]{0,200}bookInDate\s*=\s*isoToDisplayDate\(iso\)/.test(paradeTab),
+      "the grace-window ended MC is not booked in on Mark Present");
+  });
+
+  suite("parade grid wiring: only MC / AL·OIL / OTHERS rows are editable (item 5)");
+
+  await test("renderParadePlatoon gates the <select> behind the editable-code set", () => {
+    ok(/const PARADE_EDITABLE_CODES\s*=\s*\["MC",\s*"AL\/OIL",\s*"OTHERS"\]/.test(paradeTab),
+      "no PARADE_EDITABLE_CODES gate defined");
+    ok(/PARADE_EDITABLE_CODES\.includes\(x\.code\)/.test(paradeTab),
+      "renderParadePlatoon does not gate the code cell on PARADE_EDITABLE_CODES");
+    // The editable branch offers exactly the current code + Present, not the full list.
+    ok(/<option value="Present">Present<\/option>/.test(paradeTab),
+      "the editable select no longer offers a Present option");
+    ok(!/PARADE_CODES\.map\(c =>[\s\S]{0,120}onParadeCodeChange/.test(paradeTab),
+      "the grid still renders the full PARADE_CODES <select> for every row");
+  });
+
+  suite("render wiring: roster status badge derives from the medical layer (item 4b)");
+
+  await test("the Roster list badges rosterDisplayStatus, not the raw stored status", () => {
+    ok(render.includes("rosterDisplayStatus(r)"), "render.js Roster list no longer calls rosterDisplayStatus(r)");
+    ok(helpers.includes("function rosterDisplayStatus"), "rosterDisplayStatus is not defined in helpers.js");
+    ok(!/<td>\$\{statusBadge\(r\.status\)\}<\/td>/.test(render), "render.js still badges the raw stored r.status in the Roster row");
+  });
+
+  suite("render wiring: topbar Active counter derives presence live (item 4a fallout)");
+
+  await test("the Active counter reuses bpStrength(...).current, not roster.status === Active", () => {
+    ok(!/r\.status === "Active"/.test(render), "the Active counter still reads the raw roster.status mirror");
+    ok(/const active = bpStrength\(scoped, todayISO\(\)\)\.current/.test(render),
+      "the Active counter is not derived from the canonical bpStrength(...).current");
+  });
 };

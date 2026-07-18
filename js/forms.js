@@ -895,19 +895,9 @@ function submitMedical() {
     }
   });
 
-  // Roster status mirrors the primary (first) status, as before.
-  let rosterEdit = null;
-  const main = records[0];
-  if (main.d4 && main.status) {
-    const r = STATE.roster.find(x => x.id === main.d4);
-    if (r) { r.status = main.status; rosterEdit = r; }
-  }
   saveLocal(); closeModal(); render();
   if (STATE.apiUrl) {
     records.forEach(rec => autoSync("Medical", { type: "upsert", row: rec }));
-    // Status field on the roster row also changes — push that update too,
-    // otherwise the recruit's roster row goes out of sync until next pull.
-    if (rosterEdit) autoSync("Roster", { type: "upsert", row: rosterEdit });
   }
 }
 
@@ -4187,8 +4177,15 @@ function rebuildLogConductStatus() {
   // empty checklist — documented in the design doc; totals fallback keeps
   // counts sane in that case.
   const participantSet = new Set(_logConduct.participants || []);
-  const effective = currentMedicalEffectiveAll(dateIso).filter(({ d4 }) => participantSet.has(d4));
-  _logConduct.status = effective.map(({ d4, statuses }) => {
+  // Full active-medical layer (unfiltered) so a union-only d4 that ISN'T a
+  // participant can still borrow its live tags; `effective` is the participant
+  // slice used for the base rows.
+  const allEffective = currentMedicalEffectiveAll(dateIso);
+  const effByD4 = {};
+  allEffective.forEach(e => { effByD4[e.d4] = e; });
+  const effective = allEffective.filter(({ d4 }) => participantSet.has(d4));
+
+  const rows = effective.map(({ d4, statuses }) => {
     // Pick the most-severe active status as the canonical tag/reason.
     const top = statuses[0];
     const prev = prevByD4[d4];
@@ -4209,7 +4206,31 @@ function rebuildLogConductStatus() {
       notParticipating: prev ? prev.notParticipating
         : ((d4 in existingPxByD4) || (statusReviewed ? false : defaultNP))
     };
-  }).sort((a, b) => a.d4.localeCompare(b.d4));
+  });
+
+  // UNION in everyone with a saved "Status" ConductDetail row who isn't already
+  // on the list above. existingPxByD4 is empty for a brand-new conduct (edit-only
+  // by construction — see :4173), so this never affects new conducts. Someone
+  // counted in the attendance px total (a CSV Off/Leave, or a status no longer
+  // active on this date) has a Status row but no active medical status and was
+  // being dropped, making the checklist shorter than the count. Re-add them so
+  // list length == px. Synthesize the tag from the live medical layer if any
+  // status is active for them, else fall back to the ConductDetail reason label.
+  const present = new Set(rows.map(r => r.d4));
+  Object.keys(existingPxByD4).forEach(d4 => {
+    if (present.has(d4)) return;
+    const prev = prevByD4[d4];
+    const eff = effByD4[d4];
+    rows.push({
+      d4,
+      statusTag: eff ? eff.statuses.map(s => s.tag).join(" + ") : (existingPxByD4[d4] || "Status"),
+      reason: prev ? prev.reason : (existingPxByD4[d4] || ""),
+      // Recorded as a status absence at import ⇒ default ticked (not participating).
+      notParticipating: prev ? prev.notParticipating : true
+    });
+  });
+
+  _logConduct.status = rows.sort((a, b) => a.d4.localeCompare(b.d4));
 }
 
 // Builds the modal HTML and opens it. Re-rendering is full-replace; row-level
@@ -4535,9 +4556,38 @@ function personSearchBox({ boxId, onPickFn = "", valueId = "", placeholder = "Se
       <input type="text" id="${boxId}-input" autocomplete="off" placeholder="${escapeAttr(placeholder)}"
         value="${escapeAttr(chosen)}"
         oninput="personSearchFilter('${boxId}','${onPickFn}','${valueId}',this.value,'${roleFilter}')"
+        onkeydown="personSearchEnter(event,'${boxId}','${onPickFn}','${valueId}','${roleFilter}')"
         style="width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box">
       <div id="${boxId}-results" style="position:absolute;z-index:30;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:4px;margin-top:2px;max-height:200px;overflow:auto;display:none"></div>
     </div>`;
+}
+
+// Shared match list for the person typeaheads: the dropdown (personSearchFilter)
+// and the Enter key (personSearchEnter) must select from the EXACT same set, or
+// "the top match" would mean two different rows. Case-insensitive substring on
+// 4D or name, role-filtered, capped at 6 — identical to what the dropdown shows.
+function personSearchMatches(query, roleFilter) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  let rows = STATE.roster || [];
+  if (roleFilter === "Recruit") rows = rows.filter(r => !isCommander(r.id));
+  return rows
+    .filter(r => (r.id || "").toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
+    .slice(0, 6);
+}
+
+// Enter in a person typeahead picks the CURRENT top match and stops the keypress
+// from submitting the enclosing <form> (the medical/leave forms wrap these boxes,
+// so a bare Enter would otherwise fire a half-filled submit). Nothing is picked
+// when there's no match — personSearchFilter has already cleared the hidden id on
+// the keystroke, and only personSearchPick re-sets it, so a stray Enter can never
+// commit the wrong recruit.
+function personSearchEnter(e, boxId, onPickFn, valueId, roleFilter) {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const input = document.getElementById(`${boxId}-input`);
+  const matches = personSearchMatches(input ? input.value : "", roleFilter);
+  if (matches.length) personSearchPick(boxId, onPickFn, valueId, matches[0].id);
 }
 
 function personSearchFilter(boxId, onPickFn, valueId, query, roleFilter) {
@@ -4563,11 +4613,7 @@ function personSearchFilter(boxId, onPickFn, valueId, query, roleFilter) {
   if (onPickFn && typeof window[onPickFn] === "function") window[onPickFn]("", boxId);
   const q = String(query || "").trim().toLowerCase();
   if (!q) { res.style.display = "none"; res.innerHTML = ""; return; }
-  let rows = STATE.roster || [];
-  if (roleFilter === "Recruit") rows = rows.filter(r => !isCommander(r.id));
-  const matches = rows
-    .filter(r => (r.id || "").toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))
-    .slice(0, 6);
+  const matches = personSearchMatches(query, roleFilter);
   if (!matches.length) {
     res.style.display = "block";
     res.innerHTML = `<div style="padding:6px 10px;font-size:11px;color:var(--muted)">No match</div>`;

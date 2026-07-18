@@ -10,16 +10,18 @@
 //     (generateBravesParadeState in braves-parade.js) — byte-identical to what
 //     the old modal produced; this view only relocates it into the tab.
 //
-//   • PLATOON — a strength/counts bento header plus a spreadsheet-style grid
-//     (4D · Name · Attendance Code · Remarks). The Attendance Code cell is an
-//     editable <select>; changing it opens a small prefilled editor that writes
-//     the REAL source record (Medical/Leave/Appointment) and mirrors the roster
-//     status, so the strength and counts update the same way the rest of the app
-//     computes them. A recruit whose MC has ENDED keeps showing as MC (out of
-//     camp) until the commander manually changes their code — that persistence
-//     now lives in the shared §8 classifier (bpClassifyPerson keys it off the
-//     roster-status mirror), so the grid, the copy-paste message and the Telegram
-//     bot all agree. MR (Medical Review) is its own code / MR section.
+//     • PLATOON — a strength/counts bento header plus a spreadsheet-style grid
+//     (4D · Name · Attendance Code · Remarks). The Attendance Code cell is
+//     editable ONLY for the away-codes MC / AL/OIL / OTHERS (item 5), and the
+//     one change offered is → Present (book-in); every other code renders as
+//     read-only text. Booking a person in sets `bookInDate` on their REAL source
+//     record (Medical/Leave) WITHOUT rewriting its dates, so the classifier reads
+//     them Present from that date on while history/HA keep the true range. A
+//     recruit whose MC has ENDED keeps showing as MC (out of camp) through the
+//     MC+1/MC+2 grace window — that persistence lives in the shared §8 classifier
+//     (bpClassifyPerson's ended-MC tail, gated on the record NOT being booked in),
+//     so the grid, the copy-paste message and the Telegram bot all agree. MR
+//     (Medical Review) is its own code / MR section.
 //
 // All per-person classification and strength math is reused from braves-parade.js
 // (bpPrimaryForDay / bpStrength / bpIsActive / rankGroupOf) — this file is a view
@@ -40,6 +42,12 @@ let _paradeTime = "";              // free-text HHMM for the company header
 // statuses — see saveParadeCode.
 const PARADE_CODES = ["Present", "MC", "RS", "MR", "AL/OIL", "STATUS", "OTHERS"];
 
+// Parade-grid edit lock (item 5): only these away-codes are editable from the
+// grid, and the ONLY change offered is → Present (book-in). Every other code
+// (Present, RS, MR, STATUS) renders as read-only text — no new statuses are
+// assigned from this tab. See renderParadePlatoon.
+const PARADE_EDITABLE_CODES = ["MC", "AL/OIL", "OTHERS"];
+
 // §8 primary-section key → grid code. bpPrimaryForDay's chain is
 // REPORTING SICK > ATT C(MC) > AL/OIL > STATUS > OTHERS.
 const PARADE_SECTION_TO_CODE = {
@@ -47,12 +55,6 @@ const PARADE_SECTION_TO_CODE = {
 };
 
 function paradeCurrentDateISO() { return _paradeDate || todayISO(); }
-
-function paradeDayBeforeISO(iso) {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
 
 // ── Control-bar setters (each re-renders only the body, keeping the toolbar) ──
 function setParadeScope(v) { _paradeScope = v; refreshParade(); }
@@ -277,13 +279,19 @@ function renderParadePlatoon(host, code) {
     || String(getName(a.r.id)).localeCompare(String(getName(b.r.id))));
 
   const body = rows.map(x => {
-    const opts = PARADE_CODES.map(c => `<option value="${c}"${c === x.code ? " selected" : ""}>${c}</option>`).join("");
     const remarkColor = x.remark ? "var(--yellow)" : "var(--muted)";
+    // Editable rows get a 2-option select (current away-code + Present); choosing
+    // Present routes through onParadeCodeChange → openParadeClearConfirm (book-in).
+    // Locked rows render static text styled to match the disabled control so the
+    // column still reads uniformly.
+    const codeCell = PARADE_EDITABLE_CODES.includes(x.code)
+      ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
+            style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"><option value="${escapeHTML(x.code)}" selected>${escapeHTML(x.code)}</option><option value="Present">Present</option></select>`
+      : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(x.code)}</span>`;
     return `<tr>
       <td class="mono">${escapeHTML(x.r.id)}</td>
       <td>${escapeHTML(displayPersonLabel(x.r.id))}</td>
-      <td><select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-            style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">${opts}</select></td>
+      <td>${codeCell}</td>
       <td style="color:${remarkColor};white-space:normal;font-size:12px">${escapeHTML(x.remark)}</td>
     </tr>`;
   }).join("");
@@ -426,7 +434,6 @@ function saveParadeCode(d4, code) {
   const gvi = id => (document.getElementById(id)?.value || "").trim();
   const changed = [];
   let targetId = null;          // the record we KEEP; every OTHER active contributor is ended
-  let rosterStatus = "Active";  // status to mirror onto the roster row
 
   if (code === "MC" || code === "STATUS") {
     const status = code === "MC" ? "MC" : gvi("pe-status");
@@ -434,8 +441,8 @@ function saveParadeCode(d4, code) {
     const startIso = gvi("pe-start"), endIso = gvi("pe-end");
     // Both dates are required: an MC/STATUS with a blank end never reads as active
     // (medStatusActive needs an end) and isn't caught by the ended-MC persistence
-    // either, so it would save + mirror the roster status but leave the person
-    // showing "Present" — a silent no-op that misreports the parade state.
+    // either, so it would save the record but leave the person showing "Present"
+    // — a silent no-op that misreports the parade state.
     if (!startIso || !endIso) { alert("Enter both a start and end date."); return; }
     if (endIso < startIso) { alert("End date cannot be before start date."); return; }
     const existing = code === "MC"
@@ -449,7 +456,7 @@ function saveParadeCode(d4, code) {
       visitId: existing?.visitId || "", origin: existing?.origin || "manual"
     };
     upsertLocal("medical", rec); changed.push(["Medical", rec]);
-    targetId = rec.id; rosterStatus = status;
+    targetId = rec.id;
   } else if (code === "RS") {
     const rsType = gvi("pe-rstype") || "RSI";
     const existing = paradeActiveMed(d4, m => (m.type === "RSI" || m.type === "RSO") && (!m.status || m.status === "Pending"));
@@ -460,12 +467,12 @@ function saveParadeCode(d4, code) {
       type: rsType, urtiType: existing?.urtiType || "", mrTiming: "", visitId: existing?.visitId || "", origin: existing?.origin || "manual"
     };
     upsertLocal("medical", rec); changed.push(["Medical", rec]);
-    targetId = rec.id; rosterStatus = "Pending";
+    targetId = rec.id;
   } else if (code === "MR") {
     // MR (Medical Review) is independent/additive — a person can be MR AND still
     // carry an LD/excuse. So we write a blank-status MR row (blank status keeps it
     // in the MR section only, never double-listed as REPORTING SICK / STATUS) and
-    // do NOT end their other statuses or touch the roster mirror (see the tail).
+    // do NOT end their other statuses or book them in.
     const existing = paradeActiveMr(d4);
     const rec = {
       id: existing ? existing.id : nextId(),
@@ -490,19 +497,17 @@ function saveParadeCode(d4, code) {
       days: days > 0 ? days : 0, reason: gvi("pe-reason"), isInCamp: inCamp, isInCampReviewed: true
     };
     upsertLocal("leave", rec); changed.push(["Leave", rec]);
-    targetId = rec.id; rosterStatus = "Active";
+    targetId = rec.id;
   }
 
   // Changing a person's code means they should end up with ONLY the new code, so
   // end every OTHER active contributor (the old MC when switching to LD, a
   // lingering leave row, a same-day out appointment). Otherwise a higher-priority
   // stale record would mask the new code and the edit would appear to do nothing.
-  // MR is the exception — it's additive (coexists with LD/excuse), so it neither
-  // ends other statuses nor rewrites the roster mirror.
+  // MR is the exception — it's additive (coexists with LD/excuse), so it
+  // doesn't end other statuses.
   if (code !== "MR") {
     paradeEndActiveContributors(d4, targetId, changed);
-    const rr = mirrorRoster(d4, rosterStatus);
-    if (rr) changed.push(["Roster", rr]);
   }
 
   saveLocal();
@@ -511,14 +516,15 @@ function saveParadeCode(d4, code) {
   refreshParade();
 }
 
-// Clear a person back to Present: end every active parade-contributing record at
-// the parade date (Pending → NIL), resolve same-day out-of-camp appointments,
-// and reset the roster mirror to Active. Never hard-deletes (preserves history).
+// Clear a person back to Present: book every active parade-contributing record
+// IN from the parade date (bookInDate, keeping the record's real dates), resolve
+// a same-day pending MR, and resolve same-day out-of-camp appointments. Never
+// rewrites dates or hard-deletes (preserves history — see paradeEndActiveContributors).
 function openParadeClearConfirm(d4) {
   const name = displayPersonLabel(d4);
   const iso = paradeCurrentDateISO();
   openModal(`Mark Present — ${name}`, `
-    <div style="font-size:13px;margin-bottom:14px">End all active MC / status / leave / today's MR for <strong>${escapeHTML(name)}</strong> as of <strong>${escapeHTML(iso)}</strong> and mark them present? Records are ended (kept for history), not deleted.</div>
+    <div style="font-size:13px;margin-bottom:14px">Mark <strong>${escapeHTML(name)}</strong> present from <strong>${escapeHTML(iso)}</strong>? Their MC / status / leave records are kept on file with their real dates (record dates kept) — they simply read Present from this date onward.</div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" onclick="paradeClearPerson('${escapeAttr(d4)}')">Mark Present</button>
       <button class="btn" onclick="closeParadeEditor()">Cancel</button>
@@ -526,8 +532,24 @@ function openParadeClearConfirm(d4) {
 }
 
 function paradeClearPerson(d4) {
+  const iso = paradeCurrentDateISO();
   const changed = [];
   paradeEndActiveContributors(d4, null, changed);
+  // paradeEndActiveContributors only books in records ACTIVE today. A recruit in
+  // the MC+1/MC+2 grace tail (their MC ended 1–2 days ago but the classifier
+  // still parks them under ATT C) has no active record to touch — book in the
+  // most-recent already-ended MC directly so the tail drops out from the parade
+  // date onward (bookedInBy). Matches the classifier's recovery-tail window
+  // (endDate < parade date, within 2 days) and only touches an un-booked MC.
+  const graceMc = (STATE.medical || [])
+    .filter(m => m.d4 === d4 && m.status === "MC" && !bookedInBy(m, iso)
+      && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < iso)
+    .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
+  if (graceMc) {
+    const endIso = displayDateToISO(graceMc.endDate || "");
+    const sinceEnd = endIso ? Math.round((new Date(iso + "T00:00:00") - new Date(endIso + "T00:00:00")) / 86400000) : 99;
+    if (sinceEnd <= 2) { graceMc.bookInDate = isoToDisplayDate(iso); changed.push(["Medical", graceMc]); }
+  }
   // Marking Present means nothing is outstanding, so also resolve a same-day
   // pending MR. MR is normally additive (a person can be on LD AND MR), so
   // applying another code leaves it alone — but a blank-status MR carries no end
@@ -536,8 +558,6 @@ function paradeClearPerson(d4) {
   // commander clicked "Present". Resolve (Pending/blank → NIL) rather than delete.
   const mr = paradeActiveMr(d4);
   if (mr) { mr.status = "NIL"; changed.push(["Medical", mr]); }
-  const r = mirrorRoster(d4, "Active");
-  if (r) changed.push(["Roster", r]);
 
   saveLocal();
   if (STATE.apiUrl) changed.forEach(([tab, row]) => { if (row) autoSync(tab, { type: "upsert", row }); });
@@ -545,26 +565,32 @@ function paradeClearPerson(d4) {
   refreshParade();
 }
 
-// End every active parade-contributing record for a person as of the parade date
-// — active Medical (Pending → NIL, else endDate set to yesterday), active Leave
-// (endDate → yesterday), and same-day out-of-camp Appointments (resolved). The
-// record whose id === exceptId is left untouched (used when applying a new code:
-// keep the just-written target, end everything else). Mutated rows are appended
-// to `changed` as [tab, row] for the caller to persist/sync. Never hard-deletes.
+// Book every ACTIVE parade-contributing record for a person IN as of the parade
+// date — WITHOUT rewriting the record's real dates (item 4c). An active Medical
+// status (MC/Warded/LD/Excuse/…) gets `bookInDate = parade date` instead of
+// endDate → yesterday: the record keeps its true range (correct for HA / history
+// / viewing past parade dates) while the classifier reads the person Present
+// on/after bookInDate (bookedInBy). Pending Medical has no range to preserve, so
+// it still resolves to NIL. Active Leave (AL/OIL or OTHERS-from-leave) is booked
+// in the same way. Same-day out-of-camp Appointments are single-day events with
+// no range to keep, so they still resolve. The record whose id === exceptId is
+// left untouched (unused now the grid only offers →Present, kept for the
+// arbitrary-code caller). Mutated rows are appended to `changed` as [tab, row].
 function paradeEndActiveContributors(d4, exceptId, changed) {
   const iso = paradeCurrentDateISO();
-  const yest = isoToDisplayDate(paradeDayBeforeISO(iso));
   (STATE.medical || []).forEach(m => {
     if (m.d4 !== d4 || m.id === exceptId || m.status === "NIL") return;
     if (!medStatusActive(m, iso)) return;
-    if (m.status === "Pending") m.status = "NIL"; else m.endDate = yest;
+    // Pending has no date range → resolve to NIL. Everything else keeps its
+    // dates and is simply marked booked-in from the parade date.
+    if (m.status === "Pending") m.status = "NIL"; else m.bookInDate = isoToDisplayDate(iso);
     changed.push(["Medical", m]);
   });
   (STATE.leave || []).forEach(l => {
     if (l.d4 !== d4 || l.id === exceptId) return;
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!(s && e && s <= iso && iso <= e)) return;
-    l.endDate = yest;
+    l.bookInDate = isoToDisplayDate(iso);   // keep the leave's real range; Present on/after
     changed.push(["Leave", l]);
   });
   (STATE.appointments || []).forEach(a => {
@@ -581,12 +607,4 @@ function upsertLocal(key, rec) {
   const arr = STATE[key] || (STATE[key] = []);
   const i = arr.findIndex(x => x.id === rec.id);
   if (i >= 0) arr[i] = rec; else arr.push(rec);
-}
-// Mirror the roster status field (the app keeps roster.status as a live copy of
-// the person's current medical status; see submitMedical / bpIsActive comments).
-// Returns the mutated roster row (or null) so the caller can push it.
-function mirrorRoster(d4, status) {
-  const r = STATE.roster.find(x => x.id === d4);
-  if (r) { r.status = status; return r; }
-  return null;
 }

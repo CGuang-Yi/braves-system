@@ -61,7 +61,7 @@
  *                separate from `id`, which stays the primary key and may be a
  *                short text code (OC, PC1…) for no-4D personnel.)
  *   Medical:    id | d4 | date | reason | location | status | startDate | endDate |
- *               type | urtiType | mrTiming | visitId | origin
+ *               type | urtiType | mrTiming | visitId | origin | bookInDate
  *               (origin ∈ {manual, conductLog}: "conductLog" = auto-created as a
  *                Pending report-sick backfill by a conduct import/wizard for an
  *                absentee not already logged; "manual" = entered in the Medical
@@ -148,7 +148,7 @@
  *                (shown in the parade state's MEDICAL APPT "Camp:" line);
  *                resolved = TRUE hides it from the dashboard + parade state.)
  *
- *   Leave:      id | d4 | type | startDate | endDate | days | reason | isInCamp | isInCampReviewed
+ *   Leave:      id | d4 | type | startDate | endDate | days | reason | isInCamp | isInCampReviewed | bookInDate
  *               (Personnel absences. type ∈ {Leave, Compassionate,
  *                Off-in-Lieu, Weekend, Night's Out, Course, Guard Duty,
  *                NDP, Other}. Only
@@ -1228,9 +1228,9 @@ function ensureTabWithHeaders_(ss, name, headers) {
 //
 // What it does:
 //   • Roster      — adds the Step-2 Braves columns (platoon, section, rankGroup, fourD)
-//   • Medical     — adds the §6 columns (location, type, urtiType, mrTiming, visitId)
+//   • Medical     — adds the §6 columns (location, type, urtiType, mrTiming, visitId, origin, bookInDate)
 //   • Appointments— adds outOfCamp (parade-state "Camp:" line depends on it)
-//   • Leave        — adds isInCamp (the "In Camp" override; strength calc depends on it)
+//   • Leave        — adds isInCamp (the "In Camp" override; strength calc depends on it), bookInDate
 //   • BravesConfig— creates the key|value company-identity tab and seeds it from
 //                   DEFAULT_CONFIG (kept in sync with js/state.js)
 //   • Platoons / VocFit / SOC — creates the reference tabs with their headers
@@ -1243,11 +1243,11 @@ function bravesMigrateSchema() {
   ensureTabWithHeaders_(ss, "Roster",
     ["platoon", "section", "rankGroup", "fourD"]);
   ensureTabWithHeaders_(ss, "Medical",
-    ["location", "type", "urtiType", "mrTiming", "visitId", "origin"]);
+    ["location", "type", "urtiType", "mrTiming", "visitId", "origin", "bookInDate"]);
   ensureTabWithHeaders_(ss, "Appointments",
     ["outOfCamp"]);
   ensureTabWithHeaders_(ss, "Leave",
-    ["isInCamp", "isInCampReviewed"]);
+    ["isInCamp", "isInCampReviewed", "bookInDate"]);
 
   // Reference tabs (created with headers if absent; missing tab → [] on frontend).
   ensureTabWithHeaders_(ss, "Platoons",
@@ -3002,6 +3002,11 @@ function bpSupersedeSameType(out, sup, section) {
   out[section] = o; sup[section] = s;
 }
 
+function bookedInBy(rec, dateIso) {
+  var b = displayDateToISO(rec && rec.bookInDate || "");
+  return !!b && dateIso >= b;
+}
+
 function bpClassifyPerson(r, dateIso) {
   const rn = bravesParadeRN(r.id);
   const out = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
@@ -3026,6 +3031,7 @@ function bpClassifyPerson(r, dateIso) {
     if (l.d4 !== r.id) return;
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
     if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
+    if (bookedInBy(l, dateIso)) return;   // booked in ⇒ Present from bookInDate onward
     // The entry text is the free-text reason ("48HR BO"), falling back to the
     // leave type when no reason was recorded. (NOT "type — reason" — the sample
     // shows a single clean label.)
@@ -3080,7 +3086,7 @@ function bpClassifyPerson(r, dateIso) {
     }
 
     // ATT C — active MC (not-in-camp). Warded handled as OTHERS below.
-    if (m.status === "MC" && medStatusActive(m, dateIso)) {
+    if (m.status === "MC" && medStatusActive(m, dateIso) && !bookedInBy(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D MC` : "MC";
       pushS("attC", `${rn} - ${label} ${bpRange(m, false)}`.trim(), { supKey: "MC", supEnd: displayDateToISO(m.endDate || "") });
@@ -3093,40 +3099,39 @@ function bpClassifyPerson(r, dateIso) {
     // "RN - " STATUS line (and double-list someone already in REPORTING SICK).
     // Every status here gets the same "{days}D {status}" duration prefix.
     if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
-        && m.status !== "Pending" && m.status !== "NIL") {
+        && m.status !== "Pending" && m.status !== "NIL" && !bookedInBy(m, dateIso)) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D ${m.status}` : m.status;
       pushS("status", `${rn} - ${label} ${bpRange(m, true)}`.trim(), { supKey: String(m.status).trim(), supEnd: displayDateToISO(m.endDate || "") });
     }
 
     // Warded → OTHERS (NOT IN CAMP).
-    if (m.status === "Warded" && medStatusActive(m, dateIso)) {
+    if (m.status === "Warded" && medStatusActive(m, dateIso) && !bookedInBy(m, dateIso)) {
       pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
   });
 
   // Persist an ENDED MC through the MC+1/MC+2 recovery window, then AUTO-HIDE.
-  // `r.status` mirrors the recruit's latest medical status (submitMedical writes
-  // MC/LD/… back onto the roster row); if it still reads "MC" yet no MC is active
-  // today, their MC has lapsed with no follow-up and nobody booked them back in.
-  // For the first two days after the end date we keep them under ATT C (still
-  // counted OUT of camp) using their most recent ended MC's real dates — the same
-  // MC+1/MC+2 grace the ghost tags mark. Once the MC ended MORE than 2 days ago we
-  // STOP persisting: a stale mirror that was never cleared should not park the
-  // recruit under ATT C forever (that produced the "shows MC but not actually on
-  // MC" rows on the Status Board). A manual book-in or any new MO status still
-  // rewrites r.status; this bound only stops the *display* from clinging to a
-  // long-dead MC.
-  //
-  // This affects CURRENT strength only (in/out of camp). roster.status="MC" still
-  // counts toward TOTAL strength via bpIsActive, so PR #42's protection (MC people
-  // must not drop out of total strength) is untouched. Only the most recent
-  // ALREADY-ENDED MC is considered (endDate < dateIso) — a future/later MC does
+  // A recruit whose MC ended in the last 1–2 days is still counted OUT of camp
+  // (the MC+1/MC+2 grace the ghost tags mark, helpers.js medStatusTag) UNLESS
+  // they have been booked in. Book-in is now signalled by `bookInDate` on the
+  // medical record (set when a commander marks them Present on the parade grid),
+  // NOT by a roster.status mirror — that mirror was removed (item 4a), so this
+  // tail no longer reads r.status at all. It fires when there is no active MC
+  // today (!out.attC.length) and the most-recent already-ended MC (endDate <
+  // dateIso) is within the 2-day window and is NOT booked in. Once the MC ended
+  // MORE than 2 days ago we STOP persisting (a long-dead MC must not park the
+  // recruit under ATT C forever — the "shows MC but not actually on MC" fix).
+  // Only the most recent ALREADY-ENDED MC is considered; a future/later MC does
   // not imply book-in from an earlier one.
-  if (String(r.status || "").trim() === "MC" && !out.attC.length) {
+  //
+  // Strength: affects CURRENT strength (in/out of camp) only — TOTAL strength is
+  // unchanged (bpIsActive keys off roster departure statuses, not this tail).
+  if (!out.attC.length) {
     const endedMc = STATE.medical
-      .filter(m => m.d4 === r.id && m.status === "MC" && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
+      .filter(m => m.d4 === r.id && m.status === "MC" && !bookedInBy(m, dateIso)
+        && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
       .sort((a, b) => displayDateToISO(b.endDate).localeCompare(displayDateToISO(a.endDate)))[0];
     const endIso = endedMc ? displayDateToISO(endedMc.endDate || "") : "";
     // Days since the MC ended; the ghost window is offsets 1–2 (MC+1 / MC+2).
@@ -3524,6 +3529,7 @@ function bravesNormalizeMedical_(rows) {
       status: status,
       startDate: r.startDate || "",
       endDate: r.endDate || "",
+      bookInDate: r.bookInDate || "",
       type: r.type || "",
       urtiType: r.urtiType || "",
       mrTiming: r.mrTiming || "",
@@ -3542,6 +3548,14 @@ function bravesPadD4OnLayer_(rows) {
     return r;
   });
 }
+// Leave read boundary: pad the 4D and default bookInDate (item 4c) so the column
+// survives round-trips (writeTab derives headers from the first row).
+function bravesNormalizeLeave_(rows) {
+  return bravesPadD4OnLayer_(rows).map(function (r) {
+    if (r && typeof r === "object") { r.bookInDate = r.bookInDate || ""; }
+    return r;
+  });
+}
 
 // Build the global STATE the ported generators read, from the live sheet tabs.
 // Each layer is normalized at this read boundary exactly as the client does.
@@ -3549,7 +3563,7 @@ function bravesLoadState_() {
   STATE = {
     roster: bravesNormalizeRoster_(bravesArr_(readTab("Roster"))),
     medical: bravesNormalizeMedical_(bravesArr_(readTab("Medical"))),
-    leave: bravesPadD4OnLayer_(bravesArr_(readTab("Leave"))),
+    leave: bravesNormalizeLeave_(bravesArr_(readTab("Leave"))),
     appointments: bravesPadD4OnLayer_(bravesArr_(readTab("Appointments"))),
     platoons: bravesArr_(readTab("Platoons")),
     config: bravesNormalizeConfig_(bravesArr_(readTab("Config")))

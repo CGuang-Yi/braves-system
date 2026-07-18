@@ -20,7 +20,14 @@ function render() {
 
   const el = document.getElementById("content");
   const scoped = filteredRoster();
-  const active = scoped.filter(r => r.status === "Active").length;
+  // "Active" = present in camp today. Before item 4a this was read straight off
+  // roster.status, which mirrored the person's current medical status; that mirror
+  // is gone (roster.status now only marks departures), so we reuse the canonical
+  // current-strength count — the same bpStrength(...).current the Dashboard shows
+  // — which derives presence from the Medical / Leave / Appointment layers via
+  // bpClassifyPerson (and so respects parade book-ins, the leave In-Camp override
+  // and out-of-camp appointments). Keeps the topbar and Dashboard figures in step.
+  const active = bpStrength(scoped, todayISO()).current;
   const scopeLabel = isFilterActive() ? ` [${filterLabel()}]` : "";
   document.getElementById("str-counter").textContent = `Str: ${scoped.length} | Active: ${active}${scopeLabel}`;
 
@@ -1212,7 +1219,7 @@ function renderRoster(el) {
       const plt = personPlatoon(r);
       const sect = personSection(r);
       const orgCell = (plt || sect) ? `${plt || "—"}${sect ? " · " + sect : ""}` : "—";
-      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td style="font-size:11px;color:var(--muted)">${orgCell}</td><td>${roleCell}</td><td>${statusBadge(r.status)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
+      return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td style="font-size:11px;color:var(--muted)">${orgCell}</td><td>${roleCell}</td><td>${rosterDisplayStatus(r)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No personnel in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "No invite redeemed on this device yet.")}</div>`}`;
 }

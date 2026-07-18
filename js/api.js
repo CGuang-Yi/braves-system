@@ -22,7 +22,7 @@ const PULL_ASSIGN = {
   polar:         d => STATE.polar = padD4OnLayer(d),
   conductDetail: d => STATE.conductDetail = normalizeConductDetail(d),
   appointments:  d => STATE.appointments = padD4OnLayer(d),
-  leave:         d => STATE.leave = padD4OnLayer(d),
+  leave:         d => STATE.leave = normalizeLeave(d),
   msk:           d => STATE.msk = normalizeMSK(d),
   conducts:      d => STATE.conducts = d
 };

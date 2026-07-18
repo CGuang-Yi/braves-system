@@ -267,6 +267,72 @@ module.exports = async function run() {
     eq(statusD4sFor([]), [], "no participants ⇒ nothing to show");
   });
 
+  suite("Log Conduct wizard: rebuildLogConductStatus unions saved Status rows (edit mode)");
+
+  // A person recorded as a status absence at CSV import (a saved "Status"
+  // ConductDetail row) but with NO active Medical record on the conduct date —
+  // e.g. a CSV "Off"/"Leave" — must still appear on the checklist so the list
+  // length matches the stored px count. Regression: the old code intersected
+  // currentMedicalEffectiveAll with participants and silently dropped them.
+  function loadUnionCtx() {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    target.isCommander = () => false;
+    target.statusParticipates = () => false;
+    target.getName = d4 => "Name" + d4;
+    // Only 2415 (LD) has an ACTIVE medical status; 5555 / 6666 (CSV Off/Leave)
+    // have none — they exist purely as saved Status ConductDetail rows.
+    target.currentMedicalEffectiveAll = () => [
+      { d4: "2415", statuses: [{ tag: "LD", record: { reason: "SORE THROAT" } }] }
+    ];
+    return { target, ctx };
+  }
+
+  await test("a saved Status row for a person with no active medical record still appears", () => {
+    const { target, ctx } = loadUnionCtx();
+    target.STATE = {
+      attendance: [{ id: "A1", date: "26 May 2026", time: "", conductId: "c1", statusReviewed: true }],
+      conductDetail: [
+        { id: "d1", date: "26 May 2026", time: "", conductId: "c1", d4: "2415", type: "Status", reason: "LD" },
+        { id: "d2", date: "26 May 2026", time: "", conductId: "c1", d4: "5555", type: "Status", reason: "Off" }
+      ]
+    };
+    // 2415 is a participant; 5555 was booked Off (a status absence) and is NOT a
+    // participant — the union is the only thing keeping it on the list.
+    ctx._lc = { attendanceId: "A1", date: "2026-05-26", status: [], participants: ["2415"] };
+    vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
+    const status = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+    eq(status.map(s => s.d4).sort(), ["2415", "5555"],
+      "both the active-status participant and the CSV Off status-row person appear");
+    const off = status.find(s => s.d4 === "5555");
+    eq(off.notParticipating, true, "a recorded status absence defaults ticked");
+    eq(off.statusTag, "Off", "no active medical ⇒ statusTag falls back to the ConductDetail reason label");
+    eq(off.reason, "Off", "reason carried from the saved Status row");
+  });
+
+  await test("checklist length equals the stored px count (union closes the gap)", () => {
+    const { target, ctx } = loadUnionCtx();
+    const detail = [
+      { id: "d1", date: "26 May 2026", time: "", conductId: "c1", d4: "2415", type: "Status", reason: "LD" },
+      { id: "d2", date: "26 May 2026", time: "", conductId: "c1", d4: "5555", type: "Status", reason: "Off" },
+      { id: "d3", date: "26 May 2026", time: "", conductId: "c1", d4: "6666", type: "Status", reason: "Leave" }
+    ];
+    target.STATE = {
+      attendance: [{ id: "A1", date: "26 May 2026", time: "", conductId: "c1", statusReviewed: true }],
+      conductDetail: detail
+    };
+    ctx._lc = { attendanceId: "A1", date: "2026-05-26", status: [], participants: ["2415"] };
+    vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
+    const status = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+    eq(status.length, detail.filter(d => d.type === "Status").length,
+      "every stored Status row is represented on the checklist");
+  });
+
   suite("Log Conduct wizard: _logConduct state fields + edit seeding");
 
   // openLogConductWizard needs isCommander/personPlatoon/activePlatoons (for
