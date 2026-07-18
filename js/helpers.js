@@ -629,6 +629,28 @@ function medDurationLabel(record) {
 }
 const badge = (text, cls) => `<span class="badge badge-${cls}">${text}</span>`;
 const statusBadge = s => badge(s, s === "Active" ? "green" : s === "Warded" ? "red" : "orange");
+
+// Roster-tab status badge, derived LIVE from the Medical layer. Since the
+// medical→roster status mirror was removed (item 4a), roster.status is now a
+// manual active/departed flag and no longer reflects a recruit's current MC/LD/…;
+// reading it directly would badge everyone "Active". So for a NON-departed person
+// we look up their current effective medical status (currentMedicalEffectiveAll,
+// which already collapses duplicate families and derives the MC+1/MC+2 ghost
+// tags) and badge the top tag. Genuine departures (BP_DEPARTED_STATUSES —
+// Discharged/ORD/Posted Out/…) are a roster fact with no medical record to derive
+// from, so they always show the stored value. BP_DEPARTED_STATUSES lives in
+// braves-parade.js (loaded after helpers.js) but this runs at render time, long
+// after every script has loaded, so the reference resolves fine.
+function rosterDisplayStatus(r) {
+  const stored = (r && r.status != null) ? String(r.status).trim() : "";
+  if (BP_DEPARTED_STATUSES.has(stored)) return statusBadge(stored);
+  const eff = currentMedicalEffectiveAll(todayISO()).find(e => e.d4 === r.id);
+  if (eff && eff.statuses.length) return medTagBadge(eff.statuses[0].tag);
+  // No active medical status → fall back to the stored roster value (usually
+  // "Active"/blank; a stale medical-mirror value left from before item 4a just
+  // renders as its own badge until a human cleans it up).
+  return statusBadge(stored || "Active");
+}
 const typeBadge = t => badge(t, t === "RSI" ? "orange" : t === "Injury" ? "red" : "yellow");
 const awardBadge = s => { const a = getAward(s); const c = { "Gold★": "purple", Gold: "yellow", Silver: "accent", Pass: "green", Fail: "red", "N/A": "accent" }; return badge(a, c[a] || "accent"); };
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;

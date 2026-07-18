@@ -111,4 +111,12 @@ module.exports = async function run() {
     ok(!/PARADE_CODES\.map\(c =>[\s\S]{0,120}onParadeCodeChange/.test(paradeTab),
       "the grid still renders the full PARADE_CODES <select> for every row");
   });
+
+  suite("render wiring: roster status badge derives from the medical layer (item 4b)");
+
+  await test("the Roster list badges rosterDisplayStatus, not the raw stored status", () => {
+    ok(render.includes("rosterDisplayStatus(r)"), "render.js Roster list no longer calls rosterDisplayStatus(r)");
+    ok(helpers.includes("function rosterDisplayStatus"), "rosterDisplayStatus is not defined in helpers.js");
+    ok(!/<td>\$\{statusBadge\(r\.status\)\}<\/td>/.test(render), "render.js still badges the raw stored r.status in the Roster row");
+  });
 };
