@@ -295,6 +295,30 @@ module.exports = async function run() {
     ok(A.sb.STATE.conductDetail.find(r => String(r.id) === "2"), "clean ConductDetail refreshed to server");
   });
 
+  // VocFit/Platoons are in TAB_TO_STATE (they round-trip via the normal sync
+  // primitives), so they CAN be marked dirty — but pullAll assigned them below the
+  // PULL_ASSIGN dirty-guard, unconditionally, so a launch pull still clobbered a
+  // failed-but-cached reference-tab edit. Same invariant as the data tabs: never
+  // pull over a dirty tab.
+  await test("pullAll does NOT clobber dirty VocFit / Platoons reference tabs", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Platoons", ["code", "displayName", "active", "createdAt"], [["PLT1", "Platoon 1", "TRUE", "2026-01-01"]]);
+    backend.db.seed("VocFit", ["personId", "completionDate", "certifyingUnit"], [["1101", "2026-01-01", "HQ"]]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+
+    // A has unsynced local edits to both reference tabs (a push that failed → dirty).
+    A.sb.STATE.platoons.push({ code: "PLT2", displayName: "Platoon 2", active: true, createdAt: "" });
+    A.sb.STATE.vocfit.push({ personId: "1199", completionDate: "2026-02-02", certifyingUnit: "X" });
+    A.sb.STATE.dirty = new Set(["Platoons", "VocFit"]);
+
+    // Relaunch → full pull. The server has only the original rows; the dirty
+    // reference tabs must be left untouched so the pending retry can still push.
+    await A.sb.API.pullAll();
+    ok(A.sb.STATE.platoons.find(p => p.code === "PLT2"), "A's unsynced Platoons edit survived the launch pull");
+    ok(A.sb.STATE.vocfit.find(v => v.personId === "1199"), "A's unsynced VocFit edit survived the launch pull");
+  });
+
   suite("sync: atomic per-conduct ConductDetail rewrite (replaceConduct)");
 
   // Fix #1: the wizard save now rewrites a conduct's detail rows with a SINGLE
@@ -375,5 +399,43 @@ module.exports = async function run() {
     await A.sb.autoSync("ConductDetail", mode);   // replay
     const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
     eq(ids, ["10"], "Date-coerced original removed; replay idempotent (no dup, no loss)");
+  });
+
+  // Same coercion trap, TIME column: a leading-zero clock time ("0730") logged
+  // before the WRITE_TEXT_COLS "@"-forcing landed was stored as the NUMBER 730
+  // (Sheets ate the zero). The delete phase reads RAW getValues() → 730, and
+  // String(730) ("730") never equals the client's pad4Time key "0730", so the
+  // delete no-ops and every re-save of a morning conduct DUPLICATES its rows. The
+  // normTime reversal left-pads the numeric cell back to "0730" so it clears. The
+  // mock seeds a real Number cell to reproduce the coerced state.
+  await test("replaceConduct matches numeric-coerced time cells (leading-zero trap)", async () => {
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [
+      ["1", "26 May 2026", 730, "c1", "1101", "Status", "old"]   // time cell is the NUMBER 730
+    ]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+    const mode = { type: "replaceConduct", match: { date: "26 May 2026", time: "0730", conductId: "c1" },
+      rows: [{ id: "10", date: "26 May 2026", time: "0730", conductId: "c1", d4: "1101", type: "Status", reason: "new" }] };
+    await A.sb.autoSync("ConductDetail", mode);
+    await A.sb.autoSync("ConductDetail", mode);   // replay (post-reload retry)
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
+    eq(ids, ["10"], "numeric-coerced original removed; replay idempotent (no dup, no loss)");
+  });
+
+  // Post-fix path: a leading-zero time stored as a plain string round-trips and
+  // delete-matches cleanly (String(v) === "0730"), so re-saving a morning conduct
+  // swaps its rows in place rather than accumulating duplicates.
+  await test("replaceConduct matches string leading-zero time cells", async () => {
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [
+      ["1", "26 May 2026", "0730", "c1", "1101", "Status", "old"]
+    ]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+    await A.sb.autoSync("ConductDetail", { type: "replaceConduct", match: { date: "26 May 2026", time: "0730", conductId: "c1" },
+      rows: [{ id: "10", date: "26 May 2026", time: "0730", conductId: "c1", d4: "1101", type: "Status", reason: "new" }] });
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
+    eq(ids, ["10"], "string-time original swapped in place — no duplicate");
   });
 };

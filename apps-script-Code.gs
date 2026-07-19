@@ -1491,7 +1491,13 @@ function readAllTabs(ctx) {
 // so parseParticipantIds() then matches nobody and the conduct silently gives zero
 // HA credit. Forcing the column to "@" first makes the string round-trip verbatim.
 // (Same class of fix as bravesForceTextCols_ for the archive tabs.) Keyed by tab.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"] };
+// ConductDetail.time is the SAME trap: a leading-zero clock time ("0730") gets
+// coerced to the number 730, so it no longer round-trips as a string. That breaks
+// replaceConductRows' (date,time,conductId) delete-match — the delete no-ops and
+// every re-save of a morning conduct DUPLICATES its rows — and the client-side
+// dedup/preload (which compare against pad4Time keys). Forcing "@" keeps "0730"
+// verbatim, exactly like participants.
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"] };
 
 function writeTab(tabName, data) {
   if (!Array.isArray(data)) {
@@ -1702,10 +1708,19 @@ function replaceConductRows(tabName, match, rows) {
       }
       return String(v);
     };
+    // The time column newly gets WRITE_TEXT_COLS "@"-forcing, so NEW rows keep
+    // "0730" verbatim and fall through normCell's String(v). But rows written
+    // BEFORE that fix still hold the coerced NUMBER (730 for "0730"), which would
+    // no-op the delete and duplicate on re-save. Left-pad a numeric time back to
+    // 4 digits so those legacy rows match the client's pad4Time key and clear.
+    var normTime = function (v, d) {
+      if (typeof v === "number") { var s = String(v); return s.length >= 4 ? s : ("000" + s).slice(-4); }
+      return normCell(v, d);
+    };
     for (var i = grid.length - 1; i >= 0; i--) {
       var rConduct = normCell(grid[i][idxConduct], disp[i][idxConduct]);
       var rDate = idxDate >= 0 ? normCell(grid[i][idxDate], disp[i][idxDate]) : "";
-      var rTime = idxTime >= 0 ? normCell(grid[i][idxTime], disp[i][idxTime]) : "";
+      var rTime = idxTime >= 0 ? normTime(grid[i][idxTime], disp[i][idxTime]) : "";
       var rType = idxType >= 0 ? normCell(grid[i][idxType], disp[i][idxType]) : "";
       if (rConduct === mConduct && rDate === mDate && rTime === mTime && rType !== "RSI") {
         sheet.deleteRow(i + 2);

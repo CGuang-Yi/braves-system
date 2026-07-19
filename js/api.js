@@ -126,8 +126,13 @@ const API = {
     // length-gated) so clearing a tab in the Sheet actually clears it here —
     // config especially must reflect deletions, not stick to a stale cache.
     if (data.config !== undefined) STATE.config = normalizeConfig(data.config);
-    if (data.vocfit !== undefined) STATE.vocfit = normalizeVocFit(data.vocfit);
-    if (data.platoons !== undefined) STATE.platoons = normalizePlatoons(data.platoons);
+    // VocFit/Platoons are in TAB_TO_STATE — they round-trip through the normal sync
+    // primitives and so CAN be marked dirty. Apply the same guard as the PULL_ASSIGN
+    // loop above: a launch pull must not clobber a failed-but-cached edit before the
+    // user retries it. (Config is key/value, written through its own path, absent
+    // from TAB_TO_STATE and never dirty — so it stays unconditional above.)
+    if (data.vocfit !== undefined && !(dirty && dirty.has("VocFit"))) STATE.vocfit = normalizeVocFit(data.vocfit);
+    if (data.platoons !== undefined && !(dirty && dirty.has("Platoons"))) STATE.platoons = normalizePlatoons(data.platoons);
     // Admin pulls include the audit log; non-admins never receive it. Assign
     // unconditionally to the admin-provided value so it clears if absent.
     if (STATE.role === "admin") STATE.auditLog = Array.isArray(data.auditLog) ? data.auditLog : [];
