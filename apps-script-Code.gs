@@ -3470,8 +3470,21 @@ function bpSickUrtiBlocks(reports) {
 }
 
 // §10.1 — single report-sick message: header → URTI block → NON-URTI block.
-function generateRSFormat(dateIso, time) {
-  const reports = bpSickReports(dateIso);
+// True when the person already carries a PRE-EXISTING active medical status on
+// dateIso — see js/braves-parade.js:bpHasPriorStatus for the full rationale.
+// Mirrored here so the frontend and archiver copies stay behaviourally identical.
+function bpHasPriorStatus(m, dateIso) {
+  return (STATE.medical || []).some(x => {
+    if (x === m || x.d4 !== m.d4) return false;
+    if (!x.status || x.status === "Pending" || x.status === "NIL") return false;
+    const start = displayDateToISO(x.startDate || x.date || "");
+    return start && start < dateIso && medStatusActive(x, dateIso);
+  });
+}
+
+function generateRSFormat(dateIso, time, opts) {
+  let reports = bpSickReports(dateIso);
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasPriorStatus(m, dateIso));
   const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
   lines.push(...bpSickUrtiBlocks(reports));
   return lines.join("\n\n");
