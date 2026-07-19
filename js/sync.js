@@ -97,6 +97,12 @@ function renderSync(el) {
 // lists are fetched on demand; the audit log arrives with the admin pull.
 let _adminLoaded = false;
 let _auditLimit = 50;
+// P2-4: mirrors AUDIT_READALL_MAX_ROWS in apps-script-Code.gs. The backend's
+// readAll truncates AuditLog to the newest N rows, so a payload landing at
+// EXACTLY this length is (almost certainly — a coincidental exact-N sheet is
+// possible but not worth distinguishing) truncated. Used only to decide
+// whether to show the "full trail lives in the Sheet" note below.
+const AUDIT_READALL_MAX_ROWS = 500;
 
 function renderAdminPanel() {
   const host = document.getElementById("admin-panel");
@@ -171,6 +177,7 @@ function renderAdminPanel() {
         <tbody>${auditRows || `<tr><td colspan="6" style="color:var(--dim)">No audit entries.</td></tr>`}</tbody>
       </table></div>
       ${audit.length > _auditLimit ? `<button class="btn" style="margin-top:8px" onclick="showMoreAudit()">Show more (${audit.length - _auditLimit} hidden)</button>` : ""}
+      ${audit.length === AUDIT_READALL_MAX_ROWS ? `<p style="font-size:10px;color:var(--muted);margin-top:8px">Showing latest ${AUDIT_READALL_MAX_ROWS} entries; full trail lives in the Sheet.</p>` : ""}
     </div>`;
 
   // Lazy-load accounts + sessions the first time the admin opens this tab.
