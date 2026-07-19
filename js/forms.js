@@ -4084,10 +4084,15 @@ let _logConduct = null;
 // Enter-to-save for the conduct wizard. The wizard is a plain <div> (not a
 // <form>), so Enter does nothing by default. We bind ONE keydown listener on the
 // shared #modal-overlay and self-gate it: it acts only while _logConduct is open
-// and the overlay is visible, so it's inert for every other modal and after the
-// wizard closes — no teardown needed. Enter in the Remarks textarea stays a
-// newline; Enter in a person-search box is already handled (and stopped) by
-// personSearchEnter, so the id-ending guard here is belt-and-suspenders.
+// and the overlay is visible. Note _logConduct is only cleared on a SUCCESSFUL
+// save, not on Cancel or generic closeModal(), so those two checks alone can't
+// tell a stale wizard state from a live one once a different modal (which
+// shares #modal-overlay) is opened afterward. The decisive guard is confirming
+// the wizard's own DOM (#wiz-remarks) is actually the modal on screen — that's
+// what makes this inert for every other modal. Enter in the Remarks textarea
+// stays a newline; Enter in a person-search box is already handled (and
+// stopped) by personSearchEnter, so the id-ending guard here is
+// belt-and-suspenders.
 let _wizEnterBound = false;
 function bindWizardEnterToSave() {
   if (_wizEnterBound) return;
@@ -4096,6 +4101,7 @@ function bindWizardEnterToSave() {
     if (e.key !== "Enter") return;
     if (!_logConduct) return;
     if (document.getElementById("modal-overlay").classList.contains("hidden")) return;
+    if (!document.getElementById("wiz-remarks")) return; // the wizard's own modal isn't the one on screen
     if (e.target.tagName === "TEXTAREA") return;
     if (e.target.id && e.target.id.endsWith("-input")) return;
     e.preventDefault();

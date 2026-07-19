@@ -708,6 +708,7 @@ module.exports = async function run() {
     ok(/_logConduct/.test(body), "binder does not gate on _logConduct being open");
     ok(/TEXTAREA/.test(body), "binder does not exempt the Remarks textarea");
     ok(/saveLogConductWizard\(\)/.test(body), "binder does not call saveLogConductWizard()");
+    ok(/getElementById\(["']wiz-(remarks|date)["']\)/.test(body), "handler no longer confirms the wizard modal is on screen before saving");
   });
 
   await test("openLogConductWizard arms the Enter binder", () => {
