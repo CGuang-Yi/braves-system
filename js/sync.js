@@ -834,6 +834,30 @@ function initAutoRefresh() {
   startAutoRefresh();
 }
 
+// Threshold for the "many tabs changed" fallback below (item 7, P1-1 spec):
+// pullTabs fires one GET per tab, so with most/all ~12 tabs changed at once
+// (a device that's been closed for days, or a freshly reseeded sandbox) N
+// parallel GAS round trips can cost MORE than a single readAll. Until P2-1's
+// batched readTabs endpoint lands, degrade to today's full pull past this
+// many changed tabs instead of firing a burst of per-tab GETs. Not used
+// anywhere else — purely a launch-path circuit breaker.
+const LAUNCH_PARTIAL_PULL_MAX_TABS = 4;
+
+// Full-pull fallback shared by every case that needs one (no rev baseline,
+// revCheck unsupported/failed, or too many tabs changed). Wraps
+// setPullInFlight so the write queue's never-push-against-stale-STATE
+// guarantee holds on this path exactly like it does for pullAndRender's
+// cold-cache full pull (main.js).
+async function fullLaunchPull(reason) {
+  const pullPromise = timed("pull", "pull ALL (launch)", () => API.pullAll(), true);
+  setPullInFlight(pullPromise);
+  const data = await pullPromise;
+  _lastSyncedAt = Date.now();
+  refreshSyncIndicator();
+  syncLog(`Auto-sync on launch: full pull from ${data.sheetName} (${reason})`, "var(--green)");
+  if (typeof render === "function") render();
+}
+
 async function autoSyncOnLaunch() {
   if (!STATE.authToken) {
     setSyncIndicator("● Not authenticated", "var(--red)");
@@ -844,36 +868,88 @@ async function autoSyncOnLaunch() {
     // INCREMENTAL launch sync: if we have a revision baseline from the cache,
     // do a cheap revCheck and pull ONLY changed tabs (in parallel) instead of a
     // full readAll. Falls back to a full pull when there's no baseline (first
-    // run / old cache) or the backend lacks revCheck.
+    // run / old cache), the backend lacks revCheck, or too many tabs changed
+    // at once (item 7 — see LAUNCH_PARTIAL_PULL_MAX_TABS above).
     const hasBaseline = STATE.rev && Object.keys(STATE.rev).length > 0;
     if (hasBaseline) {
       const res = await timed("revCheck", "revCheck (launch)", () => API.revCheck());
       _lastCheckedAt = Date.now();
       if (res && !res.error && res.revs) {
         const changed = Object.keys(res.revs).filter(s => Number(res.revs[s]) > Number(STATE.rev[s] || 0));
-        if (changed.length) {
-          await applyAutoPull(changed);   // parallel partial pulls + render + timing
-          syncLog(`Launch: refreshed ${changed.length} changed tab${changed.length === 1 ? "" : "s"} (${changed.join(", ")})`, "var(--green)");
-        } else {
+
+        if (changed.length === 0) {
           _lastSyncedAt = Date.now();
           refreshSyncIndicator();
           syncLog("Launch: already up to date ✓", "var(--green)");
+          return;
+        }
+
+        // Item 7: many tabs changed → one full pullAll instead of N per-tab GETs.
+        if (changed.length > LAUNCH_PARTIAL_PULL_MAX_TABS) {
+          await fullLaunchPull(`${changed.length} tabs changed (> ${LAUNCH_PARTIAL_PULL_MAX_TABS} threshold)`);
+          return;
+        }
+
+        // Item 5 (MANDATORY dirty-tab guard): a tab with unsynced local edits
+        // from a prior session that ALSO changed on the server must NEVER be
+        // pulled over here — this is exactly the PR #67 clobber class, now
+        // reachable on the launch path too. Pulling it would replace
+        // STATE[arrKey] with server rows BEFORE maybeRestoreDirty gets a
+        // chance to offer a replay, and after a reload _dirtyOps is empty, so
+        // the eventual retryAllDirty falls back to a full replace sourced
+        // from the very array the pull just clobbered — the user's edit is
+        // silently gone. Mirrors autoRefreshTick's dirtyChanged/safeChanged
+        // split (sync.js ~706-719): leave the dirty tab's rev at its stale
+        // baseline (so the pending replay still OCC-merges) and let the
+        // dirty-conflict banner / maybeRestoreDirty prompt handle it instead.
+        const dirty = STATE.dirty || new Set();
+        const dirtyChanged = changed.filter(t => dirty.has(t));
+        const safeChanged = changed.filter(t => !dirty.has(t));
+        if (dirtyChanged.length) showDirtyConflictBanner(dirtyChanged);
+
+        // Item 6 (MANDATORY isModalOpen guard): a person card can already be
+        // open within a second or two of first paint — warm-cache launch
+        // renders instantly from cache, and this revCheck resolves shortly
+        // after. Never re-render (chart teardown + #content scroll reset) out
+        // from under an open form; banner instead, same guard the 20s poller
+        // uses (autoRefreshTick).
+        if (safeChanged.length && isModalOpen()) {
+          showNewerDataBanner(safeChanged);
+          _lastSyncedAt = Date.now();
+          refreshSyncIndicator();
+          return;
+        }
+
+        if (safeChanged.length) {
+          await applyAutoPull(safeChanged);   // parallel partial pulls + render + timing
+          syncLog(`Launch: refreshed ${safeChanged.length} changed tab${safeChanged.length === 1 ? "" : "s"} (${safeChanged.join(", ")})`, "var(--green)");
+        } else {
+          // Nothing safe to pull — either everything changed was dirty-guarded
+          // (banner already shown above) or there was nothing left to do.
+          _lastSyncedAt = Date.now();
+          refreshSyncIndicator();
         }
         return;
       }
-      // else: revCheck unsupported/failed → fall through to a full pull.
+      // else: revCheck unsupported/failed → fall through to a full pull, but
+      // say so accurately (there WAS a baseline — revCheck itself is what
+      // came back empty/erroring) rather than reusing the "no rev baseline"
+      // message, which would be misleading in the sync log.
+      await fullLaunchPull("revCheck unavailable");
+      return;
     }
-    const pullPromise = timed("pull", "pull ALL (launch)", () => API.pullAll(), true);
-    setPullInFlight(pullPromise);
-    const data = await pullPromise;
-    _lastSyncedAt = Date.now();
-    refreshSyncIndicator();
-    syncLog(`Auto-sync on launch: full pull from ${data.sheetName}`, "var(--green)");
-    render();
+    await fullLaunchPull("no rev baseline");
   } catch (e) {
     if (e.name === "AuthError") {
       setSyncIndicator("● Not authenticated", "var(--red)");
       syncLog(`Auth rejected — your invite may have been revoked. Ask admin for a new link.`, "var(--red)");
+      // Bounce to the login screen exactly like the cold-cache path
+      // (pullAndRender's catch → handleAuthFailure, main.js) — an expired or
+      // revoked token must not just leave the warm-cache render sitting there
+      // with a "not authenticated" pill; the user needs to sign back in.
+      // typeof-guarded: handleAuthFailure lives in main.js, which the
+      // sync-core-only test harness (makeClient) doesn't load.
+      if (typeof handleAuthFailure === "function") handleAuthFailure();
     } else {
       setSyncIndicator("● Sync failed", "var(--red)");
       syncLog(`Auto-sync failed: ${e.message}`, "var(--red)");

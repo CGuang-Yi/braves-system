@@ -237,9 +237,32 @@ async function doLogin(e) {
   }
 }
 
-// Shared pull-then-render path used by both launch and post-login. Resolves the
-// role UI first (so displayPersonLabel works once the roster lands) and surfaces
-// auth failures to the login screen.
+// Runs exactly once after the launch sync settles, regardless of which of the
+// two bootstrap() paths got us there: pullAndRender's blocking full pull
+// (cold cache, or a fresh login) or the warm-cache path's background
+// autoSyncOnLaunch() below. Both callers route through here so name
+// resolution, the legacy-conduct-data migration prompt, the dirty-tab retry
+// prompt, and the auto-refresh poller each fire exactly once per launch —
+// never twice, never skipped (P1-1 change-item 3).
+function afterLaunchSyncSettles() {
+  applyRoleUI();   // re-run now the roster is loaded → name resolves
+  maybeRunConductMigration();
+  maybeRestoreDirty();
+  // Keep this tab fresh: poll the cheap revCheck endpoint (~20s while visible +
+  // on focus/visibility/online) and pull only changed tabs. STATE.rev was just
+  // baselined by the pull above. Guarded so login + bootstrap don't double-wire.
+  if (STATE.authToken && typeof initAutoRefresh === "function") initAutoRefresh();
+}
+
+// Shared pull-then-render path used by (a) post-login, always, and (b) the
+// cold-cache bootstrap path below. ALWAYS does a full blocking readAll — no
+// incremental shortcut here, because there's nothing to diff against: a fresh
+// login has no rev baseline (a different account may see different
+// admin-only payloads, so trusting a stale cache across accounts would be
+// wrong even if one existed), and a cold cache means loadLocal() gave us
+// nothing usable either. Resolves the role UI first (so applyRoleUI's
+// account-identity text has something to show even before the pull lands)
+// and surfaces auth failures to the login screen.
 async function pullAndRender() {
   applyRoleUI();
   setSyncIndicator("● Loading data…", "var(--orange)");
@@ -251,14 +274,8 @@ async function pullAndRender() {
     const data = await pullPromise;
     if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
     syncLog(`Auto-sync on launch: pulled from ${data.sheetName}`, "var(--green)");
-    applyRoleUI();   // re-run now the roster is loaded → name resolves
     render();
-    maybeRunConductMigration();
-    maybeRestoreDirty();
-    // Keep this tab fresh: poll the cheap revCheck endpoint (~20s while visible +
-    // on focus/visibility/online) and pull only changed tabs. STATE.rev was just
-    // baselined by the pull above. Guarded so login + bootstrap don't double-wire.
-    if (STATE.authToken && typeof initAutoRefresh === "function") initAutoRefresh();
+    afterLaunchSyncSettles();
   } catch (e) {
     if (e.name === "AuthError") { handleAuthFailure(); }
     else {
@@ -281,7 +298,32 @@ async function pullAndRender() {
 
   // Have a token — try to use it. A 401/expired response bounces to login.
   showApp();
-  await pullAndRender();
+
+  // P1-1: render the cache immediately when loadLocal() gave us something
+  // trustworthy to reconcile in the background, instead of always blocking
+  // first paint on a full readAll. "Trustworthy" = actual roster rows AND a
+  // rev baseline (STATE.rev) — without a baseline there's nothing for
+  // autoSyncOnLaunch's revCheck to diff against, so a first-run/cleared-cache
+  // device falls through to the same blocking full pull as before (cold path).
+  const warmCache = Array.isArray(STATE.roster) && STATE.roster.length > 0
+    && STATE.rev && Object.keys(STATE.rev).length > 0;
+
+  if (warmCache) {
+    applyRoleUI();
+    render();   // instant paint from cache — nothing below this line blocks it
+    // autoSyncOnLaunch (sync.js) owns its own error handling internally (pill
+    // + sync log) and never rejects, so no try/catch is needed here: a revCheck
+    // failure or an auth rejection just leaves the cached render on screen,
+    // which is still valid data. It does the incremental reconciliation: a
+    // cheap revCheck, then a partial pull of ONLY changed+non-dirty tabs (item
+    // 5), skipping the re-render if a modal is open (item 6), or a full-pull
+    // fallback if revCheck itself is unsupported/fails or too many tabs
+    // changed at once (item 7).
+    await autoSyncOnLaunch();
+    afterLaunchSyncSettles();
+  } else {
+    await pullAndRender();   // cold cache: today's blocking full pull, unchanged
+  }
 })();
 
 // On launch, if previous session(s) left dirty tabs (pushes failed offline

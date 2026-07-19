@@ -248,6 +248,129 @@ module.exports = async function run() {
     ok(C.fetchSpy.map(r => r.action).includes("readAll"), "full pull when no rev baseline");
   });
 
+  suite("sync: launch incremental — dirty guard / modal guard / many-tabs threshold (P1-1 items 5-7)");
+
+  // Item 5 (MANDATORY): the dead code autoSyncOnLaunch() originally lacked
+  // the dirty-tab guard autoRefreshTick already has. Wiring it up as-is would
+  // reintroduce the PR #67 clobber class on the launch path: a tab with
+  // unsynced local edits that ALSO changed on the server must never be pulled
+  // over by the launch partial pull, or the edit is silently lost once
+  // _dirtyOps is empty after a reload.
+  await test("dirty-clobber regression: launch does NOT pull over a dirty tab whose server rev is ahead", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Medical", MED_HEADERS, [["1", "1101", "", "orig", "", "", "", ""]]);
+    const A = makeClient(backend), B = makeClient(backend);
+    await A.sb.API.pullAll();
+    await B.sb.API.pullAll();
+
+    // A has an unsynced local edit from a prior session (simulates a failed
+    // push that left the tab dirty and persisted).
+    A.sb.STATE.medical[0].reason = "my-unsynced-edit";
+    A.sb.STATE.dirty = new Set(["Medical"]);
+    const revBefore = A.sb.STATE.rev.Medical;
+
+    // Another device advances the server's Medical rev meanwhile.
+    await B.sb.autoSync("Medical", { type: "upsert", row: med(2, "B-changed") });
+
+    A.fetchSpy.length = 0;
+    await A.sb.autoSyncOnLaunch();
+
+    ok(A.fetchSpy.map(r => r.action).includes("revCheck"), "still polled revCheck");
+    ok(!A.fetchSpy.some(r => r.action === "read" && r.tab === "Medical"), "did NOT pull the dirty tab over");
+    eq(A.sb.STATE.medical[0].reason, "my-unsynced-edit", "local dirty edit survives the launch sync");
+    eq(A.sb.STATE.rev.Medical, revBefore, "dirty tab's rev stays at the stale baseline (so a later replay still OCC-merges)");
+    ok(A.sb.STATE.dirty.has("Medical"), "still marked dirty — maybeRestoreDirty / the conflict banner owns it now");
+  });
+
+  // A non-dirty tab in the SAME launch must still refresh normally — the
+  // guard is per-tab, not "any dirty tab anywhere blocks everything".
+  await test("dirty-clobber regression: a DIFFERENT non-dirty tab still gets pulled in the same launch", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Medical", MED_HEADERS, [["1", "1101", "", "orig", "", "", "", ""]]);
+    backend.db.seed("Roster", ["id", "d4", "name"], [["1", "1101", "Orig Name"]]);
+    const A = makeClient(backend), B = makeClient(backend);
+    await A.sb.API.pullAll();
+    await B.sb.API.pullAll();
+
+    A.sb.STATE.medical[0].reason = "my-unsynced-edit";
+    A.sb.STATE.dirty = new Set(["Medical"]);   // Medical dirty, Roster clean
+
+    await B.sb.autoSync("Medical", { type: "upsert", row: med(2, "B-changed") });
+    await B.sb.autoSync("Roster", { type: "upsert", row: { id: 1, d4: "1101", name: "Renamed" } });
+
+    A.fetchSpy.length = 0;
+    await A.sb.autoSyncOnLaunch();
+
+    ok(!A.fetchSpy.some(r => r.action === "read" && r.tab === "Medical"), "dirty Medical not pulled");
+    ok(A.fetchSpy.some(r => r.action === "read" && r.tab === "Roster"), "clean Roster still pulled");
+    eq(A.sb.STATE.medical[0].reason, "my-unsynced-edit", "dirty edit preserved");
+    ok(A.sb.STATE.roster.find(r => r.name === "Renamed"), "clean tab refreshed to the latest server row");
+  });
+
+  // Item 6 (MANDATORY): a person card can already be open within a second or
+  // two of first paint (warm-cache launch renders instantly, then this
+  // revCheck resolves) — never re-render (chart teardown + #content scroll
+  // reset) out from under it. Mirrors autoRefreshTick's isModalOpen() guard.
+  await test("isModalOpen guard: launch does not pull/re-render over an open modal", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Medical", MED_HEADERS, [["1", "1101", "", "orig", "", "", "", ""]]);
+    const A = makeClient(backend), B = makeClient(backend);
+    await A.sb.API.pullAll();
+    await B.sb.API.pullAll();
+    await B.sb.autoSync("Medical", { type: "upsert", row: med(1, "B-changed") });   // server Medical rev↑
+
+    A.ctl.modalOpen = true;   // a person card is open on A right now
+    A.fetchSpy.length = 0;
+    await A.sb.autoSyncOnLaunch();
+
+    ok(A.fetchSpy.map(r => r.action).includes("revCheck"), "still polled revCheck (cheap, always safe)");
+    ok(!A.fetchSpy.some(r => r.action === "read"), "did NOT partial-pull while a modal is open");
+    eq(A.sb.STATE.medical[0].reason, "orig", "STATE not overwritten under the open modal");
+  });
+
+  // Item 7 (MANDATORY): pullTabs fires one GET per changed tab. With MOST/ALL
+  // tabs changed at once (e.g. a device reopened after days away), N parallel
+  // GAS round trips can cost more than one readAll — fall back past a
+  // threshold instead of firing a burst of per-tab GETs.
+  await test("many-tabs-changed threshold: >4 changed tabs → one full pullAll, no per-tab GETs", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Medical", MED_HEADERS, []);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();   // A's rev baseline for all tracked tabs
+
+    // Bump 5 different tabs' revs directly (simulates other devices/bots
+    // changing them while A was away) — no need to actually write rows, only
+    // the rev delta matters for autoSyncOnLaunch's decision.
+    ["Roster", "Medical", "Attendance", "IPPT", "RouteMarch"].forEach(t => backend.bumpRev(t));
+
+    A.fetchSpy.length = 0;
+    await A.sb.autoSyncOnLaunch();
+
+    const actions = A.fetchSpy.map(r => r.action);
+    ok(actions.includes("revCheck"), "polled revCheck first");
+    ok(actions.includes("readAll"), "fell back to one full pullAll");
+    ok(!actions.includes("read"), "did NOT fire per-tab GETs for the 5 changed tabs");
+  });
+
+  // At exactly the threshold, the incremental per-tab path is still used —
+  // the fallback is a "more than N" breaker, not "N or more".
+  await test("many-tabs-changed threshold: exactly 4 changed tabs still uses per-tab partial pulls", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Medical", MED_HEADERS, []);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+
+    ["Roster", "Medical", "Attendance", "IPPT"].forEach(t => backend.bumpRev(t));
+
+    A.fetchSpy.length = 0;
+    await A.sb.autoSyncOnLaunch();
+
+    const actions = A.fetchSpy.map(r => r.action);
+    ok(!actions.includes("readAll"), "still under the threshold — no full pullAll fallback");
+    const reads = A.fetchSpy.filter(r => r.action === "read").map(r => r.tab).sort();
+    eq(reads, ["Attendance", "IPPT", "Medical", "Roster"], "all 4 changed tabs partial-pulled individually");
+  });
+
   suite("sync: launch pull preserves unsynced (dirty) tabs");
 
   // Regression for the ConductDetail-vanishes-on-reload bug: the launch full
