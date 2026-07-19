@@ -4081,8 +4081,37 @@ function refreshLmsFromPolar() {
 //   }
 let _logConduct = null;
 
+// Enter-to-save for the conduct wizard. The wizard is a plain <div> (not a
+// <form>), so Enter does nothing by default. We bind ONE keydown listener on the
+// shared #modal-overlay and self-gate it: it acts only while _logConduct is open
+// and the overlay is visible. Note _logConduct is only cleared on a SUCCESSFUL
+// save, not on Cancel or generic closeModal(), so those two checks alone can't
+// tell a stale wizard state from a live one once a different modal (which
+// shares #modal-overlay) is opened afterward. The decisive guard is confirming
+// the wizard's own DOM (#wiz-remarks) is actually the modal on screen — that's
+// what makes this inert for every other modal. Enter in the Remarks textarea
+// stays a newline; Enter in a person-search box is already handled (and
+// stopped) by personSearchEnter, so the id-ending guard here is
+// belt-and-suspenders.
+let _wizEnterBound = false;
+function bindWizardEnterToSave() {
+  if (_wizEnterBound) return;
+  _wizEnterBound = true;
+  document.getElementById("modal-overlay").addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    if (!_logConduct) return;
+    if (document.getElementById("modal-overlay").classList.contains("hidden")) return;
+    if (!document.getElementById("wiz-remarks")) return; // the wizard's own modal isn't the one on screen
+    if (e.target.tagName === "TEXTAREA") return;
+    if (e.target.id && e.target.id.endsWith("-input")) return;
+    e.preventDefault();
+    saveLogConductWizard();
+  });
+}
+
 // Open the wizard. Pass an attendance row id to load it in edit mode.
 function openLogConductWizard(attendanceId) {
+  bindWizardEnterToSave();
   const a = attendanceId ? STATE.attendance.find(x => x.id === attendanceId) : null;
   _logConduct = {
     attendanceId: a?.id || null,
@@ -4586,6 +4615,7 @@ function personSearchMatches(query, roleFilter) {
 function personSearchEnter(e, boxId, onPickFn, valueId, roleFilter) {
   if (e.key !== "Enter") return;
   e.preventDefault();
+  e.stopPropagation();   // keep this Enter from also reaching the wizard's save-on-Enter handler
   const input = document.getElementById(`${boxId}-input`);
   const matches = personSearchMatches(input ? input.value : "", roleFilter);
   if (matches.length) personSearchPick(boxId, onPickFn, valueId, matches[0].id);

@@ -353,6 +353,10 @@ module.exports = async function run() {
     target.displayDateToISO = iso => iso; // dates already stored as "2026-05-26" in this fixture
     target.todayISO = () => "2026-05-26";
     target.renderLogConductWizard = () => {}; // no-op — DOM rendering isn't under test here
+    // openLogConductWizard now arms bindWizardEnterToSave(), which attaches a
+    // keydown listener to #modal-overlay — stub just enough DOM for that to be a
+    // no-op here; the Enter-to-save wiring itself is covered by its own suite.
+    target.document = { getElementById: () => ({ addEventListener: () => {} }) };
     // Real calc.js parser (single canonical definition — see js/calc.js).
     target.parseParticipantIds = participants =>
       String(participants == null ? "" : participants).split(",").map(s => s.trim()).filter(Boolean);
@@ -684,5 +688,32 @@ module.exports = async function run() {
       wiz: { participants: [], importedBaseline: [] }
     });
     eq(row.id, "A1", "legacy-row edit with no group added yet still saves");
+  });
+
+  suite("log-conduct wizard: Enter-to-save wiring");
+  const formsSrc = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+
+  await test("personSearchEnter stops propagation so a modal Enter handler can't also fire", () => {
+    const m = formsSrc.match(/function personSearchEnter\([^)]*\)\s*{[\s\S]*?\n}/);
+    ok(m, "personSearchEnter not found");
+    ok(/stopPropagation\(\)/.test(m[0]), "personSearchEnter no longer calls stopPropagation()");
+  });
+
+  await test("a self-gating keydown binder saves the wizard on Enter, guarding textarea + typeahead", () => {
+    ok(formsSrc.includes("function bindWizardEnterToSave"), "bindWizardEnterToSave missing");
+    const m = formsSrc.match(/function bindWizardEnterToSave\(\)\s*{[\s\S]*?\n}/);
+    ok(m, "bindWizardEnterToSave body not found");
+    const body = m[0];
+    ok(/modal-overlay/.test(body), "binder does not attach to #modal-overlay");
+    ok(/_logConduct/.test(body), "binder does not gate on _logConduct being open");
+    ok(/TEXTAREA/.test(body), "binder does not exempt the Remarks textarea");
+    ok(/saveLogConductWizard\(\)/.test(body), "binder does not call saveLogConductWizard()");
+    ok(/getElementById\(["']wiz-(remarks|date)["']\)/.test(body), "handler no longer confirms the wizard modal is on screen before saving");
+  });
+
+  await test("openLogConductWizard arms the Enter binder", () => {
+    const m = formsSrc.match(/function openLogConductWizard\([^)]*\)\s*{[\s\S]*?\n}/);
+    ok(m, "openLogConductWizard not found");
+    ok(/bindWizardEnterToSave\(\)/.test(m[0]), "openLogConductWizard never calls bindWizardEnterToSave()");
   });
 };
