@@ -1,5 +1,7 @@
 // Backend unit tests — run the REAL apps-script-Code.gs functions against the
 // in-memory Sheets/Properties/Lock mocks. Also validates mock fidelity.
+const fs = require("fs");
+const path = require("path");
 const { suite, test, ok, eq } = require("./_tap");
 const { loadBackend, VALID_TOKEN } = require("./harness");
 
@@ -282,5 +284,18 @@ module.exports = async function run() {
     eq(rows[1].isInCamp, false, "OTHERS type with a book-out keyword blank -> FALSE (legacy guess)");
     eq(rows[2].isInCamp, true, "OTHERS type with no keyword blank -> TRUE (legacy guess)");
     eq(rows[3].isInCamp, true, "already-explicit row is left untouched");
+  });
+
+  suite("apps-script: stale invite generators removed");
+  const gsSrc = fs.readFileSync(path.join(__dirname, "..", "apps-script-Code.gs"), "utf8");
+
+  await test("generateInvite() and generateBulkInvite() are deleted", () => {
+    ok(!/function\s+generateInvite\s*\(/.test(gsSrc), "generateInvite() still present");
+    ok(!/function\s+generateBulkInvite\s*\(/.test(gsSrc), "generateBulkInvite() still present");
+  });
+
+  await test("the redemption path is kept intact", () => {
+    ok(/function\s+redeemInvite\s*\(/.test(gsSrc), "redeemInvite() was removed — should be kept");
+    ok(gsSrc.includes('action === "redeemInvite"'), "doPost redeemInvite action was removed — should be kept");
   });
 };

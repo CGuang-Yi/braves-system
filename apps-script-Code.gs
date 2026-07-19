@@ -23,9 +23,12 @@
  *     • Failed-login throttle: 5 attempts → 15-minute lockout (isLockedOut).
  *
  * LEGACY (dormant, removed after Step 1 is verified):
- *   invite:<token> / the redeemInvite flow / generate(Bulk)Invite. Tokens these
- *   issue carry no `role`, so getAuthContext() rejects them — they can neither
- *   read nor write under the new model.
+ *   invite:<token> / the redeemInvite flow. The editor-only invite-minting
+ *   helpers were removed once per-account password login (addendum A1)
+ *   shipped; already-issued invite links still redeem via `?token=`, but no
+ *   new ones are minted. Tokens these issue carry no `role`, so
+ *   getAuthContext() rejects them — they can neither read nor write under
+ *   the new model.
  *
  * SETUP (first deploy or after pulling these changes)
  * ───────────────────────────────────────────────────
@@ -38,8 +41,10 @@
  *      • Execute as: Me
  *      • Who has access: Anyone
  *      • Copy the Web App URL; paste it into js/state.js (APPS_SCRIPT_URL).
- * 5. Run generateInvite() from the editor → check the Execution log →
- *    open the printed URL on the device that needs access.
+ * 5. Auth is per-account password login (seedFirstAdmin / setupAuthTabs
+ *    above) — there is no editor step to mint access. Any invite links
+ *    issued before this model shipped still redeem via `?token=`, but new
+ *    links are no longer generated from the editor.
  *
  * SHEET TABS REQUIRED (create with headers in Row 1):
  *   Roster:     4d | name | age | status | notes | phone | email |
@@ -518,54 +523,6 @@ function redeemInvite(inviteToken) {
 }
 
 // ─── ADMIN FUNCTIONS — run from the Apps Script editor ─
-
-function generateInvite() {
-  var token = Utilities.getUuid();
-  PropertiesService.getScriptProperties().setProperty(
-    "invite:" + token,
-    JSON.stringify({ used: false, createdAt: new Date().toISOString() })
-  );
-  var link = FRONTEND_BASE_URL + "?token=" + token;
-  Logger.log("───────────────────────────────────────────");
-  Logger.log("NEW INVITE LINK (single-use):");
-  Logger.log(link);
-  Logger.log("───────────────────────────────────────────");
-  return link;
-}
-
-// Multi-use invite for bulk onboarding (e.g. dropping one link in a WhatsApp
-// group of 30 PCs). Each click issues a separate per-device auth token, so
-// revoking one user later does not affect the rest. The link self-disables
-// once `maxUses` is hit or `expiresInDays` passes.
-//
-// Usage from the editor: generateBulkInvite(30, 7)
-//   maxUses        — cap on redemptions (default 30)
-//   expiresInDays  — link auto-expires after N days (default 7; pass 0 to disable)
-function generateBulkInvite(maxUses, expiresInDays) {
-  var max = (typeof maxUses === "number" && maxUses > 0) ? Math.floor(maxUses) : 30;
-  var days = (typeof expiresInDays === "number" && expiresInDays >= 0) ? expiresInDays : 7;
-  var token = Utilities.getUuid();
-  var now = new Date();
-  var record = {
-    maxUses: max,
-    usedCount: 0,
-    redemptions: [],
-    createdAt: now.toISOString()
-  };
-  if (days > 0) record.expiresAt = new Date(now.getTime() + days * 86400000).toISOString();
-
-  PropertiesService.getScriptProperties().setProperty("invite:" + token, JSON.stringify(record));
-  var link = FRONTEND_BASE_URL + "?token=" + token;
-  Logger.log("═══════════════════════════════════════════");
-  Logger.log("NEW BULK INVITE LINK");
-  Logger.log("  uses: 0 / " + max + (days > 0 ? "    expires: " + record.expiresAt : "    (no expiry)"));
-  Logger.log("  share this ONE link with your group:");
-  Logger.log("  " + link);
-  Logger.log("═══════════════════════════════════════════");
-  Logger.log("To audit redemptions later:  bulkInviteStatus(\"" + token + "\")");
-  Logger.log("To kill the link:            revokeInvite(\"" + token + "\")");
-  return link;
-}
 
 // Print redemption count + timestamps for a bulk invite. Auth tokens are not
 // printed to keep the log safe to screenshot.
