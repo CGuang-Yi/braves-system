@@ -223,6 +223,60 @@ function exportArchiveCSV(kind) {
   exportCSV(flat, `${kind === "parade" ? "parade_state" : "report_sick"}_archive.csv`);
 }
 
+// Section-level strength breakdown for the Dashboard (§16 companion to the
+// rank-group card). Nested by platoon: activePlatoons() order first, then any
+// stray platoon code present in `people` but not in the Platoons tab, then a
+// trailing "Command / Unassigned" group for blank-platoon personnel (e.g.
+// commanders with no platoon). Per section, cur/tot come from bpStrength so the
+// numbers reconcile with the rank-group card. Pure — reads only its args + the
+// canonical personPlatoon/personSection accessors.
+function sectionStrengthBreakdown(people, dateIso) {
+  const byPlt = new Map();                       // code -> Map(sectionLabel -> people[])
+  people.forEach(r => {
+    const code = personPlatoon(r) || "";
+    const sect = personSection(r) || "";
+    const label = sect === "" ? "—" : String(sect);
+    if (!byPlt.has(code)) byPlt.set(code, new Map());
+    const sects = byPlt.get(code);
+    if (!sects.has(label)) sects.set(label, []);
+    sects.get(label).push(r);
+  });
+
+  // Ordered platoon codes: activePlatoons() first, then extras present in the
+  // data, then the blank-platoon group ("") always last.
+  const active = activePlatoons();
+  const order = [];
+  active.forEach(p => { if (byPlt.has(p.code)) order.push(p.code); });
+  [...byPlt.keys()].forEach(code => { if (code !== "" && !order.includes(code)) order.push(code); });
+  if (byPlt.has("")) order.push("");
+
+  const nameFor = code => {
+    if (code === "") return "Command / Unassigned";
+    const hit = active.find(p => p.code === code);
+    return hit ? hit.displayName : code;
+  };
+  // numeric sections ascending, then non-numeric alpha, then blank "—" last.
+  const sortLabels = labels => labels.sort((a, b) => {
+    if (a === "—") return 1;
+    if (b === "—") return -1;
+    const na = parseInt(a, 10), nb = parseInt(b, 10);
+    const aNum = String(na) === a, bNum = String(nb) === b;
+    if (aNum && bNum) return na - nb;
+    if (aNum) return -1;
+    if (bNum) return 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+
+  return order.map(code => {
+    const sects = byPlt.get(code);
+    const sections = sortLabels([...sects.keys()]).map(label => {
+      const s = bpStrength(sects.get(label), dateIso);
+      return { label, cur: s.current, tot: s.total };
+    });
+    return { code, displayName: nameFor(code), sections };
+  });
+}
+
 function renderDashboard(el) {
   // Empty-state guard. The dashboard has nothing meaningful to show until
   // the roster loads, but the message depends on WHY it's empty: an
@@ -330,6 +384,26 @@ function renderDashboard(el) {
         <div>[ENLISTEE] <strong style="color:var(--text)">${grpLine("Enlistee")}</strong></div>
       </div>
     </div>
+    ${(() => {
+      const breakdown = sectionStrengthBreakdown(scoped, today);
+      if (!breakdown.length) return "";
+      return `<div class="card" style="padding:10px 16px;margin-top:10px">
+        <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Strength by Section <span style="font-weight:400;color:var(--dim)">(current/total in scope — §16)</span></h3>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${breakdown.map(g => `
+            <div>
+              <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${escapeHTML(g.displayName)}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                ${g.sections.map(s => `
+                  <div style="min-width:64px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;text-align:center">
+                    <div style="font-size:10px;color:var(--muted)">${escapeHTML(s.label === "—" ? "HQ" : "Sect " + s.label)}</div>
+                    <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)">${s.cur}/${s.tot}</div>
+                  </div>`).join("")}
+              </div>
+            </div>`).join("")}
+        </div>
+      </div>`;
+    })()}
     ${renderDashAppointments(visible, today)}
     <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
       <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
