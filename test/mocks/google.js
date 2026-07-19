@@ -12,7 +12,10 @@ function makeGoogle() {
   // getProperty/getProperties counters (P2-2): let tests assert getAllRevs
   // makes exactly ONE bulk getProperties() call and ZERO per-key getProperty()
   // calls, instead of the old REV_TABS.length individual reads.
-  const spy = { getDisplayValues: 0, getValues: 0, getProperty: 0, getProperties: 0 };
+  // deleteRow/deleteRows counters (P3-1): let tests assert replaceConductRows'
+  // batched-contiguous-run delete collapses N per-row deletes into one (or few)
+  // deleteRows() calls instead of N deleteRow() calls.
+  const spy = { getDisplayValues: 0, getValues: 0, getProperty: 0, getProperties: 0, deleteRow: 0, deleteRows: 0 };
 
   function makeRange(sheet, r, c, nr, nc) {
     return {
@@ -74,7 +77,11 @@ function makeGoogle() {
         return makeRange(sheet, 1, 1, Math.max(1, sheet.grid.length), Math.max(1, this.getLastColumn()));
       },
       appendRow(arr) { sheet.grid.push(arr.slice()); return this; },
-      deleteRow(i) { sheet.grid.splice(i - 1, 1); return this; },
+      deleteRow(i) { spy.deleteRow++; sheet.grid.splice(i - 1, 1); return this; },
+      // Delete `count` rows starting at 1-based `start` (sheet-row numbering,
+      // header = row 1, same convention as deleteRow/getRange). Mirrors the real
+      // Sheets API: one call removes a contiguous block in one mutation.
+      deleteRows(start, count) { spy.deleteRows++; sheet.grid.splice(start - 1, count); return this; },
       getMaxRows() { return Math.max(1000, sheet.grid.length); },
       clear() { sheet.grid = []; sheet.numberFormats = {}; return this; },
       setFrozenRows() { return this; }

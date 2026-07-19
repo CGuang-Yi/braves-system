@@ -561,4 +561,82 @@ module.exports = async function run() {
     const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
     eq(ids, ["10"], "string-time original swapped in place — no duplicate");
   });
+
+  // P3-1: the delete phase now collects matching row indices, groups them into
+  // contiguous runs, and issues ONE sheet.deleteRows(start,count) per run
+  // (bottom-up) instead of one deleteRow() per matching row. These three tests
+  // exercise the grouping logic directly against the mock's deleteRow/deleteRows
+  // spy counters (test/mocks/google.js), on top of the existing correctness
+  // coverage above (which stays untouched — match normalization is unchanged).
+
+  await test("replaceConduct batched delete: non-contiguous matches use multiple deleteRows runs", async () => {
+    const backend = loadBackend();
+    backend.db.seed("ConductDetail", CD_HEADERS, [
+      ["1", "26 May 2026", "", "c1", "1101", "Status", "match-A"],    // matches (run 1)
+      ["2", "26 May 2026", "", "c1", "1103", "RSI", "legacy"],        // RSI — preserved, breaks the run
+      ["3", "26 May 2026", "", "c1", "1102", "Fallout", "match-B"],   // matches (run 2)
+      ["4", "26 May 2026", "", "c2", "1104", "Status", "other-cnd"],  // other conduct — preserved, breaks the run
+      ["5", "26 May 2026", "", "c1", "1105", "Status", "match-C"]     // matches (run 3)
+    ]);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+
+    const newRows = [
+      { id: "10", date: "26 May 2026", time: "", conductId: "c1", d4: "1101", type: "Status", reason: "new" },
+      { id: "11", date: "26 May 2026", time: "", conductId: "c1", d4: "1199", type: "Fallout", reason: "new" }
+    ];
+    await A.sb.autoSync("ConductDetail", { type: "replaceConduct", match: { date: "26 May 2026", time: "", conductId: "c1" }, rows: newRows });
+
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
+    eq(ids, ["10", "11", "2", "4"], "only the 3 matching rows removed; RSI + other-conduct rows survive, new rows appended");
+    eq(backend.db.spy.deleteRows, 3, "3 separate contiguous runs → 3 deleteRows calls (one per isolated match)");
+    eq(backend.db.spy.deleteRow, 0, "no per-row deleteRow calls — mechanics fully switched to deleteRows");
+  });
+
+  await test("replaceConduct batched delete: 30 contiguous matches collapse to ONE deleteRows call", async () => {
+    const backend = loadBackend();
+    const rows = [["0", "26 May 2026", "", "c1", "1199", "RSI", "legacy"]]; // preceding non-match, preserved
+    for (let n = 1; n <= 30; n++) {
+      rows.push([String(n), "26 May 2026", "", "c1", "11" + (100 + n), "Status", "match-" + n]);
+    }
+    rows.push(["31", "26 May 2026", "", "c2", "1150", "Status", "other-cnd"]); // trailing non-match, preserved
+    backend.db.seed("ConductDetail", CD_HEADERS, rows);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+
+    await A.sb.autoSync("ConductDetail", {
+      type: "replaceConduct", match: { date: "26 May 2026", time: "", conductId: "c1" },
+      rows: [{ id: "100", date: "26 May 2026", time: "", conductId: "c1", d4: "1101", type: "Status", reason: "swapped" }]
+    });
+
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
+    eq(ids, ["0", "100", "31"], "the 30-row contiguous block swapped for the single replacement row; bookend rows survive");
+    eq(backend.db.spy.deleteRows, 1, "one contiguous block of 30 matches → exactly ONE deleteRows call");
+    eq(backend.db.spy.deleteRow, 0, "no per-row deleteRow calls");
+  });
+
+  await test("replaceConduct batched delete: idempotent replay of a multi-row batch — no duplicates", async () => {
+    const backend = loadBackend();
+    const seedRows = [];
+    for (let n = 1; n <= 5; n++) {
+      seedRows.push([String(n), "26 May 2026", "", "c1", "11" + (100 + n), "Status", "orig-" + n]);
+    }
+    backend.db.seed("ConductDetail", CD_HEADERS, seedRows);
+    const A = makeClient(backend);
+    await A.sb.API.pullAll();
+
+    const payload = {
+      type: "replaceConduct", match: { date: "26 May 2026", time: "", conductId: "c1" },
+      rows: [
+        { id: "50", date: "26 May 2026", time: "", conductId: "c1", d4: "1101", type: "Status", reason: "a" },
+        { id: "51", date: "26 May 2026", time: "", conductId: "c1", d4: "1102", type: "Status", reason: "b" },
+        { id: "52", date: "26 May 2026", time: "", conductId: "c1", d4: "1103", type: "Status", reason: "c" }
+      ]
+    };
+    await A.sb.autoSync("ConductDetail", payload);
+    await A.sb.autoSync("ConductDetail", payload);   // replay — same batched-delete path a second time
+
+    const ids = backend.db.rowsOf("ConductDetail").map(r => String(r.id)).sort();
+    eq(ids, ["50", "51", "52"], "replay of the same batch is idempotent — stable row count, no duplicates");
+  });
 };

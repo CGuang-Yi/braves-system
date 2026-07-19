@@ -1791,14 +1791,44 @@ function replaceConductRows(tabName, match, rows) {
       if (typeof v === "number") { var s = String(v); return s.length >= 4 ? s : ("000" + s).slice(-4); }
       return normCell(v, d);
     };
+    // Collect matching row indices first (still descending, i.e. bottom-up)
+    // instead of deleting immediately. Matching rows are usually contiguous
+    // (appended together by the previous save), so grouping them into runs and
+    // deleting each run with ONE deleteRows(start, count) collapses the common
+    // case to a single sheet mutation instead of one deleteRow call per row —
+    // each of which is a separate Sheets API call inside the document lock.
+    var matchIdx = [];
     for (var i = grid.length - 1; i >= 0; i--) {
       var rConduct = normCell(grid[i][idxConduct], disp[i][idxConduct]);
       var rDate = idxDate >= 0 ? normCell(grid[i][idxDate], disp[i][idxDate]) : "";
       var rTime = idxTime >= 0 ? normTime(grid[i][idxTime], disp[i][idxTime]) : "";
       var rType = idxType >= 0 ? normCell(grid[i][idxType], disp[i][idxType]) : "";
       if (rConduct === mConduct && rDate === mDate && rTime === mTime && rType !== "RSI") {
-        sheet.deleteRow(i + 2);
+        matchIdx.push(i);
       }
+    }
+    // matchIdx is already sorted descending (built while walking i from high to
+    // low). Group into contiguous runs (each element = previous - 1) and flush
+    // each run — highest run first — with one deleteRows call. Processing runs
+    // bottom-up (highest row numbers first) preserves the index-validity
+    // guarantee the original per-row bottom-up delete relied on: deleting a run
+    // never shifts the row numbers of any run still queued below it.
+    var runStart = null, runEnd = null; // run spans grid-index runEnd..runStart (runEnd <= runStart)
+    for (var j = 0; j < matchIdx.length; j++) {
+      var idx = matchIdx[j];
+      if (runStart === null) {
+        runStart = idx;
+        runEnd = idx;
+      } else if (idx === runEnd - 1) {
+        runEnd = idx; // extends the current run downward
+      } else {
+        sheet.deleteRows(runEnd + 2, runStart - runEnd + 1);
+        runStart = idx;
+        runEnd = idx;
+      }
+    }
+    if (runStart !== null) {
+      sheet.deleteRows(runEnd + 2, runStart - runEnd + 1);
     }
   }
 
