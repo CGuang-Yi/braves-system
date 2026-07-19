@@ -261,8 +261,35 @@ function doGet(e) {
           // so the client can baseline it. (Untracked tabs report rev 1.)
           output = { rows: readTab(tab), rev: getRev(tab) };
         }
+      } else if (action === "readTabs" && e.parameter.tabs) {
+        // Batched partial pull (SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1): N tabs in ONE
+        // request instead of N parallel `read` GETs. Read-only, no lock needed — same
+        // as the single-tab `read` route above, just looped. Per-tab shape is
+        // identical to `read`'s ({rows, rev}), keyed by tab name under `tabs`.
+        //
+        // Gating choice: apply the SAME per-tab gating as `read`, but per-tab —
+        // a disallowed tab (AuditLog/archives for non-admins, Accounts always) gets
+        // its own {error, code} entry under tabs[name] instead of failing the whole
+        // batch. This composes best with the frontend fallback/normalization path,
+        // which already assigns per-tab and can skip/ignore an errored entry the
+        // same way it would skip a tab it never requested. Unknown tab names mirror
+        // `readTab`'s own not-found shape (rows becomes {error, available}), exactly
+        // as the single-tab route already does today (no extra handling needed).
+        var reqTabs = e.parameter.tabs.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t; });
+        var tabsOut = {};
+        for (var ti = 0; ti < reqTabs.length; ti++) {
+          var rt = reqTabs[ti];
+          if ((rt === "AuditLog" || rt === "ParadeArchive" || rt === "SickArchive") && ctx.role !== "admin") {
+            tabsOut[rt] = { error: "Not authorised", code: 403 };
+          } else if (rt === "Accounts") {
+            tabsOut[rt] = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+          } else {
+            tabsOut[rt] = { rows: readTab(rt), rev: getRev(rt) };
+          }
+        }
+        output = { ok: true, tabs: tabsOut };
       } else {
-        output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, or ping" };
+        output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, readTabs&tabs=A,B, or ping" };
       }
     }
   } catch (err) {
