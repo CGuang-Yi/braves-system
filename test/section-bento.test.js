@@ -27,6 +27,9 @@ function loadCtx() {
     { code: "PLT2", displayName: "Platoon 2" }
   ];
   target.bpStrength = people => ({ total: people.length, current: people.filter(p => p.inCamp).length, groups: {} });
+  // The command element (HQ / blank platoon) is broken down by rank group, so the
+  // helper calls rankGroupOf — stub it off a plain field (default Enlistee).
+  target.rankGroupOf = r => r.rankGroup || "Enlistee";
   return { target, ctx };
 }
 
@@ -38,7 +41,7 @@ module.exports = async function run() {
     { id: "1112", platoon: "PLT1", section: "1", inCamp: false },
     { id: "1121", platoon: "PLT1", section: "2", inCamp: true },
     { id: "2111", platoon: "PLT2", section: "1", inCamp: true },
-    { id: "0001", platoon: "",     section: "", inCamp: true }   // commander, no platoon
+    { id: "0001", platoon: "",     section: "", inCamp: true, rankGroup: "Officer" }   // commander, no platoon
   ];
 
   await test("groups by platoon in activePlatoons order, then Command/Unassigned last", () => {
@@ -60,14 +63,34 @@ module.exports = async function run() {
     eq(s2.tot, 1); eq(s2.cur, 1);
   });
 
-  await test("blank section collapses to a single '—' box", () => {
+  await test("command element breaks down by rank group, not section", () => {
     const { ctx } = loadCtx();
     ctx._people = people;
     const out = JSON.parse(vm.runInContext("JSON.stringify(sectionStrengthBreakdown(_people, '2026-07-19'))", ctx));
     const cmd = out.find(g => g.code === "");
     eq(cmd.sections.length, 1);
-    eq(cmd.sections[0].label, "—");
+    eq(cmd.sections[0].label, "Officer");         // grouping key = rank group
+    eq(cmd.sections[0].displayLabel, "OFFICER");  // display-ready box label
     eq(cmd.sections[0].tot, 1);
+  });
+
+  await test("HQ platoon splits commanders into OFFICER then WOSPEC boxes", () => {
+    const { ctx } = loadCtx();
+    // Coy HQ holds an officer (OC) and WOSPEC section commanders — the section
+    // field is "Command" for all, so only a rank-group split distinguishes them.
+    const hq = [
+      { id: "0001", platoon: "HQ", section: "Command", inCamp: true,  rankGroup: "Officer" },
+      { id: "0011", platoon: "HQ", section: "Command", inCamp: true,  rankGroup: "WOSPEC" },
+      { id: "0012", platoon: "HQ", section: "Command", inCamp: false, rankGroup: "WOSPEC" }
+    ];
+    ctx._people = hq;
+    const out = JSON.parse(vm.runInContext("JSON.stringify(sectionStrengthBreakdown(_people, '2026-07-19'))", ctx));
+    const g = out.find(x => x.code === "HQ");
+    eq(g.sections.map(s => s.displayLabel).join(","), "OFFICER,WOSPEC");
+    const off = g.sections.find(s => s.displayLabel === "OFFICER");
+    eq(off.cur, 1); eq(off.tot, 1);
+    const wo = g.sections.find(s => s.displayLabel === "WOSPEC");
+    eq(wo.cur, 1); eq(wo.tot, 2);                 // two WOSPEC, one in camp
   });
 
   await test("extras-platoon (not in activePlatoons) appears after active codes, before blank group", () => {

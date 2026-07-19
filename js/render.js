@@ -227,19 +227,24 @@ function exportArchiveCSV(kind) {
 // rank-group card). Nested by platoon: activePlatoons() order first, then any
 // stray platoon code present in `people` but not in the Platoons tab, then a
 // trailing "Command / Unassigned" group for blank-platoon personnel (e.g.
-// commanders with no platoon). Per section, cur/tot come from bpStrength so the
+// commanders with no platoon). Per box, cur/tot come from bpStrength so the
 // numbers reconcile with the rank-group card. Pure — reads only its args + the
-// canonical personPlatoon/personSection accessors.
+// canonical personPlatoon/personSection/rankGroupOf accessors.
+//
+// The COMMAND element (platoon "HQ", and the blank "Command / Unassigned" group)
+// is broken down by RANK GROUP — OFFICER / WOSPEC / ENLISTEE — not by section:
+// every commander shares one "Command" section, so a section split collapsed the
+// whole command element into a single box (the "only listing 1" bug). The
+// meaningful distinction there is officers (coy HQ) vs the WOSPEC section
+// commanders, so we bucket by rankGroupOf instead. Every box carries a
+// display-ready `displayLabel` (raw `label` is kept as the grouping key so the
+// pure grouping stays testable).
 function sectionStrengthBreakdown(people, dateIso) {
-  const byPlt = new Map();                       // code -> Map(sectionLabel -> people[])
+  const byPlt = new Map();                       // code -> people[]
   people.forEach(r => {
     const code = personPlatoon(r) || "";
-    const sect = personSection(r) || "";
-    const label = sect === "" ? "—" : String(sect);
-    if (!byPlt.has(code)) byPlt.set(code, new Map());
-    const sects = byPlt.get(code);
-    if (!sects.has(label)) sects.set(label, []);
-    sects.get(label).push(r);
+    if (!byPlt.has(code)) byPlt.set(code, []);
+    byPlt.get(code).push(r);
   });
 
   // Ordered platoon codes: activePlatoons() first, then extras present in the
@@ -250,6 +255,7 @@ function sectionStrengthBreakdown(people, dateIso) {
   [...byPlt.keys()].forEach(code => { if (code !== "" && !order.includes(code)) order.push(code); });
   if (byPlt.has("")) order.push("");
 
+  const isCommandGroup = code => code === "HQ" || code === "";
   const nameFor = code => {
     if (code === "") return "Command / Unassigned";
     const hit = active.find(p => p.code === code);
@@ -267,12 +273,40 @@ function sectionStrengthBreakdown(people, dateIso) {
     return a < b ? -1 : a > b ? 1 : 0;
   });
 
-  return order.map(code => {
-    const sects = byPlt.get(code);
-    const sections = sortLabels([...sects.keys()]).map(label => {
-      const s = bpStrength(sects.get(label), dateIso);
-      return { label, cur: s.current, tot: s.total };
+  // Rank-group boxes for the command element (fixed order, blanks dropped).
+  const RANK_ORDER = ["Officer", "WOSPEC", "Enlistee"];
+  const RANK_LABEL = { Officer: "OFFICER", WOSPEC: "WOSPEC", Enlistee: "ENLISTEE" };
+  const commandBoxes = ppl => {
+    const byRank = new Map();
+    ppl.forEach(r => {
+      const g = rankGroupOf(r);
+      if (!byRank.has(g)) byRank.set(g, []);
+      byRank.get(g).push(r);
     });
+    return RANK_ORDER.filter(g => byRank.has(g)).map(g => {
+      const s = bpStrength(byRank.get(g), dateIso);
+      return { label: g, displayLabel: RANK_LABEL[g], cur: s.current, tot: s.total };
+    });
+  };
+  // Section boxes for a normal platoon ("Command" first via sortLabels, blank "—").
+  const sectionBoxes = ppl => {
+    const bySect = new Map();
+    ppl.forEach(r => {
+      const sect = personSection(r) || "";
+      const label = sect === "" ? "—" : String(sect);
+      if (!bySect.has(label)) bySect.set(label, []);
+      bySect.get(label).push(r);
+    });
+    return sortLabels([...bySect.keys()]).map(label => {
+      const s = bpStrength(bySect.get(label), dateIso);
+      const displayLabel = label === "—" ? "HQ" : (label === "Command" ? "Command" : "Sect " + label);
+      return { label, displayLabel, cur: s.current, tot: s.total };
+    });
+  };
+
+  return order.map(code => {
+    const ppl = byPlt.get(code);
+    const sections = isCommandGroup(code) ? commandBoxes(ppl) : sectionBoxes(ppl);
     return { code, displayName: nameFor(code), sections };
   });
 }
@@ -389,15 +423,15 @@ function renderDashboard(el) {
       if (!breakdown.length) return "";
       return `<div class="card" style="padding:10px 16px;margin-top:10px">
         <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Strength by Section <span style="font-weight:400;color:var(--dim)">(current/total in scope — §16)</span></h3>
-        <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="sect-strength">
           ${breakdown.map(g => `
-            <div>
-              <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${escapeHTML(g.displayName)}</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="sect-strength__grp">
+              <div class="sect-strength__grp-label">${escapeHTML(g.displayName)}</div>
+              <div class="sect-strength__boxes">
                 ${g.sections.map(s => `
-                  <div style="min-width:64px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;text-align:center">
-                    <div style="font-size:10px;color:var(--muted)">${escapeHTML(s.label === "—" ? "HQ" : "Sect " + s.label)}</div>
-                    <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)">${s.cur}/${s.tot}</div>
+                  <div class="sect-strength__box">
+                    <div class="sect-strength__box-label">${escapeHTML(s.displayLabel || s.label)}</div>
+                    <div class="sect-strength__box-val">${s.cur}/${s.tot}</div>
                   </div>`).join("")}
               </div>
             </div>`).join("")}

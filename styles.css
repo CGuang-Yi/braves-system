@@ -112,6 +112,23 @@ tr:hover{background:var(--surface2)}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .grid-2 > *{min-width:0}
 
+/* Dashboard "Strength by Section" bento (render.js). Platoon groups flow
+   horizontally and wrap, so several fit on one line on desktop when there's
+   room; the section boxes inside each group grow to fill their width. On mobile
+   the groups stack full-width and the boxes expand to fill the screen width. */
+.sect-strength{display:flex;flex-wrap:wrap;gap:14px}
+.sect-strength__grp{flex:1 1 220px;min-width:0}
+.sect-strength__grp-label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.sect-strength__boxes{display:flex;flex-wrap:wrap;gap:6px}
+.sect-strength__box{flex:1 1 60px;min-width:54px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;text-align:center}
+.sect-strength__box-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sect-strength__box-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--text);margin-top:1px}
+@media (max-width:768px){
+  .sect-strength{flex-direction:column;gap:12px}
+  .sect-strength__grp{flex:1 1 auto}
+  .sect-strength__box{flex:1 1 40%;min-width:0}
+}
+
 /* Forms */
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-group label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
