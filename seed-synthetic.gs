@@ -571,3 +571,72 @@ function seedSynthetic() {
   Logger.log("Commander (r/w)     → " + SANDBOX_CMDR_EMAIL + " / " + SANDBOX_CMDR_PASSWORD);
   Logger.log("Now: Deploy → New deployment → Web app, copy the URL.");
 }
+
+// ── Password-free token minter (SANDBOX ONLY) ────────────────────────────────
+// Mints a real 30-day session token for an existing sandbox account WITHOUT going
+// through the login form — the fast path for injecting STATE.authToken when
+// driving the local frontend against the sandbox (see docs/SANDBOX.md). It
+// replays exactly what handleLogin writes: the same auth:<token> ScriptProperty
+// with the same { email, personId, role, issuedAt } shape, so the 30-day TTL
+// (isTokenExpired) and role-gating apply identically to a real login. It only
+// skips the password verification and failed-attempt lockout.
+//
+// Why a password-free minter is acceptable here — two properties that hold
+// regardless of which project it's pasted into:
+//   1. Not network-reachable. It is a plain editor-run function, never wired
+//      into the doPost/doGet web-action dispatch, so it cannot be invoked over
+//      HTTP by anyone. The only way to call it is from the Apps Script editor.
+//   2. No privilege beyond a project editor. Running it requires edit access to
+//      the script project — which already lets you read ScriptProperties, mint
+//      tokens, or change the code directly. So it grants nothing an editor
+//      couldn't already do; it's a convenience, not an escalation.
+// It also lives in seed-synthetic.gs, the sandbox-only file, by convention — but
+// the safety rests on the two properties above, not on that convention.
+//
+//   sandboxMintToken()                        → token for the commander account
+//   sandboxMintToken("viewer@sandbox.local")  → token for a specific account
+//
+// Run it from the Apps Script editor and copy the token (plus a ready-to-paste
+// browser-console block) out of the execution log.
+function sandboxMintToken(email) {
+  email = (email && String(email).trim()) || SANDBOX_CMDR_EMAIL;
+
+  var account = findAccountByEmail(email);
+  if (!account) {
+    Logger.log("No account found for " + email + ". Run seedSynthetic() first (it creates the "
+      + "sandbox accounts), or pass an email that exists in the Accounts tab.");
+    return null;
+  }
+
+  // Mirror handleLogin's token write exactly, minus the password/lockout checks:
+  // same UUID token source, same stored context shape.
+  var token = Utilities.getUuid();
+  var ctx = {
+    email: account.email,
+    personId: account.personId || "",
+    role: account.role || "viewer",
+    issuedAt: new Date().toISOString()
+  };
+  PropertiesService.getScriptProperties().setProperty("auth:" + token, JSON.stringify(ctx));
+
+  // Tag it distinctly in the audit trail so a password-free mint is never
+  // mistaken for a real form login.
+  if (typeof writeAuditLog === "function") {
+    writeAuditLog(account.email, account.personId, "login_sandbox_mint", null, null, token);
+  }
+
+  // Auto-derive the deployed web-app URL so the logged block is copy-paste ready.
+  // (Falls back to a placeholder if the script isn't deployed yet.)
+  var url = "";
+  try { url = ScriptApp.getService().getUrl() || ""; } catch (e) { url = ""; }
+
+  Logger.log("Minted sandbox token for " + ctx.email + "  (role: " + ctx.role + ", 30-day expiry).");
+  Logger.log("Token: " + token);
+  Logger.log("");
+  Logger.log("Paste into the browser console on the local frontend (index.html served on :8777):");
+  Logger.log("  STATE.apiUrl    = \"" + (url || "<sandbox exec URL>") + "\";");
+  Logger.log("  STATE.authToken = \"" + token + "\";");
+  Logger.log("  STATE.role      = \"" + ctx.role + "\";");
+  Logger.log("  pullAndRender();");
+  return token;
+}
