@@ -69,4 +69,28 @@ module.exports = async function run() {
     eq(cmd.sections[0].label, "—");
     eq(cmd.sections[0].tot, 1);
   });
+
+  await test("extras-platoon (not in activePlatoons) appears after active codes, before blank group", () => {
+    const { ctx } = loadCtx();
+    const withExtra = people.concat([{ id: "9111", platoon: "PLT9", section: "1", inCamp: true }]);
+    ctx._people = withExtra;
+    const out = JSON.parse(vm.runInContext("JSON.stringify(sectionStrengthBreakdown(_people, '2026-07-19'))", ctx));
+    eq(out.map(g => g.code).join(","), "PLT1,PLT2,PLT9,");
+    const extra = out.find(g => g.code === "PLT9");
+    eq(extra.displayName, "PLT9");
+  });
+
+  await test("sections sort numeric-ascending, then non-numeric alpha, then blank last", () => {
+    const { ctx } = loadCtx();
+    const mixed = [
+      { id: "3111", platoon: "PLT1", section: "2", inCamp: true },
+      { id: "3112", platoon: "PLT1", section: "1", inCamp: true },
+      { id: "3113", platoon: "PLT1", section: "Command", inCamp: true },
+      { id: "3114", platoon: "PLT1", section: "", inCamp: true }
+    ];
+    ctx._people = mixed;
+    const out = JSON.parse(vm.runInContext("JSON.stringify(sectionStrengthBreakdown(_people, '2026-07-19'))", ctx));
+    const plt1 = out.find(g => g.code === "PLT1");
+    eq(plt1.sections.map(s => s.label).join(","), "1,2,Command,—");
+  });
 };
