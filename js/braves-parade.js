@@ -682,9 +682,29 @@ function bpSickUrtiBlocks(reports) {
   return lines;
 }
 
+// True when the person already carries a PRE-EXISTING active medical status on
+// dateIso — i.e. some medical record OTHER than this report-sick row, with a real
+// status (not blank/Pending/NIL), that STARTED before today and is still active.
+// Powers the RS report's "omit personnel already on status" option: someone on a
+// multi-day MC from last week who reports sick again today is already accounted
+// for, so their entry can be suppressed. A status that only STARTS today (e.g. an
+// MC handed out as the outcome of this very report-sick) does NOT count as prior.
+function bpHasPriorStatus(m, dateIso) {
+  return (STATE.medical || []).some(x => {
+    if (x === m || x.d4 !== m.d4) return false;
+    if (!x.status || x.status === "Pending" || x.status === "NIL") return false;
+    const start = displayDateToISO(x.startDate || x.date || "");
+    return start && start < dateIso && medStatusActive(x, dateIso);
+  });
+}
+
 // §10.1 — single report-sick message: header → URTI block → NON-URTI block.
-function generateRSFormat(dateIso, time) {
-  const reports = bpSickReports(dateIso);
+// opts.omitOnStatus (optional) drops report-sick rows for personnel already on a
+// prior active status (see bpHasPriorStatus). Omitted/false → unchanged output,
+// so the archiver and the GAS port stay byte-identical.
+function generateRSFormat(dateIso, time, opts) {
+  let reports = bpSickReports(dateIso);
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasPriorStatus(m, dateIso));
   const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
   lines.push(...bpSickUrtiBlocks(reports));
   return lines.join("\n\n");
