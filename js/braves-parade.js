@@ -682,29 +682,37 @@ function bpSickUrtiBlocks(reports) {
   return lines;
 }
 
-// True when the person already carries a PRE-EXISTING active medical status on
-// dateIso — i.e. some medical record OTHER than this report-sick row, with a real
-// status (not blank/Pending/NIL), that STARTED before today and is still active.
-// Powers the RS report's "omit personnel already on status" option: someone on a
-// multi-day MC from last week who reports sick again today is already accounted
-// for, so their entry can be suppressed. A status that only STARTS today (e.g. an
-// MC handed out as the outcome of this very report-sick) does NOT count as prior.
-function bpHasPriorStatus(m, dateIso) {
+// True when the person carries some OTHER medical record (not this report-sick
+// row) with a real status (not blank/Pending/NIL) whose coverage has NOT yet
+// ended as of dateIso — whether that status started before that day, ON it (e.g.
+// an MC handed out as the outcome of this very report sick), or LATER. Powers the
+// RS/RSI "omit personnel already on status" option: someone already accounted for
+// by an unexpired status is noise on the day's sick parade, so their entry is
+// suppressed.
+//
+// "Not yet ended" = a real end date on or after dateIso. A BLANK end date does
+// NOT suppress: medStatusActive treats an end-less record as inactive everywhere
+// else in this codebase, so treating one as "unexpired forever" here would be
+// inconsistent and would silently hide people from the sick parade.
+//
+// (Widened from the original bpHasPriorStatus, which required start < dateIso and
+// so let a same-day/future status through — reversed deliberately per request.)
+function bpHasOtherStatus(m, dateIso) {
   return (STATE.medical || []).some(x => {
     if (x === m || x.d4 !== m.d4) return false;
     if (!x.status || x.status === "Pending" || x.status === "NIL") return false;
-    const start = displayDateToISO(x.startDate || x.date || "");
-    return start && start < dateIso && medStatusActive(x, dateIso);
+    const end = displayDateToISO(x.endDate || "");
+    return !!end && end >= dateIso;
   });
 }
 
 // §10.1 — single report-sick message: header → URTI block → NON-URTI block.
-// opts.omitOnStatus (optional) drops report-sick rows for personnel already on a
-// prior active status (see bpHasPriorStatus). Omitted/false → unchanged output,
-// so the archiver and the GAS port stay byte-identical.
+// opts.omitOnStatus (optional) drops report-sick rows for personnel already on an
+// unexpired status (see bpHasOtherStatus). Omitted/false → unchanged output, so
+// the archiver and the GAS port stay byte-identical.
 function generateRSFormat(dateIso, time, opts) {
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasPriorStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasOtherStatus(m, dateIso));
   const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
   lines.push(...bpSickUrtiBlocks(reports));
   return lines.join("\n\n");
@@ -714,15 +722,15 @@ function generateRSFormat(dateIso, time, opts) {
 // with ≥1 report-sick entry are shown; TOTAL = sum across them.
 // scopeCode: optional platoon code (e.g. "PLT1", "HQ") to restrict output to a
 // single platoon; "" or omitted → full company output (backward-compatible).
-// opts.omitOnStatus (optional) drops report-sick rows for personnel already on a
-// prior active status (see bpHasPriorStatus), the same toggle generateRSFormat
+// opts.omitOnStatus (optional) drops report-sick rows for personnel already on an
+// unexpired status (see bpHasOtherStatus), the same toggle generateRSFormat
 // offers — applied BEFORE the platoon partition so TOTAL and every per-platoon
 // PAX count follow the filtered set. Omitted/false → unchanged output, so the
 // archiver and the GAS port stay byte-identical on the default path.
 function generateRSIPersonnel(dateIso, time, scopeCode, opts) {
   scopeCode = scopeCode || "";
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasPriorStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasOtherStatus(m, dateIso));
   const platoonOf = d4 => {
     const r = STATE.roster.find(x => x.id == d4);
     return r ? personPlatoon(r) : "";
