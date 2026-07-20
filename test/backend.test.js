@@ -286,7 +286,7 @@ module.exports = async function run() {
     eq(rows[3].isInCamp, true, "already-explicit row is left untouched");
   });
 
-  suite("apps-script: stale invite generators removed");
+  suite("apps-script: stale invite auth flow removed");
   const gsSrc = fs.readFileSync(path.join(__dirname, "..", "apps-script-Code.gs"), "utf8");
 
   await test("generateInvite() and generateBulkInvite() are deleted", () => {
@@ -294,8 +294,19 @@ module.exports = async function run() {
     ok(!/function\s+generateBulkInvite\s*\(/.test(gsSrc), "generateBulkInvite() still present");
   });
 
-  await test("the redemption path is kept intact", () => {
-    ok(/function\s+redeemInvite\s*\(/.test(gsSrc), "redeemInvite() was removed — should be kept");
-    ok(gsSrc.includes('action === "redeemInvite"'), "doPost redeemInvite action was removed — should be kept");
+  // The invite-token auth model was fully removed once per-account password login
+  // replaced it (TOKEN_CLEANUP_SPEC.md): the redeemInvite handler and its doPost
+  // action are gone, so leftover invite: links can no longer be redeemed. This
+  // assertion was previously flipped — it asserted the redemption path must be
+  // KEPT; the deletion is a deliberate decision, not an accident.
+  await test("the redeemInvite redemption path is removed", () => {
+    ok(!/function\s+redeemInvite\s*\(/.test(gsSrc), "redeemInvite() is still present");
+    ok(!gsSrc.includes('action === "redeemInvite"'), "the doPost redeemInvite action branch is still present");
+  });
+
+  // isValidAuth() was a dead, callerless validator superseded by getAuthContext()
+  // + isTokenExpired(); removed in the same pass.
+  await test("dead isValidAuth() validator is removed", () => {
+    ok(!/function\s+isValidAuth\s*\(/.test(gsSrc), "isValidAuth() is still present");
   });
 };

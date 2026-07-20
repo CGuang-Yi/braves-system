@@ -1,5 +1,5 @@
-// Bootstrap: handle invite redemption from ?token=…, wire up nav + search,
-// load local cache, render, then auto-sync.
+// Bootstrap: check for a stored session token (show the login overlay if none),
+// wire up nav + search, load local cache, render, then auto-sync.
 
 document.querySelectorAll(".nav-btn").forEach(btn => {
   btn.addEventListener("click", () => {
