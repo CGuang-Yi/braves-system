@@ -65,8 +65,12 @@ module.exports = async function run() {
     const calc = fs.readFileSync(path.join(__dirname, "..", "js", "calc.js"), "utf8");
     ok(calc.includes("function parseConductSeries") && calc.includes("function conductProgress"),
       "calc.js series/progression helpers missing");
-    ok(render.includes("parseConductSeries(") && render.includes("conductProgress("),
-      "render.js does not use the series/progression helpers");
+    ok(calc.includes("function conductClassKey") && calc.includes("function conductClassSeq"),
+      "calc.js class-key/seq helpers missing");
+    // render.js groups via the class-aware helpers (which wrap parseConductSeries in
+    // calc.js) rather than calling parseConductSeries directly.
+    ok(render.includes("conductClassKey(") && render.includes("conductClassSeq(") && render.includes("conductProgress("),
+      "render.js does not use the class-scoping/progression helpers");
     ok(render.includes("function setConductSeries"), "no conduct-class selector handler");
     ok(render.includes("Class Progression"), "progression list not rendered");
   });

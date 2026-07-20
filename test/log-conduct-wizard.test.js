@@ -716,4 +716,67 @@ module.exports = async function run() {
     ok(m, "openLogConductWizard not found");
     ok(/bindWizardEnterToSave\(\)/.test(m[0]), "openLogConductWizard never calls bindWizardEnterToSave()");
   });
+
+  // ── Status Personnel "select all — not participating" header sync ──────────
+  // Regression: wizToggleStatusNP (the lightweight per-row toggle, which does NOT
+  // re-render) originally only recomputed the footer, so unticking one person left
+  // the "select all" header checkbox falsely showing fully-checked. The fix routes
+  // both the per-row toggle and the full re-render through syncStatusAllBox(), which
+  // sets checked/indeterminate from the aggregate. Driven here against a fake DOM
+  // (one shared #wiz-status-all checkbox object) so the checked/indeterminate math
+  // is exercised for real, not just asserted in source.
+  suite("log-conduct wizard: select-all NP header stays in sync");
+
+  function loadWizardDom() {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    // A single header-checkbox object that the wizard code mutates; the test reads
+    // its checked/indeterminate after each in-context call. All other ids resolve to
+    // null so recomputeLogConductFooter's `if (el)`-guarded writes are safe no-ops.
+    const box = { checked: false, indeterminate: false };
+    target.document = { getElementById: id => (id === "wiz-status-all" ? box : null) };
+    // Seed a 3-person status list (all not-participating). participants non-empty so
+    // computeLogConductTotals never falls back to STATE.roster.
+    vm.runInContext(
+      "_logConduct = { status: [{d4:'1',notParticipating:true},{d4:'2',notParticipating:true},{d4:'3',notParticipating:true}], " +
+      "rsi: [], fallout: [], reportSick: [], participants: ['1','2','3'], addedGroups: ['company'], totalOverride: null };",
+      ctx
+    );
+    return { ctx, box };
+  }
+
+  await test("syncStatusAllBox reflects all-ticked as checked, not indeterminate", () => {
+    const { ctx, box } = loadWizardDom();
+    vm.runInContext("syncStatusAllBox();", ctx);
+    eq(box.checked, true, "every row ticked ⇒ header checked");
+    eq(box.indeterminate, false, "every row ticked ⇒ not indeterminate");
+  });
+
+  await test("wizToggleStatusNP untick of one row flips the header to indeterminate", () => {
+    const { ctx, box } = loadWizardDom();
+    vm.runInContext("syncStatusAllBox();", ctx);
+    vm.runInContext("wizToggleStatusNP('2', false);", ctx);
+    eq(box.checked, false, "partial selection ⇒ header not fully checked");
+    eq(box.indeterminate, true, "partial selection ⇒ header indeterminate");
+  });
+
+  await test("wizToggleStatusNP unticking every row clears checked and indeterminate", () => {
+    const { ctx, box } = loadWizardDom();
+    vm.runInContext("wizToggleStatusNP('1', false); wizToggleStatusNP('2', false); wizToggleStatusNP('3', false);", ctx);
+    eq(box.checked, false, "no row ticked ⇒ header unchecked");
+    eq(box.indeterminate, false, "no row ticked ⇒ not indeterminate");
+  });
+
+  await test("re-ticking every row returns the header to fully checked", () => {
+    const { ctx, box } = loadWizardDom();
+    vm.runInContext("wizToggleStatusNP('1', false); wizToggleStatusNP('2', false); wizToggleStatusNP('3', false);", ctx);
+    vm.runInContext("wizToggleStatusNP('1', true); wizToggleStatusNP('2', true); wizToggleStatusNP('3', true);", ctx);
+    eq(box.checked, true, "all rows re-ticked ⇒ header checked");
+    eq(box.indeterminate, false, "all rows re-ticked ⇒ not indeterminate");
+  });
 };

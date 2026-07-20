@@ -25,7 +25,7 @@ const PULL_ASSIGN = {
   appointments:  d => STATE.appointments = padD4OnLayer(d),
   leave:         d => STATE.leave = normalizeLeave(d),
   msk:           d => STATE.msk = normalizeMSK(d),
-  conducts:      d => STATE.conducts = d
+  conducts:      d => STATE.conducts = normalizeConducts(d)
 };
 
 // Reverse of TAB_TO_STATE (STATE-array-key → sheet name), used by pullAll to test

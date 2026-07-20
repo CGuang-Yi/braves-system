@@ -3756,7 +3756,7 @@ function createConduct(name) {
   const existing = conductIdByName(clean);
   if (existing) return existing;
   const id = nextConductId();
-  const entry = { id, name: clean };
+  const entry = { id, name: clean, className: "", classSeq: 0, makeupFor: "" };
   STATE.conducts.push(entry);
   saveLocal();
   // Auto-push the new row — the original bug fix. Other devices pulling
@@ -3863,6 +3863,50 @@ function mergeConductInto(fromId, toId) {
   autoSync("Attendance", { type: "replace", data: STATE.attendance });
   autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
   autoSync("PolarFlow", { type: "replace", data: STATE.polar });
+  render();
+}
+
+// Registry: set a conduct's manual class label. Empty string clears it (the conduct
+// then reverts to name-based auto-detection in the Conduct Dashboard). On first
+// assigning a non-empty class with no seq yet, default the seq to (max in class)+1.
+function setConductClass(id, className) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const clean = String(className == null ? "" : className).trim();
+  c.className = clean;
+  if (clean && (!c.classSeq || c.classSeq < 1)) {
+    const maxSeq = STATE.conducts.reduce((m, x) =>
+      (x.id !== id && (x.className || "").trim() === clean && Number(x.classSeq) > m) ? Number(x.classSeq) : m, 0);
+    c.classSeq = maxSeq + 1;
+  }
+  _pushConductsRegistry();
+}
+
+// Registry: set a conduct's explicit ordinal within its class. Coerced to a
+// non-negative integer (0 = "unset" → the Dash falls back to the name's number).
+function setConductClassSeq(id, seq) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const n = Math.max(0, Math.floor(Number(seq) || 0));
+  c.classSeq = n;
+  _pushConductsRegistry();
+}
+
+// Registry: point a conduct at the instance it makes up for. Empty clears it; a
+// self-reference is ignored (a conduct cannot make up for itself).
+function setConductMakeupFor(id, targetId) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const t = String(targetId == null ? "" : targetId);
+  c.makeupFor = (t && t !== id) ? t : "";
+  _pushConductsRegistry();
+}
+
+// Shared persist+resync+rerender for the three registry mutators above. Mirrors the
+// replace-push pattern used elsewhere for the Conducts tab.
+function _pushConductsRegistry() {
+  saveLocal();
+  if (STATE.apiUrl) autoSync("Conducts", { type: "replace", data: STATE.conducts });
   render();
 }
 
@@ -4411,9 +4455,14 @@ function renderLogConductWizard() {
       </div>
 
       <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
-        <div style="margin-bottom:8px">
-          <strong style="color:var(--accent);font-size:13px">⚕️ Status Personnel</strong> <span style="color:var(--muted);font-size:11px">(${w.status.length} on status today)</span>
-          <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">Tick to mark as not participating. Untick if a status-personnel is actually participating in this conduct.</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <strong style="color:var(--accent);font-size:13px">⚕️ Status Personnel</strong> <span style="color:var(--muted);font-size:11px">(${w.status.length} on status today)</span>
+            <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">Tick to mark as not participating. Untick if a status-personnel is actually participating in this conduct.</div>
+          </div>
+          ${w.status.length ? `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;margin:0">
+            <input type="checkbox" id="wiz-status-all" onchange="wizToggleAllStatusNP(this.checked)" style="width:15px;height:15px;cursor:pointer"> Select all — not participating
+          </label>` : ""}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">${statusRows}</div>
       </div>
@@ -4452,7 +4501,27 @@ function renderLogConductWizard() {
   openModal(title, html);
   // Wider modal — five-column status rows + bulk-add sections need the room.
   document.querySelector(".modal")?.classList.add("wide");
+  // Sync the "select all — not participating" header checkbox to the aggregate row
+  // state (see syncStatusAllBox for the checked/indeterminate rule).
+  syncStatusAllBox();
   updateLogConductOverlapWarning();
+}
+
+// Reconcile the "select all — not participating" header checkbox with the current
+// per-row flags: checked when every status row is ticked, cleared when none are,
+// indeterminate when only some are. (`indeterminate` can't be expressed as an HTML
+// attribute, so it must be set imperatively.) Extracted so the lightweight per-row
+// toggle (wizToggleStatusNP) can keep the header in sync WITHOUT a full re-render —
+// otherwise unticking one person leaves the header falsely showing "all selected".
+function syncStatusAllBox() {
+  if (!_logConduct) return;
+  const allBox = document.getElementById("wiz-status-all");
+  if (!allBox) return;
+  const total = (_logConduct.status || []).length;
+  if (!total) { allBox.checked = false; allBox.indeterminate = false; return; }
+  const on = _logConduct.status.filter(s => s.notParticipating).length;
+  allBox.checked = on === total;
+  allBox.indeterminate = on > 0 && on < total;
 }
 
 // === Wizard mutation handlers ===========================================
@@ -4481,7 +4550,19 @@ function wizSetTotalOverride(v) {
 function wizToggleStatusNP(d4, checked) {
   const row = _logConduct.status.find(s => s.d4 === d4);
   if (row) row.notParticipating = !!checked;
+  // Keep the "select all" header box's checked/indeterminate state honest as
+  // individual rows are toggled, without paying for a full re-render.
+  syncStatusAllBox();
   recomputeLogConductFooter();
+}
+// Bulk-set every status person's not-participating flag from the section header
+// checkbox. A full re-render (not recomputeLogConductFooter) is intentional here:
+// it repaints every row checkbox and re-syncs the header's aggregate/indeterminate
+// state. Used far less often than the per-row toggle, so the re-render cost is fine.
+function wizToggleAllStatusNP(checked) {
+  if (!_logConduct) return;
+  _logConduct.status.forEach(s => { s.notParticipating = !!checked; });
+  renderLogConductWizard();
 }
 function wizUpdateStatusReason(d4, v) {
   const row = _logConduct.status.find(s => s.d4 === d4);

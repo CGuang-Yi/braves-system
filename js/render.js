@@ -1342,7 +1342,7 @@ function renderRoster(el) {
 function renderAttendance(el) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-      <h2 style="font-size:18px;font-weight:700">Conduct Attendance</h2>
+      <h2 style="font-size:18px;font-weight:700">Conducts</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" onclick="refreshLmsFromPolar()" title="Recount LMS participants for every conduct from STATE.polar (the Polar class summary photo is the LMS roster) and write into the attendance rows">🔄 Recompute LMS</button>
         <button class="btn btn-success" onclick="pushTab('Attendance',STATE.attendance)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
@@ -2305,20 +2305,21 @@ function renderConductDashboard(el) {
   // selector, its per-base instance counts, and the selected class's id set.
   // numById memoises each conduct's instance number so the chart-label code below
   // doesn't re-run the regex per row.
-  const seriesGroups = {};          // base → { ids:Set, count }
-  const numById = {};               // conductId → instance number
+  const seriesGroups = {};          // classKey → { ids:Set, count, manual }
+  const numById = {};               // conductId → ordinal within its class
   (STATE.conducts || []).forEach(c => {
-    const ps = parseConductSeries(c.name);
-    numById[c.id] = ps.num;
-    if (!ps.base) return;
-    const g = seriesGroups[ps.base] || (seriesGroups[ps.base] = { ids: new Set(), count: 0 });
+    const key = conductClassKey(c);
+    numById[c.id] = conductClassSeq(c);
+    if (!key) return;
+    const g = seriesGroups[key] || (seriesGroups[key] = { ids: new Set(), count: 0, manual: false });
     g.ids.add(c.id); g.count++;
+    if ((c.className || "").trim()) g.manual = true;
   });
   const bases = Object.keys(seriesGroups).sort();
   const seriesIds = (_conductSeries && seriesGroups[_conductSeries]) ? seriesGroups[_conductSeries].ids : null;
   const inSeries = id => !seriesIds || seriesIds.has(id);
   const keepDate = disp => inWin(disp);            // window applies in all modes (incl. class mode)
-  const numOf = id => numById[id] != null ? numById[id] : parseConductSeries(conductName(id)).num;
+  const numOf = id => numById[id] != null ? numById[id] : conductClassSeq({ name: conductName(id) });
 
   // Scope (topbar filter) + grouping: by section when narrowed to one platoon,
   // else by platoon.
@@ -2374,6 +2375,21 @@ function renderConductDashboard(el) {
     attnWin.forEach(a => {
       presentByConduct[a.conductId] = new Set(parseParticipantIds(a.participants));
     });
+    // Makeup crediting (progression ONLY — never participation %): a conduct with
+    // makeupFor=A credits everyone present at it as present at instance A, so a made-up
+    // miss reads as on-track. Makeup SOURCES may sit outside the selected class (so they
+    // are absent from attnWin) — pull their present-sets from full attendance, honouring
+    // only the date window (keepDate), then union sources into targets via creditMakeups.
+    const makeupMap = buildMakeupMap(STATE.conducts);
+    const makeupSources = new Set();
+    Object.keys(makeupMap).forEach(t => makeupMap[t].forEach(s => makeupSources.add(s)));
+    (STATE.attendance || []).forEach(a => {
+      if (!makeupSources.has(a.conductId)) return;
+      if (!keepDate(a.date)) return;
+      const set = presentByConduct[a.conductId] || (presentByConduct[a.conductId] = new Set());
+      parseParticipantIds(a.participants).forEach(id => set.add(id));
+    });
+    const creditedPresent = creditMakeups(presentByConduct, makeupMap);
     // Held = class instances that actually ran in-window — one with real
     // attendance data or a tracked miss (loggedIds). An empty placeholder
     // attendance row (no participants, no misses) is excluded so it can't inflate
@@ -2382,7 +2398,7 @@ function renderConductDashboard(el) {
       .filter(c => seriesIds.has(c.id) && loggedIds.has(c.id))
       .map(c => ({ conductId: c.id, num: numById[c.id] }));
     const recruitIds = filteredRoster().map(r => r.id);
-    const prog = conductProgress(held, presentByConduct, recruitIds);
+    const prog = conductProgress(held, creditedPresent, recruitIds);
     const rows = prog.rows.slice().sort((a, b) => (a.position - b.position) || (b.behind - a.behind) || (b.missed.length - a.missed.length));
     const frontier = prog.seriesMax ? `${escapeHTML(_conductSeries)} ${prog.seriesMax}` : "—";
     const curCell = p => p.position ? `${escapeHTML(_conductSeries)} ${p.position}` : `<span style="color:var(--dim)">Not started</span>`;
@@ -2410,7 +2426,7 @@ function renderConductDashboard(el) {
   };
   const seriesSelect = `<select class="topbar-select" style="font-size:11px" onchange="setConductSeries(this.value)" title="Scope to a conduct class (series)">
       <option value="">All conducts</option>
-      ${bases.map(b => { const n = seriesGroups[b].count; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${n > 1 ? ` (${n})` : ""}</option>`; }).join("")}
+      ${bases.map(b => { const g = seriesGroups[b]; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${g.count > 1 ? ` (${g.count})` : ""}${g.manual ? " ·manual" : ""}</option>`; }).join("")}
     </select>`;
   const scopeBanner = isFilterActive()
     ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong>${seriesIds ? ` · class <strong>${escapeHTML(_conductSeries)}</strong>` : ""} — buildup grouped by ${groupBy}.</div>`
@@ -2437,7 +2453,7 @@ function renderConductDashboard(el) {
     ${progressionHTML}
     ${hasData ? `
     <div id="cd-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card" style="margin-top:10px"><h3>Cumulative Conduct-Miss Buildup <span style="font-weight:400;color:var(--dim);font-size:11px">(running total by ${groupBy})</span></h3><div class="chart-box" style="height:220px"><canvas id="cd-cumulative"></canvas></div></div>
+      <div class="card" style="margin-top:10px"><h3>Cumulative Conduct-Miss Buildup <span style="font-weight:400;color:var(--dim);font-size:11px">(running total by ${groupBy} · original misses; makeups don't rewrite history)</span></h3><div class="chart-box" style="height:220px"><canvas id="cd-cumulative"></canvas></div></div>
       <div class="grid-2">
         <div class="card"><h3>Miss Composition${seriesIds ? " by Instance" : " Over Time"}</h3><div class="chart-box" style="height:220px"><canvas id="cd-stacks"></canvas></div></div>
         <div class="card"><h3>Participation${seriesIds ? " by Instance" : " Trend"}</h3><div class="chart-box" style="height:220px"><canvas id="cd-participation"></canvas></div></div>
@@ -2530,10 +2546,13 @@ function renderConducts(el) {
   const orphans = orphanedCount(STATE.attendance) + orphanedCount(STATE.polar) + orphanedCount(STATE.conductDetail);
   const anyRecordsWithConductId = STATE.attendance.some(r => r.conductId) || STATE.polar.some(r => r.conductId) || STATE.conductDetail.some(r => r.conductId);
   const emptyRegistryWithUsage = rows.length === 0 && anyRecordsWithConductId;
+  const classNames = [...new Set(STATE.conducts.map(c => (c.className || "").trim()).filter(Boolean))].sort();
+  const classDatalist = `<datalist id="conduct-class-names">${classNames.map(n => `<option value="${escapeAttr(n)}"></option>`).join("")}</datalist>`;
 
   el.innerHTML = `
+    ${classDatalist}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-      <h2 style="font-size:18px;font-weight:700">Conducts Registry <span style="color:var(--muted);font-weight:400;font-size:13px">${rows.length} entries · ${totalUsage} record${totalUsage === 1 ? "" : "s"}</span></h2>
+      <h2 style="font-size:18px;font-weight:700">Conduct ID Registry <span style="color:var(--muted);font-weight:400;font-size:13px">${rows.length} entries · ${totalUsage} record${totalUsage === 1 ? "" : "s"}</span></h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${needsConductMigration() ? `<button class="btn" onclick="maybeRunConductMigration()" title="Open the legacy-data migration modal">🔧 Migrate legacy data</button>` : ""}
         ${duplicateConductIdGroups().length ? `<button class="btn" style="background:#F8514922;border-color:#F8514944;color:var(--red)" onclick="openFixConductIdsModal()" title="Multiple conducts share the same id — records resolve to the wrong name. Fix it.">⚠️ Fix duplicate ids (${duplicateConductIdGroups().length})</button>` : ""}
@@ -2550,13 +2569,25 @@ function renderConducts(el) {
       Use <strong>Merge</strong> to fix near-duplicates that slipped through; use <strong>Delete</strong> only when usage is 0.
       ${orphans > 0 ? `<div style="color:var(--red);margin-top:6px"><strong>Warning:</strong> ${orphans} record${orphans === 1 ? " references" : "s reference"} a conductId not in the registry. Edit those records to repoint them.</div>` : ""}
     </div>
-    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th style="text-align:left">Name</th><th>Attendance</th><th>Polar</th><th>Detail</th><th>Total</th><th></th></tr></thead><tbody>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th style="text-align:left">Name</th><th style="text-align:left">Class</th><th title="Order within the class">Seq</th><th style="text-align:left">Makeup for</th><th>Attendance</th><th>Polar</th><th>Detail</th><th>Total</th><th></th></tr></thead><tbody>
       ${rows.map(c => {
         const u = countConductUsage(c.id);
         const mergeOpts = rows.filter(o => o.id !== c.id).map(o => `<option value="${o.id}">→ ${escapeAttr(o.name)}</option>`).join("");
         return `<tr>
           <td class="mono" style="color:var(--muted);font-size:11px">${c.id}</td>
           <td style="text-align:left;font-weight:600">${escapeAttr(c.name)}</td>
+          <td style="text-align:left">
+            <input type="text" list="conduct-class-names" value="${escapeAttr(c.className || "")}" placeholder="—" onchange="setConductClass('${c.id}', this.value)" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px">
+          </td>
+          <td>
+            <input type="number" min="0" step="1" value="${(c.className || '').trim() ? (c.classSeq || 0) : ''}" ${(c.className || '').trim() ? '' : 'disabled'} placeholder="auto" onchange="setConductClassSeq('${c.id}', this.value)" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="${(c.className || '').trim() ? 'Order within the class' : 'Set a class first'}">
+          </td>
+          <td style="text-align:left">
+            <select onchange="setConductMakeupFor('${c.id}', this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="Attending this conduct credits attendance for the selected instance in the Conduct Dashboard">
+              <option value="">— none —</option>
+              ${rows.filter(o => o.id !== c.id).map(o => `<option value="${o.id}" ${c.makeupFor === o.id ? "selected" : ""}>→ ${escapeAttr(o.name)}</option>`).join("")}
+            </select>
+          </td>
           <td>${u.attendance}</td>
           <td>${u.polar}</td>
           <td>${u.detail}</td>

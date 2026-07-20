@@ -1555,7 +1555,7 @@ function readAllTabs(ctx) {
 // every re-save of a morning conduct DUPLICATES its rows — and the client-side
 // dedup/preload (which compare against pad4Time keys). Forcing "@" keeps "0730"
 // verbatim, exactly like participants.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"] };
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"] };
 
 function writeTab(tabName, data) {
   if (!Array.isArray(data)) {
