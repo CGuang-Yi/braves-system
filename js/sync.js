@@ -21,7 +21,7 @@ function renderSync(el) {
        </div>`;
 
   el.innerHTML = `
-    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Account · Sync · Import / Export</h2>
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Settings</h2>
     <div class="readonly-banner">👁 Read-only access — you can view and export, but not make changes. Ask an admin if you need edit access.</div>
     <div class="sync-panel">
       <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px">🔐 Account</h3>
