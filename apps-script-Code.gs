@@ -3668,9 +3668,14 @@ function generateRSFormat(dateIso, time, opts) {
 // with ≥1 report-sick entry are shown; TOTAL = sum across them.
 // scopeCode: optional platoon code (e.g. "PLT1", "HQ") to restrict output to a
 // single platoon; "" or omitted → full company output (backward-compatible).
-function generateRSIPersonnel(dateIso, time, scopeCode) {
+// opts.omitOnStatus (optional) mirrors generateRSFormat — drops report-sick rows
+// for personnel already on a prior active status, applied BEFORE the platoon
+// partition so TOTAL and per-platoon PAX counts follow the filtered set. Kept in
+// sync with js/braves-parade.js (guarded by test/parade-port-parity.test.js).
+function generateRSIPersonnel(dateIso, time, scopeCode, opts) {
   scopeCode = scopeCode || "";
-  const reports = bpSickReports(dateIso);
+  let reports = bpSickReports(dateIso);
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasPriorStatus(m, dateIso));
   const platoonOf = d4 => {
     const r = STATE.roster.find(x => x.id == d4);
     return r ? personPlatoon(r) : "";

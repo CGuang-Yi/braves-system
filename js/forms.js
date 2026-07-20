@@ -2668,10 +2668,11 @@ function openReportModal(type) {
   // selector pattern but defaults to "All platoons" (full company).
   const isRSIP = type === "RSIP";
 
-  // RS Format offers an "omit personnel already on status" toggle: people already
-  // on a prior active MC/LD/Warded/Excuse who report sick again are suppressed, so
-  // the message lists only the day's NEW cases (Feature — 2026-07-20).
-  const isRS = type === "RS";
+  // RS Format AND RSI Personnel offer an "omit personnel already on status"
+  // toggle: people already on a prior active MC/LD/Warded/Excuse who report sick
+  // again are suppressed, so the message lists only the day's NEW cases (RS Format
+  // — 2026-07-20; extended to RSI Personnel — PR feat/rsip-omit-on-status).
+  const showOmitToggle = type === "RS" || type === "RSIP";
 
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
@@ -2698,8 +2699,8 @@ function openReportModal(type) {
             ${activePlatoons().map(p => `<option value="platoon:${escapeAttr(p.code)}">${escapeAttr(p.displayName || p.code)}</option>`).join("")}
           </select>
         </div>` : ""}
-        ${isRS ? `<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
-          <input type="checkbox" id="rep-omit-status" onchange="regenerateReport('RS')" style="width:15px;height:15px;cursor:pointer">
+        ${showOmitToggle ? `<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+          <input type="checkbox" id="rep-omit-status" onchange="regenerateReport('${type}')" style="width:15px;height:15px;cursor:pointer">
           <span>Omit personnel already on status <span style="color:var(--muted)">(hide those on a prior active MC/LD/status — show only new cases)</span></span>
         </label>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
@@ -2824,7 +2825,7 @@ function regenerateReport(type) {
   else if (type === "RSIP") {
     const sc = document.getElementById("rep-scope")?.value || "company";
     const code = sc.startsWith("platoon:") ? sc.slice("platoon:".length) : "";
-    text = generateRSIPersonnel(dateIso, time, code);
+    text = generateRSIPersonnel(dateIso, time, code, { omitOnStatus: !!document.getElementById("rep-omit-status")?.checked });
   }
   else if (type === "CONDUCT") {
     const id = +gv("rep-conduct-id") || null;
