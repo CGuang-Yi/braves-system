@@ -3756,7 +3756,7 @@ function createConduct(name) {
   const existing = conductIdByName(clean);
   if (existing) return existing;
   const id = nextConductId();
-  const entry = { id, name: clean };
+  const entry = { id, name: clean, className: "", classSeq: 0, makeupFor: "" };
   STATE.conducts.push(entry);
   saveLocal();
   // Auto-push the new row — the original bug fix. Other devices pulling

@@ -397,6 +397,22 @@ function normalizeLeave(records) {
 // genuine type and is never touched. The human-facing label stays "PX".
 // (A future one-time backend rewrite of the sheet could retire this read-time
 // remap, but the token split keeps the client correct with no backend coupling.)
+// Ensure every conducts-registry entry carries the class/makeup fields. Required
+// because writeTab derives sheet headers from Object.keys(data[0]) — a row missing
+// a key silently strips that column from the pushed sheet. Idempotent.
+function normalizeConducts(records) {
+  if (!Array.isArray(records)) return [];
+  return records.map(function (c) {
+    c = c || {};
+    return {
+      id: c.id,
+      name: c.name,
+      className: typeof c.className === "string" ? c.className : "",
+      classSeq: Number.isFinite(Number(c.classSeq)) ? Number(c.classSeq) : 0,
+      makeupFor: typeof c.makeupFor === "string" ? c.makeupFor : ""
+    };
+  });
+}
 function normalizeConductDetail(records) {
   return padD4OnLayer(records).map(r =>
     r && r.type === "PX" ? { ...r, type: "Status" } : r);
@@ -637,7 +653,7 @@ function loadLocal() {
     STATE.appointments = padD4OnLayer(d.appointments);
     STATE.leave = normalizeLeave(d.leave);
     STATE.msk = normalizeMSK(d.msk);
-    STATE.conducts = Array.isArray(d.conducts) ? d.conducts : [];
+    STATE.conducts = normalizeConducts(d.conducts);
     STATE.config = d.config && typeof d.config === "object" ? d.config : {};
     STATE.vocfit = normalizeVocFit(d.vocfit);
     STATE.platoons = normalizePlatoons(d.platoons);
