@@ -2218,10 +2218,10 @@ function openLeaveForm(id) {
         </div>`}
         <div class="form-group"><label>Type</label><select id="f-type" required onchange="updateLeaveInCampDefault()">${LEAVE_TYPES.map(([val, lab]) => `<option value="${val}" ${val === initialType ? "selected" : ""}>${lab}</option>`).join("")}</select></div>
         <div class="form-row">
-          ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
+          ${formField("f-start", "Start date", "date", "", `required value="${startVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveStart()"`)}
           ${formField("f-end", "End date", "date", "", `required value="${endVal}" min="2020-01-01" max="2099-12-31" onchange="recalcLeaveDays()"`)}
         </div>
-        ${formField("f-days", "Days (auto-calc — editable for half-days)", "number", "1", `required min="0" max="365" step="0.5" value="${e?.days ?? 1}"`)}
+        ${formField("f-days", "Days (drives End; editable — half-days for quota)", "number", "1", `required min="0" max="365" step="0.5" value="${e?.days ?? 1}" oninput="recalcLeaveEndFromDays()"`)}
         ${formField("f-reason", "Reason / notes", "text", "APSC course / NDP rehearsal / Cleared leave balance…", `maxlength="200" value="${escapeAttr(e?.reason)}" oninput="updateLeaveInCampDefault()"`)}
         <div class="form-group"><label>In Camp?</label><select id="f-in-camp" required onchange="markLeaveInCampTouched()" ${e ? 'data-touched="1"' : ""}>
           <option value="true" ${inCampDefault ? "selected" : ""}>In Camp</option>
@@ -2248,6 +2248,32 @@ function recalcLeaveDays() {
   if (!s || !en || !d || !s.value || !en.value) return;
   const diff = Math.round((new Date(en.value) - new Date(s.value)) / 86400000) + 1;
   if (diff > 0) d.value = diff;
+}
+// Leave form: Days → End (inclusive day-1), the counterpart to recalcLeaveDays()
+// so a commander can drive the window from either side — mirrors the medical
+// wizard's medRecalcEndFromDays(). Half-days are a QUOTA concept, not a calendar
+// one: a 1.5-day leave still spans 2 calendar days and has no single defensible
+// End, so a FRACTIONAL Days is deliberately left to drive nothing (the user keeps
+// editing End by hand, exactly as before this feature). Only a whole-number Days
+// fills End.
+function recalcLeaveEndFromDays() {
+  const s = document.getElementById("f-start"), d = document.getElementById("f-days"), e = document.getElementById("f-end");
+  if (!s || !d || !e || !s.value) return;
+  const n = Number(d.value);
+  if (!Number.isInteger(n) || n < 1) return;
+  const end = endDateFromStartAndDays(s.value, n);
+  if (end) e.value = end;
+}
+// Start moved: prefer re-deriving End from a whole-number Days (the medical
+// wizard's rule — moving Start slides the window, preserving the duration). A
+// fractional Days can't produce a clean End, so fall back to recomputing Days
+// from the existing End — which is exactly what f-start did before this feature,
+// so the half-day path is unchanged.
+function recalcLeaveStart() {
+  const d = document.getElementById("f-days");
+  const n = d ? Number(d.value) : NaN;
+  if (Number.isInteger(n) && n >= 1) recalcLeaveEndFromDays();
+  else recalcLeaveDays();
 }
 // Medical form: Days → End (inclusive day-1) and End → Days, kept consistent so
 // a commander can drive the window from either side. Mirrors the Leave form's
