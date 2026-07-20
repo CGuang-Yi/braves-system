@@ -22,13 +22,13 @@
  *   failed:<email>  →  {count, since, lastAttempt}
  *     • Failed-login throttle: 5 attempts → 15-minute lockout (isLockedOut).
  *
- * LEGACY (dormant, removed after Step 1 is verified):
- *   invite:<token> / the redeemInvite flow. The editor-only invite-minting
- *   helpers were removed once per-account password login (addendum A1)
- *   shipped; already-issued invite links still redeem via `?token=`, but no
- *   new ones are minted. Tokens these issue carry no `role`, so
- *   getAuthContext() rejects them — they can neither read nor write under
- *   the new model.
+ * LEGACY (removed):
+ *   The invite:<token> / redeemInvite auth model has been fully removed —
+ *   per-account password login (addendum A1) replaced it. The invite-minting
+ *   generators went in PR #70; the redeemInvite handler + its doPost action
+ *   went in the token-cleanup pass. Any invite: keys left on the deployment
+ *   are inert (nothing can redeem them). The editor-only listInvites/
+ *   revokeInvite helpers remain solely to clean those stragglers up.
  *
  * SETUP (first deploy or after pulling these changes)
  * ───────────────────────────────────────────────────
@@ -42,9 +42,9 @@
  *      • Who has access: Anyone
  *      • Copy the Web App URL; paste it into js/state.js (APPS_SCRIPT_URL).
  * 5. Auth is per-account password login (seedFirstAdmin / setupAuthTabs
- *    above) — there is no editor step to mint access. Any invite links
- *    issued before this model shipped still redeem via `?token=`, but new
- *    links are no longer generated from the editor.
+ *    above) — there is no editor step to mint access. The old invite-link
+ *    redemption path has been removed; any pre-existing invite links no
+ *    longer work.
  *
  * SHEET TABS REQUIRED (create with headers in Row 1):
  *   Roster:     4d | name | age | status | notes | phone | email |
@@ -319,11 +319,6 @@ function doPost(e) {
     // Public action: log in with email + password → returns a per-device auth token.
     if (action === "login") {
       output = handleLogin(body);
-    } else if (action === "redeemInvite") {
-      // DORMANT — legacy invite flow. Tokens it issues carry no role, so they
-      // fail getAuthContext() and can't read or write. Retained only until the
-      // new auth is verified, then deleted (see CLAUDE.md Step 1 / DECISIONS C).
-      output = redeemInvite(body.token);
     } else {
       // Everything else requires a valid, unexpired account session. Role-gating
       // (viewer read-only; admin-only management) happens inside routeAuthedPost.
@@ -349,12 +344,7 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ─── AUTH / INVITE FLOW ────────────────────────────────
-
-function isValidAuth(token) {
-  if (!token) return false;
-  return PropertiesService.getScriptProperties().getProperty("auth:" + token) !== null;
-}
+// ─── AUTH ──────────────────────────────────────────────
 
 // One-time admin: store the Anthropic API key in script properties so
 // analyzePhotoHelper can read it without exposing the key to the public
@@ -508,48 +498,15 @@ function sendEmailHelper(body) {
   }
 }
 
-function redeemInvite(inviteToken) {
-  if (!inviteToken) return { error: "Missing invite token" };
-  var props = PropertiesService.getScriptProperties();
-  var key = "invite:" + inviteToken;
-  var raw = props.getProperty(key);
-  if (!raw) return { error: "Invalid invite link" };
-
-  var invite = JSON.parse(raw);
-  var now = new Date().toISOString();
-  var nowMs = Date.now();
-
-  // Multi-use invite: tracked via maxUses + usedCount. The same link can be
-  // shared with a whole team; each device gets its own auth token, and the
-  // link self-expires once the cap or expiry date is hit. Single-use invites
-  // (no maxUses field) keep the legacy behavior below.
-  if (typeof invite.maxUses === "number") {
-    if (invite.expiresAt && nowMs > Date.parse(invite.expiresAt)) return { error: "This invite link has expired" };
-    if ((invite.usedCount || 0) >= invite.maxUses) return { error: "This invite link is full — ask your admin for a new one" };
-
-    var authTokenM = Utilities.getUuid();
-    invite.usedCount = (invite.usedCount || 0) + 1;
-    invite.redemptions = invite.redemptions || [];
-    invite.redemptions.push({ at: now, authToken: authTokenM });
-    props.setProperty(key, JSON.stringify(invite));
-    props.setProperty("auth:" + authTokenM, JSON.stringify({ issuedAt: now, fromInvite: inviteToken }));
-    return { ok: true, authToken: authTokenM };
-  }
-
-  if (invite.used) return { error: "This invite has already been used" };
-
-  var authToken = Utilities.getUuid();
-
-  invite.used = true;
-  invite.usedAt = now;
-  invite.issuedAuthToken = authToken;
-  props.setProperty(key, JSON.stringify(invite));
-  props.setProperty("auth:" + authToken, JSON.stringify({ issuedAt: now, fromInvite: inviteToken }));
-
-  return { ok: true, authToken: authToken };
-}
-
 // ─── ADMIN FUNCTIONS — run from the Apps Script editor ─
+
+// Editor-only invite helpers (bulkInviteStatus / listInvites / revokeInvite):
+// the invite auth model was replaced by per-account password login (addendum
+// A1), and the invite *generators* were deleted in PR #70, so no new invite:
+// ScriptProperties can be minted. These three survive ONLY as the one-time
+// cleanup path for any leftover invite: keys still sitting on the live
+// deployment — run listInvites() there, revokeInvite() each straggler, then
+// delete all three. See TOKEN_CLEANUP_SPEC.md.
 
 // Print redemption count + timestamps for a bulk invite. Auth tokens are not
 // printed to keep the log safe to screenshot.
@@ -605,9 +562,8 @@ function revokeInvite(token) {
   Logger.log("Revoked invite: " + token);
 }
 
-// Nuclear option: kicks every authenticated device. Each user will need a
-// fresh invite link from you to regain access. Invites themselves are NOT
-// touched — only issued auth tokens.
+// Nuclear option: kicks every authenticated device. Each user will need to log
+// in again to regain access. Only issued auth tokens are deleted.
 function revokeAllAuthTokens() {
   var props = PropertiesService.getScriptProperties();
   var all = props.getProperties();
@@ -618,14 +574,15 @@ function revokeAllAuthTokens() {
       count++;
     }
   }
-  Logger.log("Revoked " + count + " auth token(s). Every device must redeem a new invite.");
+  Logger.log("Revoked " + count + " auth token(s). Every device must log in again.");
 }
 
 // ═══════════════════════════════════════════════════════
 // ACCOUNT / PASSWORD AUTH  (Build-order Step 1 — addendum A1 & A2)
 // ═══════════════════════════════════════════════════════
 //
-// Replaces the invite-token model above with per-account email+password login.
+// The auth model: per-account email+password login (it replaced the removed
+// invite-token flow).
 //   Accounts tab : email | personId | role | passwordHash | salt | addedBy | addedAt
 //                  role ∈ {admin, commander, viewer}. personId → Roster id (4D);
 //                  stored + returned but the Roster link is soft (not required to

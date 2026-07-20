@@ -1,6 +1,7 @@
 // Thin wrapper around the Google Apps Script web app.
-// Every data request carries an auth token. The token is obtained by redeeming
-// a single-use invite link via API.redeemInvite() — see js/main.js bootstrap.
+// Every data request carries an auth token. The token is issued by the backend
+// on a successful email + password login (handleLogin) and stored per-device —
+// see the login handler wired up in js/main.js bootstrap.
 
 const AuthError = class extends Error {
   constructor(message) { super(message); this.name = "AuthError"; }

@@ -3,7 +3,7 @@
 // subsequent loads.
 
 // The Apps Script web app URL. This is no longer a secret — auth is enforced
-// server-side by per-device tokens issued via the invite flow (see Apps Script).
+// server-side by per-device tokens issued on login (see Apps Script).
 // PASTE YOUR DEPLOYMENT URL HERE after redeploying the updated Apps Script:
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0moNSMsJfkFrg-u1sGCCCdd9GALNi-nkfV-C0JqGjBuusdJTDZHXeX8isP6dqFkEyeg/exec"
 
