@@ -315,14 +315,14 @@ function renderDashboard(el) {
   // Empty-state guard. The dashboard has nothing meaningful to show until
   // the roster loads, but the message depends on WHY it's empty: an
   // authenticated user is mid-pull (or the pull failed); an unauthenticated
-  // visitor needs an invite link. Either way, the user should never see a
+  // visitor needs to log in. Either way, the user should never see a
   // "click Pull from Sheet" prompt — that's an auto-handled step now.
   if (!STATE.roster.length) {
     const body = STATE.authToken
       ? `<p style="margin-bottom:8px">Loading data from the sheet…</p>
          <p style="font-size:11px;color:var(--dim)">If this stays empty for more than a few seconds, the sync may have failed. <button class="btn" onclick="doPull()" style="margin-left:6px">Retry now</button></p>`
-      : `<p style="margin-bottom:8px">No invite redeemed on this device yet.</p>
-         <p>Ask your admin for an invite link, then open it on this device — the app will sync automatically.</p>`;
+      : `<p style="margin-bottom:8px">Not signed in on this device yet.</p>
+         <p>Log in with your account to sync — the app will load automatically once you're signed in.</p>`;
     el.innerHTML = `
       <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">Company Strength Board</h2>
       <div class="card empty-state">${body}</div>`;
@@ -1336,7 +1336,7 @@ function renderRoster(el) {
       return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${idCell}</td><td style="text-align:left">${nameCell}</td><td style="font-size:11px;color:var(--muted)">${orgCell}</td><td>${roleCell}</td><td>${rosterDisplayStatus(r, effByD4)}</td><td style="font-weight:700;color:${bmiColor(bmi)}">${isCmd ? '—' : (bmi ?? '—')}</td><td style="color:${(rsiCount[r.id] || 0) > 1 ? 'var(--red)' : 'var(--muted)'}">${rsiCount[r.id] || 0}</td></tr>`;
       }).join("");
     })()}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No personnel in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "No invite redeemed on this device yet.")}</div>`}`;
+    </tbody></table></div>` : `<div class="empty-state">${STATE.roster.length ? `No personnel in ${filterLabel()}.` : (STATE.authToken ? "Loading roster from sheet…" : "Not signed in — log in to sync.")}</div>`}`;
 }
 
 function renderAttendance(el) {
