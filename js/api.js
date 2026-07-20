@@ -35,6 +35,11 @@ const STATE_KEY_TO_TAB = Object.keys(TAB_TO_STATE).reduce((m, sheet) => {
   return m;
 }, {});
 
+// Session-scoped memo for the P2-1 `readTabs` capability probe — see pullTabs'
+// comment below for why it exists and why it is deliberately not persisted. Reset
+// happens naturally on reload; nothing else should write to it.
+let _readTabsUnsupported = false;
+
 const API = {
   async get(action, tab, extraParams) {
     const auth = encodeURIComponent(STATE.authToken || "");
@@ -171,9 +176,17 @@ const API = {
   // temporary scaffolding: it's what keeps this method working during the
   // window between shipping this frontend and the human doing the manual
   // redeploy, and afterwards it's simply dead-cheap dead code on the happy path.
+  //
+  // The probe result is memoized for the session by `_readTabsUnsupported` (declared
+  // below this object): without it, EVERY multi-tab pull re-probes and eats a wasted
+  // round trip — measured at ~1.9s against the live sandbox, on a path the 20s poller
+  // takes whenever 2+ tabs change, not just at launch (spec §8.5.3). Deliberately NOT
+  // persisted to localStorage: the flag must not outlive the page, so a backend
+  // redeploy mid-session is picked up on the next reload rather than being remembered
+  // as unsupported indefinitely.
   async pullTabs(sheetNames) {
     const names = sheetNames || [];
-    if (names.length > 1) {
+    if (names.length > 1 && !_readTabsUnsupported) {
       const batched = await this._pullTabsBatched(names);
       if (batched) return batched;
       // Fall through to the legacy per-tab loop below (older backend).
@@ -210,7 +223,7 @@ const API = {
   async _pullTabsBatched(names) {
     const res = await this.get("readTabs", null, { tabs: names.join(",") });
     const isUnknownAction = res && typeof res.error === "string" && /unknown action/i.test(res.error);
-    if (isUnknownAction) return null; // older, not-yet-redeployed backend
+    if (isUnknownAction) { _readTabsUnsupported = true; return null; } // older, not-yet-redeployed backend
     if (res && res.error) throw new Error(res.error);
     if (!res || !res.tabs) return null; // unrecognized shape — fall back defensively
     let changed = false;

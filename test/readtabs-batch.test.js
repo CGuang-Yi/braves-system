@@ -233,6 +233,63 @@ module.exports = async function run() {
     ok(A.sb.STATE.roster.find(r => r.name === "Renamed"), "Roster landed via fallback");
   });
 
+  // Spec §8.5.3: the live pass showed the rejected probe costs a real round trip
+  // (~1.9s against the sandbox), and the poller takes this path on every multi-tab
+  // change — so the "unsupported" verdict has to be remembered, not re-derived.
+  await test("fallback is memoized: a SECOND multi-tab pull against an old backend skips the readTabs probe entirely", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Roster", ROSTER_HEADERS, [["1", "1101", "A Recruit"]]);
+    backend.db.seed("Medical", MED_HEADERS, []);
+    const A = makeClient(backend), B = makeClient(backend);
+    await A.sb.API.pullAll();
+    await B.sb.API.pullAll();
+
+    patchFetchSimulateOldBackend(A, backend);
+
+    await B.sb.autoSync("Medical", { type: "upsert", row: med(1, "first") });
+    await B.sb.autoSync("Roster", { type: "upsert", row: { id: 1, d4: "1101", name: "First" } });
+    A.fetchSpy.length = 0;
+    await A.sb.API.pullTabs(["Roster", "Medical"]);
+    const firstActions = A.fetchSpy.map(r => r.action);
+    eq(firstActions.filter(a => a === "readTabs").length, 1, "first pull probes readTabs once and is rejected");
+    eq(firstActions.filter(a => a === "read").length, 2, "first pull falls back to per-tab reads");
+
+    await B.sb.autoSync("Medical", { type: "upsert", row: med(2, "second") });
+    await B.sb.autoSync("Roster", { type: "upsert", row: { id: 2, d4: "1102", name: "Second" } });
+    A.fetchSpy.length = 0;
+    const result = await A.sb.API.pullTabs(["Roster", "Medical"]);
+    const secondActions = A.fetchSpy.map(r => r.action);
+
+    eq(secondActions.filter(a => a === "readTabs").length, 0, "second pull does NOT re-probe — the wasted round trip is gone");
+    eq(secondActions.filter(a => a === "read").length, 2, "still fetches both tabs via the fallback loop");
+    ok(result.changed, "data still lands on the memoized path");
+    ok(A.sb.STATE.medical.find(r => String(r.id) === "2" && r.reason === "second"), "second Medical row landed");
+    ok(A.sb.STATE.roster.find(r => r.name === "Second"), "second Roster row landed");
+  });
+
+  await test("memo is per-session, not cross-client: a client talking to a capable backend still batches", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Roster", ROSTER_HEADERS, [["1", "1101", "A Recruit"]]);
+    backend.db.seed("Medical", MED_HEADERS, []);
+    const Old = makeClient(backend), New = makeClient(backend), B = makeClient(backend);
+    await Old.sb.API.pullAll();
+    await New.sb.API.pullAll();
+    await B.sb.API.pullAll();
+    await B.sb.autoSync("Medical", { type: "upsert", row: med(1, "x") });
+    await B.sb.autoSync("Roster", { type: "upsert", row: { id: 1, d4: "1101", name: "X" } });
+
+    patchFetchSimulateOldBackend(Old, backend);
+    await Old.sb.API.pullTabs(["Roster", "Medical"]);   // trips Old's memo
+
+    patchTabsAwareFetch(New, backend);
+    New.fetchSpy.length = 0;
+    await New.sb.API.pullTabs(["Roster", "Medical"]);
+
+    const actions = New.fetchSpy.map(r => r.action);
+    eq(actions.filter(a => a === "readTabs").length, 1, "a different client still batches — the memo did not leak across sandboxes");
+    eq(actions.filter(a => a === "read").length, 0, "no per-tab fallback for the capable backend");
+  });
+
   await test("fallback (explicit): backend returns the OLDER pre-P2-1 unknown-action wording (no mention of readTabs) → same silent fallback", async () => {
     const backend = loadBackend();
     backend.db.seed("Medical", MED_HEADERS, []);
