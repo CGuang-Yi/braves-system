@@ -4411,9 +4411,14 @@ function renderLogConductWizard() {
       </div>
 
       <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
-        <div style="margin-bottom:8px">
-          <strong style="color:var(--accent);font-size:13px">⚕️ Status Personnel</strong> <span style="color:var(--muted);font-size:11px">(${w.status.length} on status today)</span>
-          <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">Tick to mark as not participating. Untick if a status-personnel is actually participating in this conduct.</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <strong style="color:var(--accent);font-size:13px">⚕️ Status Personnel</strong> <span style="color:var(--muted);font-size:11px">(${w.status.length} on status today)</span>
+            <div style="font-size:10px;color:var(--dim);margin-top:2px;line-height:1.45">Tick to mark as not participating. Untick if a status-personnel is actually participating in this conduct.</div>
+          </div>
+          ${w.status.length ? `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap;margin:0">
+            <input type="checkbox" id="wiz-status-all" onchange="wizToggleAllStatusNP(this.checked)" style="width:15px;height:15px;cursor:pointer"> Select all — not participating
+          </label>` : ""}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">${statusRows}</div>
       </div>
@@ -4452,6 +4457,15 @@ function renderLogConductWizard() {
   openModal(title, html);
   // Wider modal — five-column status rows + bulk-add sections need the room.
   document.querySelector(".modal")?.classList.add("wide");
+  // Sync the "select all — not participating" header checkbox to the aggregate row
+  // state: checked when every status row is ticked, indeterminate when only some are.
+  // (`indeterminate` can't be expressed as an HTML attribute, so it's set here.)
+  const allBox = document.getElementById("wiz-status-all");
+  if (allBox && w.status.length) {
+    const on = w.status.filter(s => s.notParticipating).length;
+    allBox.checked = on === w.status.length;
+    allBox.indeterminate = on > 0 && on < w.status.length;
+  }
   updateLogConductOverlapWarning();
 }
 
@@ -4482,6 +4496,15 @@ function wizToggleStatusNP(d4, checked) {
   const row = _logConduct.status.find(s => s.d4 === d4);
   if (row) row.notParticipating = !!checked;
   recomputeLogConductFooter();
+}
+// Bulk-set every status person's not-participating flag from the section header
+// checkbox. A full re-render (not recomputeLogConductFooter) is intentional here:
+// it repaints every row checkbox and re-syncs the header's aggregate/indeterminate
+// state. Used far less often than the per-row toggle, so the re-render cost is fine.
+function wizToggleAllStatusNP(checked) {
+  if (!_logConduct) return;
+  _logConduct.status.forEach(s => { s.notParticipating = !!checked; });
+  renderLogConductWizard();
 }
 function wizUpdateStatusReason(d4, v) {
   const row = _logConduct.status.find(s => s.d4 === d4);
