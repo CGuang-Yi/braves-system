@@ -556,6 +556,10 @@ async function forceResync() {
     "Discard any unsynced changes on THIS device and reload everything from the sheet?\n\n" +
     "Use this if the device is stuck on \"unsaved\". Local edits that never reached the sheet will be lost."
   )) return;
+  // P3-2: flush any debounced saveLocal() before we start tearing down local
+  // state (rev/dirty below, then a full pullAll overwrite) — a synchronous
+  // persist point, not the default debounced path.
+  if (typeof saveLocalNow === "function") saveLocalNow();
   STATE.dirty = new Set();
   _dirtyOps.clear();
   saveDirty();
@@ -602,6 +606,10 @@ async function confirmStaleness(tabName) {
 
 async function signOut() {
   if (!confirm("Sign out from this device? You'll need to log in again with your account.")) return;
+  // P3-2: flush any debounced saveLocal() before dropping the session — the
+  // next launch on this device (possibly a different account) starts with
+  // loadLocal(), so make sure the on-disk cache reflects the last edits.
+  if (typeof saveLocalNow === "function") saveLocalNow();
   // Best-effort server-side token invalidation, then clear the local session and
   // return to the login screen regardless of the network result.
   try { await API.logout(); } catch (e) { /* clear locally anyway */ }

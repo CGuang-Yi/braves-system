@@ -203,6 +203,10 @@ function applyRoleUI() {
 // Called whenever any API call reports the session is gone (401 / session_expired):
 // drop the local session and return to the login screen.
 function handleAuthFailure() {
+  // P3-2: same rationale as sync.js signOut() — this is a session-drop path
+  // (next launch starts cold with loadLocal()), so flush any debounced
+  // saveLocal() synchronously before clearing the session.
+  if (typeof saveLocalNow === "function") saveLocalNow();
   clearSession();
   applyRoleUI();
   showLogin();

@@ -85,6 +85,7 @@ function makeClient(backend, opts) {
     isNaN, parseInt, parseFloat, encodeURIComponent, decodeURIComponent, URL,
     fetch: fetchImpl,
     render: () => {},                 // stub (render.js not loaded); sync guards most calls
+    showLogin: () => {},              // stub (main.js not loaded); sync.js's signOut() calls this unconditionally
     escapeHTML: s => String(s == null ? "" : s),   // helpers.js not bundled; syncLog uses it
   }, browser.globals);
   vm.createContext(sandbox);
