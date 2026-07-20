@@ -3866,6 +3866,50 @@ function mergeConductInto(fromId, toId) {
   render();
 }
 
+// Registry: set a conduct's manual class label. Empty string clears it (the conduct
+// then reverts to name-based auto-detection in the Conduct Dashboard). On first
+// assigning a non-empty class with no seq yet, default the seq to (max in class)+1.
+function setConductClass(id, className) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const clean = String(className == null ? "" : className).trim();
+  c.className = clean;
+  if (clean && (!c.classSeq || c.classSeq < 1)) {
+    const maxSeq = STATE.conducts.reduce((m, x) =>
+      (x.id !== id && (x.className || "").trim() === clean && Number(x.classSeq) > m) ? Number(x.classSeq) : m, 0);
+    c.classSeq = maxSeq + 1;
+  }
+  _pushConductsRegistry();
+}
+
+// Registry: set a conduct's explicit ordinal within its class. Coerced to a
+// non-negative integer (0 = "unset" → the Dash falls back to the name's number).
+function setConductClassSeq(id, seq) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const n = Math.max(0, Math.floor(Number(seq) || 0));
+  c.classSeq = n;
+  _pushConductsRegistry();
+}
+
+// Registry: point a conduct at the instance it makes up for. Empty clears it; a
+// self-reference is ignored (a conduct cannot make up for itself).
+function setConductMakeupFor(id, targetId) {
+  const c = STATE.conducts.find(x => x.id === id);
+  if (!c) return;
+  const t = String(targetId == null ? "" : targetId);
+  c.makeupFor = (t && t !== id) ? t : "";
+  _pushConductsRegistry();
+}
+
+// Shared persist+resync+rerender for the three registry mutators above. Mirrors the
+// replace-push pattern used elsewhere for the Conducts tab.
+function _pushConductsRegistry() {
+  saveLocal();
+  if (STATE.apiUrl) autoSync("Conducts", { type: "replace", data: STATE.conducts });
+  render();
+}
+
 // Deleting a conduct cascades: every Attendance / PolarFlow / ConductDetail
 // row referencing it is permanently removed too (not just unlinked), since
 // those rows are meaningless without the conduct they describe. Surgical

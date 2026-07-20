@@ -2530,8 +2530,11 @@ function renderConducts(el) {
   const orphans = orphanedCount(STATE.attendance) + orphanedCount(STATE.polar) + orphanedCount(STATE.conductDetail);
   const anyRecordsWithConductId = STATE.attendance.some(r => r.conductId) || STATE.polar.some(r => r.conductId) || STATE.conductDetail.some(r => r.conductId);
   const emptyRegistryWithUsage = rows.length === 0 && anyRecordsWithConductId;
+  const classNames = [...new Set(STATE.conducts.map(c => (c.className || "").trim()).filter(Boolean))].sort();
+  const classDatalist = `<datalist id="conduct-class-names">${classNames.map(n => `<option value="${escapeAttr(n)}"></option>`).join("")}</datalist>`;
 
   el.innerHTML = `
+    ${classDatalist}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <h2 style="font-size:18px;font-weight:700">Conduct ID Registry <span style="color:var(--muted);font-weight:400;font-size:13px">${rows.length} entries · ${totalUsage} record${totalUsage === 1 ? "" : "s"}</span></h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2550,13 +2553,25 @@ function renderConducts(el) {
       Use <strong>Merge</strong> to fix near-duplicates that slipped through; use <strong>Delete</strong> only when usage is 0.
       ${orphans > 0 ? `<div style="color:var(--red);margin-top:6px"><strong>Warning:</strong> ${orphans} record${orphans === 1 ? " references" : "s reference"} a conductId not in the registry. Edit those records to repoint them.</div>` : ""}
     </div>
-    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th style="text-align:left">Name</th><th>Attendance</th><th>Polar</th><th>Detail</th><th>Total</th><th></th></tr></thead><tbody>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>ID</th><th style="text-align:left">Name</th><th style="text-align:left">Class</th><th title="Order within the class">Seq</th><th style="text-align:left">Makeup for</th><th>Attendance</th><th>Polar</th><th>Detail</th><th>Total</th><th></th></tr></thead><tbody>
       ${rows.map(c => {
         const u = countConductUsage(c.id);
         const mergeOpts = rows.filter(o => o.id !== c.id).map(o => `<option value="${o.id}">→ ${escapeAttr(o.name)}</option>`).join("");
         return `<tr>
           <td class="mono" style="color:var(--muted);font-size:11px">${c.id}</td>
           <td style="text-align:left;font-weight:600">${escapeAttr(c.name)}</td>
+          <td style="text-align:left">
+            <input type="text" list="conduct-class-names" value="${escapeAttr(c.className || "")}" placeholder="—" onchange="setConductClass('${c.id}', this.value)" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px">
+          </td>
+          <td>
+            <input type="number" min="0" step="1" value="${(c.className || '').trim() ? (c.classSeq || 0) : ''}" ${(c.className || '').trim() ? '' : 'disabled'} placeholder="auto" onchange="setConductClassSeq('${c.id}', this.value)" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="${(c.className || '').trim() ? 'Order within the class' : 'Set a class first'}">
+          </td>
+          <td style="text-align:left">
+            <select onchange="setConductMakeupFor('${c.id}', this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="Attending this conduct credits attendance for the selected instance in the Conduct Dashboard">
+              <option value="">— none —</option>
+              ${rows.filter(o => o.id !== c.id).map(o => `<option value="${o.id}" ${c.makeupFor === o.id ? "selected" : ""}>→ ${escapeAttr(o.name)}</option>`).join("")}
+            </select>
+          </td>
           <td>${u.attendance}</td>
           <td>${u.polar}</td>
           <td>${u.detail}</td>
