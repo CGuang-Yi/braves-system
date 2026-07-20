@@ -4502,15 +4502,26 @@ function renderLogConductWizard() {
   // Wider modal — five-column status rows + bulk-add sections need the room.
   document.querySelector(".modal")?.classList.add("wide");
   // Sync the "select all — not participating" header checkbox to the aggregate row
-  // state: checked when every status row is ticked, indeterminate when only some are.
-  // (`indeterminate` can't be expressed as an HTML attribute, so it's set here.)
-  const allBox = document.getElementById("wiz-status-all");
-  if (allBox && w.status.length) {
-    const on = w.status.filter(s => s.notParticipating).length;
-    allBox.checked = on === w.status.length;
-    allBox.indeterminate = on > 0 && on < w.status.length;
-  }
+  // state (see syncStatusAllBox for the checked/indeterminate rule).
+  syncStatusAllBox();
   updateLogConductOverlapWarning();
+}
+
+// Reconcile the "select all — not participating" header checkbox with the current
+// per-row flags: checked when every status row is ticked, cleared when none are,
+// indeterminate when only some are. (`indeterminate` can't be expressed as an HTML
+// attribute, so it must be set imperatively.) Extracted so the lightweight per-row
+// toggle (wizToggleStatusNP) can keep the header in sync WITHOUT a full re-render —
+// otherwise unticking one person leaves the header falsely showing "all selected".
+function syncStatusAllBox() {
+  if (!_logConduct) return;
+  const allBox = document.getElementById("wiz-status-all");
+  if (!allBox) return;
+  const total = (_logConduct.status || []).length;
+  if (!total) { allBox.checked = false; allBox.indeterminate = false; return; }
+  const on = _logConduct.status.filter(s => s.notParticipating).length;
+  allBox.checked = on === total;
+  allBox.indeterminate = on > 0 && on < total;
 }
 
 // === Wizard mutation handlers ===========================================
@@ -4539,6 +4550,9 @@ function wizSetTotalOverride(v) {
 function wizToggleStatusNP(d4, checked) {
   const row = _logConduct.status.find(s => s.d4 === d4);
   if (row) row.notParticipating = !!checked;
+  // Keep the "select all" header box's checked/indeterminate state honest as
+  // individual rows are toggled, without paying for a full re-render.
+  syncStatusAllBox();
   recomputeLogConductFooter();
 }
 // Bulk-set every status person's not-participating flag from the section header
