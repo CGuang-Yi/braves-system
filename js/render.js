@@ -2305,20 +2305,21 @@ function renderConductDashboard(el) {
   // selector, its per-base instance counts, and the selected class's id set.
   // numById memoises each conduct's instance number so the chart-label code below
   // doesn't re-run the regex per row.
-  const seriesGroups = {};          // base → { ids:Set, count }
-  const numById = {};               // conductId → instance number
+  const seriesGroups = {};          // classKey → { ids:Set, count, manual }
+  const numById = {};               // conductId → ordinal within its class
   (STATE.conducts || []).forEach(c => {
-    const ps = parseConductSeries(c.name);
-    numById[c.id] = ps.num;
-    if (!ps.base) return;
-    const g = seriesGroups[ps.base] || (seriesGroups[ps.base] = { ids: new Set(), count: 0 });
+    const key = conductClassKey(c);
+    numById[c.id] = conductClassSeq(c);
+    if (!key) return;
+    const g = seriesGroups[key] || (seriesGroups[key] = { ids: new Set(), count: 0, manual: false });
     g.ids.add(c.id); g.count++;
+    if ((c.className || "").trim()) g.manual = true;
   });
   const bases = Object.keys(seriesGroups).sort();
   const seriesIds = (_conductSeries && seriesGroups[_conductSeries]) ? seriesGroups[_conductSeries].ids : null;
   const inSeries = id => !seriesIds || seriesIds.has(id);
   const keepDate = disp => inWin(disp);            // window applies in all modes (incl. class mode)
-  const numOf = id => numById[id] != null ? numById[id] : parseConductSeries(conductName(id)).num;
+  const numOf = id => numById[id] != null ? numById[id] : conductClassSeq({ name: conductName(id) });
 
   // Scope (topbar filter) + grouping: by section when narrowed to one platoon,
   // else by platoon.
@@ -2374,6 +2375,21 @@ function renderConductDashboard(el) {
     attnWin.forEach(a => {
       presentByConduct[a.conductId] = new Set(parseParticipantIds(a.participants));
     });
+    // Makeup crediting (progression ONLY — never participation %): a conduct with
+    // makeupFor=A credits everyone present at it as present at instance A, so a made-up
+    // miss reads as on-track. Makeup SOURCES may sit outside the selected class (so they
+    // are absent from attnWin) — pull their present-sets from full attendance, honouring
+    // only the date window (keepDate), then union sources into targets via creditMakeups.
+    const makeupMap = buildMakeupMap(STATE.conducts);
+    const makeupSources = new Set();
+    Object.keys(makeupMap).forEach(t => makeupMap[t].forEach(s => makeupSources.add(s)));
+    (STATE.attendance || []).forEach(a => {
+      if (!makeupSources.has(a.conductId)) return;
+      if (!keepDate(a.date)) return;
+      const set = presentByConduct[a.conductId] || (presentByConduct[a.conductId] = new Set());
+      parseParticipantIds(a.participants).forEach(id => set.add(id));
+    });
+    const creditedPresent = creditMakeups(presentByConduct, makeupMap);
     // Held = class instances that actually ran in-window — one with real
     // attendance data or a tracked miss (loggedIds). An empty placeholder
     // attendance row (no participants, no misses) is excluded so it can't inflate
@@ -2382,7 +2398,7 @@ function renderConductDashboard(el) {
       .filter(c => seriesIds.has(c.id) && loggedIds.has(c.id))
       .map(c => ({ conductId: c.id, num: numById[c.id] }));
     const recruitIds = filteredRoster().map(r => r.id);
-    const prog = conductProgress(held, presentByConduct, recruitIds);
+    const prog = conductProgress(held, creditedPresent, recruitIds);
     const rows = prog.rows.slice().sort((a, b) => (a.position - b.position) || (b.behind - a.behind) || (b.missed.length - a.missed.length));
     const frontier = prog.seriesMax ? `${escapeHTML(_conductSeries)} ${prog.seriesMax}` : "—";
     const curCell = p => p.position ? `${escapeHTML(_conductSeries)} ${p.position}` : `<span style="color:var(--dim)">Not started</span>`;
@@ -2410,7 +2426,7 @@ function renderConductDashboard(el) {
   };
   const seriesSelect = `<select class="topbar-select" style="font-size:11px" onchange="setConductSeries(this.value)" title="Scope to a conduct class (series)">
       <option value="">All conducts</option>
-      ${bases.map(b => { const n = seriesGroups[b].count; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${n > 1 ? ` (${n})` : ""}</option>`; }).join("")}
+      ${bases.map(b => { const g = seriesGroups[b]; return `<option value="${escapeAttr(b)}" ${b === _conductSeries ? "selected" : ""}>${escapeHTML(b)}${g.count > 1 ? ` (${g.count})` : ""}${g.manual ? " ·manual" : ""}</option>`; }).join("")}
     </select>`;
   const scopeBanner = isFilterActive()
     ? `<div style="font-size:11px;color:var(--accent);margin-bottom:8px">Scope: <strong>${filterLabel()}</strong>${seriesIds ? ` · class <strong>${escapeHTML(_conductSeries)}</strong>` : ""} — buildup grouped by ${groupBy}.</div>`
@@ -2437,7 +2453,7 @@ function renderConductDashboard(el) {
     ${progressionHTML}
     ${hasData ? `
     <div id="cd-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card" style="margin-top:10px"><h3>Cumulative Conduct-Miss Buildup <span style="font-weight:400;color:var(--dim);font-size:11px">(running total by ${groupBy})</span></h3><div class="chart-box" style="height:220px"><canvas id="cd-cumulative"></canvas></div></div>
+      <div class="card" style="margin-top:10px"><h3>Cumulative Conduct-Miss Buildup <span style="font-weight:400;color:var(--dim);font-size:11px">(running total by ${groupBy} · original misses; makeups don't rewrite history)</span></h3><div class="chart-box" style="height:220px"><canvas id="cd-cumulative"></canvas></div></div>
       <div class="grid-2">
         <div class="card"><h3>Miss Composition${seriesIds ? " by Instance" : " Over Time"}</h3><div class="chart-box" style="height:220px"><canvas id="cd-stacks"></canvas></div></div>
         <div class="card"><h3>Participation${seriesIds ? " by Instance" : " Trend"}</h3><div class="chart-box" style="height:220px"><canvas id="cd-participation"></canvas></div></div>
