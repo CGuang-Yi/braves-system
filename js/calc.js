@@ -190,6 +190,57 @@ function parseConductSeries(name) {
   return { base: s, num: 1 };
 }
 
+// Class key for a conduct: the manual className (trimmed) when set, else the
+// name-parsed series base. Lets manual grouping override auto-detection per conduct.
+function conductClassKey(c) {
+  const cn = c && typeof c.className === "string" ? c.className.trim() : "";
+  return cn || parseConductSeries(c && c.name).base;
+}
+
+// Ordinal of a conduct within its class. Manual class → the explicit classSeq when
+// it is a finite integer >= 1; otherwise fall back to the name's trailing number
+// (>= 1). Guarantees a positive, deterministic sequence index.
+function conductClassSeq(c) {
+  const cn = c && typeof c.className === "string" ? c.className.trim() : "";
+  if (cn) {
+    const n = Number(c && c.classSeq);
+    if (isFinite(n) && n >= 1 && Math.floor(n) === n) return n;
+    return parseConductSeries(c && c.name).num;
+  }
+  return parseConductSeries(c && c.name).num;
+}
+
+// Invert makeupFor into { targetConductId: [sourceConductId, ...] }, dropping empty
+// pointers and self-references. A "source" conduct replaces/makes-up-for its target.
+function buildMakeupMap(conducts) {
+  const m = {};
+  (conducts || []).forEach(function (c) {
+    if (!c || !c.makeupFor) return;
+    if (String(c.makeupFor) === String(c.id)) return; // no self-makeup
+    (m[c.makeupFor] = m[c.makeupFor] || []).push(c.id);
+  });
+  return m;
+}
+
+// Given { conductId: Set(d4) } present-sets and a makeup map, return a NEW map where
+// each target's set is unioned with every makeup source's present set. Sources absent
+// from presentByConduct contribute nothing. Non-mutating. Progression-only crediting —
+// callers must NOT feed this into participation-% computation.
+function creditMakeups(presentByConduct, makeupMap) {
+  const out = {};
+  Object.keys(presentByConduct || {}).forEach(function (k) {
+    out[k] = new Set(presentByConduct[k]);
+  });
+  Object.keys(makeupMap || {}).forEach(function (targetId) {
+    const tgt = out[targetId] || (out[targetId] = new Set());
+    (makeupMap[targetId] || []).forEach(function (srcId) {
+      const src = presentByConduct[srcId];
+      if (src) src.forEach(function (d4) { tgt.add(d4); });
+    });
+  });
+  return out;
+}
+
 // Per-recruit progression through one conduct class.
 //   instances:        [{ conductId, num }] — the class's HELD instances (any order)
 //   presentByConduct: { conductId: Set(d4) } — who participated in each instance
@@ -223,5 +274,5 @@ function conductProgress(instances, presentByConduct, recruitIds) {
 
 // Node test export (browser ignores `module`); see js/calc.js consumers below.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductProgress, parseParticipantIds, conductOutByIndex };
+  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductClassKey, conductClassSeq, buildMakeupMap, creditMakeups, conductProgress, parseParticipantIds, conductOutByIndex };
 }

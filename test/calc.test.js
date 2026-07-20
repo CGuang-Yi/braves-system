@@ -207,4 +207,50 @@ module.exports = async function run() {
     eq(c.perConductParticipation(att, cd, scope), c.perConductParticipation(att, null, scope, idx));
     eq(c.scopedParticipation(att, cd, scope), c.scopedParticipation(att, null, scope, idx));
   });
+
+  suite("calc: conduct class key / seq");
+  await test("conductClassKey prefers manual className, else parsed base", () => {
+    eq(c.conductClassKey({ name: "Endurance Run 3" }), "Endurance Run");
+    eq(c.conductClassKey({ name: "Endurance Run 3", className: "  " }), "Endurance Run"); // blank ignored
+    eq(c.conductClassKey({ name: "Endurance Run 3", className: "Fartlek" }), "Fartlek");
+    eq(c.conductClassKey({ name: "5BX PT" }), "5BX PT");
+  });
+
+  await test("conductClassSeq uses explicit seq for manual class, else parsed num", () => {
+    eq(c.conductClassSeq({ name: "Endurance Run 3" }), 3);              // auto
+    eq(c.conductClassSeq({ name: "Anything", className: "X", classSeq: 4 }), 4); // manual explicit
+    eq(c.conductClassSeq({ name: "Endurance Run 7", className: "X", classSeq: 0 }), 7); // manual, blank seq → name num
+    eq(c.conductClassSeq({ name: "5BX PT", className: "X" }), 1);       // manual, no seq, no trailing num → 1
+  });
+
+  suite("calc: conduct makeup fold");
+  await test("buildMakeupMap inverts makeupFor, dropping self/empty", () => {
+    const m = c.buildMakeupMap([
+      { id: "cB", makeupFor: "cA" },
+      { id: "cC", makeupFor: "cA" },
+      { id: "cD", makeupFor: "" },
+      { id: "cE", makeupFor: "cE" }, // self — dropped
+      { id: "cA" }
+    ]);
+    eq([...(m["cA"] || [])].sort().join(","), "cB,cC");
+    eq(m["cE"], undefined);
+    eq(m["cD"], undefined);
+  });
+
+  await test("creditMakeups unions source present-sets into targets, non-mutating", () => {
+    const present = {
+      cA: new Set(["0001"]),
+      cB: new Set(["0002", "0003"]),
+      cC: new Set(["0003"])
+    };
+    const credited = c.creditMakeups(present, { cA: ["cB", "cC"] });
+    eq([...credited.cA].sort().join(","), "0001,0002,0003");
+    eq([...present.cA].sort().join(","), "0001");           // original untouched
+    eq([...credited.cB].sort().join(","), "0002,0003");     // sources carried through
+  });
+
+  await test("creditMakeups tolerates a source with no present row", () => {
+    const credited = c.creditMakeups({ cA: new Set(["0001"]) }, { cA: ["cMissing"] });
+    eq([...credited.cA].sort().join(","), "0001");
+  });
 };
