@@ -250,6 +250,14 @@ async function doLogin(e) {
 // never twice, never skipped (P1-1 change-item 3).
 function afterLaunchSyncSettles() {
   applyRoleUI();   // re-run now the roster is loaded → name resolves
+  // The warm-cache path calls us unconditionally after autoSyncOnLaunch(), which
+  // swallows an AuthError internally (→ handleAuthFailure → showLogin) rather than
+  // rejecting. If that happened the session is already gone and we've bounced to
+  // the login screen, so none of the settle steps apply — and maybeRunConductMigration
+  // in particular is NOT self-guarded, so without this it could pop a migration modal
+  // over the login overlay. The cold path (pullAndRender) never reaches here on auth
+  // failure; this keeps the warm path consistent with it.
+  if (!STATE.authToken) return;
   maybeRunConductMigration();
   maybeRestoreDirty();
   // Keep this tab fresh: poll the cheap revCheck endpoint (~20s while visible +

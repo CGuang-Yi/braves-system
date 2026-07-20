@@ -61,7 +61,7 @@ function renderParade(el) {
     el.innerHTML = `<h2 style="font-size:18px;font-weight:700;margin-bottom:16px">🎖️ Parade State</h2>
       <div class="card empty-state">${STATE.authToken
         ? `<p>Loading data from the sheet…</p>`
-        : `<p>No invite redeemed on this device yet. Open an invite link to sync.</p>`}</div>`;
+        : `<p>Not signed in on this device. Log in to sync.</p>`}</div>`;
     return;
   }
   const dateIso = paradeCurrentDateISO();
