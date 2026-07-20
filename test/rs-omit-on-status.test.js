@@ -4,14 +4,15 @@
 //   • generateRSIPersonnel — the RSI-Personnel-by-platoon message (PR 1 adds the
 //     option here; it already existed on generateRSFormat since PR #71).
 // The option filters out report-sick rows for personnel who ALREADY carry an
-// active medical status, via bpHasPriorStatus — so the message lists only the
+// unexpired medical status, via bpHasOtherStatus — so the message lists only the
 // day's new cases and the TOTAL / per-platoon PAX counts follow the filtered set.
 //
 // This file is the feature's FIRST direct coverage (PR #71 shipped it untested).
 // Loaded in a vm sandbox (parade-classifier.test.js pattern) with faithful stubs
-// for the external globals the generators lean on. PR 1 exercises the CURRENT
-// predicate (status must have STARTED before the report date); PR 2 later widens
-// that predicate and extends this file with the starts-today / future cases.
+// for the external globals the generators lean on. Covers the PR-1 second call
+// site (RSI Personnel) AND the PR-2 widened predicate — a status is suppressive
+// if its end date is on or after the report date, whether it started before that
+// day, on it, or later.
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
@@ -24,7 +25,9 @@ function displayDateToISO(s) {
   const m = String(s == null ? "" : s).match(/^\d{4}-\d{2}-\d{2}/);
   return m ? m[0] : "";
 }
-// Faithful copy of helpers.js medStatusActive (real dep of bpHasPriorStatus).
+// Faithful copy of helpers.js medStatusActive. The widened bpHasOtherStatus no
+// longer calls it, but other braves-parade.js internals loaded into the sandbox
+// reference it, so it stays stubbed defensively.
 function medStatusActive(record, todayIso) {
   if (record.status === "NIL") return false;
   const start = displayDateToISO(record.startDate || record.date || "");
@@ -126,6 +129,62 @@ module.exports = async function run() {
     const on = sb.generateRSFormat(TODAY, "0700", { omitOnStatus: true });
     ok(/NON-URTI: 03/.test(off), "unfiltered lists all three");
     ok(/NON-URTI: 02/.test(on), "filtered drops B");
+  });
+
+  // ── Widened predicate (bpHasOtherStatus) ────────────────────────────────────
+  // The omit toggle originally suppressed only personnel whose other status
+  // STARTED before the report date. It now suppresses anyone carrying an unexpired
+  // other status regardless of when it starts — so an MC handed out as the outcome
+  // of today's report sick, or a future-dated status, also drop the entry. A
+  // status is "unexpired" iff it has a real end date on or after the report date;
+  // a blank end date does NOT suppress (consistent with medStatusActive, which
+  // treats end-less records as inactive everywhere else).
+  suite("RS Format: widened omit predicate (starts today / future / edge cases)");
+
+  // Each person reports sick today and carries exactly one OTHER medical record.
+  const wRoster = [
+    { id: "0004", name: "Delta Four", fourD: "0004", plt: "PLT1", role: "Recruit" },   // MC starts TODAY
+    { id: "0005", name: "Echo Five", fourD: "0005", plt: "PLT1", role: "Recruit" },     // MC starts in the FUTURE
+    { id: "0006", name: "Foxtrot Six", fourD: "0006", plt: "PLT1", role: "Recruit" },   // MC already ENDED
+    { id: "0007", name: "Golf Seven", fourD: "0007", plt: "PLT1", role: "Recruit" }     // MC with BLANK end date
+  ];
+  // The OTHER records carry a BLANK visit type (a pure status record, not an
+  // RSI/RSO sick visit), so bpSickReports never counts them as a second report —
+  // matching how a standalone MC/LD status is stored, distinct from the day's
+  // report-sick row.
+  const wMedical = () => [
+    rsiRow("0004"), rsiRow("0005"), rsiRow("0006"), rsiRow("0007"),
+    { id: "o-4", d4: "0004", type: "", status: "MC", startDate: TODAY,         endDate: "2026-07-03", date: TODAY },
+    { id: "o-5", d4: "0005", type: "", status: "MC", startDate: "2026-07-01",  endDate: "2026-07-05", date: "2026-07-01" },
+    { id: "o-6", d4: "0006", type: "", status: "MC", startDate: "2026-06-20",  endDate: "2026-06-25", date: "2026-06-20" },
+    { id: "o-7", d4: "0007", type: "", status: "LD", startDate: "2026-06-22", endDate: "",           date: "2026-06-22" }
+  ];
+
+  await test("status starting TODAY (outcome of this report sick) is suppressed", () => {
+    const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(!/Delta Four/.test(on), "Delta's own MC starting today accounts for him → omitted");
+  });
+
+  await test("status starting in the FUTURE is suppressed", () => {
+    const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(!/Echo Five/.test(on), "Echo's future-dated MC accounts for him → omitted");
+  });
+
+  await test("status that ENDED before the report date is still listed", () => {
+    const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(/Foxtrot Six/.test(on), "Foxtrot's expired MC does not account for a fresh report sick");
+  });
+
+  await test("a BLANK end date does NOT suppress (resolved edge case)", () => {
+    const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(/Golf Seven/.test(on), "an end-less status is treated as inactive, so Golf stays listed");
+  });
+
+  await test("net count: only the two unexpired-status people drop", () => {
+    const off = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700");
+    const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(/NON-URTI: 04/.test(off), "all four listed unfiltered");
+    ok(/NON-URTI: 02/.test(on), "Delta + Echo omitted; Foxtrot + Golf remain");
   });
 
   // ── forms.js UI wiring ───────────────────────────────────────────────────────

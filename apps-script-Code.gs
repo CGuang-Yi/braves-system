@@ -3601,21 +3601,23 @@ function bpSickUrtiBlocks(reports) {
 }
 
 // §10.1 — single report-sick message: header → URTI block → NON-URTI block.
-// True when the person already carries a PRE-EXISTING active medical status on
-// dateIso — see js/braves-parade.js:bpHasPriorStatus for the full rationale.
-// Mirrored here so the frontend and archiver copies stay behaviourally identical.
-function bpHasPriorStatus(m, dateIso) {
+// True when the person carries some OTHER unexpired medical status as of dateIso
+// (started before that day, on it, or later) — see js/braves-parade.js:
+// bpHasOtherStatus for the full rationale. A blank end date does NOT suppress.
+// Mirrored here so the frontend and archiver copies stay behaviourally identical
+// (test/parade-port-parity.test.js guards this).
+function bpHasOtherStatus(m, dateIso) {
   return (STATE.medical || []).some(x => {
     if (x === m || x.d4 !== m.d4) return false;
     if (!x.status || x.status === "Pending" || x.status === "NIL") return false;
-    const start = displayDateToISO(x.startDate || x.date || "");
-    return start && start < dateIso && medStatusActive(x, dateIso);
+    const end = displayDateToISO(x.endDate || "");
+    return !!end && end >= dateIso;
   });
 }
 
 function generateRSFormat(dateIso, time, opts) {
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasPriorStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasOtherStatus(m, dateIso));
   const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
   lines.push(...bpSickUrtiBlocks(reports));
   return lines.join("\n\n");
@@ -3632,7 +3634,7 @@ function generateRSFormat(dateIso, time, opts) {
 function generateRSIPersonnel(dateIso, time, scopeCode, opts) {
   scopeCode = scopeCode || "";
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasPriorStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasOtherStatus(m, dateIso));
   const platoonOf = d4 => {
     const r = STATE.roster.find(x => x.id == d4);
     return r ? personPlatoon(r) : "";
