@@ -26,7 +26,7 @@
  *   3. Run:  seedFirstAdmin("you@example.com", "your-admin-password")
  *   4. Run:  seedSynthetic()
  *        → creates/repairs all reference tabs, wipes+fills every data tab with
- *          synthetic rows, and creates two throwaway accounts (see below).
+ *          synthetic rows, and creates three throwaway accounts (see below).
  *   5. Deploy → New deployment → Web app (Execute as: Me, Access: Anyone) →
  *      copy the Web App URL.
  *   6. Log in to the web app with one of the accounts below. Delete the accounts
@@ -45,12 +45,20 @@
 //   • commander — read + write. Use this token when you want to exercise the
 //                 write/sync engine end-to-end against the fake data. Not admin,
 //                 so it can't manage accounts/tokens. Re-run to restore data.
-// Both live on a throwaway sheet with invented data, so handing out the commander
-// token is low-risk — worst case a bad write mangles synthetic rows you can reset.
+//   • admin     — read + write + the admin-only surfaces (AuditLog/ParadeArchive/
+//                 SickArchive reads, account/token management). Needed for
+//                 anything gated on ctx.role === "admin" (see isAdmin() in
+//                 apps-script-Code.gs) — e.g. verifying the capped-AuditLog
+//                 readAll behaviour, which a commander token cannot exercise.
+// All three live on a throwaway sheet with invented data, so handing out any of
+// these tokens is low-risk — worst case a bad write mangles synthetic rows you
+// can reset by re-running seedSynthetic().
 var SANDBOX_VIEWER_EMAIL = "viewer@sandbox.local";
 var SANDBOX_VIEWER_PASSWORD = "sandbox-viewer-2026";
 var SANDBOX_CMDR_EMAIL = "commander@sandbox.local";
 var SANDBOX_CMDR_PASSWORD = "sandbox-cmdr-2026";
+var SANDBOX_ADMIN_EMAIL = "admin@sandbox.local";
+var SANDBOX_ADMIN_PASSWORD = "sandbox-admin-2026";
 
 // Anchor date for all generated dates. Chosen as "today" at authoring time so
 // current MC/LD windows are live and a couple of just-ended ones exercise the
@@ -564,11 +572,13 @@ function seedSynthetic() {
   if (typeof createAccount === "function") {
     createAccount(SANDBOX_VIEWER_EMAIL, "", "viewer", SANDBOX_VIEWER_PASSWORD);
     createAccount(SANDBOX_CMDR_EMAIL, "", "commander", SANDBOX_CMDR_PASSWORD);
+    createAccount(SANDBOX_ADMIN_EMAIL, "", "admin", SANDBOX_ADMIN_PASSWORD);
   }
 
   Logger.log("seedSynthetic complete. Row counts: " + JSON.stringify(counts));
   Logger.log("Viewer (read-only)  → " + SANDBOX_VIEWER_EMAIL + " / " + SANDBOX_VIEWER_PASSWORD);
   Logger.log("Commander (r/w)     → " + SANDBOX_CMDR_EMAIL + " / " + SANDBOX_CMDR_PASSWORD);
+  Logger.log("Admin (r/w + admin) → " + SANDBOX_ADMIN_EMAIL + " / " + SANDBOX_ADMIN_PASSWORD);
   Logger.log("Now: Deploy → New deployment → Web app, copy the URL.");
 }
 
@@ -595,6 +605,11 @@ function seedSynthetic() {
 //
 //   sandboxMintToken()                        → token for the commander account
 //   sandboxMintToken("viewer@sandbox.local")  → token for a specific account
+//   sandboxMintToken("admin@sandbox.local")   → token for the admin account
+//                                                (needed for anything gated on
+//                                                ctx.role === "admin" — AuditLog/
+//                                                ParadeArchive/SickArchive reads,
+//                                                account/token management)
 //
 // Run it from the Apps Script editor and copy the token (plus a ready-to-paste
 // browser-console block) out of the execution log.
