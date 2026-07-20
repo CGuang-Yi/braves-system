@@ -48,6 +48,7 @@ function parseQuery(url) {
   return {
     action: u.searchParams.get("action") || "",
     tab: u.searchParams.get("tab") || "",
+    tabs: u.searchParams.get("tabs") || "",
     auth: u.searchParams.get("auth") || ""
   };
 }
@@ -62,8 +63,8 @@ function makeClient(backend, opts) {
     let out, rec;
     if (method === "GET") {
       const q = parseQuery(url);
-      rec = { method: "GET", action: q.action, tab: q.tab };
-      out = backend.doGet({ parameter: { action: q.action, tab: q.tab, auth: q.auth } });
+      rec = { method: "GET", action: q.action, tab: q.tab, tabs: q.tabs };
+      out = backend.doGet({ parameter: { action: q.action, tab: q.tab, tabs: q.tabs, auth: q.auth } });
     } else {
       const body = JSON.parse(init.body);
       rec = { method: "POST", action: body.action, tab: body.tab };
@@ -151,8 +152,8 @@ function makeLaunchClient(backend, opts) {
     let out, rec;
     if (method === "GET") {
       const q = parseQuery(url);
-      rec = { method: "GET", action: q.action, tab: q.tab };
-      out = backend.doGet({ parameter: { action: q.action, tab: q.tab, auth: q.auth } });
+      rec = { method: "GET", action: q.action, tab: q.tab, tabs: q.tabs };
+      out = backend.doGet({ parameter: { action: q.action, tab: q.tab, tabs: q.tabs, auth: q.auth } });
     } else {
       const body = JSON.parse(init.body);
       rec = { method: "POST", action: body.action, tab: body.tab };

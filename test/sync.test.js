@@ -352,9 +352,12 @@ module.exports = async function run() {
     ok(!actions.includes("read"), "did NOT fire per-tab GETs for the 5 changed tabs");
   });
 
-  // At exactly the threshold, the incremental per-tab path is still used —
-  // the fallback is a "more than N" breaker, not "N or more".
-  await test("many-tabs-changed threshold: exactly 4 changed tabs still uses per-tab partial pulls", async () => {
+  // At exactly the threshold, the incremental (non-full-pullAll) path is still
+  // used — the fallback is a "more than N" breaker, not "N or more". With the
+  // batched readTabs action (P2-1) now the harness's default GET path, the
+  // partial pull for those ≤4 tabs is a single readTabs request rather than
+  // one `read` per tab — this asserts the batched shape, not per-tab GETs.
+  await test("many-tabs-changed threshold: exactly 4 changed tabs still uses a partial (non-readAll) pull", async () => {
     const backend = loadBackend();
     backend.db.seed("Medical", MED_HEADERS, []);
     const A = makeClient(backend);
@@ -367,8 +370,10 @@ module.exports = async function run() {
 
     const actions = A.fetchSpy.map(r => r.action);
     ok(!actions.includes("readAll"), "still under the threshold — no full pullAll fallback");
-    const reads = A.fetchSpy.filter(r => r.action === "read").map(r => r.tab).sort();
-    eq(reads, ["Attendance", "IPPT", "Medical", "Roster"], "all 4 changed tabs partial-pulled individually");
+    ok(!actions.includes("read"), "no per-tab GETs — batched into one readTabs request instead");
+    const batches = A.fetchSpy.filter(r => r.action === "readTabs");
+    eq(batches.length, 1, "exactly one batched readTabs request for the partial pull");
+    eq(batches[0].tabs.split(",").sort(), ["Attendance", "IPPT", "Medical", "Roster"], "all 4 changed tabs requested in the single batch");
   });
 
   suite("sync: launch pull preserves unsynced (dirty) tabs");

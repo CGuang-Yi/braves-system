@@ -849,13 +849,20 @@ function initAutoRefresh() {
   startAutoRefresh();
 }
 
-// Threshold for the "many tabs changed" fallback below (item 7, P1-1 spec):
-// pullTabs fires one GET per tab, so with most/all ~12 tabs changed at once
-// (a device that's been closed for days, or a freshly reseeded sandbox) N
-// parallel GAS round trips can cost MORE than a single readAll. Until P2-1's
-// batched readTabs endpoint lands, degrade to today's full pull past this
-// many changed tabs instead of firing a burst of per-tab GETs. Not used
-// anywhere else — purely a launch-path circuit breaker.
+// Threshold for the "many tabs changed" fallback below (item 7, P1-1 spec).
+// Updated post-P2-1: pullTabs now batches 2+ tabs into ONE readTabs request
+// instead of N parallel per-tab GETs, so this is no longer guarding against a
+// burst of round trips on the happy path. Two things it still guards:
+//   - With most/all ~12 tracked tabs changed at once (a device closed for
+//     days, or a freshly reseeded sandbox), a single readTabs response
+//     carrying that many tabs' full row data approaches the size/cost of a
+//     plain readAll anyway — past this many tabs there's no longer a real win
+//     over just doing the full pull, so we simplify to that instead.
+//   - Against a backend that hasn't been redeployed with P2-1 yet, pullTabs
+//     silently falls back to the OLD per-tab-GET loop (see api.js) — for that
+//     path this threshold still caps how large a burst of parallel per-tab
+//     GETs a not-yet-redeployed backend can be hit with.
+// Not used anywhere else — purely a launch-path circuit breaker.
 const LAUNCH_PARTIAL_PULL_MAX_TABS = 4;
 
 // Full-pull fallback shared by every case that needs one (no rev baseline,

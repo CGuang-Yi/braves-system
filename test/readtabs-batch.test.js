@@ -4,17 +4,14 @@
 //   (loadBackend() + b.doGet(...)) — same pattern as test/perf-p2.test.js.
 //
 //   Frontend suite: exercises the real js/api.js pullTabs() through the
-//   full-stack harness (test/harness.js). IMPORTANT: the shared harness's mock
-//   fetch (parseQuery in harness.js) only forwards action/tab/auth — it does
-//   NOT forward a `tabs` query param. That's a deliberate, useful accident for
-//   this feature: any readTabs request sent through the *unmodified* harness
-//   fetch naturally lands on doGet's `e.parameter.tabs` being undefined, which
-//   makes the backend fall through to its generic "Unknown action" error —
-//   exactly the shape a not-yet-redeployed backend would return. So the
-//   fallback path is tested against the vanilla harness with NO patching, and
-//   only the "batching actually happens" tests need a local fetch override
-//   (added here, scoped to this file — harness.js itself is left untouched to
-//   avoid colliding with concurrent harness/mock work elsewhere in the repo).
+//   full-stack harness (test/harness.js). The shared harness's mock fetch DOES
+//   forward a `tabs` query param through to doGet (so every other multi-tab
+//   integration test in the suite exercises the batched readTabs path by
+//   default, matching what a redeployed backend does in production) — so
+//   readTabs works against the vanilla harness with NO patching, and only the
+//   "not-yet-redeployed backend" fallback tests need a local fetch override
+//   that deliberately fails/rejects `action=readTabs` (added here, scoped to
+//   this file — harness.js itself stays generic).
 const { suite, test, ok, eq } = require("./_tap");
 const { loadBackend, makeClient, VALID_TOKEN } = require("./harness");
 
@@ -39,6 +36,40 @@ function patchTabsAwareFetch(client, backend) {
         auth: u.searchParams.get("auth") || ""
       };
       rec = { method: "GET", action: q.action, tab: q.tab, tabs: q.tabs };
+      out = backend.doGet({ parameter: q });
+    } else {
+      const body = JSON.parse(init.body);
+      rec = { method: "POST", action: body.action, tab: body.tab };
+      out = backend.doPost({ parameter: {}, postData: { contents: init.body } });
+    }
+    client.fetchSpy.push(rec);
+    const text = out.getContent();
+    return { ok: true, status: 200, json: async () => JSON.parse(text) };
+  };
+}
+
+// Fetch override that forwards action/tab/auth to the REAL current backend
+// but deliberately drops `tabs` — the shape of "the client is talking to a
+// backend deployment that doesn't understand ?tabs=…" (e.g. mid-rollout, one
+// tab still on an older Apps Script version). Hitting the CURRENT doGet's
+// `action === "readTabs" && e.parameter.tabs` guard with tabs missing falls
+// through to its generic "Unknown action" branch — a genuine response from
+// today's real code, not a hardcoded stand-in — so this proves the fallback
+// also works against the exact error text the live backend produces, not
+// just the older wording patchFetchSimulateOldBackend below hardcodes.
+function patchFetchDropTabsParam(client, backend) {
+  client.sb.fetch = async (url, init) => {
+    const method = (init && init.method ? init.method : "GET").toUpperCase();
+    let out, rec;
+    if (method === "GET") {
+      const u = new URL(url);
+      const q = {
+        action: u.searchParams.get("action") || "",
+        tab: u.searchParams.get("tab") || "",
+        auth: u.searchParams.get("auth") || ""
+        // tabs deliberately omitted
+      };
+      rec = { method: "GET", action: q.action, tab: q.tab };
       out = backend.doGet({ parameter: q });
     } else {
       const body = JSON.parse(init.body);
@@ -180,7 +211,7 @@ module.exports = async function run() {
     ok(A.sb.STATE.medical.find(r => String(r.id) === "1"), "row landed");
   });
 
-  await test("fallback (natural): unmodified harness fetch doesn't forward `tabs` → backend replies Unknown action → pullTabs silently falls back to per-tab GETs, same final STATE", async () => {
+  await test("fallback (against today's real backend, tabs param dropped): readTabs w/o ?tabs hits the CURRENT doGet's own Unknown-action branch → pullTabs silently falls back to per-tab GETs, same final STATE", async () => {
     const backend = loadBackend();
     backend.db.seed("Roster", ROSTER_HEADERS, [["1", "1101", "A Recruit"]]);
     backend.db.seed("Medical", MED_HEADERS, []);
@@ -190,7 +221,8 @@ module.exports = async function run() {
     await B.sb.autoSync("Medical", { type: "upsert", row: med(1, "B-fresh") });
     await B.sb.autoSync("Roster", { type: "upsert", row: { id: 1, d4: "1101", name: "Renamed" } });
 
-    A.fetchSpy.length = 0;   // NOT patched — the unmodified harness fetch never forwards `tabs`
+    patchFetchDropTabsParam(A, backend);   // forwards everything to the real doGet EXCEPT ?tabs
+    A.fetchSpy.length = 0;
     const result = await A.sb.API.pullTabs(["Roster", "Medical"]);
 
     const actions = A.fetchSpy.map(r => r.action);
