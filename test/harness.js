@@ -30,14 +30,23 @@ const AUTH_PAYLOAD = () => JSON.stringify({
   email: "test@example.com", personId: "0001", role: "admin", issuedAt: new Date().toISOString()
 });
 
-function loadBackend() {
+// opts.root lets a caller point the harness at a DIFFERENT checkout of this
+// repo (e.g. tools/bench/sync-bench.js comparing an old `master` worktree
+// against this branch) while still using the CURRENT repo's mocks/harness
+// logic below — the instrumentation must stay fixed even when the code under
+// test doesn't. Defaults to ROOT (this repo), which is every existing call
+// site's behavior, unchanged.
+function loadBackend(opts) {
+  opts = opts || {};
+  const root = opts.root || ROOT;
+  const gsPath = path.join(root, "apps-script-Code.gs");
   const { services, db } = makeGoogle();
   const sandbox = Object.assign({
     console, JSON, Math, Date, String, Number, Array, Object, Boolean, RegExp,
     isNaN, parseInt, parseFloat
   }, services);
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(GS_PATH, "utf8"), sandbox, { filename: "apps-script-Code.gs" });
+  vm.runInContext(fs.readFileSync(gsPath, "utf8"), sandbox, { filename: "apps-script-Code.gs" });
   db.setProp("auth:" + VALID_TOKEN, AUTH_PAYLOAD());   // a valid admin session for clients
   sandbox.db = db;                                     // test helpers (seed/rowsOf/spy/props)
   return sandbox;
@@ -55,6 +64,7 @@ function parseQuery(url) {
 
 function makeClient(backend, opts) {
   opts = opts || {};
+  const root = opts.root || ROOT;   // see loadBackend's opts.root comment
   const browser = makeBrowser();
   const fetchSpy = [];   // [{ method, action, tab }]
 
@@ -92,7 +102,7 @@ function makeClient(backend, opts) {
   vm.createContext(sandbox);
 
   // Concatenate the three frontend files + an epilogue exposing the consts.
-  const src = FRONTEND_FILES.map(f => fs.readFileSync(path.join(ROOT, f), "utf8")).join("\n;\n")
+  const src = FRONTEND_FILES.map(f => fs.readFileSync(path.join(root, f), "utf8")).join("\n;\n")
     + "\n;this.STATE = STATE; this.API = API; this.TAB_TO_STATE = TAB_TO_STATE;\n";
   vm.runInContext(src, sandbox, { filename: "frontend-bundle.js" });
 
@@ -140,6 +150,7 @@ const LS_DIRTY_KEY = "cougar-dirty-tabs";
 // nothing awaits the bootstrap IIFE either.
 function makeLaunchClient(backend, opts) {
   opts = opts || {};
+  const root = opts.root || ROOT;   // see loadBackend's opts.root comment
   const browser = makeBrowser();
   if (opts.modalOpen) browser.ctl.modalOpen = true;
   const fetchSpy = [];        // [{ method, action, tab }], in call order
@@ -186,7 +197,7 @@ function makeLaunchClient(backend, opts) {
   }, browser.globals);
   vm.createContext(sandbox);
 
-  const src = LAUNCH_FRONTEND_FILES.map(f => fs.readFileSync(path.join(ROOT, f), "utf8")).join("\n;\n")
+  const src = LAUNCH_FRONTEND_FILES.map(f => fs.readFileSync(path.join(root, f), "utf8")).join("\n;\n")
     + "\n;this.STATE = STATE; this.API = API; this.TAB_TO_STATE = TAB_TO_STATE;\n";
   vm.runInContext(src, sandbox, { filename: "launch-bundle.js" });   // bootstrap() fires here
 
