@@ -302,6 +302,23 @@ function refreshSyncIndicator() {
   const stamp = _lastSyncedAt ? new Date(_lastSyncedAt).toLocaleTimeString() : new Date().toLocaleTimeString();
   const checked = _lastCheckedAt ? ` · checked ${new Date(_lastCheckedAt).toLocaleTimeString()}` : "";
   setSyncIndicator(`● Synced ${stamp}${checked}`, "var(--green)");
+
+  // P4-1: while the poll is relaxed to 60s, say so and offer an immediate check.
+  // Runs AFTER setSyncIndicator because that call resets both the pill and the
+  // sidebar line to their plain "synced" form; this layers the affordance on top.
+  // The user approved the slower cadence on condition it's apparent (spec §7 Q2),
+  // so this is part of the feature, not decoration.
+  if (_relaxed) {
+    const checkNow = () => { resetPollCadence(); autoRefreshTick("manual"); };
+    updateSyncPill("ok", "✓ Synced · Check now", checkNow);
+    const el2 = document.getElementById("sync-status");
+    if (el2) el2.title = `Idle — checking every ${AUTO_REFRESH_IDLE_MS / 1000}s. Tap to check now.`;
+    el.textContent = `● Synced ${stamp}${checked} · idle, checking every ${AUTO_REFRESH_IDLE_MS / 1000}s · Check now`;
+    el.style.cursor = "pointer";
+    el.style.textDecoration = "underline";
+    el.title = "Polling has slowed because nothing has changed for a while. Click to check for updates immediately.";
+    el.onclick = checkNow;
+  }
 }
 
 // ── Dirty-tab tracking ────────────────────────────────────
@@ -386,6 +403,9 @@ function autoSync(tabName, mode) {
     scheduleViewerRevert();
     return Promise.resolve({ ok: false, readOnly: true });
   }
+  // P4-1: a local write means this session is active — back to the 20s cadence,
+  // so a user who starts working after an idle spell isn't left on 60s polling.
+  resetPollCadence();
   if (!_writeQueue.has(tabName)) _writeQueue.set(tabName, []);
   _writeQueue.get(tabName).push(mode);
   if (_draining.has(tabName)) return _draining.get(tabName);
@@ -693,6 +713,53 @@ let _autoRefreshTimer = null;
 let _autoRefreshing = false;
 let _autoRefreshInited = false;       // wire the listeners/timer only once
 
+// ── P4-1: adaptive poll cadence (SYNC_PERF_IMPROVEMENTS_SPEC.md §3 P4-1) ──────
+// Every revCheck is a real Apps Script round trip — measured median ~2.1s against
+// the live sandbox (§8.5.2) — so a tab left open all day at a fixed 20s fires ~180
+// of them an hour, nearly all returning "nothing changed". After a run of quiet
+// polls the interval relaxes to 60s; ANY sign of activity (a detected change, tab
+// focus, a local write) snaps it straight back to 20s.
+//
+// The 20s cadence was a user-chosen default, so relaxing it is only sanctioned
+// because the user explicitly approved it (spec §7 Q2, answered 2026-07-20) — and
+// approved it WITH the condition that the slower cadence is made apparent, since a
+// user who doesn't know freshness dropped to 60s can't make an informed choice
+// about when to check. Hence _relaxed also drives a visible, tappable "Check now"
+// affordance in refreshSyncIndicator() rather than degrading freshness silently.
+const AUTO_REFRESH_IDLE_MS = 60000;   // relaxed cadence once nothing's been changing
+const AUTO_REFRESH_IDLE_AFTER = 6;    // consecutive no-change polls before relaxing
+let _noChangeStreak = 0;
+let _relaxed = false;
+
+// Current cadence, as data. Exposed as a function rather than leaving callers to
+// read the module-scoped `let`s directly: it's the natural companion to
+// syncTimingSummary() when eyeballing poll behaviour in the console, and it's the
+// only way the vm test sandbox can observe this state at all (top-level let/const
+// don't attach to the sandbox global the way function declarations do — the same
+// reason test/harness.js has to re-export STATE/API explicitly).
+function pollCadenceInfo() {
+  return {
+    relaxed: _relaxed,
+    currentMs: _relaxed ? AUTO_REFRESH_IDLE_MS : AUTO_REFRESH_MS,
+    noChangeStreak: _noChangeStreak,
+    activeMs: AUTO_REFRESH_MS,
+    idleMs: AUTO_REFRESH_IDLE_MS,
+    idleAfter: AUTO_REFRESH_IDLE_AFTER
+  };
+}
+
+// Back to the responsive cadence. Called on any evidence the data is live again:
+// a changed tab, the user returning to the tab, or a local write being queued.
+// Restarts the timer only when the cadence actually changes — a no-op call must
+// not reset the current interval's progress.
+function resetPollCadence() {
+  _noChangeStreak = 0;
+  if (!_relaxed) return;
+  _relaxed = false;
+  startAutoRefresh();
+  refreshSyncIndicator();
+}
+
 function isModalOpen() {
   const o = document.getElementById("modal-overlay");
   return !!o && !o.classList.contains("hidden");
@@ -716,7 +783,21 @@ async function autoRefreshTick(reason) {
     const changed = Object.keys(res.revs).filter(sheet =>
       Number(res.revs[sheet]) > Number(STATE.rev[sheet] || 0)
     );
-    if (changed.length === 0) return;
+    if (changed.length === 0) {
+      // P4-1: a quiet poll. Past the streak threshold, drop to the relaxed
+      // cadence and surface it (refreshSyncIndicator renders the "Check now"
+      // affordance while _relaxed).
+      _noChangeStreak++;
+      if (!_relaxed && _noChangeStreak >= AUTO_REFRESH_IDLE_AFTER) {
+        _relaxed = true;
+        startAutoRefresh();
+        syncLog(`Idle — checking every ${AUTO_REFRESH_IDLE_MS / 1000}s now. Tap "Check now" to sync immediately.`, "var(--muted)");
+      }
+      refreshSyncIndicator();
+      return;
+    }
+    // Something moved — back to the responsive cadence.
+    resetPollCadence();
 
     const dirty = STATE.dirty || new Set();
     const dirtyChanged = changed.filter(t => dirty.has(t));
@@ -827,7 +908,8 @@ function showDirtyConflictBanner(tabs) {
 function startAutoRefresh() {
   stopAutoRefresh();
   if (document.visibilityState === "visible") {
-    _autoRefreshTimer = setInterval(() => autoRefreshTick("interval"), AUTO_REFRESH_MS);
+    const every = _relaxed ? AUTO_REFRESH_IDLE_MS : AUTO_REFRESH_MS;   // P4-1
+    _autoRefreshTimer = setInterval(() => autoRefreshTick("interval"), every);
   }
 }
 function stopAutoRefresh() {
@@ -840,12 +922,15 @@ function stopAutoRefresh() {
 function initAutoRefresh() {
   if (_autoRefreshInited) { startAutoRefresh(); return; }
   _autoRefreshInited = true;
+  // P4-1: returning to the tab is the clearest "the user is here again" signal —
+  // drop back to the responsive cadence before the tick, so startAutoRefresh()
+  // below arms the 20s interval rather than re-arming the relaxed one.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") { autoRefreshTick("visible"); startAutoRefresh(); }
+    if (document.visibilityState === "visible") { resetPollCadence(); autoRefreshTick("visible"); startAutoRefresh(); }
     else stopAutoRefresh();
   });
-  window.addEventListener("focus", () => autoRefreshTick("focus"));
-  window.addEventListener("online", () => autoRefreshTick("online"));
+  window.addEventListener("focus", () => { resetPollCadence(); autoRefreshTick("focus"); });
+  window.addEventListener("online", () => { resetPollCadence(); autoRefreshTick("online"); });
   startAutoRefresh();
 }
 
