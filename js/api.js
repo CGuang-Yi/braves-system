@@ -36,9 +36,12 @@ const STATE_KEY_TO_TAB = Object.keys(TAB_TO_STATE).reduce((m, sheet) => {
 }, {});
 
 const API = {
-  async get(action, tab) {
+  async get(action, tab, extraParams) {
     const auth = encodeURIComponent(STATE.authToken || "");
-    const url = `${STATE.apiUrl}?action=${action}${tab ? "&tab=" + tab : ""}&auth=${auth}`;
+    let url = `${STATE.apiUrl}?action=${action}${tab ? "&tab=" + tab : ""}&auth=${auth}`;
+    if (extraParams) {
+      for (const k in extraParams) url += `&${k}=${encodeURIComponent(extraParams[k])}`;
+    }
     const res = await fetch(url);
     const data = await res.json();
     // 401 covers both "not logged in" and "session_expired" — either way the
@@ -156,8 +159,26 @@ const API = {
   // single-tab read route, normalize via the same PULL_ASSIGN as pullAll, and
   // advance STATE.rev for each. Big unchanged tabs aren't re-fetched. Returns
   // { changed, tabs }.
+  //
+  // SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1: for 2+ tabs, try ONE `readTabs` batch
+  // request first (one round trip instead of N parallel `read` GETs — the
+  // dominant cost on GAS is round-trip overhead, not payload size). The
+  // deployed production backend may not have `readTabs` yet (manual GAS
+  // redeploy required) — a not-yet-redeployed backend's doGet fallthrough
+  // returns `{error: "Unknown action. ..."}` for it (same message family the
+  // client already tolerates elsewhere), which we detect and silently fall
+  // back to today's per-tab parallel loop. This fallback is PERMANENT, not
+  // temporary scaffolding: it's what keeps this method working during the
+  // window between shipping this frontend and the human doing the manual
+  // redeploy, and afterwards it's simply dead-cheap dead code on the happy path.
   async pullTabs(sheetNames) {
-    const fetched = await Promise.all((sheetNames || []).map(async sheet => {
+    const names = sheetNames || [];
+    if (names.length > 1) {
+      const batched = await this._pullTabsBatched(names);
+      if (batched) return batched;
+      // Fall through to the legacy per-tab loop below (older backend).
+    }
+    const fetched = await Promise.all(names.map(async sheet => {
       const res = await this.get("read", sheet);
       if (res && res.error) throw new Error(res.error);
       // read&tab now returns { rows, rev }; tolerate a bare array too.
@@ -173,12 +194,44 @@ const API = {
     }
     // LMS counts derive from polar; only recompute if polar or attendance was
     // among the refreshed tabs (otherwise current LMS already reflects polar).
-    if (changed && (sheetNames.includes("PolarFlow") || sheetNames.includes("Attendance"))
+    if (changed && (names.includes("PolarFlow") || names.includes("Attendance"))
         && typeof recomputeAttendanceLmsFromPolar === "function") {
       recomputeAttendanceLmsFromPolar();
     }
     if (changed) saveLocal();
-    return { changed, tabs: sheetNames };
+    return { changed, tabs: names };
+  },
+  // One-request batched partial pull backing pullTabs above. Returns the same
+  // { changed, tabs } shape as the per-tab loop on success, or `null` to signal
+  // "backend doesn't support readTabs, caller should fall back to the per-tab
+  // loop". Any OTHER error (auth failure, a genuine per-request exception) is
+  // NOT swallowed here — it propagates like every other read failure so
+  // existing error handling (e.g. AuthError → login bounce) still fires.
+  async _pullTabsBatched(names) {
+    const res = await this.get("readTabs", null, { tabs: names.join(",") });
+    const isUnknownAction = res && typeof res.error === "string" && /unknown action/i.test(res.error);
+    if (isUnknownAction) return null; // older, not-yet-redeployed backend
+    if (res && res.error) throw new Error(res.error);
+    if (!res || !res.tabs) return null; // unrecognized shape — fall back defensively
+    let changed = false;
+    for (const sheet of names) {
+      const entry = res.tabs[sheet];
+      // A per-tab gating rejection (e.g. AuditLog for a non-admin) or an
+      // entry missing from the response is skipped — same tolerance the
+      // per-tab loop gives an unusable single-tab response (mirrors the
+      // Array.isArray(rows) guard below).
+      const rows = entry && Array.isArray(entry.rows) ? entry.rows : null;
+      const rev = entry && entry.rev != null ? entry.rev : undefined;
+      const key = TAB_TO_STATE[sheet];
+      if (key && PULL_ASSIGN[key] && rows) { PULL_ASSIGN[key](rows); changed = true; }
+      if (rev != null) STATE.rev[sheet] = rev;
+    }
+    if (changed && (names.includes("PolarFlow") || names.includes("Attendance"))
+        && typeof recomputeAttendanceLmsFromPolar === "function") {
+      recomputeAttendanceLmsFromPolar();
+    }
+    if (changed) saveLocal();
+    return { changed, tabs: names };
   },
   // Cheap "what changed?" poll — returns { ok, revs: {Roster:N,…}, timestamp }.
   // No row data, so safe to call frequently.

@@ -261,8 +261,35 @@ function doGet(e) {
           // so the client can baseline it. (Untracked tabs report rev 1.)
           output = { rows: readTab(tab), rev: getRev(tab) };
         }
+      } else if (action === "readTabs" && e.parameter.tabs) {
+        // Batched partial pull (SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1): N tabs in ONE
+        // request instead of N parallel `read` GETs. Read-only, no lock needed — same
+        // as the single-tab `read` route above, just looped. Per-tab shape is
+        // identical to `read`'s ({rows, rev}), keyed by tab name under `tabs`.
+        //
+        // Gating choice: apply the SAME per-tab gating as `read`, but per-tab —
+        // a disallowed tab (AuditLog/archives for non-admins, Accounts always) gets
+        // its own {error, code} entry under tabs[name] instead of failing the whole
+        // batch. This composes best with the frontend fallback/normalization path,
+        // which already assigns per-tab and can skip/ignore an errored entry the
+        // same way it would skip a tab it never requested. Unknown tab names mirror
+        // `readTab`'s own not-found shape (rows becomes {error, available}), exactly
+        // as the single-tab route already does today (no extra handling needed).
+        var reqTabs = e.parameter.tabs.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t; });
+        var tabsOut = {};
+        for (var ti = 0; ti < reqTabs.length; ti++) {
+          var rt = reqTabs[ti];
+          if ((rt === "AuditLog" || rt === "ParadeArchive" || rt === "SickArchive") && ctx.role !== "admin") {
+            tabsOut[rt] = { error: "Not authorised", code: 403 };
+          } else if (rt === "Accounts") {
+            tabsOut[rt] = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+          } else {
+            tabsOut[rt] = { rows: readTab(rt), rev: getRev(rt) };
+          }
+        }
+        output = { ok: true, tabs: tabsOut };
       } else {
-        output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, or ping" };
+        output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, readTabs&tabs=A,B, or ping" };
       }
     }
   } catch (err) {
@@ -615,6 +642,14 @@ var SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30-day session expiry
 var LOCKOUT_THRESHOLD = 5;                       // failed attempts before lockout
 var LOCKOUT_WINDOW_MS = 15 * 60 * 1000;          // 15-minute lockout
 
+// P2-4: every data write appends a row to AuditLog forever, so an admin's
+// readAll would otherwise ship the WHOLE history on every full pull — server
+// read time and payload size growing unboundedly with total system usage.
+// Cap the in-response window to the most recent N rows; the Sheet itself
+// stays the complete, unbounded authoritative trail (readAllTabs/readTabTail
+// below). N=500 chosen as the admin-facing in-app window (spec §7 Q1).
+var AUDIT_READALL_MAX_ROWS = 500;
+
 function hashPassword(plaintext, salt) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + plaintext)
     .map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); })
@@ -684,7 +719,9 @@ function handleLogin(body) {
     issuedAt: new Date().toISOString()
   };
   PropertiesService.getScriptProperties().setProperty("auth:" + token, JSON.stringify(ctx));
-  writeAuditLog(account.email, account.personId, "login", null, null, token);
+  // `ctx.role` here is exactly what getAuthContext(token) would return (we just
+  // wrote this same JSON to the property above) — pass it directly, no lookup.
+  writeAuditLog(account.email, account.personId, "login", null, null, token, ctx.role);
   return { ok: true, authToken: token, role: ctx.role, personId: ctx.personId, email: ctx.email };
 }
 
@@ -696,7 +733,9 @@ function logFailedAttempt(email, reason) {
   record.count++;
   record.lastAttempt = new Date().toISOString();
   props.setProperty(key, JSON.stringify(record));
-  writeAuditLog(email, null, "login_failed", null, reason, null);
+  // No auth token exists for a failed login — role is always "" here (matches
+  // today's behaviour, where the null token short-circuited the old lookup).
+  writeAuditLog(email, null, "login_failed", null, reason, null, "");
   // Deliberately generic so we don't reveal whether the email exists.
   return { error: "Wrong email or password." };
 }
@@ -739,12 +778,19 @@ function bumpRev(tabName) {
   return next;
 }
 
+// P2-2: this runs on every revCheck poll (the hottest endpoint — every open
+// client, every 20s) and every readAll, so it's worth one bulk Properties read
+// instead of REV_TABS.length individual getProperty round trips.
+// SECURITY: getProperties() returns ALL script properties, not just "rev:*" —
+// including auth tokens and failed-login records. `all` MUST stay local to
+// this function; only the filtered rev:<tab> values (via `out`) may leave it,
+// never the raw `all` object or any of its other keys.
 function getAllRevs() {
-  var p = PropertiesService.getScriptProperties();
+  var all = PropertiesService.getScriptProperties().getProperties();
   var out = {};
   for (var i = 0; i < REV_TABS.length; i++) {
-    var v = p.getProperty("rev:" + REV_TABS[i]);
-    out[REV_TABS[i]] = v === null ? 1 : (Number(v) || 1);
+    var v = all["rev:" + REV_TABS[i]];
+    out[REV_TABS[i]] = v === undefined || v === null ? 1 : (Number(v) || 1);
   }
   return out;
 }
@@ -897,19 +943,21 @@ function routeAuthedPost(action, tab, body, ctx) {
   else if (action === "deleteArchive")                           res = bravesDeleteArchive(body, ctx);
   else return { error: "Invalid request" };
 
-  // Audit manual archive snapshots (A2.3-style).
+  // Audit manual archive snapshots (A2.3-style). ctx.role is still valid here —
+  // archiving never touches auth tokens — so pass it straight through (P2-3).
   if (action === "archiveNow" && res && !res.error) {
-    writeAuditLog(ctx.email, ctx.personId, "archive_now", "Archive", (body && body.kind) || "both", body.auth);
+    writeAuditLog(ctx.email, ctx.personId, "archive_now", "Archive", (body && body.kind) || "both", body.auth, ctx.role);
   }
-  // Audit archive deletions (admin-only; A2.3 tamper-trail).
+  // Audit archive deletions (admin-only; A2.3 tamper-trail). Same: ctx.role safe.
   if (action === "deleteArchive" && res && !res.error) {
-    writeAuditLog(ctx.email, ctx.personId, "delete_archive", (body && body.kind) === "sick" ? "SickArchive" : "ParadeArchive", (body && body.timestamp) || "", body.auth);
+    writeAuditLog(ctx.email, ctx.personId, "delete_archive", (body && body.kind) === "sick" ? "SickArchive" : "ParadeArchive", (body && body.timestamp) || "", body.auth, ctx.role);
   }
 
-  // Best-effort audit of data writes to the tabs called out in A2.3.
+  // Best-effort audit of data writes to the tabs called out in A2.3. ctx.role
+  // is still valid here (a data write never revokes the caller's own token).
   if (res && !res.error && tab &&
       ["write", "append", "appendMany", "replaceConductRows", "upsertRow", "updateRow", "deleteRowById", "deleteRow"].indexOf(action) >= 0) {
-    writeAuditLog(ctx.email, ctx.personId, auditActionForTab(tab), tab, action, body.auth);
+    writeAuditLog(ctx.email, ctx.personId, auditActionForTab(tab), tab, action, body.auth, ctx.role);
   }
   return res;
 }
@@ -924,6 +972,10 @@ function auditActionForTab(tab) {
 
 function handleLogout(body, ctx) {
   PropertiesService.getScriptProperties().deleteProperty("auth:" + body.auth);
+  // `role` intentionally omitted (see writeAuditLog's P2-3 comment): the token
+  // is already deleted above, and this call has always passed a null token
+  // (not body.auth) — reproducing that null-token lookup keeps this row's role
+  // column exactly what it's always been ("").
   writeAuditLog(ctx.email, ctx.personId, "logout", null, null, null);
   return { ok: true };
 }
@@ -941,7 +993,8 @@ function handleChangePassword(body, ctx) {
   }
   var newSalt = generateSalt();
   updateAccountPassword(ctx.email, hashPassword(body.newPassword, newSalt), newSalt);
-  writeAuditLog(ctx.email, ctx.personId, "change_password", ctx.email, null, body.auth);
+  // Own token untouched by a password change — ctx.role safe to pass through.
+  writeAuditLog(ctx.email, ctx.personId, "change_password", ctx.email, null, body.auth, ctx.role);
   return { ok: true };
 }
 
@@ -953,7 +1006,8 @@ function handleAdminResetPassword(body, ctx) {
   }
   var newSalt = generateSalt();
   updateAccountPassword(body.targetEmail, hashPassword(body.tempPassword, newSalt), newSalt);
-  writeAuditLog(ctx.email, ctx.personId, "admin_reset_password", body.targetEmail, null, body.auth);
+  // Resets a TARGET account's password, not the caller's session — ctx.role safe.
+  writeAuditLog(ctx.email, ctx.personId, "admin_reset_password", body.targetEmail, null, body.auth, ctx.role);
   return { ok: true };
 }
 
@@ -1010,7 +1064,8 @@ function handleAddAccount(body, ctx) {
     passwordHash: hashPassword(password, salt), salt: salt,
     addedBy: ctx.email, addedAt: new Date().toISOString()
   });
-  writeAuditLog(ctx.email, ctx.personId, "add_account", email, role, body.auth);
+  // Adding a new account never touches the caller's own token — ctx.role safe.
+  writeAuditLog(ctx.email, ctx.personId, "add_account", email, role, body.auth, ctx.role);
   return { ok: true, warning: warning };
 }
 
@@ -1021,7 +1076,9 @@ function handleRemoveAccount(body, ctx) {
   if (email.toLowerCase() === String(ctx.email).toLowerCase()) return { error: "You cannot remove your own account." };
   var removed = removeAccountRow(email);
   var revoked = revokeAllTokensForEmail(email);  // also kick any live sessions
-  writeAuditLog(ctx.email, ctx.personId, "remove_account", email, revoked + " token(s) revoked", body.auth);
+  // Guarded above ("You cannot remove your own account") so `email` !== ctx.email —
+  // revokeAllTokensForEmail can never delete the caller's own token; ctx.role safe.
+  writeAuditLog(ctx.email, ctx.personId, "remove_account", email, revoked + " token(s) revoked", body.auth, ctx.role);
   return { ok: true, removed: removed, revoked: revoked };
 }
 
@@ -1078,6 +1135,11 @@ function handleRevokeToken(body, ctx) {
   if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
   if (!body.targetToken) return { error: "targetToken required." };
   PropertiesService.getScriptProperties().deleteProperty("auth:" + body.targetToken);
+  // `role` intentionally omitted: if an admin revokes their OWN current session
+  // token (targetToken === body.auth), the token is already gone by the time we
+  // get here — this needs the fallback lookup (which will correctly resolve to
+  // "" in that edge case, exactly as today) rather than ctx.role, which was
+  // captured before the deletion and would silently disagree with it.
   writeAuditLog(ctx.email, ctx.personId, "revoke_token", body.targetEmail || "", "specific token", body.auth);
   return { ok: true };
 }
@@ -1086,6 +1148,11 @@ function handleRevokeAllForEmail(body, ctx) {
   if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
   if (!body.targetEmail) return { error: "targetEmail required." };
   var n = revokeAllTokensForEmail(body.targetEmail);
+  // `role` intentionally omitted: unlike remove_account, there's no guard here
+  // against body.targetEmail === ctx.email — an admin revoking their own
+  // account's tokens deletes their own live session first, so the fallback
+  // lookup (not ctx.role) is needed to reproduce today's exact ("" in that
+  // case) logged role.
   writeAuditLog(ctx.email, ctx.personId, "revoke_all_for_email", body.targetEmail, n + " token(s)", body.auth);
   return { ok: true, revoked: n };
 }
@@ -1095,6 +1162,10 @@ function handleRevokeAllTokens(body, ctx) {
   var props = PropertiesService.getScriptProperties();
   var n = 0;
   props.getKeys().forEach(function (k) { if (k.indexOf("auth:") === 0) { props.deleteProperty(k); n++; } });
+  // `role` intentionally omitted: this ALWAYS revokes the caller's own token too
+  // (see the "revoked" comment below) before we get here, so a fresh lookup of
+  // body.auth reliably (and correctly, matching today) resolves to "" — using
+  // the fallback keeps that guarantee without hardcoding the assumption here.
   writeAuditLog(ctx.email, ctx.personId, "revoke_all_tokens", null, n + " token(s)", body.auth);
   return { ok: true, revoked: n };  // note: this also revokes the caller's own token
 }
@@ -1115,15 +1186,32 @@ function revokeAllTokensForEmail(email) {
 
 // ── Audit log (A2) ───────────────────────────────────────
 
-function writeAuditLog(email, personId, action, target, detail, token) {
+// P2-3: `role` is resolved ONCE by the caller (routeAuthedPost/handleLogin
+// already hold `ctx` from the request's own getAuthContext(token) call) and
+// passed straight through here, instead of writeAuditLog re-resolving it via
+// a second ScriptProperties read on every single audited write.
+//
+// `role` is OPTIONAL (undefined when omitted) on purpose: a few call sites
+// (logout, revokeToken, revokeAllForEmail, revokeAllTokens) can invalidate
+// the very auth token being logged as a *side effect of the action itself*
+// (deleting the caller's own session before we get here) — for those the
+// caller's already-resolved ctx.role may no longer match what a fresh lookup
+// of `token` would return post-deletion. Rather than guess, those call sites
+// omit `role` and this function falls back to the original token lookup,
+// reproducing today's exact (possibly now-empty) logged role byte-for-byte.
+function writeAuditLog(email, personId, action, target, detail, token, role) {
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("AuditLog");
     if (!sheet) return;  // tab not created yet — never let logging break the action
-    var ctx = token ? getAuthContext(token) : null;
+    var resolvedRole = role;
+    if (resolvedRole === undefined) {
+      var ctx = token ? getAuthContext(token) : null;
+      resolvedRole = ctx ? ctx.role : "";
+    }
     sheet.appendRow([
       new Date().toISOString(),
       email || "", personId || "",
-      ctx ? ctx.role : "",
+      resolvedRole || "",
       action || "", target || "", detail || "",
       token ? String(token).slice(0, 8) : ""
     ]);
@@ -1374,6 +1462,55 @@ function readTab(tabName) {
   return rows;
 }
 
+// P2-4: like readTab, but for a tab that can grow without bound (AuditLog) —
+// reads only the header row plus the LAST `maxRows` data rows, via
+// getLastRow() + a tail getRange(), instead of readTab's getDataRange() over
+// the whole sheet. Row shaping (Date/display-value handling, the hasData
+// filter) is copy-identical to readTab so the response shape matches exactly;
+// only the ROW COUNT differs. Order is preserved top-to-bottom (oldest-of-
+// the-tail first), same as a full readTab — the frontend already reverses the
+// list for newest-first display, so this doesn't change that contract.
+function readTabTail(tabName, maxRows) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet) return { error: "Tab '" + tabName + "' not found", available: getTabNames() };
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];  // header-only or empty sheet — nothing to read
+  var lastCol = sheet.getLastColumn();
+
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+
+  var totalDataRows = lastRow - 1;
+  var startRow = totalDataRows > maxRows ? (lastRow - maxRows + 1) : 2;  // 1-based, first data row is row 2
+  var nRows = lastRow - startRow + 1;
+
+  var range = sheet.getRange(startRow, 1, nRows, lastCol);
+  var data = range.getValues();
+  var display = range.getDisplayValues();
+
+  var rows = [];
+  for (var i = 0; i < data.length; i++) {
+    var row = {};
+    var hasData = false;
+    for (var j = 0; j < headers.length; j++) {
+      if (headers[j]) {
+        var val = data[i][j];
+        if (val instanceof Date) {
+          val = val.getFullYear() < 1900
+            ? display[i][j]
+            : Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
+        }
+        row[headers[j]] = val;
+        if (val !== "" && val !== null && val !== undefined) hasData = true;
+      }
+    }
+    if (hasData) rows.push(row);
+  }
+
+  return rows;
+}
+
 function readAllTabs(ctx) {
   var tabMap = {
     "Roster": "roster",
@@ -1423,7 +1560,14 @@ function readAllTabs(ctx) {
   // never included here — it carries password hashes and is reached only via the
   // dedicated, hash-stripping listAccounts action.
   if (ctx && ctx.role === "admin") {
-    result.auditLog = ss.getSheetByName("AuditLog") ? readTab("AuditLog") : [];
+    // P2-4: AuditLog grows on every data write, forever — bound the readAll
+    // payload to the most recent AUDIT_READALL_MAX_ROWS rows (readTabTail)
+    // instead of shipping the entire sheet on every admin full pull. The Sheet
+    // itself remains the complete trail; this only bounds what rides in the
+    // response. ParadeArchive/SickArchive are NOT capped — they grow ~2/day
+    // (a handful of snapshots), so their full-sheet cost is not material the
+    // way AuditLog's per-write growth is; re-evaluate if that changes.
+    result.auditLog = ss.getSheetByName("AuditLog") ? readTabTail("AuditLog", AUDIT_READALL_MAX_ROWS) : [];
     // Archived parade-state / report-sick messages (Item 1) — admin-only, same as
     // the audit log. Empty arrays when the tabs don't exist yet.
     result.paradeArchive = ss.getSheetByName("ParadeArchive") ? readTab("ParadeArchive") : [];
@@ -1674,14 +1818,44 @@ function replaceConductRows(tabName, match, rows) {
       if (typeof v === "number") { var s = String(v); return s.length >= 4 ? s : ("000" + s).slice(-4); }
       return normCell(v, d);
     };
+    // Collect matching row indices first (still descending, i.e. bottom-up)
+    // instead of deleting immediately. Matching rows are usually contiguous
+    // (appended together by the previous save), so grouping them into runs and
+    // deleting each run with ONE deleteRows(start, count) collapses the common
+    // case to a single sheet mutation instead of one deleteRow call per row —
+    // each of which is a separate Sheets API call inside the document lock.
+    var matchIdx = [];
     for (var i = grid.length - 1; i >= 0; i--) {
       var rConduct = normCell(grid[i][idxConduct], disp[i][idxConduct]);
       var rDate = idxDate >= 0 ? normCell(grid[i][idxDate], disp[i][idxDate]) : "";
       var rTime = idxTime >= 0 ? normTime(grid[i][idxTime], disp[i][idxTime]) : "";
       var rType = idxType >= 0 ? normCell(grid[i][idxType], disp[i][idxType]) : "";
       if (rConduct === mConduct && rDate === mDate && rTime === mTime && rType !== "RSI") {
-        sheet.deleteRow(i + 2);
+        matchIdx.push(i);
       }
+    }
+    // matchIdx is already sorted descending (built while walking i from high to
+    // low). Group into contiguous runs (each element = previous - 1) and flush
+    // each run — highest run first — with one deleteRows call. Processing runs
+    // bottom-up (highest row numbers first) preserves the index-validity
+    // guarantee the original per-row bottom-up delete relied on: deleting a run
+    // never shifts the row numbers of any run still queued below it.
+    var runStart = null, runEnd = null; // run spans grid-index runEnd..runStart (runEnd <= runStart)
+    for (var j = 0; j < matchIdx.length; j++) {
+      var idx = matchIdx[j];
+      if (runStart === null) {
+        runStart = idx;
+        runEnd = idx;
+      } else if (idx === runEnd - 1) {
+        runEnd = idx; // extends the current run downward
+      } else {
+        sheet.deleteRows(runEnd + 2, runStart - runEnd + 1);
+        runStart = idx;
+        runEnd = idx;
+      }
+    }
+    if (runStart !== null) {
+      sheet.deleteRows(runEnd + 2, runStart - runEnd + 1);
     }
   }
 

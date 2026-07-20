@@ -543,7 +543,35 @@ function mergeAttendanceEdit(existing, entry) {
 // defense is XSS prevention (escapeHTML at render) and treating the browser
 // profile as sensitive, not encrypting data against an attacker who already
 // has same-origin JS execution or disk access.
-function saveLocal() {
+// SYNC_PERF_IMPROVEMENTS_SPEC.md P3-2: saveLocal() used to JSON.stringify the
+// ENTIRE dataset (16 STATE keys, MB-scale for a real company) SYNCHRONOUSLY on
+// every call — 29 form-edit call sites in forms.js, every successful write ack
+// (sync.js runWrite/resolveConflict), and every pull (api.js). Draining N
+// queued writes meant N full serializations back-to-back on the main thread —
+// measurable jank, especially on mobile.
+//
+// Fix: saveLocal() now just marks a pending flush and arms ONE trailing timer
+// (SAVE_LOCAL_DEBOUNCE_MS); a burst of calls inside that window collapses to
+// the single flush that actually fires. `saveLocalNow()` is the synchronous
+// escape hatch for call sites where a persisted-right-now guarantee matters
+// (see the pagehide/visibilitychange listeners below, and signOut/
+// forceResync in sync.js).
+//
+// Trade-off: the debounce window is a CACHE-loss window only on a hard crash.
+// Normal navigation/tab-close/backgrounding fires pagehide or
+// visibilitychange→hidden, both wired below to flush synchronously, so that's
+// covered. Even in the crash case, nothing DURABLE is at risk: `saveDirty()`
+// (the unsynced-edit marker, above) is deliberately kept fully synchronous —
+// it's the crash-safe record of which tabs still need pushing — and every
+// acked write already lives on the server. A crash inside the window loses at
+// most a few hundred ms of cache freshness, rebuilt on the next pull.
+const SAVE_LOCAL_DEBOUNCE_MS = 400;
+let _saveLocalTimer = null;
+let _saveLocalPending = false;
+
+function _saveLocalFlush() {
+  _saveLocalTimer = null;
+  _saveLocalPending = false;
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
@@ -553,6 +581,41 @@ function saveLocal() {
     rev: STATE.rev || {}
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+}
+
+// Debounced entry point — what nearly every call site should keep using.
+// Marks a pending flush and (re)arms a single trailing timer if one isn't
+// already scheduled; repeated calls inside the window are free (no re-arm,
+// no serialization) until the timer fires.
+function saveLocal() {
+  _saveLocalPending = true;
+  if (_saveLocalTimer != null) return;
+  _saveLocalTimer = setTimeout(_saveLocalFlush, SAVE_LOCAL_DEBOUNCE_MS);
+}
+
+// Escape hatch: flush synchronously right now, cancelling any pending timer.
+// Use where a synchronous persist genuinely matters (about to sign out /
+// discard local state / navigate away) rather than sprinkling this in place
+// of saveLocal() by default — that would defeat the coalescing above.
+function saveLocalNow() {
+  if (_saveLocalTimer != null) { clearTimeout(_saveLocalTimer); _saveLocalTimer = null; }
+  _saveLocalFlush();
+}
+
+// Last-chance flush on page hide. pagehide fires on normal navigation/close
+// (including bfcache eviction); visibilitychange→hidden also catches mobile
+// backgrounding, which may never fire pagehide before the OS reclaims the
+// tab. Registered once at load. typeof-guarded: the vm test harness stubs
+// window/document as plain objects whose addEventListener is a no-op (no
+// real event ever fires there — tests that need this exercise
+// saveLocalNow()/ctl.flushTimers() explicitly instead).
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("pagehide", saveLocalNow);
+}
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveLocalNow();
+  });
 }
 
 function loadLocal() {

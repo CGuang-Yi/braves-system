@@ -9,7 +9,13 @@
 function makeGoogle() {
   const props = new Map();        // ScriptProperties
   const sheets = new Map();       // name -> { name, grid: any[][] }
-  const spy = { getDisplayValues: 0, getValues: 0 };
+  // getProperty/getProperties counters (P2-2): let tests assert getAllRevs
+  // makes exactly ONE bulk getProperties() call and ZERO per-key getProperty()
+  // calls, instead of the old REV_TABS.length individual reads.
+  // deleteRow/deleteRows counters (P3-1): let tests assert replaceConductRows'
+  // batched-contiguous-run delete collapses N per-row deletes into one (or few)
+  // deleteRows() calls instead of N deleteRow() calls.
+  const spy = { getDisplayValues: 0, getValues: 0, getProperty: 0, getProperties: 0, deleteRow: 0, deleteRows: 0 };
 
   function makeRange(sheet, r, c, nr, nc) {
     return {
@@ -71,7 +77,11 @@ function makeGoogle() {
         return makeRange(sheet, 1, 1, Math.max(1, sheet.grid.length), Math.max(1, this.getLastColumn()));
       },
       appendRow(arr) { sheet.grid.push(arr.slice()); return this; },
-      deleteRow(i) { sheet.grid.splice(i - 1, 1); return this; },
+      deleteRow(i) { spy.deleteRow++; sheet.grid.splice(i - 1, 1); return this; },
+      // Delete `count` rows starting at 1-based `start` (sheet-row numbering,
+      // header = row 1, same convention as deleteRow/getRange). Mirrors the real
+      // Sheets API: one call removes a contiguous block in one mutation.
+      deleteRows(start, count) { spy.deleteRows++; sheet.grid.splice(start - 1, count); return this; },
       getMaxRows() { return Math.max(1000, sheet.grid.length); },
       clear() { sheet.grid = []; sheet.numberFormats = {}; return this; },
       setFrozenRows() { return this; }
@@ -86,10 +96,11 @@ function makeGoogle() {
   };
 
   const scriptProps = {
-    getProperty: k => (props.has(k) ? props.get(k) : null),
+    getProperty: k => { spy.getProperty++; return props.has(k) ? props.get(k) : null; },
     setProperty: (k, v) => { props.set(k, String(v)); return scriptProps; },
-    getProperties: () => { const o = {}; props.forEach((v, k) => (o[k] = v)); return o; },
-    deleteProperty: k => { props.delete(k); return scriptProps; }
+    getProperties: () => { spy.getProperties++; const o = {}; props.forEach((v, k) => (o[k] = v)); return o; },
+    deleteProperty: k => { props.delete(k); return scriptProps; },
+    getKeys: () => [...props.keys()]
   };
 
   // One shared no-op lock object. Braves' getDataLock() prefers getDocumentLock()
@@ -110,7 +121,15 @@ function makeGoogle() {
       formatDate: (d, tz, fmt) => (fmt === "HH:mm" ? "07:30" : "01 Jan 2026"),
       getUuid: () => "uuid-" + Math.random().toString(36).slice(2),
       newBlob: () => ({}),
-      base64Decode: () => []
+      base64Decode: () => [],
+      // hashPassword()/handleLogin (P2-3 tests need real login round trips) call
+      // Utilities.computeDigest(SHA_256, salt+password) and mask each byte with
+      // `& 0xFF` — a real (unsigned 0-255) Node sha256 digest satisfies that
+      // masking identically to Apps Script's signed-byte digest, so this doesn't
+      // need to match Apps Script's exact byte representation, only be internally
+      // consistent (same mock hashes on both create + verify).
+      computeDigest: (algorithm, input) => [...require("crypto").createHash("sha256").update(String(input)).digest()],
+      DigestAlgorithm: { SHA_256: "SHA_256" }
     },
     ContentService: {
       createTextOutput: s => ({ _s: s, setMimeType() { return this; }, getContent() { return this._s; } }),
