@@ -100,12 +100,18 @@ module.exports = async function run() {
     const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "", startDate: TODAY }]);
     const c = sb.bpClassifyPerson(person(sb), TODAY);
     eq(c.sections.mr.length, 1, "unresolved MR should be on the MR list");
+    eq(c.sections.reportingSick.length, 0, "an MR is not a report-sick — must stay out of REPORTING SICK");
   });
 
-  await test("MR reported today + Pending → still on the MR list", () => {
+  await test("MR reported today + Pending → MR only, NOT also REPORTING SICK", () => {
+    // Regression: an MR row carries status "Pending" while awaiting the MO. That
+    // Pending+active-today combination used to satisfy the reportingSick clause
+    // and double-list the person as MR *and* RSI. An MR going for review is only
+    // an MR — it must appear in the MR section alone.
     const sb = loadParade([{ id: 1, d4: "0001", type: "MR", date: TODAY, status: "Pending", startDate: TODAY }]);
     const c = sb.bpClassifyPerson(person(sb), TODAY);
     eq(c.sections.mr.length, 1, "Pending MR should still be on the MR list");
+    eq(c.sections.reportingSick.length, 0, "Pending MR must NOT double-list under REPORTING SICK (RSI)");
   });
 
   await test("MR given MC today → OFF the MR list, now under ATT C", () => {

@@ -3265,8 +3265,15 @@ function bpClassifyPerson(r, dateIso) {
       const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
       out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
     }
-    const isRS = (((m.type === "RSI" || m.type === "RSO") && reportedToday) && moPending)
-      || (m.status === "Pending" && medStatusActive(m, dateIso));
+    // An MR (Medical Review) visit is NOT a report-sick and must never surface
+    // here: while awaiting the MO its status is "Pending" and its start date is
+    // today, which would otherwise satisfy the Pending-clause below and
+    // double-list the person as MR *and* RSI. An MR going for review is only an
+    // MR (its own section above). A resolved MR (status MC/LD/…) still flows to
+    // ATT C / STATUS through their own clauses — those don't exclude type MR.
+    const isRS = m.type !== "MR" && (
+      (((m.type === "RSI" || m.type === "RSO") && reportedToday) && moPending)
+      || (m.status === "Pending" && medStatusActive(m, dateIso)));
     if (isRS) {
       const label = m.type === "RSO" ? "RSO" : "RSI"; // Pending→RSI (DECISIONS #31)
       out.reportingSick.push(`${rn} - ${m.reason || ""} (${label})`.trim());
