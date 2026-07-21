@@ -2729,8 +2729,8 @@ function renderHA(el) {
               <td style="text-align:left">${escapeHTML(displayPersonLabel(r.id))}</td>
               <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
               <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
-              <td style="text-align:left">${cell(ha.single?.periods || 0, 10, "#2DD4BF")}</td>
-              <td style="text-align:left">${cell(ha.expanded?.periods || 0, 14, "#D29922")}</td>
+              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.single?.currentWindowPeriods || 0) : (ha.single?.periods || 0), 10, "#2DD4BF")}</td>
+              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.expanded?.currentWindowPeriods || 0) : (ha.expanded?.periods || 0), 14, "#D29922")}</td>
               <td style="text-align:left">${dbl}</td>
               <td>${last}</td>
               <td style="font-size:11px">${curr}</td>
