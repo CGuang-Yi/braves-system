@@ -107,8 +107,10 @@ module.exports = async function run() {
   await test("renderParadePlatoon gates the <select> behind the editable-code set", () => {
     ok(/const PARADE_EDITABLE_CODES\s*=\s*\["MC",\s*"AL\/OIL",\s*"OTHERS"\]/.test(paradeTab),
       "no PARADE_EDITABLE_CODES gate defined");
-    ok(/PARADE_EDITABLE_CODES\.includes\(x\.code\)/.test(paradeTab),
-      "renderParadePlatoon does not gate the code cell on PARADE_EDITABLE_CODES");
+    ok(/PARADE_EDITABLE_CODES\.includes\(code\)/.test(paradeTab),
+      "paradeClassifyPlatoon no longer marks codes editable via PARADE_EDITABLE_CODES");
+    ok(/x\.codes\.map\(cc =>[\s\S]{0,200}cc\.editable/.test(paradeTab),
+      "renderParadePlatoon no longer renders one control per concurrent status via cc.editable");
     // The editable branch offers exactly the current code + Present, not the full list.
     ok(/<option value="Present">Present<\/option>/.test(paradeTab),
       "the editable select no longer offers a Present option");

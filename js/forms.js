@@ -4209,6 +4209,9 @@ function openLogConductWizard(attendanceId) {
     importedBaseline: [],
     haCounts: false,
     haPeriods: 1,
+    // Display-only "without commanders" view toggle. Ephemeral — reset every
+    // open, never persisted to the sheet.
+    showExclCommanders: false,
     // Non-RSI conductDetail row ids loaded into the wizard on edit — used only
     // for the "was N rows" figure in the save confirmation now. The sheet sync
     // no longer diffs against this: saveLogConductWizard replaces this conduct's
@@ -4464,6 +4467,17 @@ function renderLogConductWizard() {
             <input type="checkbox" id="wiz-status-all" onchange="wizToggleAllStatusNP(this.checked)" style="width:15px;height:15px;cursor:pointer"> Select all — not participating
           </label>` : ""}
         </div>
+        ${(() => {
+          // One bulk tick/untick button per recovery tag actually present on the
+          // checklist (see recoveryTagRows). Absent tags draw no button.
+          const map = recoveryTagRows(w.status);
+          const tags = Object.keys(map);
+          if (!tags.length) return "";
+          return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <span style="font-size:10px;color:var(--dim);align-self:center">Recovery — tick/untick:</span>
+            ${tags.map(tag => `<button type="button" class="btn" style="font-size:11px;padding:4px 10px;white-space:nowrap" onclick="wizToggleRecoveryTag('${tag}')">${escapeHTML(tag)} (${map[tag].length})</button>`).join("")}
+          </div>`;
+        })()}
         <div style="display:flex;flex-direction:column;gap:6px">${statusRows}</div>
       </div>
 
@@ -4473,6 +4487,10 @@ function renderLogConductWizard() {
       <div id="wiz-overlap-warning"></div>
 
       <div class="card" style="padding:12px 14px;background:var(--surface2);border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;margin:0 0 8px">
+          <input type="checkbox" id="wiz-excl-commanders" ${w.showExclCommanders ? "checked" : ""} onchange="wizToggleExclCommanders(this.checked)" style="width:15px;height:15px;cursor:pointer">
+          Show counts without commanders <span style="color:var(--dim)">(view only — doesn't change what's saved)</span>
+        </label>
         <div class="lc-wiz-stats-top" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end">
           <div class="form-group" style="grid-column:span 2;margin:0">
             <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total Str</label>
@@ -4486,6 +4504,17 @@ function renderLogConductWizard() {
           <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--green);border-radius:6px;padding:10px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Participating <span style="color:var(--dim);text-transform:none">(auto)</span></label><div id="wiz-stat-participating" class="val" style="font-size:26px;font-weight:700;color:var(--green);margin-top:2px">${totals.participating}</div></div>
           <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">LMS <span style="color:var(--dim);text-transform:none">(after save)</span></label><div class="val" style="font-size:26px;font-weight:700;color:var(--muted);margin-top:2px">—</div></div>
         </div>
+        ${w.showExclCommanders ? `
+        <div id="wiz-nc-readout" style="margin-top:8px;padding:8px 10px;background:var(--surface);border:1px dashed var(--border);border-radius:6px">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Without commanders <span style="color:var(--dim);text-transform:none">(${totals.commanders} excluded)</span></div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center">
+            <div><div style="font-size:9px;color:var(--muted)">Total</div><div id="wiz-nc-total" style="font-size:16px;font-weight:700;color:var(--text)">${totals.totalNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Status</div><div id="wiz-nc-status" style="font-size:16px;font-weight:700;color:var(--accent)">${totals.statusCountNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Rpt Sick</div><div id="wiz-nc-reportSick" style="font-size:16px;font-weight:700;color:var(--orange)">${totals.reportSickCountNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Fallout</div><div id="wiz-nc-fallout" style="font-size:16px;font-weight:700;color:var(--purple)">${totals.falloutCountNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Participating</div><div id="wiz-nc-participating" style="font-size:16px;font-weight:700;color:var(--green)">${totals.participatingNc}</div></div>
+          </div>
+        </div>` : ""}
         <div class="form-group" style="margin-top:12px">
           <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Remarks <span style="color:var(--dim);text-transform:none">(optional)</span></label>
           <textarea id="wiz-remarks" rows="2" maxlength="500" placeholder="Any data inconsistencies, recruit flags…" oninput="_logConduct.remarks = this.value" style="padding:8px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%;box-sizing:border-box">${escapeAttr(w.remarks)}</textarea>
@@ -4562,6 +4591,27 @@ function wizToggleStatusNP(d4, checked) {
 function wizToggleAllStatusNP(checked) {
   if (!_logConduct) return;
   _logConduct.status.forEach(s => { s.notParticipating = !!checked; });
+  renderLogConductWizard();
+}
+// Bulk tick/untick every PURE-recovery status row carrying `tag` (one of
+// RECOVERY_TAGS). Two-state toggle over its own remit: if every targeted row is
+// already ticked, untick them all; otherwise tick them all. A full re-render
+// repaints the row checkboxes and re-syncs the select-all header, mirroring
+// wizToggleAllStatusNP — buttons hold no text-input focus, so re-render is safe.
+function wizToggleRecoveryTag(tag) {
+  if (!_logConduct) return;
+  const targetSet = new Set(recoveryTagRows(_logConduct.status)[tag] || []);
+  if (!targetSet.size) return;
+  const rows = _logConduct.status.filter(s => targetSet.has(s.d4));
+  const allTicked = rows.every(s => s.notParticipating);
+  rows.forEach(s => { s.notParticipating = !allTicked; });
+  renderLogConductWizard();
+}
+// Flip the display-only "without commanders" view. A full re-render is used so
+// the secondary readout appears/disappears; it changes nothing that is saved.
+function wizToggleExclCommanders(checked) {
+  if (!_logConduct) return;
+  _logConduct.showExclCommanders = !!checked;
   renderLogConductWizard();
 }
 function wizUpdateStatusReason(d4, v) {
@@ -4789,6 +4839,36 @@ function personSearchPick(boxId, onPickFn, valueId, d4) {
 
 // === Totals / overlap helpers ===========================================
 
+// The recovery "ghost" tags (post-MC/LD +1/+2 days). rebuildLogConductStatus
+// seeds these rows ticked (statusParticipates strips the suffix → MC/LD → false),
+// but a recovery-tag person is usually back to training — so the wizard offers a
+// per-tag bulk toggle. Fixed order so the button row reads MC+1, MC+2, LD+1, LD+2.
+const RECOVERY_TAGS = ["MC+1", "MC+2", "LD+1", "LD+2"];
+
+// A status row is "pure recovery" when EVERY active status on it is a +1/+2 ghost
+// tag. A row that also carries a live restrictive status (e.g. "MC+1 + Excuse
+// Heavy Load") is NOT pure — the bulk buttons must never flip someone who is
+// still genuinely restricted.
+function statusRowIsPureRecovery(statusTag) {
+  const toks = String(statusTag || "").split(" + ").map(t => t.trim()).filter(Boolean);
+  return toks.length > 0 && toks.every(t => RECOVERY_TAGS.includes(t));
+}
+
+// Map each present recovery tag → the d4s of pure-recovery rows carrying it, in
+// RECOVERY_TAGS order. Tags with no matching row are omitted so the render only
+// draws buttons that actually apply to the current checklist.
+function recoveryTagRows(statusList) {
+  const out = {};
+  RECOVERY_TAGS.forEach(tag => {
+    const d4s = (statusList || [])
+      .filter(s => statusRowIsPureRecovery(s.statusTag)
+        && String(s.statusTag).split(" + ").map(t => t.trim()).includes(tag))
+      .map(s => s.d4);
+    if (d4s.length) out[tag] = d4s;
+  });
+  return out;
+}
+
 function computeLogConductTotals() {
   const w = _logConduct;
   const statusCount = w.status.filter(s => s.notParticipating).length;
@@ -4806,7 +4886,26 @@ function computeLogConductTotals() {
     : STATE.roster.filter(r => r.role !== "Commander").length;
   const total = w.totalOverride != null ? w.totalOverride : defaultTotal;
   const participating = Math.max(0, total - statusCount - rsiCount - falloutCount - reportSickCount);
-  return { total, statusCount, rsiCount, falloutCount, reportSickCount, participating };
+  // Commander-excluded ("without commanders") figures for the display-only view
+  // toggle (wiz-excl-commanders). These NEVER affect the saved attendance row —
+  // they are a read-only lens. Commanders are the 00xx accounts (isCommander).
+  // We subtract the commander headcount among participants from the (possibly
+  // overridden) total, and drop commander d4s from each away-list. If the user
+  // manually overrode Total Str, totalNc still subtracts the participant-commander
+  // count from that override — an acknowledged edge case (the override is a free
+  // number that may not correspond to the participant set).
+  const isCmdr = d4 => isCommander(d4);
+  const commanders = (w.participants || []).filter(isCmdr).length;
+  const statusCountNc = w.status.filter(s => s.notParticipating && !isCmdr(s.d4)).length;
+  const rsiCountNc = w.rsi.filter(r => !isCmdr(r.d4)).length;
+  const falloutCountNc = w.fallout.filter(r => !isCmdr(r.d4)).length;
+  const reportSickCountNc = w.reportSick.filter(r => !isCmdr(r.d4)).length;
+  const totalNc = Math.max(0, total - commanders);
+  const participatingNc = Math.max(0, totalNc - statusCountNc - rsiCountNc - falloutCountNc - reportSickCountNc);
+  return {
+    total, statusCount, rsiCount, falloutCount, reportSickCount, participating,
+    commanders, totalNc, statusCountNc, rsiCountNc, falloutCountNc, reportSickCountNc, participatingNc
+  };
 }
 
 // Updates just the totals strip without re-rendering the entire modal —
@@ -4818,6 +4917,11 @@ function recomputeLogConductFooter() {
   set("wiz-stat-fallout", t.falloutCount);
   set("wiz-stat-reportSick", t.reportSickCount);
   set("wiz-stat-participating", t.participating);
+  set("wiz-nc-total", t.totalNc);
+  set("wiz-nc-status", t.statusCountNc);
+  set("wiz-nc-reportSick", t.reportSickCountNc);
+  set("wiz-nc-fallout", t.falloutCountNc);
+  set("wiz-nc-participating", t.participatingNc);
   const totalInput = document.getElementById("wiz-total");
   if (totalInput && _logConduct.totalOverride == null) totalInput.value = t.total;
 }

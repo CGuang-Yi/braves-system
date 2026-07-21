@@ -47,6 +47,12 @@ const PARADE_SECTION_TO_CODE = {
   reportingSick: "RS", attC: "MC", alOil: "AL/OIL", status: "STATUS", others: "OTHERS"
 };
 
+// Display order for the multi-status grid cell: the §8 primary priority chain
+// (REPORTING SICK > ATT C > AL/OIL > STATUS > OTHERS), with MR last — matching
+// the old single-primary-then-"· MR" note ordering. BP_SECTIONS exists too but
+// its order (alOil, mr, …) is tuned for message assembly, not grid priority.
+const PARADE_CODE_ORDER = ["reportingSick", "attC", "alOil", "status", "others", "mr"];
+
 function paradeCurrentDateISO() { return _paradeDate || todayISO(); }
 
 // ── Control-bar setters (each re-renders only the body, keeping the toolbar) ──
@@ -199,27 +205,32 @@ async function copyParadeBlock(code, btnId) {
 }
 
 // ── PLATOON VIEW — bento header + editable grid ──────────────────────────────
-// Classify every person in the platoon into a single grid code. The §8 classifier
-// (bpPrimaryForDay → bpClassifyPerson) already handles the ENDED-MC persistence
-// (roster-status mirror) and everything else, so this is a thin mapping:
-//   primary section → code; else an active MR → "MR"; else "Present".
-// If someone has BOTH a primary (e.g. LD) and an MR, the primary is the code and
-// the MR is shown as a note (matching the message, which lists them in both
-// sections). Returns [{ r, code, remark, notInCamp }].
+// Classify every person in the platoon into EVERY grid code they currently hold
+// (not just the §8 single primary) — see paradeClassifyPlatoon below for why.
+// Returns [{ r, codes, remark, notInCamp }] where codes is an ordered
+// [{ code, editable, reason }], always at least one entry.
 function paradeClassifyPlatoon(people, dateIso) {
   return people.map(r => {
-    const p = bpPrimaryForDay(r, dateIso);
-    let code, remark, notInCamp = p.notInCamp;
-    if (p.primary) {
-      code = PARADE_SECTION_TO_CODE[p.primary.key] || "OTHERS";
-      remark = p.primary.reason || "";
-      if (p.mr) remark = `${remark} · MR: ${p.mr}`;
-    } else if (p.mr) {
-      code = "MR"; remark = p.mr;
-    } else {
-      code = "Present"; remark = "";
-    }
-    return { r, code, remark, notInCamp };
+    const c = bpClassifyPerson(r, dateIso);
+    // List EVERY section the person is classified into — not just the single
+    // §8 primary. Collapsing to one code dropped a lower-priority TOGGLEABLE
+    // status (MC/AL·OIL/OTHERS) whenever a higher-priority NON-editable one
+    // (RS/STATUS) outranked it, making it unbookable from the grid. The bento
+    // section counts already tally people across multiple sections, so listing
+    // them all also makes the grid match the header. Book-in stays whole-person
+    // (onParadeCodeChange → paradeClearPerson resolves ALL of the person's
+    // records at once), so each editable code simply offers → Present.
+    const codes = [];
+    PARADE_CODE_ORDER.forEach(k => {
+      if (!c.sections[k] || !c.sections[k].length) return;
+      const code = k === "mr" ? "MR" : (PARADE_SECTION_TO_CODE[k] || "OTHERS");
+      const reason = (c.meta[k] && c.meta[k][0] && c.meta[k][0].reason) || "";
+      codes.push({ code, editable: PARADE_EDITABLE_CODES.includes(code), reason });
+    });
+    // Section-less ⇒ a single, non-editable Present cell (old fallback).
+    if (!codes.length) codes.push({ code: "Present", editable: false, reason: "" });
+    const remark = codes.map(cc => cc.reason).filter(Boolean).join(" · ");
+    return { r, codes, remark, notInCamp: c.notInCamp };
   });
 }
 
@@ -273,14 +284,16 @@ function renderParadePlatoon(host, code) {
 
   const body = rows.map(x => {
     const remarkColor = x.remark ? "var(--yellow)" : "var(--muted)";
-    // Editable rows get a 2-option select (current away-code + Present); choosing
-    // Present routes through onParadeCodeChange → openParadeClearConfirm (book-in).
-    // Locked rows render static text styled to match the disabled control so the
-    // column still reads uniformly.
-    const codeCell = PARADE_EDITABLE_CODES.includes(x.code)
-      ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-            style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"><option value="${escapeHTML(x.code)}" selected>${escapeHTML(x.code)}</option><option value="Present">Present</option></select>`
-      : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(x.code)}</span>`;
+    // One control per concurrent status. Editable codes (MC/AL·OIL/OTHERS) get
+    // the 2-option → Present select; non-editable codes render as static chips.
+    // Stacked vertically so a person on e.g. STATUS + OTHERS shows both.
+    const codeCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">${
+      x.codes.map(cc => cc.editable
+        ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
+            style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select>`
+        : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(cc.code)}</span>`
+      ).join("")
+    }</div>`;
     return `<tr>
       <td class="mono">${escapeHTML(x.r.id)}</td>
       <td>${escapeHTML(displayPersonLabel(x.r.id))}</td>

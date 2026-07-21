@@ -223,6 +223,44 @@ module.exports = async function run() {
       "a real (if empty) group selection means 0 is the true count, not a legacy roster fallback");
   });
 
+  suite("Log Conduct wizard: computeLogConductTotals commander-excluded view");
+
+  await test("commanders among participants are counted and subtracted from totalNc", () => {
+    const t = totalsFor({ participants: ["0001", "1001", "1002"] });
+    eq(t.commanders, 1, "0001 is the only commander in the fixture roster");
+    eq(t.totalNc, 2, "3 participants − 1 commander");
+  });
+
+  await test("nc counts drop commander d4s from status/fallout/reportSick", () => {
+    const t = totalsFor({
+      participants: ["0001", "1001", "1002"],
+      status: [{ d4: "0001", notParticipating: true }, { d4: "1001", notParticipating: true }],
+      fallout: [{ d4: "1002", reason: "" }]
+    });
+    // Commander-inclusive (unchanged): total 3, status 2, fallout 1 ⇒ participating 0.
+    eq(t.participating, 0);
+    // Commander-excluded: total 2, status 1 (1001), fallout 1 (1002) ⇒ participating 0.
+    eq(t.statusCountNc, 1, "commander 0001's status not counted");
+    eq(t.falloutCountNc, 1, "recruit 1002 fallout still counted");
+    eq(t.participatingNc, 0, "2 − 1 − 1 = 0");
+  });
+
+  await test("totalOverride still drives totalNc (override − commander headcount)", () => {
+    const t = totalsFor({ participants: ["0001", "1001"], totalOverride: 10 });
+    eq(t.total, 10, "override wins for the inclusive total");
+    eq(t.totalNc, 9, "override 10 − 1 commander participant");
+  });
+
+  await test("no commanders ⇒ nc fields equal the inclusive fields", () => {
+    const t = totalsFor({
+      participants: ["1001", "1002"],
+      status: [{ d4: "1001", notParticipating: true }]
+    });
+    eq(t.commanders, 0);
+    eq(t.totalNc, t.total);
+    eq(t.participatingNc, t.participating);
+  });
+
   suite("Log Conduct wizard: rebuildLogConductStatus filtered to participants");
 
   // currentMedicalEffectiveAll surfaces two on-status people: recruit 2415 (LD)
@@ -408,6 +446,7 @@ module.exports = async function run() {
     eq(w.importedBaseline, []);
     eq(w.haCounts, false);
     eq(w.haPeriods, 1);
+    eq(w.showExclCommanders, false, "excl-commanders view starts off");
   });
 
   suite("Log Conduct wizard: wizAddGroup / wizRemoveGroup / wizToggleHA / wizSetHAPeriods");
@@ -563,6 +602,11 @@ module.exports = async function run() {
     target.dateJoinKey = () => "";
     target.padD4 = d4 => d4;
     target.navigator = { clipboard: null };
+    // computeLogConductTotals (called from saveLogConductWizard) now derives
+    // the commander-excluded (*_nc) view fields, which need isCommander even
+    // though this suite never exercises that view — stub it false, matching
+    // the other context loaders in this file.
+    target.isCommander = () => false;
     // Real collaborators — loaded from source so behavior can't drift from
     // the shipped merge/HA-tag logic.
     vm.runInContext(
@@ -740,6 +784,9 @@ module.exports = async function run() {
     // null so recomputeLogConductFooter's `if (el)`-guarded writes are safe no-ops.
     const box = { checked: false, indeterminate: false };
     target.document = { getElementById: id => (id === "wiz-status-all" ? box : null) };
+    // computeLogConductTotals now derives the commander-excluded (*_nc) view
+    // fields via isCommander — stub it false, this suite doesn't exercise that view.
+    target.isCommander = () => false;
     // Seed a 3-person status list (all not-participating). participants non-empty so
     // computeLogConductTotals never falls back to STATE.roster.
     vm.runInContext(
@@ -778,5 +825,95 @@ module.exports = async function run() {
     vm.runInContext("wizToggleStatusNP('1', true); wizToggleStatusNP('2', true); wizToggleStatusNP('3', true);", ctx);
     eq(box.checked, true, "all rows re-ticked ⇒ header checked");
     eq(box.indeterminate, false, "all rows re-ticked ⇒ not indeterminate");
+  });
+
+  // ── Feature 1: recovery-tag bulk buttons (recoveryTagRows) ─────────────────
+  // recoveryTagRows is a pure top-level function in forms.js; call it in-context.
+  // A row qualifies for a tag button only when it is PURE recovery (every active
+  // status token is a +1/+2 ghost tag) AND its token list includes that tag.
+  suite("Log Conduct wizard: recoveryTagRows (pure-recovery classification)");
+
+  function recoveryTagRowsFor(statusList) {
+    const { ctx } = loadGroupCtx(); // any ctx with forms.js loaded; roster is irrelevant here
+    ctx._sl = statusList;
+    vm.runInContext("_rtr = recoveryTagRows(_sl);", ctx);
+    return JSON.parse(vm.runInContext("JSON.stringify(_rtr)", ctx));
+  }
+
+  await test("a pure MC+1 row maps under MC+1 only", () => {
+    eq(recoveryTagRowsFor([{ d4: "1001", statusTag: "MC+1", notParticipating: true }]),
+      { "MC+1": ["1001"] });
+  });
+
+  await test("a pure MC+1 + LD+1 row maps under BOTH MC+1 and LD+1", () => {
+    eq(recoveryTagRowsFor([{ d4: "1001", statusTag: "MC+1 + LD+1", notParticipating: true }]),
+      { "MC+1": ["1001"], "LD+1": ["1001"] });
+  });
+
+  await test("a mixed row (recovery + live restrictive status) is excluded entirely", () => {
+    eq(recoveryTagRowsFor([{ d4: "1001", statusTag: "MC+1 + Excuse Heavy Load", notParticipating: true }]),
+      {}, "a live Excuse means the row is not pure-recovery ⇒ no button touches it");
+  });
+
+  await test("an active (non-ghost) LD row is excluded", () => {
+    eq(recoveryTagRowsFor([{ d4: "1001", statusTag: "LD", notParticipating: true }]), {});
+  });
+
+  await test("keys preserve MC+1, MC+2, LD+1, LD+2 order and omit absent tags", () => {
+    const map = recoveryTagRowsFor([
+      { d4: "1003", statusTag: "LD+1", notParticipating: false },
+      { d4: "1001", statusTag: "MC+1", notParticipating: true },
+      { d4: "1002", statusTag: "MC+1", notParticipating: false }
+    ]);
+    eq(Object.keys(map), ["MC+1", "LD+1"], "fixed tag order, LD+2/MC+2 omitted");
+    eq(map["MC+1"], ["1001", "1002"], "both MC+1 rows collected in list order");
+  });
+
+  // ── Feature 1: wizToggleRecoveryTag (ticks/unticks all within a tag's remit) ─
+  suite("Log Conduct wizard: wizToggleRecoveryTag");
+
+  function loadRecoveryToggleCtx(statusList) {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    target.renderLogConductWizard = () => {}; // no-op — state mutation is what's under test
+    ctx._sl = statusList;
+    vm.runInContext("_logConduct = { status: _sl };", ctx);
+    return ctx;
+  }
+  function statusAfterToggle(statusList, tag) {
+    const ctx = loadRecoveryToggleCtx(statusList);
+    vm.runInContext(`wizToggleRecoveryTag(${JSON.stringify(tag)});`, ctx);
+    return JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+  }
+
+  await test("all-ticked MC+1 rows get unticked; non-matching rows untouched", () => {
+    const out = statusAfterToggle([
+      { d4: "1001", statusTag: "MC+1", notParticipating: true },
+      { d4: "1002", statusTag: "MC+1", notParticipating: true },
+      { d4: "1003", statusTag: "LD", notParticipating: true }
+    ], "MC+1");
+    eq(out.find(s => s.d4 === "1001").notParticipating, false);
+    eq(out.find(s => s.d4 === "1002").notParticipating, false);
+    eq(out.find(s => s.d4 === "1003").notParticipating, true, "the live-LD row is not in MC+1's remit");
+  });
+
+  await test("a partially-ticked MC+1 set ticks all of them", () => {
+    const out = statusAfterToggle([
+      { d4: "1001", statusTag: "MC+1", notParticipating: true },
+      { d4: "1002", statusTag: "MC+1", notParticipating: false }
+    ], "MC+1");
+    eq(out.every(s => s.notParticipating), true, "not-all-ticked ⇒ tick all");
+  });
+
+  await test("wizToggleRecoveryTag never flips a mixed (impure) row", () => {
+    const out = statusAfterToggle([
+      { d4: "1001", statusTag: "MC+1 + Excuse Heavy Load", notParticipating: true }
+    ], "MC+1");
+    eq(out[0].notParticipating, true, "impure row excluded ⇒ unchanged");
   });
 };
