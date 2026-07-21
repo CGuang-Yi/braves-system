@@ -223,6 +223,44 @@ module.exports = async function run() {
       "a real (if empty) group selection means 0 is the true count, not a legacy roster fallback");
   });
 
+  suite("Log Conduct wizard: computeLogConductTotals commander-excluded view");
+
+  await test("commanders among participants are counted and subtracted from totalNc", () => {
+    const t = totalsFor({ participants: ["0001", "1001", "1002"] });
+    eq(t.commanders, 1, "0001 is the only commander in the fixture roster");
+    eq(t.totalNc, 2, "3 participants − 1 commander");
+  });
+
+  await test("nc counts drop commander d4s from status/fallout/reportSick", () => {
+    const t = totalsFor({
+      participants: ["0001", "1001", "1002"],
+      status: [{ d4: "0001", notParticipating: true }, { d4: "1001", notParticipating: true }],
+      fallout: [{ d4: "1002", reason: "" }]
+    });
+    // Commander-inclusive (unchanged): total 3, status 2, fallout 1 ⇒ participating 0.
+    eq(t.participating, 0);
+    // Commander-excluded: total 2, status 1 (1001), fallout 1 (1002) ⇒ participating 0.
+    eq(t.statusCountNc, 1, "commander 0001's status not counted");
+    eq(t.falloutCountNc, 1, "recruit 1002 fallout still counted");
+    eq(t.participatingNc, 0, "2 − 1 − 1 = 0");
+  });
+
+  await test("totalOverride still drives totalNc (override − commander headcount)", () => {
+    const t = totalsFor({ participants: ["0001", "1001"], totalOverride: 10 });
+    eq(t.total, 10, "override wins for the inclusive total");
+    eq(t.totalNc, 9, "override 10 − 1 commander participant");
+  });
+
+  await test("no commanders ⇒ nc fields equal the inclusive fields", () => {
+    const t = totalsFor({
+      participants: ["1001", "1002"],
+      status: [{ d4: "1001", notParticipating: true }]
+    });
+    eq(t.commanders, 0);
+    eq(t.totalNc, t.total);
+    eq(t.participatingNc, t.participating);
+  });
+
   suite("Log Conduct wizard: rebuildLogConductStatus filtered to participants");
 
   // currentMedicalEffectiveAll surfaces two on-status people: recruit 2415 (LD)
@@ -408,6 +446,7 @@ module.exports = async function run() {
     eq(w.importedBaseline, []);
     eq(w.haCounts, false);
     eq(w.haPeriods, 1);
+    eq(w.showExclCommanders, false, "excl-commanders view starts off");
   });
 
   suite("Log Conduct wizard: wizAddGroup / wizRemoveGroup / wizToggleHA / wizSetHAPeriods");
@@ -563,6 +602,11 @@ module.exports = async function run() {
     target.dateJoinKey = () => "";
     target.padD4 = d4 => d4;
     target.navigator = { clipboard: null };
+    // computeLogConductTotals (called from saveLogConductWizard) now derives
+    // the commander-excluded (*_nc) view fields, which need isCommander even
+    // though this suite never exercises that view — stub it false, matching
+    // the other context loaders in this file.
+    target.isCommander = () => false;
     // Real collaborators — loaded from source so behavior can't drift from
     // the shipped merge/HA-tag logic.
     vm.runInContext(
@@ -740,6 +784,9 @@ module.exports = async function run() {
     // null so recomputeLogConductFooter's `if (el)`-guarded writes are safe no-ops.
     const box = { checked: false, indeterminate: false };
     target.document = { getElementById: id => (id === "wiz-status-all" ? box : null) };
+    // computeLogConductTotals now derives the commander-excluded (*_nc) view
+    // fields via isCommander — stub it false, this suite doesn't exercise that view.
+    target.isCommander = () => false;
     // Seed a 3-person status list (all not-participating). participants non-empty so
     // computeLogConductTotals never falls back to STATE.roster.
     vm.runInContext(

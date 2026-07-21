@@ -4209,6 +4209,9 @@ function openLogConductWizard(attendanceId) {
     importedBaseline: [],
     haCounts: false,
     haPeriods: 1,
+    // Display-only "without commanders" view toggle. Ephemeral — reset every
+    // open, never persisted to the sheet.
+    showExclCommanders: false,
     // Non-RSI conductDetail row ids loaded into the wizard on edit — used only
     // for the "was N rows" figure in the save confirmation now. The sheet sync
     // no longer diffs against this: saveLogConductWizard replaces this conduct's
@@ -4484,6 +4487,10 @@ function renderLogConductWizard() {
       <div id="wiz-overlap-warning"></div>
 
       <div class="card" style="padding:12px 14px;background:var(--surface2);border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;margin:0 0 8px">
+          <input type="checkbox" id="wiz-excl-commanders" ${w.showExclCommanders ? "checked" : ""} onchange="wizToggleExclCommanders(this.checked)" style="width:15px;height:15px;cursor:pointer">
+          Show counts without commanders <span style="color:var(--dim)">(view only — doesn't change what's saved)</span>
+        </label>
         <div class="lc-wiz-stats-top" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;align-items:end">
           <div class="form-group" style="grid-column:span 2;margin:0">
             <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Total Str</label>
@@ -4497,6 +4504,17 @@ function renderLogConductWizard() {
           <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--green);border-radius:6px;padding:10px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Participating <span style="color:var(--dim);text-transform:none">(auto)</span></label><div id="wiz-stat-participating" class="val" style="font-size:26px;font-weight:700;color:var(--green);margin-top:2px">${totals.participating}</div></div>
           <div class="stat" style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px"><label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">LMS <span style="color:var(--dim);text-transform:none">(after save)</span></label><div class="val" style="font-size:26px;font-weight:700;color:var(--muted);margin-top:2px">—</div></div>
         </div>
+        ${w.showExclCommanders ? `
+        <div id="wiz-nc-readout" style="margin-top:8px;padding:8px 10px;background:var(--surface);border:1px dashed var(--border);border-radius:6px">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Without commanders <span style="color:var(--dim);text-transform:none">(${totals.commanders} excluded)</span></div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center">
+            <div><div style="font-size:9px;color:var(--muted)">Total</div><div id="wiz-nc-total" style="font-size:16px;font-weight:700;color:var(--text)">${totals.totalNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Status</div><div id="wiz-nc-status" style="font-size:16px;font-weight:700;color:var(--accent)">${totals.statusCountNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Rpt Sick</div><div id="wiz-nc-reportSick" style="font-size:16px;font-weight:700;color:var(--orange)">${totals.reportSickCountNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Fallout</div><div id="wiz-nc-fallout" style="font-size:16px;font-weight:700;color:var(--purple)">${totals.falloutCountNc}</div></div>
+            <div><div style="font-size:9px;color:var(--muted)">Participating</div><div id="wiz-nc-participating" style="font-size:16px;font-weight:700;color:var(--green)">${totals.participatingNc}</div></div>
+          </div>
+        </div>` : ""}
         <div class="form-group" style="margin-top:12px">
           <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Remarks <span style="color:var(--dim);text-transform:none">(optional)</span></label>
           <textarea id="wiz-remarks" rows="2" maxlength="500" placeholder="Any data inconsistencies, recruit flags…" oninput="_logConduct.remarks = this.value" style="padding:8px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%;box-sizing:border-box">${escapeAttr(w.remarks)}</textarea>
@@ -4587,6 +4605,13 @@ function wizToggleRecoveryTag(tag) {
   const rows = _logConduct.status.filter(s => targetSet.has(s.d4));
   const allTicked = rows.every(s => s.notParticipating);
   rows.forEach(s => { s.notParticipating = !allTicked; });
+  renderLogConductWizard();
+}
+// Flip the display-only "without commanders" view. A full re-render is used so
+// the secondary readout appears/disappears; it changes nothing that is saved.
+function wizToggleExclCommanders(checked) {
+  if (!_logConduct) return;
+  _logConduct.showExclCommanders = !!checked;
   renderLogConductWizard();
 }
 function wizUpdateStatusReason(d4, v) {
@@ -4861,7 +4886,26 @@ function computeLogConductTotals() {
     : STATE.roster.filter(r => r.role !== "Commander").length;
   const total = w.totalOverride != null ? w.totalOverride : defaultTotal;
   const participating = Math.max(0, total - statusCount - rsiCount - falloutCount - reportSickCount);
-  return { total, statusCount, rsiCount, falloutCount, reportSickCount, participating };
+  // Commander-excluded ("without commanders") figures for the display-only view
+  // toggle (wiz-excl-commanders). These NEVER affect the saved attendance row —
+  // they are a read-only lens. Commanders are the 00xx accounts (isCommander).
+  // We subtract the commander headcount among participants from the (possibly
+  // overridden) total, and drop commander d4s from each away-list. If the user
+  // manually overrode Total Str, totalNc still subtracts the participant-commander
+  // count from that override — an acknowledged edge case (the override is a free
+  // number that may not correspond to the participant set).
+  const isCmdr = d4 => isCommander(d4);
+  const commanders = (w.participants || []).filter(isCmdr).length;
+  const statusCountNc = w.status.filter(s => s.notParticipating && !isCmdr(s.d4)).length;
+  const rsiCountNc = w.rsi.filter(r => !isCmdr(r.d4)).length;
+  const falloutCountNc = w.fallout.filter(r => !isCmdr(r.d4)).length;
+  const reportSickCountNc = w.reportSick.filter(r => !isCmdr(r.d4)).length;
+  const totalNc = Math.max(0, total - commanders);
+  const participatingNc = Math.max(0, totalNc - statusCountNc - rsiCountNc - falloutCountNc - reportSickCountNc);
+  return {
+    total, statusCount, rsiCount, falloutCount, reportSickCount, participating,
+    commanders, totalNc, statusCountNc, rsiCountNc, falloutCountNc, reportSickCountNc, participatingNc
+  };
 }
 
 // Updates just the totals strip without re-rendering the entire modal —
@@ -4873,6 +4917,11 @@ function recomputeLogConductFooter() {
   set("wiz-stat-fallout", t.falloutCount);
   set("wiz-stat-reportSick", t.reportSickCount);
   set("wiz-stat-participating", t.participating);
+  set("wiz-nc-total", t.totalNc);
+  set("wiz-nc-status", t.statusCountNc);
+  set("wiz-nc-reportSick", t.reportSickCountNc);
+  set("wiz-nc-fallout", t.falloutCountNc);
+  set("wiz-nc-participating", t.participatingNc);
   const totalInput = document.getElementById("wiz-total");
   if (totalInput && _logConduct.totalOverride == null) totalInput.value = t.total;
 }
