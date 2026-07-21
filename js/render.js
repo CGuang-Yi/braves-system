@@ -9,9 +9,13 @@ function render() {
   // builder can't pin its captured scope or fire against now-stale DOM.
   _deferredBuilders = {};
 
-  // Reset scroll on tab switches so a long previous tab doesn't leave the
-  // next one looking pre-scrolled (and on mobile hiding the topbar).
-  document.getElementById("content")?.scrollTo(0, 0);
+  // Reset scroll only on an actual tab switch so a long previous tab doesn't
+  // leave the next one looking pre-scrolled (and on mobile hiding the topbar).
+  // Same-tab re-renders keep scroll position so in-place edits don't bounce the view.
+  if (STATE.nav !== _lastRenderedNav) {
+    document.getElementById("content")?.scrollTo(0, 0);
+    _lastRenderedNav = STATE.nav;
+  }
 
   // Keep filter dropdown options in sync with the current roster — cheap to
   // rebuild a few <option>s and means we don't have to remember to call this
@@ -539,6 +543,11 @@ function renderDashboard(el) {
 // and run once on tap. render() clears the registry wholesale so a builder for an
 // abandoned view can't leak its captured scope or fire against stale DOM.
 let _deferredBuilders = {};
+// Tracks which nav tab the last render() painted, so we only scroll-to-top on an
+// actual tab switch — same-tab re-renders (in-place edits, filter/scope changes)
+// must keep the user's scroll position (previously every render() jumped to top,
+// bouncing the view whenever e.g. a conduct was assigned a class).
+let _lastRenderedNav = null;
 function chartGateMarkup(onclickExpr, gateId, label) {
   return `<div class="card" id="${gateId || "chart-gate"}" style="text-align:center;padding:18px;margin-top:10px">
     <button class="btn btn-primary" onclick="${onclickExpr}">${label || "📊 Load charts"}</button>
