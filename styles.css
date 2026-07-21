@@ -66,6 +66,12 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 /* Parade-state code pill (parade tab grid). Layout only — each status supplies
    its own translucent bg / border / text colour inline from the --ps-* palette. */
 .ps-badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;border:1px solid;white-space:nowrap}
+/* Parade-grid 4D/Name button — opens the person's profile card (openPerson).
+   Transparent button chrome styled as an accent link; a tight inline tap target
+   (not a full-cell hotspot) so mobile swipe-scrolling won't accidentally fire it. */
+.parade-name-btn{display:inline;background:none;border:0;padding:0;margin:0;font:inherit;color:var(--accent);cursor:pointer;text-align:left}
+.parade-name-btn:hover{text-decoration:underline}
+.parade-name-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
 .badge-accent{background:#58A6FF22;color:var(--accent);border:1px solid #58A6FF44}
 .badge-pink{background:#F778BA22;color:var(--pink);border:1px solid #F778BA44}
 .badge-teal{background:#39D2C022;color:var(--teal);border:1px solid #39D2C044}

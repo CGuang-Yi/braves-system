@@ -314,9 +314,19 @@ function renderParadePlatoon(host, code) {
             : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(cc.code)}</span>`;
       }).join("")
     }</div>`;
+    // 4D + Name open the person's full profile card (openPerson — the same card
+    // the Roster and other tabs open). Rendered as explicit <button>s wrapping
+    // ONLY the text (not the whole cell/row) so the tap target is tight: on
+    // mobile an incidental touch while swipe-scrolling the grid won't land on it,
+    // and a scroll gesture cancels the click outright (click fires only on a
+    // stationary tap). Kept off the Attendance Code cell so its Mark-Present
+    // select stays the sole action there. .parade-name-btn styles it as an accent
+    // link (transparent button chrome) — see styles.css.
+    const cardBtn = (inner, extra) =>
+      `<button type="button" class="parade-name-btn"${extra || ""} onclick="openPerson('${escapeAttr(x.r.id)}')" title="Open ${escapeAttr(displayPersonLabel(x.r.id))} card">${inner}</button>`;
     return `<tr>
-      <td class="mono">${escapeHTML(x.r.id)}</td>
-      <td>${escapeHTML(displayPersonLabel(x.r.id))}</td>
+      <td class="mono">${cardBtn(escapeHTML(x.r.id), ' style="font-weight:700"')}</td>
+      <td>${cardBtn(escapeHTML(displayPersonLabel(x.r.id)))}</td>
       <td>${codeCell}</td>
       <td style="color:${remarkColor};white-space:normal;font-size:12px">${escapeHTML(x.remark)}</td>
     </tr>`;
