@@ -1495,6 +1495,23 @@ function runHAStateMachine(dateMap, startIso, endIso, params) {
     : { status: "Not Started", completionDate: null, completions: [], periods: 0, breaksUsed: 0, consecutiveBreak: 0, windowStart: null };
 }
 
+// Best still-OPEN window's period count as of endIso, ignoring any completed
+// windows. Mirrors runHAStateMachine's "best partial" scan but never returns a
+// completion — used to show a LAPSED recruit's live re-qualification progress
+// (their historical completion still sits in .periods; this is the fresh count).
+// Naturally resets when the most-progressed open window is a short recent run.
+function haBestOpenWindowPeriods(dateMap, startIso, endIso, params) {
+  const activeDays = Object.keys(dateMap)
+    .filter(k => (dateMap[k] || 0) > 0 && k >= startIso && k <= endIso)
+    .sort();
+  let best = 0;
+  for (const s of activeDays) {
+    const res = simulateFrom(dateMap, s, endIso, params);
+    if (res.outcome === "open" && res.periods > best) best = res.periods;
+  }
+  return best;
+}
+
 // HA currency (HA.md "Clarifications" / DECISIONS #3,#4 — authoritative over the
 // spec §12.5 ">14 days" shorthand). From qualification, each activity pairs with
 // the most recent prior activity; a ≤7-day pair resets Day 1 to the day after the
@@ -1555,6 +1572,10 @@ function computeHA(d4) {
 
   const single = runHAStateMachine(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
   const expanded = runHAStateMachine(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
+  // Live re-qualification progress (for a LAPSED recruit's reset bars). Same params
+  // as the tracks above; ignores the historical completion baked into .periods.
+  single.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
+  expanded.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
   const singleComplete = single.status === "Completed" || expanded.status === "Completed";
 
   let singleStatus, singleTrack = null;

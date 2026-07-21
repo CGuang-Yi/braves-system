@@ -308,7 +308,7 @@ function renderParadePlatoon(host, code) {
         const hex = PARADE_CODE_HEX[cc.code];
         return cc.editable
           ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-              style="padding:4px 6px;border-radius:4px;font-size:12px;font-weight:600;background:${hex}22;border:1px solid ${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select>`
+              style="padding:3px 9px;border-radius:999px;font-size:16px;font-weight:600;line-height:1.5;white-space:nowrap;background:${hex}22;border:1px solid ${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select>`
           : hex
             ? `<span class="ps-badge" style="background:${hex}22;border-color:${hex}55;color:${hex}">${escapeHTML(cc.code)}</span>`
             : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(cc.code)}</span>`;

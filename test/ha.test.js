@@ -219,6 +219,39 @@ module.exports = async function run() {
     eq(ha.currency.lapsed, false);
   });
 
+  await test("lapsed recruit's Single bar shows current re-qual window, not the historical 10", () => {
+    H.todayISO = () => iso(2026, 7, 9);
+    // Qualify Single May 1-10 (10 active days). Then a long gap (currency lapses,
+    // deadline May 24). Then 3 recent active days Jul 6-8 — an in-progress re-qual.
+    seed(
+      daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1))
+        .concat(daySeq(iso(2026, 7, 6), 3).map(k => att(k, 1))),
+      [{ id: "0001", rank: "REC" }]
+    );
+    const ha = H.computeHA("0001");
+    eq(ha.overallStatus, "Lapsed");                 // currency lapsed
+    eq(ha.single.periods, 10);                      // historical completion count unchanged
+    eq(ha.single.currentWindowPeriods, 3);          // current open re-qual window = 3 recent days
+    eq(ha.expanded.currentWindowPeriods, 3);        // expanded track also reflects the recent run
+  });
+
+  await test("currentWindowPeriods resets after a break longer than maxBreak (no carry-over)", () => {
+    H.todayISO = () => iso(2026, 7, 13);
+    // Qualify May 1-10, lapse. Then a 2-day run (Jul 6-7), a 4-day break
+    // (Jul 8-11 > Single maxBreak 2 ⇒ that window breaches), then a FRESH 2-day
+    // run (Jul 12-13). The current open window is the fresh Jul 12-13 run = 2 —
+    // it must NOT carry the earlier 2 over into a 4 (the break resets the count).
+    seed(
+      daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1))
+        .concat(daySeq(iso(2026, 7, 6), 2).map(k => att(k, 1)))
+        .concat(daySeq(iso(2026, 7, 12), 2).map(k => att(k, 1))),
+      [{ id: "0001", rank: "REC" }]
+    );
+    const ha = H.computeHA("0001");
+    eq(ha.overallStatus, "Lapsed");
+    eq(ha.single.currentWindowPeriods, 2);   // fresh post-break window, not 4
+  });
+
   // ── Report-sick leak: a disqualifying medical status must not earn an HA day ──
   // A recruit stays in a conduct's CSV participant list even when they were MC /
   // LD / RIB / Excuse-PT that day. haDayMap must drop those days (user rule,

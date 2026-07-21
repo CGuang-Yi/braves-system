@@ -9,9 +9,13 @@ function render() {
   // builder can't pin its captured scope or fire against now-stale DOM.
   _deferredBuilders = {};
 
-  // Reset scroll on tab switches so a long previous tab doesn't leave the
-  // next one looking pre-scrolled (and on mobile hiding the topbar).
-  document.getElementById("content")?.scrollTo(0, 0);
+  // Reset scroll only on an actual tab switch so a long previous tab doesn't
+  // leave the next one looking pre-scrolled (and on mobile hiding the topbar).
+  // Same-tab re-renders keep scroll position so in-place edits don't bounce the view.
+  if (STATE.nav !== _lastRenderedNav) {
+    document.getElementById("content")?.scrollTo(0, 0);
+    _lastRenderedNav = STATE.nav;
+  }
 
   // Keep filter dropdown options in sync with the current roster — cheap to
   // rebuild a few <option>s and means we don't have to remember to call this
@@ -539,6 +543,11 @@ function renderDashboard(el) {
 // and run once on tap. render() clears the registry wholesale so a builder for an
 // abandoned view can't leak its captured scope or fire against stale DOM.
 let _deferredBuilders = {};
+// Tracks which nav tab the last render() painted, so we only scroll-to-top on an
+// actual tab switch — same-tab re-renders (in-place edits, filter/scope changes)
+// must keep the user's scroll position (previously every render() jumped to top,
+// bouncing the view whenever e.g. a conduct was assigned a class).
+let _lastRenderedNav = null;
 function chartGateMarkup(onclickExpr, gateId, label) {
   return `<div class="card" id="${gateId || "chart-gate"}" style="text-align:center;padding:18px;margin-top:10px">
     <button class="btn btn-primary" onclick="${onclickExpr}">${label || "📊 Load charts"}</button>
@@ -2540,6 +2549,11 @@ function renderConductDashboard(el) {
 // / delete actions. New conducts created here become available immediately
 // in every form's conduct picker (the picker reads from STATE.conducts).
 function renderConducts(el) {
+  if (!isAdminRole()) {
+    el.innerHTML = `<div class="card empty-state"><h2 style="font-size:18px;margin-bottom:8px">🏷️ Conduct ID</h2>
+      <p>This area is restricted to <strong>admin</strong> accounts.</p></div>`;
+    return;
+  }
   const rows = [...STATE.conducts].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   const totalUsage = rows.reduce((s, c) => s + countConductUsage(c.id).total, 0);
   const orphanedCount = (arr) => arr.filter(r => r.conductId !== undefined && !STATE.conducts.find(c => c.id === r.conductId)).length;
@@ -2720,8 +2734,8 @@ function renderHA(el) {
               <td style="text-align:left">${escapeHTML(displayPersonLabel(r.id))}</td>
               <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
               <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
-              <td style="text-align:left">${cell(ha.single?.periods || 0, 10, "#2DD4BF")}</td>
-              <td style="text-align:left">${cell(ha.expanded?.periods || 0, 14, "#D29922")}</td>
+              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.single?.currentWindowPeriods || 0) : (ha.single?.periods || 0), 10, "#2DD4BF")}</td>
+              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.expanded?.currentWindowPeriods || 0) : (ha.expanded?.periods || 0), 14, "#D29922")}</td>
               <td style="text-align:left">${dbl}</td>
               <td>${last}</td>
               <td style="font-size:11px">${curr}</td>

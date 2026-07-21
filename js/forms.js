@@ -1906,7 +1906,12 @@ function openAppointmentForm(id, prefill) {
       <input type="hidden" id="f-entry-id" value="${isEdit ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
         ${isEdit ? editHint : ""}
-        <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
+        <div class="form-group"><label>Recruit</label>${personSearchBox({
+          boxId: "f-appt-d4",
+          valueId: "f-d4",              // hidden input submitAppointment reads via gv("f-d4")
+          selected: e?.d4 || "",         // pre-fills the picker in edit mode
+          placeholder: "Search name / 4D…"
+        })}</div>
         ${formField("f-reason", "Reason", "text", "Knee specialist review / IPPT retake / Board…", `required maxlength="200" value="${escapeAttr(e?.reason)}"`)}
         <div class="form-row">
           ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
