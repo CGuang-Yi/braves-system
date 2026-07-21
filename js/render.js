@@ -2549,6 +2549,11 @@ function renderConductDashboard(el) {
 // / delete actions. New conducts created here become available immediately
 // in every form's conduct picker (the picker reads from STATE.conducts).
 function renderConducts(el) {
+  if (!isAdminRole()) {
+    el.innerHTML = `<div class="card empty-state"><h2 style="font-size:18px;margin-bottom:8px">🏷️ Conduct ID</h2>
+      <p>This area is restricted to <strong>admin</strong> accounts.</p></div>`;
+    return;
+  }
   const rows = [...STATE.conducts].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   const totalUsage = rows.reduce((s, c) => s + countConductUsage(c.id).total, 0);
   const orphanedCount = (arr) => arr.filter(r => r.conductId !== undefined && !STATE.conducts.find(c => c.id === r.conductId)).length;
