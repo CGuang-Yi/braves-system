@@ -4464,6 +4464,17 @@ function renderLogConductWizard() {
             <input type="checkbox" id="wiz-status-all" onchange="wizToggleAllStatusNP(this.checked)" style="width:15px;height:15px;cursor:pointer"> Select all — not participating
           </label>` : ""}
         </div>
+        ${(() => {
+          // One bulk tick/untick button per recovery tag actually present on the
+          // checklist (see recoveryTagRows). Absent tags draw no button.
+          const map = recoveryTagRows(w.status);
+          const tags = Object.keys(map);
+          if (!tags.length) return "";
+          return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <span style="font-size:10px;color:var(--dim);align-self:center">Recovery — tick/untick:</span>
+            ${tags.map(tag => `<button type="button" class="btn" style="font-size:11px;padding:4px 10px;white-space:nowrap" onclick="wizToggleRecoveryTag('${tag}')">${escapeHTML(tag)} (${map[tag].length})</button>`).join("")}
+          </div>`;
+        })()}
         <div style="display:flex;flex-direction:column;gap:6px">${statusRows}</div>
       </div>
 
@@ -4562,6 +4573,20 @@ function wizToggleStatusNP(d4, checked) {
 function wizToggleAllStatusNP(checked) {
   if (!_logConduct) return;
   _logConduct.status.forEach(s => { s.notParticipating = !!checked; });
+  renderLogConductWizard();
+}
+// Bulk tick/untick every PURE-recovery status row carrying `tag` (one of
+// RECOVERY_TAGS). Two-state toggle over its own remit: if every targeted row is
+// already ticked, untick them all; otherwise tick them all. A full re-render
+// repaints the row checkboxes and re-syncs the select-all header, mirroring
+// wizToggleAllStatusNP — buttons hold no text-input focus, so re-render is safe.
+function wizToggleRecoveryTag(tag) {
+  if (!_logConduct) return;
+  const targetSet = new Set(recoveryTagRows(_logConduct.status)[tag] || []);
+  if (!targetSet.size) return;
+  const rows = _logConduct.status.filter(s => targetSet.has(s.d4));
+  const allTicked = rows.every(s => s.notParticipating);
+  rows.forEach(s => { s.notParticipating = !allTicked; });
   renderLogConductWizard();
 }
 function wizUpdateStatusReason(d4, v) {
@@ -4788,6 +4813,36 @@ function personSearchPick(boxId, onPickFn, valueId, d4) {
 }
 
 // === Totals / overlap helpers ===========================================
+
+// The recovery "ghost" tags (post-MC/LD +1/+2 days). rebuildLogConductStatus
+// seeds these rows ticked (statusParticipates strips the suffix → MC/LD → false),
+// but a recovery-tag person is usually back to training — so the wizard offers a
+// per-tag bulk toggle. Fixed order so the button row reads MC+1, MC+2, LD+1, LD+2.
+const RECOVERY_TAGS = ["MC+1", "MC+2", "LD+1", "LD+2"];
+
+// A status row is "pure recovery" when EVERY active status on it is a +1/+2 ghost
+// tag. A row that also carries a live restrictive status (e.g. "MC+1 + Excuse
+// Heavy Load") is NOT pure — the bulk buttons must never flip someone who is
+// still genuinely restricted.
+function statusRowIsPureRecovery(statusTag) {
+  const toks = String(statusTag || "").split(" + ").map(t => t.trim()).filter(Boolean);
+  return toks.length > 0 && toks.every(t => RECOVERY_TAGS.includes(t));
+}
+
+// Map each present recovery tag → the d4s of pure-recovery rows carrying it, in
+// RECOVERY_TAGS order. Tags with no matching row are omitted so the render only
+// draws buttons that actually apply to the current checklist.
+function recoveryTagRows(statusList) {
+  const out = {};
+  RECOVERY_TAGS.forEach(tag => {
+    const d4s = (statusList || [])
+      .filter(s => statusRowIsPureRecovery(s.statusTag)
+        && String(s.statusTag).split(" + ").map(t => t.trim()).includes(tag))
+      .map(s => s.d4);
+    if (d4s.length) out[tag] = d4s;
+  });
+  return out;
+}
 
 function computeLogConductTotals() {
   const w = _logConduct;
