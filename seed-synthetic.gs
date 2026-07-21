@@ -616,15 +616,74 @@ function seedSynthetic() {
 function sandboxMintToken(email) {
   email = (email && String(email).trim()) || SANDBOX_CMDR_EMAIL;
 
-  var account = findAccountByEmail(email);
-  if (!account) {
+  var m = sandboxMintOneToken_(email);
+  if (!m) {
     Logger.log("No account found for " + email + ". Run seedSynthetic() first (it creates the "
       + "sandbox accounts), or pass an email that exists in the Accounts tab.");
     return null;
   }
 
-  // Mirror handleLogin's token write exactly, minus the password/lockout checks:
-  // same UUID token source, same stored context shape.
+  var url = sandboxDeployedUrl_() || "<sandbox exec URL>";
+  Logger.log("Minted sandbox token for " + m.email + "  (role: " + m.role + ", 30-day expiry).");
+  Logger.log("Token: " + m.token);
+  Logger.log("");
+  Logger.log("Paste into the browser console on the local frontend (index.html served on :8777):");
+  Logger.log("  STATE.apiUrl    = \"" + url + "\";");
+  Logger.log("  STATE.authToken = \"" + m.token + "\";");
+  Logger.log("  STATE.role      = \"" + m.role + "\";");
+  Logger.log("  pullAndRender();");
+  return m.token;
+}
+
+// Mint tokens for ALL THREE sandbox accounts (viewer / commander / admin) in one
+// run and log a SINGLE copy-paste console block that wires up all three at once.
+// The everyday setup helper: run this, copy the one block, then switch roles in
+// the browser with useSandbox("viewer"|"commander"|"admin") — no re-minting to
+// hop between the read-only, r/w, and admin views. Returns { role: token } or
+// null if any account is missing (run seedSynthetic() first). Each token is a
+// real 30-day session token — same safety properties as sandboxMintToken above.
+function sandboxMintAllTokens() {
+  var emails = [SANDBOX_VIEWER_EMAIL, SANDBOX_CMDR_EMAIL, SANDBOX_ADMIN_EMAIL];
+  var byRole = {};
+  for (var i = 0; i < emails.length; i++) {
+    var m = sandboxMintOneToken_(emails[i]);
+    if (!m) {
+      Logger.log("No account found for " + emails[i] + ". Run seedSynthetic() first (it creates "
+        + "the sandbox accounts), then re-run sandboxMintAllTokens().");
+      return null;
+    }
+    byRole[m.role] = m.token;
+  }
+
+  var url = sandboxDeployedUrl_() || "<sandbox exec URL>";
+  Logger.log("Minted sandbox tokens for all 3 accounts (30-day expiry):");
+  Logger.log("  viewer    " + SANDBOX_VIEWER_EMAIL + "  " + byRole.viewer);
+  Logger.log("  commander " + SANDBOX_CMDR_EMAIL + "  " + byRole.commander);
+  Logger.log("  admin     " + SANDBOX_ADMIN_EMAIL + "  " + byRole.admin);
+  Logger.log("");
+  Logger.log("Copy this WHOLE block into the browser console on the local frontend (index.html on :8777):");
+  Logger.log("// ── sandbox: all 3 accounts ───────────────────────────────────────────");
+  Logger.log("STATE.apiUrl = \"" + url + "\";");
+  Logger.log("const SANDBOX_TOKENS = {");
+  Logger.log("  viewer:    \"" + byRole.viewer + "\",");
+  Logger.log("  commander: \"" + byRole.commander + "\",");
+  Logger.log("  admin:     \"" + byRole.admin + "\",");
+  Logger.log("};");
+  Logger.log("function useSandbox(role){ STATE.authToken = SANDBOX_TOKENS[role]; STATE.role = role; pullAndRender(); }");
+  Logger.log("useSandbox(\"commander\");  // switch anytime: useSandbox(\"viewer\") / useSandbox(\"admin\")");
+  Logger.log("// ──────────────────────────────────────────────────────────────────────");
+  return byRole;
+}
+
+// Core mint shared by both public minters: replays handleLogin's token write for
+// one account (same UUID token, same stored { email, personId, role, issuedAt }
+// context, same audit tag) minus the password/lockout checks. Returns
+// { email, role, token } or null if the account doesn't exist. See
+// sandboxMintToken's header for why this password-free path is safe.
+function sandboxMintOneToken_(email) {
+  var account = findAccountByEmail(email);
+  if (!account) return null;
+
   var token = Utilities.getUuid();
   var ctx = {
     email: account.email,
@@ -639,19 +698,11 @@ function sandboxMintToken(email) {
   if (typeof writeAuditLog === "function") {
     writeAuditLog(account.email, account.personId, "login_sandbox_mint", null, null, token);
   }
+  return { email: ctx.email, role: ctx.role, token: token };
+}
 
-  // Auto-derive the deployed web-app URL so the logged block is copy-paste ready.
-  // (Falls back to a placeholder if the script isn't deployed yet.)
-  var url = "";
-  try { url = ScriptApp.getService().getUrl() || ""; } catch (e) { url = ""; }
-
-  Logger.log("Minted sandbox token for " + ctx.email + "  (role: " + ctx.role + ", 30-day expiry).");
-  Logger.log("Token: " + token);
-  Logger.log("");
-  Logger.log("Paste into the browser console on the local frontend (index.html served on :8777):");
-  Logger.log("  STATE.apiUrl    = \"" + (url || "<sandbox exec URL>") + "\";");
-  Logger.log("  STATE.authToken = \"" + token + "\";");
-  Logger.log("  STATE.role      = \"" + ctx.role + "\";");
-  Logger.log("  pullAndRender();");
-  return token;
+// Deployed web-app URL, for making the logged console blocks copy-paste ready.
+// Empty string if the script isn't deployed yet (callers supply the placeholder).
+function sandboxDeployedUrl_() {
+  try { return ScriptApp.getService().getUrl() || ""; } catch (e) { return ""; }
 }
