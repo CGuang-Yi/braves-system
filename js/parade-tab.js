@@ -53,6 +53,17 @@ const PARADE_SECTION_TO_CODE = {
 // its order (alOil, mr, …) is tuned for message assembly, not grid priority.
 const PARADE_CODE_ORDER = ["reportingSick", "attC", "alOil", "status", "others", "mr"];
 
+// Grid code → status colour (mirrors the --ps-* palette in styles.css). Kept as
+// literal hex here (not var()) because the grid pills compose translucent bg/
+// border via hex+alpha suffixes (#RRGGBBaa), matching the .badge-* convention;
+// the bento .val figures use the var() names directly. Any change here MUST be
+// mirrored in the :root --ps-* block. Codes: Present, AL/OIL, MC, RS, STATUS,
+// OTHERS, MR (the full set paradeClassifyPlatoon can emit).
+const PARADE_CODE_HEX = {
+  "Present": "#3FB950", "AL/OIL": "#2C8A4B", "MC": "#F85149",
+  "RS": "#C4611C", "STATUS": "#E3B341", "OTHERS": "#B04A5A", "MR": "#79C0FF"
+};
+
 function paradeCurrentDateISO() { return _paradeDate || todayISO(); }
 
 // ── Control-bar setters (each re-renders only the body, keeping the toolbar) ──
@@ -261,12 +272,12 @@ function renderParadePlatoon(host, code) {
     <div class="stats-row" style="margin-bottom:12px">
       <div class="stat"><label>Current / Total</label><div class="val"><span style="color:var(--green)">${s.current}</span> <span style="color:var(--dim)">/</span> ${s.total}</div></div>
       <div class="stat"><label>Officer · WOSPEC · Enlistee</label><div class="val" style="font-family:var(--mono);font-size:15px">${grp("Officer")} · ${grp("WOSPEC")} · ${grp("Enlistee")}</div></div>
-      <div class="stat"><label>AL/OIL</label><div class="val">${sec.alOil}</div></div>
-      <div class="stat"><label>Report Sick</label><div class="val">${sec.reportingSick}</div></div>
-      <div class="stat"><label>MR</label><div class="val">${sec.mr}</div></div>
-      <div class="stat"><label>MC</label><div class="val" style="color:var(--red)">${sec.attC}</div></div>
-      <div class="stat"><label>Status</label><div class="val" style="color:var(--yellow)">${sec.status}</div></div>
-      <div class="stat"><label>Others</label><div class="val">${sec.others}</div></div>
+      <div class="stat"><label>AL/OIL</label><div class="val" style="color:var(--ps-aloil)">${sec.alOil}</div></div>
+      <div class="stat"><label>Report Sick</label><div class="val" style="color:var(--ps-rs)">${sec.reportingSick}</div></div>
+      <div class="stat"><label>MR</label><div class="val" style="color:var(--ps-mr)">${sec.mr}</div></div>
+      <div class="stat"><label>MC</label><div class="val" style="color:var(--ps-mc)">${sec.attC}</div></div>
+      <div class="stat"><label>Status</label><div class="val" style="color:var(--ps-status)">${sec.status}</div></div>
+      <div class="stat"><label>Others</label><div class="val" style="color:var(--ps-others)">${sec.others}</div></div>
     </div>`;
 
   // Sort: commanders to the BOTTOM rows; everyone else by 4D ascending. Sorting
@@ -284,15 +295,24 @@ function renderParadePlatoon(host, code) {
 
   const body = rows.map(x => {
     const remarkColor = x.remark ? "var(--yellow)" : "var(--muted)";
-    // One control per concurrent status. Editable codes (MC/AL·OIL/OTHERS) get
-    // the 2-option → Present select; non-editable codes render as static chips.
-    // Stacked vertically so a person on e.g. STATUS + OTHERS shows both.
+    // One control per concurrent status, stacked vertically so a person on e.g.
+    // STATUS + OTHERS shows both. Each control is tinted by its status colour
+    // (PARADE_CODE_HEX; falls back to muted grey for any unmapped code). Editable
+    // codes (MC/AL·OIL/OTHERS) get the 2-option → Present select — kept looking
+    // like a form control (rounded rect + caret) but tinted to the status so it
+    // still reads as "editable → Present"; choosing Present routes through
+    // onParadeCodeChange → openParadeClearConfirm (book-in). Non-editable codes
+    // render a solid .ps-badge pill. hex+'22'/'55' are the translucent fill/border.
     const codeCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">${
-      x.codes.map(cc => cc.editable
-        ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-            style="padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select>`
-        : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(cc.code)}</span>`
-      ).join("")
+      x.codes.map(cc => {
+        const hex = PARADE_CODE_HEX[cc.code];
+        return cc.editable
+          ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
+              style="padding:4px 6px;border-radius:4px;font-size:12px;font-weight:600;background:${hex}22;border:1px solid ${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select>`
+          : hex
+            ? `<span class="ps-badge" style="background:${hex}22;border-color:${hex}55;color:${hex}">${escapeHTML(cc.code)}</span>`
+            : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(cc.code)}</span>`;
+      }).join("")
     }</div>`;
     return `<tr>
       <td class="mono">${escapeHTML(x.r.id)}</td>
