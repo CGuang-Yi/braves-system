@@ -1,4 +1,9 @@
-:root{--bg:#0D1117;--surface:#161B22;--surface2:#21262D;--border:#30363D;--text:#E6EDF3;--muted:#8B949E;--dim:#484F58;--accent:#58A6FF;--accentDim:#1F6FEB;--green:#3FB950;--red:#F85149;--orange:#D29922;--yellow:#E3B341;--purple:#BC8CFF;--teal:#39D2C0;--pink:#F778BA}
+:root{--bg:#0D1117;--surface:#161B22;--surface2:#21262D;--border:#30363D;--text:#E6EDF3;--muted:#8B949E;--dim:#484F58;--accent:#58A6FF;--accentDim:#1F6FEB;--green:#3FB950;--red:#F85149;--orange:#D29922;--yellow:#E3B341;--purple:#BC8CFF;--teal:#39D2C0;--pink:#F778BA;
+/* Parade-state status palette (see js/parade-tab.js). Own vars so they don't
+   disturb the semantic --red/--orange used by the sync pill & generic badges:
+   MC reuses red's hue but Others gets its own maroon, and RS is a deeper burnt
+   orange than the amber --orange so it stays distinct from --yellow Status. */
+--ps-present:#3FB950;--ps-aloil:#2C8A4B;--ps-mc:#F85149;--ps-rs:#C4611C;--ps-status:#E3B341;--ps-others:#B04A5A;--ps-mr:#79C0FF}
 *{margin:0;padding:0;box-sizing:border-box}
 /* `dvh` adjusts as iOS Safari's address bar grows/shrinks — prevents the
    page from sitting partially behind the toolbar on first load. position:fixed
@@ -58,6 +63,9 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .badge-orange{background:#D2992222;color:var(--orange);border:1px solid #D2992244}
 .badge-yellow{background:#E3B34122;color:var(--yellow);border:1px solid #E3B34144}
 .badge-purple{background:#BC8CFF22;color:var(--purple);border:1px solid #BC8CFF44}
+/* Parade-state code pill (parade tab grid). Layout only — each status supplies
+   its own translucent bg / border / text colour inline from the --ps-* palette. */
+.ps-badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;border:1px solid;white-space:nowrap}
 .badge-accent{background:#58A6FF22;color:var(--accent);border:1px solid #58A6FF44}
 .badge-pink{background:#F778BA22;color:var(--pink);border:1px solid #F778BA44}
 .badge-teal{background:#39D2C022;color:var(--teal);border:1px solid #39D2C044}
