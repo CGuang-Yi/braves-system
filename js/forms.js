@@ -2446,6 +2446,11 @@ let _paradeOverrides = {};
 // Cleared on modal open and on date change.
 let _apptCampOverrides = {};
 
+// Per-person Medical Appointment dates for the MR (Medical Review) generator, keyed by
+// 4D: { recent: "<iso>"|"", next: "<iso>"|"" }. Reset when the MR modal opens; a blank
+// value renders as the literal NIL in the message.
+let _mrDates = {};
+
 function findBorderlineReturnees(dateIso) {
   if (!dateIso) return [];
   const y = new Date(dateIso); y.setDate(y.getDate() - 1);
@@ -2653,6 +2658,57 @@ function generateMSKReportText(dateIso, time) {
     return `S/N: ${sn}\nR/N: ${rnNoC(c.d4)}\nReason: ${reason}\nLast visit: ${lastVisit}`;
   });
 
+  return `${heading}\n\n${blocks.join("\n\n")}`;
+}
+
+// Distinct 4Ds with a PENDING MR (Medical Review) visit dated to `dateIso`, ordered by
+// platoon then name. Mirrors the §8 classifier's MR clause for an arbitrary chosen date.
+function mrPeopleForDate(dateIso) {
+  const seen = {};
+  const out = [];
+  (STATE.medical || []).forEach(m => {
+    if (m.type !== "MR") return;
+    if (displayDateToISO(m.date) !== dateIso) return;
+    if (m.status && m.status !== "Pending") return;
+    if (seen[m.d4]) return;
+    seen[m.d4] = true;
+    out.push(m.d4);
+  });
+  return out.sort((a, b) => {
+    const ra = STATE.roster.find(x => x.id === a) || {};
+    const rb = STATE.roster.find(x => x.id === b) || {};
+    const pa = personPlatoon(ra) || "", pb = personPlatoon(rb) || "";
+    if (pa !== pb) return pa < pb ? -1 : 1;
+    return (ra.name || "").localeCompare(rb.name || "");
+  });
+}
+
+// "RANK FULLNAME" (name uppercased) from the roster; falls back to the raw 4D.
+function mrRankName(d4) {
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r) return d4;
+  return [r.rank, (r.name || "").toUpperCase()].filter(Boolean).join(" ");
+}
+
+// MR (Medical Review) message — "MR Message Format" in MD_Docs/Message Formats.md.
+// Auto-lists pending MR personnel for the date; Rank+Name + Coy prefilled, NRIC never
+// asked, MA dates from _mrDates (blank → NIL), everything else left blank for manual fill.
+function generateMRFormat(dateIso, time) {
+  const heading = `B COY *MEDICAL REVIEW* ${toDDMMYY(dateIso)}`;
+  const people = mrPeopleForDate(dateIso);
+  if (!people.length) return `${heading}\n\nNo personnel on medical review.`;
+  const mad = iso => (iso ? toDDMMYY(iso) : "NIL");
+  const blocks = people.map((d4, i) => {
+    const d = (_mrDates && _mrDates[d4]) || {};
+    return `${i + 1}) Rank + Full Name: ${mrRankName(d4)}\n`
+      + `Coy: B\n`
+      + `NRIC: \n`
+      + `Diagnosis/Issue: \n`
+      + `Date of most recent Medical Appointment: ${mad(d.recent)}\n`
+      + `Date of next MA: ${mad(d.next)}\n`
+      + `Memo (Yes/No): \n`
+      + `Remarks/ Requests: `;
+  });
   return `${heading}\n\n${blocks.join("\n\n")}`;
 }
 
