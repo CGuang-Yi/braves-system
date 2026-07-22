@@ -2726,6 +2726,11 @@ function renderHA(el) {
               ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
               : cell(ha.doubleTrack?.periods || 0, 13, "#388BFD");
             const last = ha.lastActivity ? isoToDisplayDate(ha.lastActivity) : '<span style="color:var(--muted)">—</span>';
+            // A lapsed recruit's Single/Expanded bars show live re-qualification
+            // progress (the fresh open window) instead of the historical completion
+            // still sitting in .periods; everyone else shows .periods as normal.
+            const lapsed = ha.overallStatus === "Lapsed";
+            const barVal = t => lapsed ? (t?.currentWindowPeriods || 0) : (t?.periods || 0);
             const curr = ha.currency && ha.currency.lapsed
               ? `<span style="color:var(--red)">lapsed ${ha.currency.lapseDateIso ? isoToDisplayDate(ha.currency.lapseDateIso) : ""}</span>`
               : (ha.currency && ha.currency.deadlineIso ? `<span style="color:var(--muted)">by ${isoToDisplayDate(ha.currency.deadlineIso)}</span>` : "—");
@@ -2734,8 +2739,8 @@ function renderHA(el) {
               <td style="text-align:left">${escapeHTML(displayPersonLabel(r.id))}</td>
               <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
               <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
-              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.single?.currentWindowPeriods || 0) : (ha.single?.periods || 0), 10, "#2DD4BF")}</td>
-              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.expanded?.currentWindowPeriods || 0) : (ha.expanded?.periods || 0), 14, "#D29922")}</td>
+              <td style="text-align:left">${cell(barVal(ha.single), 10, "#2DD4BF")}</td>
+              <td style="text-align:left">${cell(barVal(ha.expanded), 14, "#D29922")}</td>
               <td style="text-align:left">${dbl}</td>
               <td>${last}</td>
               <td style="font-size:11px">${curr}</td>

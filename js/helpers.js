@@ -1572,10 +1572,6 @@ function computeHA(d4) {
 
   const single = runHAStateMachine(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
   const expanded = runHAStateMachine(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
-  // Live re-qualification progress (for a LAPSED recruit's reset bars). Same params
-  // as the tracks above; ignores the historical completion baked into .periods.
-  single.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
-  expanded.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
   const singleComplete = single.status === "Completed" || expanded.status === "Completed";
 
   let singleStatus, singleTrack = null;
@@ -1596,6 +1592,15 @@ function computeHA(d4) {
     firstQual = comps[0];
     currency = computeHACurrency(keys, comps);
     if (currency.lapsed) singleStatus = "Lapsed";
+  }
+
+  // Live re-qualification progress, only for a LAPSED recruit's reset bars (the
+  // sole consumer, in renderHA). Same params as the tracks above but ignores the
+  // historical completion baked into .periods. Computed lazily here — it's an
+  // extra O(active-days²) scan per track, wasted for the non-lapsed majority.
+  if (singleStatus === "Lapsed") {
+    single.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
+    expanded.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
   }
 
   // Double track (gated on a live Single qualification + eligibility). Counted ONLY

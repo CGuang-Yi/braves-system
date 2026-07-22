@@ -1932,9 +1932,15 @@ function openAppointmentForm(id, prefill) {
 }
 function submitAppointment() {
   const editId = +gv("f-entry-id");
+  // Recruit is picked via the search box (hidden input), which can't be HTML-
+  // `required` and is cleared on every keystroke until a suggestion is picked —
+  // so guard here, or a typed-but-unpicked name saves an appointment with no
+  // recruit (same guard submitMedical / submitLeave carry for their pickers).
+  const d4 = gv("f-d4");
+  if (!d4) { alert("Pick a recruit (search by name / 4D)."); return; }
   const entry = {
     id: editId || nextId(),
-    d4: gv("f-d4"),
+    d4,
     reason: gv("f-reason"),
     date: isoToDisplayDate(gv("f-date")),
     time: gv("f-time"),
@@ -3879,20 +3885,32 @@ function setConductClass(id, className) {
   if (!c) return;
   const clean = String(className == null ? "" : className).trim();
   c.className = clean;
-  if (clean && (!c.classSeq || c.classSeq < 1)) {
-    const maxSeq = STATE.conducts.reduce((m, x) =>
-      (x.id !== id && (x.className || "").trim() === clean && Number(x.classSeq) > m) ? Number(x.classSeq) : m, 0);
-    c.classSeq = maxSeq + 1;
-  }
+  if (clean && (!c.classSeq || c.classSeq < 1)) c.classSeq = _nextClassSeq(id, clean);
   _pushConductsRegistry();
+}
+
+// Next free ordinal within a manual class: (highest classSeq already used in that
+// class) + 1, excluding the conduct being edited. Used to auto-assign a distinct
+// positive seq so a manually-classed conduct never falls back to its name number.
+function _nextClassSeq(excludeId, className) {
+  const clean = String(className == null ? "" : className).trim();
+  const maxSeq = STATE.conducts.reduce((m, x) =>
+    (x.id !== excludeId && (x.className || "").trim() === clean && Number(x.classSeq) > m) ? Number(x.classSeq) : m, 0);
+  return maxSeq + 1;
 }
 
 // Registry: set a conduct's explicit ordinal within its class. Coerced to a
 // non-negative integer (0 = "unset" → the Dash falls back to the name's number).
+// But a MANUALLY-classed conduct must never be left at 0: conductClassSeq() would
+// then fall back to the name's trailing number, which can collide with a sibling
+// in the same class and silently merge two instances in the progression list (a
+// recruit who missed one of the two num-collided instances reads as on-track).
+// So when a className is set, a blank/<1 seq snaps to the next free ordinal.
 function setConductClassSeq(id, seq) {
   const c = STATE.conducts.find(x => x.id === id);
   if (!c) return;
-  const n = Math.max(0, Math.floor(Number(seq) || 0));
+  let n = Math.max(0, Math.floor(Number(seq) || 0));
+  if (n < 1 && (c.className || "").trim()) n = _nextClassSeq(id, c.className);
   c.classSeq = n;
   _pushConductsRegistry();
 }
