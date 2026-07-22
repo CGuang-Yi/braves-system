@@ -402,6 +402,7 @@ function renderDashboard(el) {
           <button type="button" onclick="openReportModal('MED'); closeReportMenu()">🏥 Medical Status List</button>
           <button type="button" onclick="openReportModal('MSK'); closeReportMenu()">🦵 MSK Report</button>
           <button type="button" onclick="openReportModal('CONDUCT'); closeReportMenu()">📊 Per-Conduct Chat Format</button>
+          <button type="button" onclick="openReportModal('MR'); closeReportMenu()">🩺 MR (Medical Review)</button>
         </div>
       </div>
     </div>
@@ -2314,15 +2315,16 @@ function renderConductDashboard(el) {
   // selector, its per-base instance counts, and the selected class's id set.
   // numById memoises each conduct's instance number so the chart-label code below
   // doesn't re-run the regex per row.
+  const _resolvedClasses = resolveConductClasses(STATE.conducts || []);
   const seriesGroups = {};          // classKey → { ids:Set, count, manual }
-  const numById = {};               // conductId → ordinal within its class
+  const numById = {};               // conductId → ordinal within its class (makeup-resolved)
   (STATE.conducts || []).forEach(c => {
-    const key = conductClassKey(c);
-    numById[c.id] = conductClassSeq(c);
+    const key = _resolvedClasses.keyById[String(c.id)];
+    numById[c.id] = _resolvedClasses.seqById[String(c.id)];
     if (!key) return;
     const g = seriesGroups[key] || (seriesGroups[key] = { ids: new Set(), count: 0, manual: false });
     g.ids.add(c.id); g.count++;
-    if ((c.className || "").trim()) g.manual = true;
+    if ((c.className || "").trim() || c.makeupFor) g.manual = true;
   });
   const bases = Object.keys(seriesGroups).sort();
   const seriesIds = (_conductSeries && seriesGroups[_conductSeries]) ? seriesGroups[_conductSeries].ids : null;
@@ -2408,6 +2410,9 @@ function renderConductDashboard(el) {
       .map(c => ({ conductId: c.id, num: numById[c.id] }));
     const recruitIds = filteredRoster().map(r => r.id);
     const prog = conductProgress(held, creditedPresent, recruitIds);
+    // Per-person participation % over the selected class + window ("added-in" rule):
+    // present / (conducts the member was in the participant list of OR logged absent for).
+    const partByD4 = personParticipation(attnWin, STATE.conductDetail || [], seriesIds);
     const rows = prog.rows.slice().sort((a, b) => (a.position - b.position) || (b.behind - a.behind) || (b.missed.length - a.missed.length));
     const frontier = prog.seriesMax ? `${escapeHTML(_conductSeries)} ${prog.seriesMax}` : "—";
     const curCell = p => p.position ? `${escapeHTML(_conductSeries)} ${p.position}` : `<span style="color:var(--dim)">Not started</span>`;
@@ -2421,8 +2426,8 @@ function renderConductDashboard(el) {
     progressionHTML = `<div class="card" style="margin-top:10px">
       <h3>Class Progression — ${escapeHTML(_conductSeries)} <span style="font-weight:400;color:var(--dim);font-size:11px">(company frontier: ${frontier} · ${prog.held.length} held)</span></h3>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${isFilterActive() ? filterLabel() : "Whole company"} — each member's latest attended instance, gaps below it (missed), and how far behind the frontier they are. Click a row to open the member.</div>
-      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Current</th><th>Done</th><th style="text-align:left">Missed</th><th style="text-align:left">Status</th></tr></thead><tbody>
-        ${rows.map(p => `<tr onclick="openPerson('${p.d4}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td>${curCell(p)}</td><td>${p.completed}/${prog.held.length}</td><td style="text-align:left;color:${p.missed.length ? "var(--red)" : "var(--dim)"}">${p.missed.length ? p.missed.map(n => "#" + n).join(", ") : "—"}</td><td style="text-align:left">${statusCell(p)}</td></tr>`).join("")}
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Current</th><th>Done</th><th title="Present ÷ conducts added into (this class, this window)">Part%</th><th style="text-align:left">Missed</th><th style="text-align:left">Status</th></tr></thead><tbody>
+        ${rows.map(p => { const pp = partByD4[String(p.d4)] || { present: 0, addedIn: 0, pct: null }; const partCell = pp.pct == null ? `<span style="color:var(--dim)">—</span>` : `${pp.pct}% <span style="color:var(--dim);font-size:10px">(${pp.present}/${pp.addedIn})</span>`; return `<tr onclick="openPerson('${p.d4}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td>${curCell(p)}</td><td>${p.completed}/${prog.held.length}</td><td>${partCell}</td><td style="text-align:left;color:${p.missed.length ? "var(--red)" : "var(--dim)"}">${p.missed.length ? p.missed.map(n => "#" + n).join(", ") : "—"}</td><td style="text-align:left">${statusCell(p)}</td></tr>`; }).join("")}
       </tbody></table></div>` : `<div class="empty-state" style="padding:12px;font-size:12px">No members in scope.</div>`}
     </div>`;
   }
@@ -2555,6 +2560,7 @@ function renderConducts(el) {
     return;
   }
   const rows = [...STATE.conducts].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  const _regResolved = resolveConductClasses(STATE.conducts);
   const totalUsage = rows.reduce((s, c) => s + countConductUsage(c.id).total, 0);
   const orphanedCount = (arr) => arr.filter(r => r.conductId !== undefined && !STATE.conducts.find(c => c.id === r.conductId)).length;
   const orphans = orphanedCount(STATE.attendance) + orphanedCount(STATE.polar) + orphanedCount(STATE.conductDetail);
@@ -2591,10 +2597,14 @@ function renderConducts(el) {
           <td class="mono" style="color:var(--muted);font-size:11px">${c.id}</td>
           <td style="text-align:left;font-weight:600">${escapeAttr(c.name)}</td>
           <td style="text-align:left">
-            <input type="text" list="conduct-class-names" value="${escapeAttr(c.className || "")}" placeholder="—" onchange="setConductClass('${c.id}', this.value)" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px">
+            ${c.makeupFor
+              ? `<input type="text" value="${escapeAttr(_regResolved.keyById[String(c.id)] || "")}" disabled title="Inherited from the conduct this makes up for" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface);border:1px dashed var(--border);color:var(--muted);border-radius:3px">`
+              : `<input type="text" list="conduct-class-names" value="${escapeAttr(c.className || "")}" placeholder="—" onchange="setConductClass('${c.id}', this.value)" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px">`}
           </td>
           <td>
-            <input type="number" min="0" step="1" value="${(c.className || '').trim() ? (c.classSeq || 0) : ''}" ${(c.className || '').trim() ? '' : 'disabled'} placeholder="auto" onchange="setConductClassSeq('${c.id}', this.value)" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="${(c.className || '').trim() ? 'Order within the class' : 'Set a class first'}">
+            ${c.makeupFor
+              ? `<input type="number" value="${_regResolved.seqById[String(c.id)] || ''}" disabled title="Inherited slot from the conduct this makes up for" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface);border:1px dashed var(--border);color:var(--muted);border-radius:3px">`
+              : `<input type="number" min="0" step="1" value="${(c.className || '').trim() ? (c.classSeq || 0) : ''}" ${(c.className || '').trim() ? '' : 'disabled'} placeholder="auto" onchange="setConductClassSeq('${c.id}', this.value)" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="${(c.className || '').trim() ? 'Order within the class' : 'Set a class first'}">`}
           </td>
           <td style="text-align:left">
             <select onchange="setConductMakeupFor('${c.id}', this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="Attending this conduct credits attendance for the selected instance in the Conduct Dashboard">
@@ -2726,6 +2736,11 @@ function renderHA(el) {
               ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
               : cell(ha.doubleTrack?.periods || 0, 13, "#388BFD");
             const last = ha.lastActivity ? isoToDisplayDate(ha.lastActivity) : '<span style="color:var(--muted)">—</span>';
+            // A lapsed recruit's Single/Expanded bars show live re-qualification
+            // progress (the fresh open window) instead of the historical completion
+            // still sitting in .periods; everyone else shows .periods as normal.
+            const lapsed = ha.overallStatus === "Lapsed";
+            const barVal = t => lapsed ? (t?.currentWindowPeriods || 0) : (t?.periods || 0);
             const curr = ha.currency && ha.currency.lapsed
               ? `<span style="color:var(--red)">lapsed ${ha.currency.lapseDateIso ? isoToDisplayDate(ha.currency.lapseDateIso) : ""}</span>`
               : (ha.currency && ha.currency.deadlineIso ? `<span style="color:var(--muted)">by ${isoToDisplayDate(ha.currency.deadlineIso)}</span>` : "—");
@@ -2734,8 +2749,8 @@ function renderHA(el) {
               <td style="text-align:left">${escapeHTML(displayPersonLabel(r.id))}</td>
               <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
               <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
-              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.single?.currentWindowPeriods || 0) : (ha.single?.periods || 0), 10, "#2DD4BF")}</td>
-              <td style="text-align:left">${cell(ha.overallStatus === "Lapsed" ? (ha.expanded?.currentWindowPeriods || 0) : (ha.expanded?.periods || 0), 14, "#D29922")}</td>
+              <td style="text-align:left">${cell(barVal(ha.single), 10, "#2DD4BF")}</td>
+              <td style="text-align:left">${cell(barVal(ha.expanded), 14, "#D29922")}</td>
               <td style="text-align:left">${dbl}</td>
               <td>${last}</td>
               <td style="font-size:11px">${curr}</td>

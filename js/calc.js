@@ -176,6 +176,39 @@ function perConductParticipation(attendance, conductDetail, visibleSet, outBy) {
   return out;
 }
 
+// Per-person participation over the "added-in" set: a person is "added into" a conduct
+// when they appear in its CSV participant list OR have a non-participation (conductDetail)
+// row for it. present = added-in conducts they participated in. Only source==="csv"
+// attendance rows carry a per-person participant list, so only those contribute; other
+// conducts can't be attributed per-person and are excluded from every denominator.
+// conductIdSet (optional Set of ids) restricts to those conducts; null = all.
+// Returns { d4: { present, addedIn, pct } }; pct = round(present/addedIn*100) or null.
+function personParticipation(attendance, conductDetail, conductIdSet) {
+  var inSet = function (id) { return !conductIdSet || conductIdSet.has(id) || conductIdSet.has(String(id)); };
+  var outBy = conductOutByIndex(conductDetail);
+  var acc = {};
+  var bump = function (d4, presentInc, addedInc) {
+    var k = String(d4);
+    var e = acc[k] || (acc[k] = { present: 0, addedIn: 0 });
+    e.present += presentInc; e.addedIn += addedInc;
+  };
+  (attendance || []).forEach(function (a) {
+    if (a.source !== "csv") return;
+    if (!inSet(a.conductId)) return;
+    var present = parseParticipantIds(a.participants);
+    var presentSet = {};
+    present.forEach(function (id) { presentSet[String(id)] = true; bump(id, 1, 1); });
+    var outs = outBy[String(a.conductId) + "|" + String(a.date)] || new Set();
+    outs.forEach(function (id) { if (!presentSet[String(id)]) bump(id, 0, 1); });
+  });
+  var res = {};
+  Object.keys(acc).forEach(function (k) {
+    var e = acc[k];
+    res[k] = { present: e.present, addedIn: e.addedIn, pct: e.addedIn ? Math.round((e.present / e.addedIn) * 100) : null };
+  });
+  return res;
+}
+
 // ── Conduct series / class progression (Phase 2b) ─────────────────────────────
 // A "class" of conducts shares a base name and is distinguished by a TRAILING
 // number; the first of its kind may omit the number (so it is instance 1).
@@ -241,6 +274,40 @@ function creditMakeups(presentByConduct, makeupMap) {
   return out;
 }
 
+// Resolve each conduct's effective class key + sequence number, following makeupFor so
+// a makeup conduct inherits the class + slot of the conduct it replaces. Walks the
+// makeupFor chain to the first non-makeup (or dangling/cyclic) target and adopts that
+// target's OWN key/seq. Cycles + missing targets fall back to the conduct's own values.
+// Returns { keyById: {id: key}, seqById: {id: seq} }. Pure.
+function resolveConductClasses(conducts) {
+  var list = conducts || [];
+  var byId = {};
+  list.forEach(function (c) { if (c && c.id != null) byId[String(c.id)] = c; });
+  var keyById = {}, seqById = {};
+  list.forEach(function (c) {
+    if (!c || c.id == null) return;
+    keyById[String(c.id)] = conductClassKey(c);
+    seqById[String(c.id)] = conductClassSeq(c);
+  });
+  list.forEach(function (c) {
+    if (!c || c.id == null || !c.makeupFor) return;
+    var seen = {};
+    var cur = c;
+    while (cur && cur.makeupFor && String(cur.makeupFor) !== String(cur.id)) {
+      if (seen[String(cur.id)]) { cur = null; break; }   // cycle guard
+      seen[String(cur.id)] = true;
+      var tgt = byId[String(cur.makeupFor)];
+      if (!tgt) { cur = null; break; }                   // dangling target
+      cur = tgt;
+    }
+    if (cur && String(cur.id) !== String(c.id)) {
+      keyById[String(c.id)] = keyById[String(cur.id)];
+      seqById[String(c.id)] = seqById[String(cur.id)];
+    }
+  });
+  return { keyById: keyById, seqById: seqById };
+}
+
 // Per-recruit progression through one conduct class.
 //   instances:        [{ conductId, num }] — the class's HELD instances (any order)
 //   presentByConduct: { conductId: Set(d4) } — who participated in each instance
@@ -252,27 +319,34 @@ function creditMakeups(presentByConduct, makeupMap) {
 //   behind   = frontier − position
 // Returns { seriesMax, held:[nums sorted], rows:[{ d4, position, completed, missed:[nums], behind }] }.
 function conductProgress(instances, presentByConduct, recruitIds) {
-  const held = (instances || [])
-    .filter(function (x) { return x && typeof x.num === "number" && !isNaN(x.num); })
-    .slice().sort(function (a, b) { return a.num - b.num; });
-  const seriesMax = held.reduce(function (m, x) { return Math.max(m, x.num); }, 0);
+  const valid = (instances || [])
+    .filter(function (x) { return x && typeof x.num === "number" && !isNaN(x.num); });
+  // Collapse instances that share a num into ONE slot. A makeup conduct inherits
+  // its target's instance number (resolveConductClasses), so an original and its
+  // in-class makeup arrive here as two entries with the same num — but they are
+  // the SAME slot. A recruit counts as having attended that slot if present at
+  // ANY conduct carrying the num (original OR makeup), so attending either counts
+  // exactly once. Without this the "Done" denominator and attendee count both
+  // double when a makeup runs alongside its original.
+  const byNum = {};
+  valid.forEach(function (x) { (byNum[x.num] || (byNum[x.num] = [])).push(x.conductId); });
+  const nums = [...new Set(valid.map(function (x) { return x.num; }))]
+    .sort(function (a, b) { return a - b; });
+  const seriesMax = nums.reduce(function (m, n) { return Math.max(m, n); }, 0);
   const rows = (recruitIds || []).map(function (d4) {
     const id = String(d4);
-    const attended = held.filter(function (x) {
-      const set = presentByConduct[x.conductId];
-      return set && set.has(id);
-    }).map(function (x) { return x.num; });
+    const attended = nums.filter(function (n) {
+      return byNum[n].some(function (cid) { const set = presentByConduct[cid]; return set && set.has(id); });
+    });
     const position = attended.length ? Math.max.apply(null, attended) : 0;
     const attendedSet = new Set(attended);
-    const missed = held
-      .filter(function (x) { return x.num < position && !attendedSet.has(x.num); })
-      .map(function (x) { return x.num; });
+    const missed = nums.filter(function (n) { return n < position && !attendedSet.has(n); });
     return { d4: d4, position: position, completed: attended.length, missed: missed, behind: Math.max(0, seriesMax - position) };
   });
-  return { seriesMax: seriesMax, held: held.map(function (x) { return x.num; }), rows: rows };
+  return { seriesMax: seriesMax, held: nums, rows: rows };
 }
 
 // Node test export (browser ignores `module`); see js/calc.js consumers below.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductClassKey, conductClassSeq, buildMakeupMap, creditMakeups, conductProgress, parseParticipantIds, conductOutByIndex };
+  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, personParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductClassKey, conductClassSeq, buildMakeupMap, creditMakeups, resolveConductClasses, conductProgress, parseParticipantIds, conductOutByIndex };
 }

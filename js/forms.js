@@ -1932,9 +1932,15 @@ function openAppointmentForm(id, prefill) {
 }
 function submitAppointment() {
   const editId = +gv("f-entry-id");
+  // Recruit is picked via the search box (hidden input), which can't be HTML-
+  // `required` and is cleared on every keystroke until a suggestion is picked —
+  // so guard here, or a typed-but-unpicked name saves an appointment with no
+  // recruit (same guard submitMedical / submitLeave carry for their pickers).
+  const d4 = gv("f-d4");
+  if (!d4) { alert("Pick a recruit (search by name / 4D)."); return; }
   const entry = {
     id: editId || nextId(),
-    d4: gv("f-d4"),
+    d4,
     reason: gv("f-reason"),
     date: isoToDisplayDate(gv("f-date")),
     time: gv("f-time"),
@@ -2440,6 +2446,11 @@ let _paradeOverrides = {};
 // Cleared on modal open and on date change.
 let _apptCampOverrides = {};
 
+// Per-person Medical Appointment dates for the MR (Medical Review) generator, keyed by
+// 4D: { recent: "<iso>"|"", next: "<iso>"|"" }. Reset when the MR modal opens; a blank
+// value renders as the literal NIL in the message.
+let _mrDates = {};
+
 function findBorderlineReturnees(dateIso) {
   if (!dateIso) return [];
   const y = new Date(dateIso); y.setDate(y.getDate() - 1);
@@ -2650,6 +2661,57 @@ function generateMSKReportText(dateIso, time) {
   return `${heading}\n\n${blocks.join("\n\n")}`;
 }
 
+// Distinct 4Ds with a PENDING MR (Medical Review) visit dated to `dateIso`, ordered by
+// platoon then name. Mirrors the §8 classifier's MR clause for an arbitrary chosen date.
+function mrPeopleForDate(dateIso) {
+  const seen = {};
+  const out = [];
+  (STATE.medical || []).forEach(m => {
+    if (m.type !== "MR") return;
+    if (displayDateToISO(m.date) !== dateIso) return;
+    if (m.status && m.status !== "Pending") return;
+    if (seen[m.d4]) return;
+    seen[m.d4] = true;
+    out.push(m.d4);
+  });
+  return out.sort((a, b) => {
+    const ra = STATE.roster.find(x => x.id === a) || {};
+    const rb = STATE.roster.find(x => x.id === b) || {};
+    const pa = personPlatoon(ra) || "", pb = personPlatoon(rb) || "";
+    if (pa !== pb) return pa < pb ? -1 : 1;
+    return (ra.name || "").localeCompare(rb.name || "");
+  });
+}
+
+// "RANK FULLNAME" (name uppercased) from the roster; falls back to the raw 4D.
+function mrRankName(d4) {
+  const r = STATE.roster.find(x => x.id === d4);
+  if (!r) return d4;
+  return [r.rank, (r.name || "").toUpperCase()].filter(Boolean).join(" ");
+}
+
+// MR (Medical Review) message — "MR Message Format" in MD_Docs/Message Formats.md.
+// Auto-lists pending MR personnel for the date; Rank+Name + Coy prefilled, NRIC never
+// asked, MA dates from _mrDates (blank → NIL), everything else left blank for manual fill.
+function generateMRFormat(dateIso, time) {
+  const heading = `B COY *MEDICAL REVIEW* ${toDDMMYY(dateIso)}`;
+  const people = mrPeopleForDate(dateIso);
+  if (!people.length) return `${heading}\n\nNo personnel on medical review.`;
+  const mad = iso => (iso ? toDDMMYY(iso) : "NIL");
+  const blocks = people.map((d4, i) => {
+    const d = (_mrDates && _mrDates[d4]) || {};
+    return `${i + 1}) Rank + Full Name: ${mrRankName(d4)}\n`
+      + `Coy: B\n`
+      + `NRIC: \n`
+      + `Diagnosis/Issue: \n`
+      + `Date of most recent Medical Appointment: ${mad(d.recent)}\n`
+      + `Date of next MA: ${mad(d.next)}\n`
+      + `Memo (Yes/No): \n`
+      + `Remarks/ Requests: `;
+  });
+  return `${heading}\n\n${blocks.join("\n\n")}`;
+}
+
 function openReportModal(type) {
   const now = new Date();
   const pad = n => String(n).padStart(2, "0");
@@ -2661,6 +2723,7 @@ function openReportModal(type) {
     : type === "RSIP" ? "RSI Personnel (by Platoon)"
     : type === "MSK" ? "MSK Report"
     : type === "CONDUCT" ? "Per-Conduct Chat Format"
+    : type === "MR" ? "MR (Medical Review)"
     : "Medical Status List";
 
   // Borderline + appointment-camp overrides are scoped to a single modal
@@ -2673,11 +2736,14 @@ function openReportModal(type) {
   // generator on any date/time/scope change (no live checklists to re-render).
   const isParade = type === "FP" || type === "LP";
   const isConduct = type === "CONDUCT";
+  const isMR = type === "MR";
   const dateExtra = isParade
     ? `value="${defaultDate}" required onchange="regenerateReport('${type}')"`
     : isConduct
       ? `value="${defaultDate}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
-      : `value="${defaultDate}" required`;
+      : isMR
+        ? `value="${defaultDate}" required onchange="renderMRDateFields(); regenerateReport('MR')"`
+        : `value="${defaultDate}" required`;
   const timeExtra = isConduct
     ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
     : isParade
@@ -2735,6 +2801,7 @@ function openReportModal(type) {
           <span>Omit personnel already on status <span style="color:var(--muted)">(hide those on a prior active MC/LD/status — show only new cases)</span></span>
         </label>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
+        ${isMR ? `<div id="rep-mr-dates" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
         <textarea id="rep-text" rows="20" spellcheck="false" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre"></textarea>
         <button type="button" id="rep-copy-btn" class="btn btn-success" onclick="copyReportToClipboard()">📋 Copy to Clipboard</button>
@@ -2745,6 +2812,7 @@ function openReportModal(type) {
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
   if (isConduct) renderConductPicker();
+  if (isMR) { _mrDates = {}; renderMRDateFields(); }
   regenerateReport(type);
 }
 
@@ -2776,6 +2844,36 @@ function renderConductPicker() {
       </select>
     </div>
   `;
+}
+
+// Renders one row per pending-MR person for the modal date, each with two optional
+// Medical-Appointment date inputs (most recent / next). Blank stays blank → NIL in the
+// message. Parallels renderConductPicker/renderApptCampSection.
+function renderMRDateFields() {
+  const host = document.getElementById("rep-mr-dates");
+  if (!host) return;
+  const dateIso = gv("rep-date");
+  const people = mrPeopleForDate(dateIso);
+  if (!people.length) {
+    host.innerHTML = `<div style="font-size:11px;color:var(--muted)">No pending medical reviews on this date.</div>`;
+    return;
+  }
+  host.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Medical Appointment dates (optional — leave blank for NIL). Columns: most recent · next.</div>`
+    + people.map(d4 => {
+        const d = (_mrDates && _mrDates[d4]) || {};
+        return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(mrRankName(d4))}">${escapeHTML(mrRankName(d4))}</span>
+          <input type="date" value="${escapeAttr(d.recent || "")}" title="Most recent MA" onchange="setMRDate('${d4}','recent',this.value)" style="font-size:11px;padding:2px 4px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:3px">
+          <input type="date" value="${escapeAttr(d.next || "")}" title="Next MA" onchange="setMRDate('${d4}','next',this.value)" style="font-size:11px;padding:2px 4px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:3px">
+        </div>`;
+      }).join("");
+}
+
+// Stores an MR person's MA date (recent|next) and regenerates the message.
+function setMRDate(d4, which, iso) {
+  if (!_mrDates[d4]) _mrDates[d4] = { recent: "", next: "" };
+  _mrDates[d4][which] = iso || "";
+  regenerateReport("MR");
 }
 
 // Wipes overrides when the date input changes, re-renders the checklist
@@ -2852,6 +2950,7 @@ function regenerateReport(type) {
   let text;
   if (type === "MED") text = generateMedicalStatusText(dateIso, time);
   else if (type === "MSK") text = generateMSKReportText(dateIso, time);
+  else if (type === "MR") text = generateMRFormat(dateIso, time);
   else if (type === "RS") text = generateRSFormat(dateIso, time, { omitOnStatus: !!document.getElementById("rep-omit-status")?.checked });
   else if (type === "RSIP") {
     const sc = document.getElementById("rep-scope")?.value || "company";
@@ -3029,8 +3128,16 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
 
   // Conducts attended = total minus those they were absent from.
   // Polar classes joined = how many of those conducts they wore the watch for.
-  const conductsAttended = Math.max(0, totalCoyConducts - missedCount);
-  const attendanceRate = totalCoyConducts ? Math.round((conductsAttended / totalCoyConducts) * 100) : 0;
+  // Attendance % is now the per-person "added-in" rate (present ÷ conducts the recruit
+  // was in the participant list of OR logged absent for) over the window — the same
+  // definition the Conduct Dashboard uses. totalCoyConducts (all company PT conducts)
+  // stays below only as the Polar-tile denominator.
+  const _ppAttn = STATE.attendance.filter(a => { const i = displayDateToISO(a.date); return i && i >= startIso && i <= endIso; });
+  const _ppDetail = STATE.conductDetail.filter(c => { const i = displayDateToISO(c.date); return i && i >= startIso && i <= endIso; });
+  const _pp = personParticipation(_ppAttn, _ppDetail, null)[d4] || { present: 0, addedIn: 0, pct: null };
+  const conductsAttended = _pp.present;
+  const conductsAddedIn = _pp.addedIn;
+  const attendanceRate = _pp.pct == null ? 0 : _pp.pct;
   const polarJoined = polar.length;
   const polarRate = totalCoyConducts ? Math.round((polarJoined / totalCoyConducts) * 100) : 0;
   // Report Sick = days the recruit was sent to MO mid-day after a conduct
@@ -3197,7 +3304,7 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
       <tr>
         <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
           <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">Conducts attended</div>
-          <div style="font-size:24px;font-weight:700;color:#1A7F37;margin-top:4px">${conductsAttended}/${totalCoyConducts}</div>
+          <div style="font-size:24px;font-weight:700;color:#1A7F37;margin-top:4px">${conductsAttended}/${conductsAddedIn}</div>
           <div style="font-size:11px;color:#6E7681">${attendanceRate}% present</div>
         </td>
         <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
@@ -3879,20 +3986,32 @@ function setConductClass(id, className) {
   if (!c) return;
   const clean = String(className == null ? "" : className).trim();
   c.className = clean;
-  if (clean && (!c.classSeq || c.classSeq < 1)) {
-    const maxSeq = STATE.conducts.reduce((m, x) =>
-      (x.id !== id && (x.className || "").trim() === clean && Number(x.classSeq) > m) ? Number(x.classSeq) : m, 0);
-    c.classSeq = maxSeq + 1;
-  }
+  if (clean && (!c.classSeq || c.classSeq < 1)) c.classSeq = _nextClassSeq(id, clean);
   _pushConductsRegistry();
+}
+
+// Next free ordinal within a manual class: (highest classSeq already used in that
+// class) + 1, excluding the conduct being edited. Used to auto-assign a distinct
+// positive seq so a manually-classed conduct never falls back to its name number.
+function _nextClassSeq(excludeId, className) {
+  const clean = String(className == null ? "" : className).trim();
+  const maxSeq = STATE.conducts.reduce((m, x) =>
+    (x.id !== excludeId && (x.className || "").trim() === clean && Number(x.classSeq) > m) ? Number(x.classSeq) : m, 0);
+  return maxSeq + 1;
 }
 
 // Registry: set a conduct's explicit ordinal within its class. Coerced to a
 // non-negative integer (0 = "unset" → the Dash falls back to the name's number).
+// But a MANUALLY-classed conduct must never be left at 0: conductClassSeq() would
+// then fall back to the name's trailing number, which can collide with a sibling
+// in the same class and silently merge two instances in the progression list (a
+// recruit who missed one of the two num-collided instances reads as on-track).
+// So when a className is set, a blank/<1 seq snaps to the next free ordinal.
 function setConductClassSeq(id, seq) {
   const c = STATE.conducts.find(x => x.id === id);
   if (!c) return;
-  const n = Math.max(0, Math.floor(Number(seq) || 0));
+  let n = Math.max(0, Math.floor(Number(seq) || 0));
+  if (n < 1 && (c.className || "").trim()) n = _nextClassSeq(id, c.className);
   c.classSeq = n;
   _pushConductsRegistry();
 }
