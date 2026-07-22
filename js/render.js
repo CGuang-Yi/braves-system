@@ -2559,6 +2559,7 @@ function renderConducts(el) {
     return;
   }
   const rows = [...STATE.conducts].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  const _regResolved = resolveConductClasses(STATE.conducts);
   const totalUsage = rows.reduce((s, c) => s + countConductUsage(c.id).total, 0);
   const orphanedCount = (arr) => arr.filter(r => r.conductId !== undefined && !STATE.conducts.find(c => c.id === r.conductId)).length;
   const orphans = orphanedCount(STATE.attendance) + orphanedCount(STATE.polar) + orphanedCount(STATE.conductDetail);
@@ -2595,10 +2596,14 @@ function renderConducts(el) {
           <td class="mono" style="color:var(--muted);font-size:11px">${c.id}</td>
           <td style="text-align:left;font-weight:600">${escapeAttr(c.name)}</td>
           <td style="text-align:left">
-            <input type="text" list="conduct-class-names" value="${escapeAttr(c.className || "")}" placeholder="—" onchange="setConductClass('${c.id}', this.value)" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px">
+            ${c.makeupFor
+              ? `<input type="text" value="${escapeAttr(_regResolved.keyById[String(c.id)] || "")}" disabled title="Inherited from the conduct this makes up for" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface);border:1px dashed var(--border);color:var(--muted);border-radius:3px">`
+              : `<input type="text" list="conduct-class-names" value="${escapeAttr(c.className || "")}" placeholder="—" onchange="setConductClass('${c.id}', this.value)" style="width:120px;font-size:11px;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px">`}
           </td>
           <td>
-            <input type="number" min="0" step="1" value="${(c.className || '').trim() ? (c.classSeq || 0) : ''}" ${(c.className || '').trim() ? '' : 'disabled'} placeholder="auto" onchange="setConductClassSeq('${c.id}', this.value)" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="${(c.className || '').trim() ? 'Order within the class' : 'Set a class first'}">
+            ${c.makeupFor
+              ? `<input type="number" value="${_regResolved.seqById[String(c.id)] || ''}" disabled title="Inherited slot from the conduct this makes up for" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface);border:1px dashed var(--border);color:var(--muted);border-radius:3px">`
+              : `<input type="number" min="0" step="1" value="${(c.className || '').trim() ? (c.classSeq || 0) : ''}" ${(c.className || '').trim() ? '' : 'disabled'} placeholder="auto" onchange="setConductClassSeq('${c.id}', this.value)" style="width:52px;font-size:11px;padding:3px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="${(c.className || '').trim() ? 'Order within the class' : 'Set a class first'}">`}
           </td>
           <td style="text-align:left">
             <select onchange="setConductMakeupFor('${c.id}', this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px" title="Attending this conduct credits attendance for the selected instance in the Conduct Dashboard">
