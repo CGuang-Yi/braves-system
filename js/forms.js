@@ -2723,6 +2723,7 @@ function openReportModal(type) {
     : type === "RSIP" ? "RSI Personnel (by Platoon)"
     : type === "MSK" ? "MSK Report"
     : type === "CONDUCT" ? "Per-Conduct Chat Format"
+    : type === "MR" ? "MR (Medical Review)"
     : "Medical Status List";
 
   // Borderline + appointment-camp overrides are scoped to a single modal
@@ -2735,11 +2736,14 @@ function openReportModal(type) {
   // generator on any date/time/scope change (no live checklists to re-render).
   const isParade = type === "FP" || type === "LP";
   const isConduct = type === "CONDUCT";
+  const isMR = type === "MR";
   const dateExtra = isParade
     ? `value="${defaultDate}" required onchange="regenerateReport('${type}')"`
     : isConduct
       ? `value="${defaultDate}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
-      : `value="${defaultDate}" required`;
+      : isMR
+        ? `value="${defaultDate}" required onchange="renderMRDateFields(); regenerateReport('MR')"`
+        : `value="${defaultDate}" required`;
   const timeExtra = isConduct
     ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
     : isParade
@@ -2797,6 +2801,7 @@ function openReportModal(type) {
           <span>Omit personnel already on status <span style="color:var(--muted)">(hide those on a prior active MC/LD/status — show only new cases)</span></span>
         </label>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
+        ${isMR ? `<div id="rep-mr-dates" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
         <textarea id="rep-text" rows="20" spellcheck="false" style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre"></textarea>
         <button type="button" id="rep-copy-btn" class="btn btn-success" onclick="copyReportToClipboard()">📋 Copy to Clipboard</button>
@@ -2807,6 +2812,7 @@ function openReportModal(type) {
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
   if (isConduct) renderConductPicker();
+  if (isMR) { _mrDates = {}; renderMRDateFields(); }
   regenerateReport(type);
 }
 
@@ -2838,6 +2844,36 @@ function renderConductPicker() {
       </select>
     </div>
   `;
+}
+
+// Renders one row per pending-MR person for the modal date, each with two optional
+// Medical-Appointment date inputs (most recent / next). Blank stays blank → NIL in the
+// message. Parallels renderConductPicker/renderApptCampSection.
+function renderMRDateFields() {
+  const host = document.getElementById("rep-mr-dates");
+  if (!host) return;
+  const dateIso = gv("rep-date");
+  const people = mrPeopleForDate(dateIso);
+  if (!people.length) {
+    host.innerHTML = `<div style="font-size:11px;color:var(--muted)">No pending medical reviews on this date.</div>`;
+    return;
+  }
+  host.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Medical Appointment dates (optional — leave blank for NIL). Columns: most recent · next.</div>`
+    + people.map(d4 => {
+        const d = (_mrDates && _mrDates[d4]) || {};
+        return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(mrRankName(d4))}">${escapeHTML(mrRankName(d4))}</span>
+          <input type="date" value="${escapeAttr(d.recent || "")}" title="Most recent MA" onchange="setMRDate('${d4}','recent',this.value)" style="font-size:11px;padding:2px 4px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:3px">
+          <input type="date" value="${escapeAttr(d.next || "")}" title="Next MA" onchange="setMRDate('${d4}','next',this.value)" style="font-size:11px;padding:2px 4px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:3px">
+        </div>`;
+      }).join("");
+}
+
+// Stores an MR person's MA date (recent|next) and regenerates the message.
+function setMRDate(d4, which, iso) {
+  if (!_mrDates[d4]) _mrDates[d4] = { recent: "", next: "" };
+  _mrDates[d4][which] = iso || "";
+  regenerateReport("MR");
 }
 
 // Wipes overrides when the date input changes, re-renders the checklist
@@ -2914,6 +2950,7 @@ function regenerateReport(type) {
   let text;
   if (type === "MED") text = generateMedicalStatusText(dateIso, time);
   else if (type === "MSK") text = generateMSKReportText(dateIso, time);
+  else if (type === "MR") text = generateMRFormat(dateIso, time);
   else if (type === "RS") text = generateRSFormat(dateIso, time, { omitOnStatus: !!document.getElementById("rep-omit-status")?.checked });
   else if (type === "RSIP") {
     const sc = document.getElementById("rep-scope")?.value || "company";
