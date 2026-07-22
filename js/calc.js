@@ -176,6 +176,39 @@ function perConductParticipation(attendance, conductDetail, visibleSet, outBy) {
   return out;
 }
 
+// Per-person participation over the "added-in" set: a person is "added into" a conduct
+// when they appear in its CSV participant list OR have a non-participation (conductDetail)
+// row for it. present = added-in conducts they participated in. Only source==="csv"
+// attendance rows carry a per-person participant list, so only those contribute; other
+// conducts can't be attributed per-person and are excluded from every denominator.
+// conductIdSet (optional Set of ids) restricts to those conducts; null = all.
+// Returns { d4: { present, addedIn, pct } }; pct = round(present/addedIn*100) or null.
+function personParticipation(attendance, conductDetail, conductIdSet) {
+  var inSet = function (id) { return !conductIdSet || conductIdSet.has(id) || conductIdSet.has(String(id)); };
+  var outBy = conductOutByIndex(conductDetail);
+  var acc = {};
+  var bump = function (d4, presentInc, addedInc) {
+    var k = String(d4);
+    var e = acc[k] || (acc[k] = { present: 0, addedIn: 0 });
+    e.present += presentInc; e.addedIn += addedInc;
+  };
+  (attendance || []).forEach(function (a) {
+    if (a.source !== "csv") return;
+    if (!inSet(a.conductId)) return;
+    var present = parseParticipantIds(a.participants);
+    var presentSet = {};
+    present.forEach(function (id) { presentSet[String(id)] = true; bump(id, 1, 1); });
+    var outs = outBy[String(a.conductId) + "|" + String(a.date)] || new Set();
+    outs.forEach(function (id) { if (!presentSet[String(id)]) bump(id, 0, 1); });
+  });
+  var res = {};
+  Object.keys(acc).forEach(function (k) {
+    var e = acc[k];
+    res[k] = { present: e.present, addedIn: e.addedIn, pct: e.addedIn ? Math.round((e.present / e.addedIn) * 100) : null };
+  });
+  return res;
+}
+
 // ── Conduct series / class progression (Phase 2b) ─────────────────────────────
 // A "class" of conducts shares a base name and is distinguished by a TRAILING
 // number; the first of its kind may omit the number (so it is instance 1).
@@ -308,5 +341,5 @@ function conductProgress(instances, presentByConduct, recruitIds) {
 
 // Node test export (browser ignores `module`); see js/calc.js consumers below.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductClassKey, conductClassSeq, buildMakeupMap, creditMakeups, resolveConductClasses, conductProgress, parseParticipantIds, conductOutByIndex };
+  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, personParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductClassKey, conductClassSeq, buildMakeupMap, creditMakeups, resolveConductClasses, conductProgress, parseParticipantIds, conductOutByIndex };
 }
