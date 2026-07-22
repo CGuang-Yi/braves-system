@@ -319,24 +319,31 @@ function resolveConductClasses(conducts) {
 //   behind   = frontier − position
 // Returns { seriesMax, held:[nums sorted], rows:[{ d4, position, completed, missed:[nums], behind }] }.
 function conductProgress(instances, presentByConduct, recruitIds) {
-  const held = (instances || [])
-    .filter(function (x) { return x && typeof x.num === "number" && !isNaN(x.num); })
-    .slice().sort(function (a, b) { return a.num - b.num; });
-  const seriesMax = held.reduce(function (m, x) { return Math.max(m, x.num); }, 0);
+  const valid = (instances || [])
+    .filter(function (x) { return x && typeof x.num === "number" && !isNaN(x.num); });
+  // Collapse instances that share a num into ONE slot. A makeup conduct inherits
+  // its target's instance number (resolveConductClasses), so an original and its
+  // in-class makeup arrive here as two entries with the same num — but they are
+  // the SAME slot. A recruit counts as having attended that slot if present at
+  // ANY conduct carrying the num (original OR makeup), so attending either counts
+  // exactly once. Without this the "Done" denominator and attendee count both
+  // double when a makeup runs alongside its original.
+  const byNum = {};
+  valid.forEach(function (x) { (byNum[x.num] || (byNum[x.num] = [])).push(x.conductId); });
+  const nums = [...new Set(valid.map(function (x) { return x.num; }))]
+    .sort(function (a, b) { return a - b; });
+  const seriesMax = nums.reduce(function (m, n) { return Math.max(m, n); }, 0);
   const rows = (recruitIds || []).map(function (d4) {
     const id = String(d4);
-    const attended = held.filter(function (x) {
-      const set = presentByConduct[x.conductId];
-      return set && set.has(id);
-    }).map(function (x) { return x.num; });
+    const attended = nums.filter(function (n) {
+      return byNum[n].some(function (cid) { const set = presentByConduct[cid]; return set && set.has(id); });
+    });
     const position = attended.length ? Math.max.apply(null, attended) : 0;
     const attendedSet = new Set(attended);
-    const missed = held
-      .filter(function (x) { return x.num < position && !attendedSet.has(x.num); })
-      .map(function (x) { return x.num; });
+    const missed = nums.filter(function (n) { return n < position && !attendedSet.has(n); });
     return { d4: d4, position: position, completed: attended.length, missed: missed, behind: Math.max(0, seriesMax - position) };
   });
-  return { seriesMax: seriesMax, held: held.map(function (x) { return x.num; }), rows: rows };
+  return { seriesMax: seriesMax, held: nums, rows: rows };
 }
 
 // Node test export (browser ignores `module`); see js/calc.js consumers below.

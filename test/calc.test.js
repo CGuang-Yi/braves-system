@@ -163,6 +163,31 @@ module.exports = async function run() {
     eq(r.rows[0], { d4: "0001", position: 0, completed: 0, missed: [], behind: 2 });
   });
 
+  await test("a makeup sharing its target's num collapses into one slot", () => {
+    // e3 (original) and e3m (in-class makeup) both carry num 3 — resolveConductClasses
+    // gives a makeup its target's num, so they must count as ONE held slot, not two.
+    const instances = [
+      { conductId: "e1", num: 1 }, { conductId: "e2", num: 2 },
+      { conductId: "e3", num: 3 }, { conductId: "e3m", num: 3 },
+      { conductId: "e4", num: 4 }
+    ];
+    const present = {
+      e1: new Set(["0001", "0002"]), e2: new Set(["0001", "0002"]),
+      e3: new Set(["0001"]),       // 0001 attended the original only
+      e3m: new Set(["0002"]),      // 0002 attended the makeup only
+      e4: new Set(["0001", "0002"])
+    };
+    const r = c.conductProgress(instances, present, ["0001", "0002"]);
+    eq(r.held, [1, 2, 3, 4], "distinct nums only — same-num pair collapsed to one slot");
+    eq(new Set(r.held).size, r.held.length, "no duplicate nums in held");
+    const a = r.rows.find(x => x.d4 === "0001");
+    eq(a.completed, 4, "original-only attendance still counts slot 3 exactly once");
+    eq(a.missed, []);
+    const b = r.rows.find(x => x.d4 === "0002");
+    eq(b.completed, 4, "makeup-only attendance still counts slot 3 exactly once");
+    eq(b.missed, []);
+  });
+
   suite("calc: conduct buildup group consistency");
 
   await test("a blank/missing group buckets to Unassigned and still counts", () => {
