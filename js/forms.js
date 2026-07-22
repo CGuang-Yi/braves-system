@@ -3035,8 +3035,16 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
 
   // Conducts attended = total minus those they were absent from.
   // Polar classes joined = how many of those conducts they wore the watch for.
-  const conductsAttended = Math.max(0, totalCoyConducts - missedCount);
-  const attendanceRate = totalCoyConducts ? Math.round((conductsAttended / totalCoyConducts) * 100) : 0;
+  // Attendance % is now the per-person "added-in" rate (present ÷ conducts the recruit
+  // was in the participant list of OR logged absent for) over the window — the same
+  // definition the Conduct Dashboard uses. totalCoyConducts (all company PT conducts)
+  // stays below only as the Polar-tile denominator.
+  const _ppAttn = STATE.attendance.filter(a => { const i = displayDateToISO(a.date); return i && i >= startIso && i <= endIso; });
+  const _ppDetail = STATE.conductDetail.filter(c => { const i = displayDateToISO(c.date); return i && i >= startIso && i <= endIso; });
+  const _pp = personParticipation(_ppAttn, _ppDetail, null)[d4] || { present: 0, addedIn: 0, pct: null };
+  const conductsAttended = _pp.present;
+  const conductsAddedIn = _pp.addedIn;
+  const attendanceRate = _pp.pct == null ? 0 : _pp.pct;
   const polarJoined = polar.length;
   const polarRate = totalCoyConducts ? Math.round((polarJoined / totalCoyConducts) * 100) : 0;
   // Report Sick = days the recruit was sent to MO mid-day after a conduct
@@ -3203,7 +3211,7 @@ function buildFitnessReportHTML(d4, startIso, endIso) {
       <tr>
         <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
           <div style="font-size:10px;color:#6E7681;text-transform:uppercase;letter-spacing:.5px">Conducts attended</div>
-          <div style="font-size:24px;font-weight:700;color:#1A7F37;margin-top:4px">${conductsAttended}/${totalCoyConducts}</div>
+          <div style="font-size:24px;font-weight:700;color:#1A7F37;margin-top:4px">${conductsAttended}/${conductsAddedIn}</div>
           <div style="font-size:11px;color:#6E7681">${attendanceRate}% present</div>
         </td>
         <td style="background:#F6F8FA;border:1px solid #E1E4E8;border-radius:8px;padding:14px;text-align:center;width:25%">
