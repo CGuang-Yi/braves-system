@@ -241,6 +241,40 @@ function creditMakeups(presentByConduct, makeupMap) {
   return out;
 }
 
+// Resolve each conduct's effective class key + sequence number, following makeupFor so
+// a makeup conduct inherits the class + slot of the conduct it replaces. Walks the
+// makeupFor chain to the first non-makeup (or dangling/cyclic) target and adopts that
+// target's OWN key/seq. Cycles + missing targets fall back to the conduct's own values.
+// Returns { keyById: {id: key}, seqById: {id: seq} }. Pure.
+function resolveConductClasses(conducts) {
+  var list = conducts || [];
+  var byId = {};
+  list.forEach(function (c) { if (c && c.id != null) byId[String(c.id)] = c; });
+  var keyById = {}, seqById = {};
+  list.forEach(function (c) {
+    if (!c || c.id == null) return;
+    keyById[String(c.id)] = conductClassKey(c);
+    seqById[String(c.id)] = conductClassSeq(c);
+  });
+  list.forEach(function (c) {
+    if (!c || c.id == null || !c.makeupFor) return;
+    var seen = {};
+    var cur = c;
+    while (cur && cur.makeupFor && String(cur.makeupFor) !== String(cur.id)) {
+      if (seen[String(cur.id)]) { cur = null; break; }   // cycle guard
+      seen[String(cur.id)] = true;
+      var tgt = byId[String(cur.makeupFor)];
+      if (!tgt) { cur = null; break; }                   // dangling target
+      cur = tgt;
+    }
+    if (cur && String(cur.id) !== String(c.id)) {
+      keyById[String(c.id)] = keyById[String(cur.id)];
+      seqById[String(c.id)] = seqById[String(cur.id)];
+    }
+  });
+  return { keyById: keyById, seqById: seqById };
+}
+
 // Per-recruit progression through one conduct class.
 //   instances:        [{ conductId, num }] — the class's HELD instances (any order)
 //   presentByConduct: { conductId: Set(d4) } — who participated in each instance
@@ -274,5 +308,5 @@ function conductProgress(instances, presentByConduct, recruitIds) {
 
 // Node test export (browser ignores `module`); see js/calc.js consumers below.
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductClassKey, conductClassSeq, buildMakeupMap, creditMakeups, conductProgress, parseParticipantIds, conductOutByIndex };
+  module.exports = { addDaysISO, endDateFromStartAndDays, daysFromStartEndInclusive, scopedParticipation, conductBuildup, perConductParticipation, CONDUCT_MISS_TYPES, parseConductSeries, conductClassKey, conductClassSeq, buildMakeupMap, creditMakeups, resolveConductClasses, conductProgress, parseParticipantIds, conductOutByIndex };
 }
