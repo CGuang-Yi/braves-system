@@ -67,9 +67,12 @@ module.exports = async function run() {
       "calc.js series/progression helpers missing");
     ok(calc.includes("function conductClassKey") && calc.includes("function conductClassSeq"),
       "calc.js class-key/seq helpers missing");
-    // render.js groups via the class-aware helpers (which wrap parseConductSeries in
-    // calc.js) rather than calling parseConductSeries directly.
-    ok(render.includes("conductClassKey(") && render.includes("conductClassSeq(") && render.includes("conductProgress("),
+    ok(calc.includes("function resolveConductClasses"),
+      "calc.js resolveConductClasses (makeup-aware class/seq resolver) missing");
+    // render.js groups via resolveConductClasses (which wraps conductClassKey/conductClassSeq
+    // in calc.js and follows makeupFor to the target's class+slot) rather than calling
+    // conductClassKey/conductClassSeq directly.
+    ok(render.includes("resolveConductClasses(") && render.includes("conductProgress("),
       "render.js does not use the class-scoping/progression helpers");
     ok(render.includes("function setConductSeries"), "no conduct-class selector handler");
     ok(render.includes("Class Progression"), "progression list not rendered");

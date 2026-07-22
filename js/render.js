@@ -2314,15 +2314,16 @@ function renderConductDashboard(el) {
   // selector, its per-base instance counts, and the selected class's id set.
   // numById memoises each conduct's instance number so the chart-label code below
   // doesn't re-run the regex per row.
+  const _resolvedClasses = resolveConductClasses(STATE.conducts || []);
   const seriesGroups = {};          // classKey → { ids:Set, count, manual }
-  const numById = {};               // conductId → ordinal within its class
+  const numById = {};               // conductId → ordinal within its class (makeup-resolved)
   (STATE.conducts || []).forEach(c => {
-    const key = conductClassKey(c);
-    numById[c.id] = conductClassSeq(c);
+    const key = _resolvedClasses.keyById[String(c.id)];
+    numById[c.id] = _resolvedClasses.seqById[String(c.id)];
     if (!key) return;
     const g = seriesGroups[key] || (seriesGroups[key] = { ids: new Set(), count: 0, manual: false });
     g.ids.add(c.id); g.count++;
-    if ((c.className || "").trim()) g.manual = true;
+    if ((c.className || "").trim() || c.makeupFor) g.manual = true;
   });
   const bases = Object.keys(seriesGroups).sort();
   const seriesIds = (_conductSeries && seriesGroups[_conductSeries]) ? seriesGroups[_conductSeries].ids : null;
@@ -2408,6 +2409,9 @@ function renderConductDashboard(el) {
       .map(c => ({ conductId: c.id, num: numById[c.id] }));
     const recruitIds = filteredRoster().map(r => r.id);
     const prog = conductProgress(held, creditedPresent, recruitIds);
+    // Per-person participation % over the selected class + window ("added-in" rule):
+    // present / (conducts the member was in the participant list of OR logged absent for).
+    const partByD4 = personParticipation(attnWin, STATE.conductDetail || [], seriesIds);
     const rows = prog.rows.slice().sort((a, b) => (a.position - b.position) || (b.behind - a.behind) || (b.missed.length - a.missed.length));
     const frontier = prog.seriesMax ? `${escapeHTML(_conductSeries)} ${prog.seriesMax}` : "—";
     const curCell = p => p.position ? `${escapeHTML(_conductSeries)} ${p.position}` : `<span style="color:var(--dim)">Not started</span>`;
@@ -2421,8 +2425,8 @@ function renderConductDashboard(el) {
     progressionHTML = `<div class="card" style="margin-top:10px">
       <h3>Class Progression — ${escapeHTML(_conductSeries)} <span style="font-weight:400;color:var(--dim);font-size:11px">(company frontier: ${frontier} · ${prog.held.length} held)</span></h3>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${isFilterActive() ? filterLabel() : "Whole company"} — each member's latest attended instance, gaps below it (missed), and how far behind the frontier they are. Click a row to open the member.</div>
-      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Current</th><th>Done</th><th style="text-align:left">Missed</th><th style="text-align:left">Status</th></tr></thead><tbody>
-        ${rows.map(p => `<tr onclick="openPerson('${p.d4}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td>${curCell(p)}</td><td>${p.completed}/${prog.held.length}</td><td style="text-align:left;color:${p.missed.length ? "var(--red)" : "var(--dim)"}">${p.missed.length ? p.missed.map(n => "#" + n).join(", ") : "—"}</td><td style="text-align:left">${statusCell(p)}</td></tr>`).join("")}
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Current</th><th>Done</th><th title="Present ÷ conducts added into (this class, this window)">Part%</th><th style="text-align:left">Missed</th><th style="text-align:left">Status</th></tr></thead><tbody>
+        ${rows.map(p => { const pp = partByD4[String(p.d4)] || { present: 0, addedIn: 0, pct: null }; const partCell = pp.pct == null ? `<span style="color:var(--dim)">—</span>` : `${pp.pct}% <span style="color:var(--dim);font-size:10px">(${pp.present}/${pp.addedIn})</span>`; return `<tr onclick="openPerson('${p.d4}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td>${curCell(p)}</td><td>${p.completed}/${prog.held.length}</td><td>${partCell}</td><td style="text-align:left;color:${p.missed.length ? "var(--red)" : "var(--dim)"}">${p.missed.length ? p.missed.map(n => "#" + n).join(", ") : "—"}</td><td style="text-align:left">${statusCell(p)}</td></tr>`; }).join("")}
       </tbody></table></div>` : `<div class="empty-state" style="padding:12px;font-size:12px">No members in scope.</div>`}
     </div>`;
   }
