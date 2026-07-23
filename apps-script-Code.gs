@@ -1250,7 +1250,7 @@ function bravesMigrateSchema() {
   ensureTabWithHeaders_(ss, "Roster",
     ["platoon", "section", "rankGroup", "fourD"]);
   ensureTabWithHeaders_(ss, "Medical",
-    ["location", "type", "urtiType", "mrTiming", "visitId", "origin", "bookInDate"]);
+    ["location", "type", "urtiType", "mrTiming", "visitId", "origin", "bookInDate", "time", "outOfCamp"]);
   ensureTabWithHeaders_(ss, "Appointments",
     ["outOfCamp"]);
   ensureTabWithHeaders_(ss, "Leave",
@@ -1562,7 +1562,7 @@ function readAllTabs(ctx) {
 // every re-save of a morning conduct DUPLICATES its rows — and the client-side
 // dedup/preload (which compare against pad4Time keys). Forcing "@" keeps "0730"
 // verbatim, exactly like participants.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"] };
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"] };
 
 function writeTab(tabName, data) {
   if (!Array.isArray(data)) {
