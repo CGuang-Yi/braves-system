@@ -29,13 +29,14 @@ document.getElementById("search-input").addEventListener("input", e => {
   const q = e.target.value.toLowerCase();
   const res = document.getElementById("search-results");
   if (!q) { res.innerHTML = ""; return; }
-  // Search respects the global scope filter so results don't show recruits the
-  // user has explicitly scoped out of view.
-  const matches = filteredRoster().filter(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)).slice(0, 5);
+  // Top-nav search is deliberately UNSCOPED (item 18): it searches the whole
+  // roster, ignoring the global platoon/company filter, so a 4D/name always
+  // resolves even for someone the current scope hides.
+  const matches = STATE.roster.filter(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)).slice(0, 5);
   res.innerHTML = matches.map(r => `<button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openPerson('${r.id}')">${r.id}</button>`).join("");
 });
 
-// Enter in the topbar search opens the current top match (same scope-filtered
+// Enter in the topbar search opens the current top match (same UNSCOPED
 // substring the input handler renders). preventDefault so Enter never submits an
 // ambient form or reloads.
 document.getElementById("search-input").addEventListener("keydown", e => {
@@ -43,7 +44,7 @@ document.getElementById("search-input").addEventListener("keydown", e => {
   e.preventDefault();
   const q = e.target.value.toLowerCase();
   if (!q) return;
-  const match = filteredRoster().find(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  const match = STATE.roster.find(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
   if (match) openPerson(match.id);
 });
 
