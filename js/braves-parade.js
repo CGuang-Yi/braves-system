@@ -311,6 +311,20 @@ function bpClassifyPerson(r, dateIso, idx) {
       push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "WD", { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
+
+    // Item 17: Medical Appointment (type MA) dated today → OTHERS. Mirrors the
+    // legacy standalone-Appointments block below (booking now routes through the
+    // Medical form): outOfCamp → NOT IN CAMP (and subtracts from current
+    // strength); in camp → OTHERS (IN CAMP), still present. A booked-in MA drops
+    // off (same book-in semantics as the branches above). Independent of any
+    // status the same visit carries — an MA may co-exist with e.g. an LD, and the
+    // person then legitimately holds both codes on the appointment day (Q2).
+    if (m.type === "MA" && displayDateToISO(m.date) === dateIso && !bookedInBy(m, dateIso)) {
+      const outOfCamp = !!m.outOfCamp;
+      const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      push2("others", `${m.reason || "Medical Appointment"} (${label})`, "OTHERS");
+      if (outOfCamp) notInCamp = true;
+    }
   });
 
   // Persist an ENDED MC through the MC+1/MC+2 recovery window, then AUTO-HIDE.

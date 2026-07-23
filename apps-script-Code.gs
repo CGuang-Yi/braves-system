@@ -3311,6 +3311,18 @@ function bpClassifyPerson(r, dateIso) {
       pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
     }
+
+    // Item 17: Medical Appointment (type MA) dated today → OTHERS. Mirrors the
+    // legacy standalone-Appointments block below (booking now routes through the
+    // Medical form): outOfCamp → NOT IN CAMP; in camp → OTHERS (IN CAMP). A
+    // booked-in MA drops off. Independent of any status the visit carries (Q2).
+    // MUST mirror js/braves-parade.js — parade-port-parity.test.js guards this.
+    if (m.type === "MA" && displayDateToISO(m.date) === dateIso && !bookedInBy(m, dateIso)) {
+      const outOfCamp = !!m.outOfCamp;
+      const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      pushS("others", `${rn} - ${m.reason || "Medical Appointment"} (${label})`.trim(), null); // point event, never superseded
+      if (outOfCamp) notInCamp = true;
+    }
   });
 
   // Persist an ENDED MC through the MC+1/MC+2 recovery window, then AUTO-HIDE.

@@ -487,4 +487,36 @@ module.exports = async function run() {
     ok(!after.notInCamp, "booked in ⇒ in camp");
     eq(lv.endDate, "2026-06-20", "leave endDate untouched");
   });
+
+  suite("parade classifier: Item 17 — Medical Appointment (type MA) → OTHERS");
+
+  await test("MA out-of-camp → OTHERS (NOT IN CAMP), counts out of camp", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MA", date: TODAY, reason: "Dental", outOfCamp: true, status: "" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 1, "MA should surface under OTHERS on its date");
+    ok(/Dental/.test(c.sections.others[0]) && /NOT IN CAMP/.test(c.sections.others[0]), "labelled OTHERS (NOT IN CAMP)");
+    ok(c.notInCamp, "out-of-camp MA counts out of camp");
+  });
+
+  await test("MA in-camp → OTHERS (IN CAMP), stays in camp", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MA", date: TODAY, reason: "Specialist review", outOfCamp: false, status: "" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 1, "MA should surface under OTHERS on its date");
+    ok(/Specialist review/.test(c.sections.others[0]) && /IN CAMP/.test(c.sections.others[0]), "labelled OTHERS (IN CAMP)");
+    ok(!c.notInCamp, "in-camp MA stays in camp");
+  });
+
+  await test("MA on a different day → not listed", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MA", date: "2026-07-01", reason: "Dental", outOfCamp: true, status: "" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 0, "an MA dated another day is not on today's parade state");
+    ok(!c.notInCamp, "and does not affect today's in/out-of-camp count");
+  });
+
+  await test("MA with an attached status → both the status and the appointment code (Q2: multiple codes ok)", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "MA", date: TODAY, reason: "Physio", outOfCamp: false, status: "LD", startDate: TODAY, endDate: "2026-07-03" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.status.length, 1, "the attached LD still flows through STATUS on its range");
+    eq(c.sections.others.length, 1, "and the MA still lists under OTHERS on its date");
+  });
 };
