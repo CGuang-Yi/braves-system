@@ -724,6 +724,10 @@ function openMedicalForm(id, prefill) {
   // `prefill` is honoured only when creating (not editing) — used to route
   // appointment bookings through this form pre-set to type MA (Item 17
   // consolidation), mirroring openAppointmentForm's prefill contract.
+  // `isEdit` gates the modal chrome (title / edit-hint / Save vs Submit / the
+  // hidden entry-id); `e` holds the field values and, for a NEW booking, may be a
+  // prefill object (no id) — so chrome must key off isEdit, not the truthiness of e.
+  const isEdit = !!id;
   const e = id ? STATE.medical.find(x => x.id === id) : (prefill || null);
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
   const startVal = e ? displayDateToISO(e.startDate) || dateVal : todayISO();
@@ -731,11 +735,11 @@ function openMedicalForm(id, prefill) {
   const daysVal = (startVal && endVal) ? daysFromStartEndInclusive(startVal, endVal) : "";
   const selectedStatus = e?.status || "";
   _medExtraIdx = 0;
-  openModal(e ? "Edit Report Sick Entry" : "Log Report Sick", `
+  openModal(isEdit ? "Edit Report Sick Entry" : "Log Report Sick", `
     <form onsubmit="event.preventDefault(); submitMedical(); return false">
-      <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
+      <input type="hidden" id="f-entry-id" value="${isEdit ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
-        ${e ? editHint : ""}
+        ${isEdit ? editHint : ""}
         <div class="form-group"><label>Recruit</label>${personSearchBox({ boxId: "med-person", valueId: "f-d4", placeholder: "Search recruit by name / 4D…", selected: e?.d4 || "" })}</div>
         <div class="form-group">
           <label>Visit type</label>
@@ -791,7 +795,7 @@ function openMedicalForm(id, prefill) {
         <div id="f-extra-statuses" style="display:flex;flex-direction:column;gap:8px"></div>
         <button type="button" class="btn" style="font-size:11px;align-self:flex-start" onclick="addMedStatusRow()">＋ Add another status</button>
         <div style="font-size:10px;color:var(--muted)">Use this when the MO gives more than one status for the same visit (e.g. <strong>2D LD</strong> + <strong>4D Excuse RMJ</strong>). Each status keeps its own duration.</div>
-        <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
+        <button type="submit" class="btn btn-primary">${isEdit ? "Save" : "Submit"}</button>
       </div>
     </form>`);
 }
