@@ -232,7 +232,7 @@ function archiveParadeSnapshot(text) {
   const row = {
     timestamp: new Date().toISOString(),
     date: paradeCurrentDateISO(), slot: String(_paradeTime || ""),
-    type: _paradeType || "", scope: "company", message: String(text)
+    type: _paradeType || "", scope: _paradeScope || "company", message: String(text)
   };
   if (paradeSnapshotDup(STATE.paradeArchive, row)) return;
   STATE.paradeArchive = [row, ...(STATE.paradeArchive || [])];

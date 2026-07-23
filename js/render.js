@@ -66,6 +66,8 @@ let _archiveTab = "parade";   // "parade" | "sick"
 let _archiveQuery = "";
 let _archiveCompare = false;  // parade tab: list view vs two-snapshot diff view
 let _cmpLeft = 0, _cmpRight = 1;   // indices into the (newest-first) parade archive
+let _archiveScope = "";   // parade tab: "" = all scopes; else "company" | "platoon:<CODE>"
+function setArchiveScope(v) { _archiveScope = v; renderArchiveList(); }
 function setArchiveTab(t) { _archiveTab = t; _archiveCompare = false; render(); }
 function setArchiveQuery(q) { _archiveQuery = q; renderArchiveList(); }
 function setArchiveCompareMode(on) { _archiveCompare = on; renderArchive(document.getElementById("content")); }
@@ -117,6 +119,12 @@ function renderArchive(el) {
         <button class="btn ${_archiveTab === "sick" ? "btn-primary" : ""}" onclick="setArchiveTab('sick')">Report Sick (${(STATE.sickArchive || []).length})</button>
         ${_archiveTab === "parade" ? `<button class="btn ${_archiveCompare ? "btn-primary" : ""}" onclick="setArchiveCompareMode(${!_archiveCompare})" title="Compare two archived parade states line-by-line">⇄ Compare</button>` : ""}
       </div>
+      ${_archiveTab === "parade" ? `<select id="archive-scope" onchange="setArchiveScope(this.value)" title="Filter archived parade states by scope"
+        style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
+        <option value="" ${_archiveScope === "" ? "selected" : ""}>All scopes</option>
+        <option value="company" ${_archiveScope === "company" ? "selected" : ""}>Company</option>
+        ${(typeof activePlatoons === "function" ? activePlatoons() : []).map(p => `<option value="platoon:${p.code}" ${_archiveScope === `platoon:${p.code}` ? "selected" : ""}>${escapeAttr(p.code)}</option>`).join("")}
+      </select>` : ""}
       <input id="archive-search" placeholder="Filter by date / slot / text…" value="${escapeAttr(_archiveQuery)}" oninput="setArchiveQuery(this.value)"
         style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
       <button class="btn" onclick="exportArchiveCSV('${_archiveTab}')" title="Export the messages currently shown (respects the filter) to CSV">⬇ Export CSV</button>
@@ -133,9 +141,14 @@ function renderArchiveList() {
   const q = _archiveQuery.trim().toLowerCase();
   // Newest first by timestamp (ISO); fall back to insertion order.
   const sorted = rows.slice().sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
-  const filtered = q
+  const textFiltered = q
     ? sorted.filter(r => `${r.date} ${r.slot} ${r.type || r.format || ""} ${r.message || ""}`.toLowerCase().includes(q))
     : sorted;
+  // Fix1A: parade archives carry a scope; filter by the chosen scope (rows with
+  // no stored scope are treated as company, matching the pre-scope default).
+  const filtered = (_archiveTab === "parade" && _archiveScope)
+    ? textFiltered.filter(r => (r.scope || "company") === _archiveScope)
+    : textFiltered;
 
   if (!filtered.length) {
     host.innerHTML = `<div class="empty-state">${rows.length ? "No entries match the filter." : "No archived messages yet. Use “Archive … now”, or set up scheduled archiving."}</div>`;
@@ -149,7 +162,7 @@ function renderArchiveList() {
         <div style="font-size:12px"><strong class="mono" style="color:var(--accent)">${escapeAttr(r.date || "")}</strong>
           <span style="color:var(--muted)">slot ${escapeAttr(r.slot || "—")}</span>
           <span class="badge badge-accent" style="font-size:9px">${escapeAttr(label)}</span>
-          ${r.scope ? `<span style="font-size:10px;color:var(--dim)">${escapeAttr(r.scope)}</span>` : ""}
+          ${_archiveTab === "parade" ? `<span class="badge" style="font-size:9px" title="Parade-state scope this snapshot was copied from">${escapeAttr((r.scope || "company") === "company" ? "Company" : String(r.scope || "").replace(/^platoon:/, ""))}</span>` : ""}
           ${r.timestamp ? `<span style="font-size:10px;color:var(--dim)">· ${new Date(r.timestamp).toLocaleString()}</span>` : ""}
         </div>
         <div style="display:flex;gap:6px">
