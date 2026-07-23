@@ -35,6 +35,12 @@ let _paradeDate = "";              // ISO yyyy-mm-dd; lazily defaulted to today
 let _paradeType = "FP";            // "FP" | "LP"
 let _paradeTime = "";              // free-text HHMM for the company header
 
+// Item 19: once the user picks a parade type by hand, we stop auto-flipping to
+// LP for the rest of the session (manual choice wins). Reset only on reload.
+let _paradeTypeManual = false;
+// Handle for the 1700 auto-flip interval so we never stack timers across renders.
+let _paradeFlipTimer = null;
+
 // Parade-grid edit lock (item 5): only these away-codes are editable from the
 // grid, and the ONLY change offered is → Present (book-in). Every other code
 // (Present, RS, MR, STATUS) renders as read-only text — no new statuses are
@@ -69,11 +75,37 @@ function paradeCurrentDateISO() { return _paradeDate || todayISO(); }
 // ── Control-bar setters (each re-renders only the body, keeping the toolbar) ──
 function setParadeScope(v) { _paradeScope = v; refreshParade(); }
 function setParadeDate(v) { _paradeDate = v; refreshParade(); }
-function setParadeType(v) { _paradeType = v; refreshParade(); }
+function setParadeType(v) { _paradeType = v; _paradeTypeManual = true; refreshParade(); }
 function setParadeTime(v) { _paradeTime = v; if (_paradeScope === "company") refreshParade(); }
+
+// Item 19: default/flip the parade type by local wall-clock. FP before 1700,
+// LP from 1700 on. `new Date()` (local tz) is intentional — the app runs in the
+// user's timezone and calc.js is date-only. A manual pick (setParadeType) opts
+// out for the session.
+function paradeShouldBeLP() {
+  const now = new Date();
+  return (now.getHours() * 60 + now.getMinutes()) >= 17 * 60; // >= 1700
+}
+// Called on each parade-tab render: seed the default unless the user overrode it.
+function paradeAutoTypeInit() {
+  if (_paradeTypeManual) return;
+  _paradeType = paradeShouldBeLP() ? "LP" : "FP";
+}
+// Called on each parade-tab render: (re)start a ~60s watcher that flips to LP the
+// moment 1700 passes while the tab stays open. Self-clears when the user leaves
+// the Parade tab or has manually overridden — no cross-file teardown needed.
+function paradeStartLpFlipTimer() {
+  if (_paradeFlipTimer) { clearInterval(_paradeFlipTimer); _paradeFlipTimer = null; }
+  _paradeFlipTimer = setInterval(() => {
+    if (STATE.nav !== "parade" || _paradeTypeManual) { clearInterval(_paradeFlipTimer); _paradeFlipTimer = null; return; }
+    if (paradeShouldBeLP() && _paradeType !== "LP") { _paradeType = "LP"; refreshParade(); }
+  }, 60 * 1000);
+}
 
 // ── Top-level render ─────────────────────────────────────────────────────────
 function renderParade(el) {
+  paradeAutoTypeInit();
+  paradeStartLpFlipTimer();
   if (!STATE.roster.length) {
     el.innerHTML = `<h2 style="font-size:18px;font-weight:700;margin-bottom:16px">🎖️ Parade State</h2>
       <div class="card empty-state">${STATE.authToken
