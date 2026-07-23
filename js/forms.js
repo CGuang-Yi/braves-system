@@ -720,8 +720,11 @@ function medExtraStatusChanged(sel) {
   if (wrap) wrap.style.display = sel.value === "__new__" ? "flex" : "none";
 }
 
-function openMedicalForm(id) {
-  const e = id ? STATE.medical.find(x => x.id === id) : null;
+function openMedicalForm(id, prefill) {
+  // `prefill` is honoured only when creating (not editing) — used to route
+  // appointment bookings through this form pre-set to type MA (Item 17
+  // consolidation), mirroring openAppointmentForm's prefill contract.
+  const e = id ? STATE.medical.find(x => x.id === id) : (prefill || null);
   const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
   const startVal = e ? displayDateToISO(e.startDate) || dateVal : todayISO();
   const endVal = e ? displayDateToISO(e.endDate) || "" : "";

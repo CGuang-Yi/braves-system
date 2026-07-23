@@ -673,7 +673,7 @@ function renderDashMSKCases(visible) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
         <div onclick="openPerson('${c.d4}')" style="cursor:pointer;font-weight:700">${displayId(c.d4) ? `<span class="mono" style="color:var(--accent);margin-right:6px">${displayId(c.d4)}</span>` : ""}${escapeHTML(displayPersonLabel(c.d4))} <span class="badge badge-pink" style="font-size:9px;margin-left:4px">🦵 MSK</span></div>
         <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="btn" style="font-size:10px;padding:3px 8px" onclick="openAppointmentForm(null, {d4:'${c.d4}', reason:'Physio review', location:'Physio Centre'})" title="Book a physio appointment for this recruit">📅 Book</button>
+          <button class="btn" style="font-size:10px;padding:3px 8px" onclick="openMedicalForm(null, {type:'MA', d4:'${c.d4}', reason:'Physio review', location:'Physio Centre'})" title="Book a physio appointment for this recruit">📅 Book</button>
           <button class="btn ${c.allCleared ? 'btn-success' : ''}" style="font-size:10px;padding:3px 8px" onclick="toggleMSKCleared('${c.d4}')" title="${c.allCleared ? 'Reopen this case' : 'Mark this case cleared (hides from active list)'}">${c.allCleared ? '↺ Reopen' : '✓ Mark Cleared'}</button>
         </div>
       </div>
@@ -1258,23 +1258,26 @@ function renderLeaveTimeline(scoped, todayIso) {
 }
 
 function renderDashAppointments(visible, todayIso) {
-  const upcoming = STATE.appointments
-    .filter(a => !a.resolved)
-    .filter(a => passesFilter(a.d4, visible))
-    .filter(a => {
-      const iso = displayDateToISO(a.date);
-      return iso && iso >= todayIso;
-    })
-    .sort((a, b) => {
-      const ai = displayDateToISO(a.date) || "";
-      const bi = displayDateToISO(b.date) || "";
-      if (ai !== bi) return ai < bi ? -1 : 1;
-      return (a.time || "") < (b.time || "") ? -1 : 1;
-    });
+  // Item 17 consolidation: bookings now route through the Medical form (type MA),
+  // but legacy standalone Appointments records still exist. Merge BOTH sources so
+  // nothing disappears — tag each row's origin so edit/actions dispatch correctly.
+  const dateOk = d => { const iso = displayDateToISO(d); return iso && iso >= todayIso; };
+  const legacy = (STATE.appointments || [])
+    .filter(a => !a.resolved && passesFilter(a.d4, visible) && dateOk(a.date))
+    .map(a => ({ src: "appt", id: a.id, d4: a.d4, reason: a.reason, date: a.date, time: a.time, location: a.location, outOfCamp: a.outOfCamp }));
+  const maRows = (STATE.medical || [])
+    .filter(m => m.type === "MA" && passesFilter(m.d4, visible) && dateOk(m.date))
+    .map(m => ({ src: "med", id: m.id, d4: m.d4, reason: m.reason, date: m.date, time: m.time, location: m.location, outOfCamp: m.outOfCamp }));
+  const upcoming = [...legacy, ...maRows].sort((a, b) => {
+    const ai = displayDateToISO(a.date) || "";
+    const bi = displayDateToISO(b.date) || "";
+    if (ai !== bi) return ai < bi ? -1 : 1;
+    return (a.time || "") < (b.time || "") ? -1 : 1;
+  });
 
   const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
     <h3 style="font-size:13px;color:var(--muted);margin:0">📅 Upcoming Appointments <span style="color:var(--dim);font-weight:400">(${upcoming.length})</span></h3>
-    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openAppointmentForm()">+ Book</button>
+    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openMedicalForm(null, {type:'MA'})">+ Book</button>
   </div>`;
 
   if (!upcoming.length) {
@@ -1286,14 +1289,19 @@ function renderDashAppointments(visible, todayIso) {
     const iso = displayDateToISO(a.date);
     const isToday = iso === todayIso;
     const dayLabel = isToday ? `<span class="badge badge-red" style="font-size:9px">TODAY</span>` : "";
+    // Medical-form MA rows edit via the Medical form (they carry a status/range);
+    // the resolve/delete-appointment actions apply only to legacy Appointments rows.
+    const actions = a.src === "med"
+      ? `<button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${a.id})" title="Edit (Medical Appointment)">✎</button>`
+      : `<button class="btn btn-icon" style="color:var(--green)" onclick="event.stopPropagation(); toggleAppointmentResolved(${a.id})" title="Mark as resolved (hides from dashboard + parade state)">✓</button> <button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button>`;
     return `<tr onclick="openPerson('${a.d4}')" style="cursor:pointer${isToday ? ';background:#F8514911' : ''}">
       <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(a.d4)}</td>
       <td style="text-align:left">${escapeHTML(displayPersonLabel(a.d4))}</td>
-      <td style="text-align:left">${escapeHTML(a.reason || "")}</td>
+      <td style="text-align:left">${escapeHTML(a.reason || "")}${a.src === "med" ? ` <span class="badge" style="font-size:9px" title="Logged via the Medical form">MA</span>` : ""}</td>
       <td style="white-space:nowrap">${a.date || ""} ${dayLabel}</td>
       <td class="mono" style="white-space:nowrap">${fmtHrs(a.time)}</td>
       <td style="text-align:left;font-size:11px;color:var(--muted)">${escapeHTML(a.location || "")}${a.outOfCamp ? ` <span class="badge badge-pink" style="font-size:9px">OUTSIDE</span>` : ""}</td>
-      <td style="white-space:nowrap"><button class="btn btn-icon" style="color:var(--green)" onclick="event.stopPropagation(); toggleAppointmentResolved(${a.id})" title="Mark as resolved (hides from dashboard + parade state)">✓</button> <button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button></td>
+      <td style="white-space:nowrap">${actions}</td>
     </tr>`;
   }).join("");
 
