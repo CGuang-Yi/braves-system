@@ -435,6 +435,12 @@ body.role-admin .admin-only{display:block}
 /* Admin-only nav buttons must keep the flex icon+label layout (not block). */
 body.role-admin .nav-btn.admin-only{display:flex}
 
+/* Commander+admin blocks (e.g. the Archive nav) — hidden unless the body carries
+   .role-admin OR .role-commander. Viewers never see them. */
+.commander-plus{display:none}
+body.role-admin .commander-plus,body.role-commander .commander-plus{display:block}
+body.role-admin .nav-btn.commander-plus,body.role-commander .nav-btn.commander-plus{display:flex}
+
 /* Label-wraps-input pattern used by the account/auth modals (mirrors the
    existing .form-group styling so they look native). */
 .form-label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}

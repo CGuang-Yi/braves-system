@@ -252,8 +252,10 @@ function doGet(e) {
         // Cheap "what changed?" poll — just the per-tab revisions, no row data.
         output = { ok: true, revs: getAllRevs(), timestamp: new Date().toISOString() };
       } else if (action === "read" && tab) {
-        if ((tab === "AuditLog" || tab === "ParadeArchive" || tab === "SickArchive") && ctx.role !== "admin") {
+        if (tab === "AuditLog" && ctx.role !== "admin") {
           output = { error: "Not authorised", code: 403 };
+        } else if ((tab === "ParadeArchive" || tab === "SickArchive") && !canWrite(ctx)) {
+          output = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
         } else if (tab === "Accounts") {
           output = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
         } else {
@@ -279,8 +281,10 @@ function doGet(e) {
         var tabsOut = {};
         for (var ti = 0; ti < reqTabs.length; ti++) {
           var rt = reqTabs[ti];
-          if ((rt === "AuditLog" || rt === "ParadeArchive" || rt === "SickArchive") && ctx.role !== "admin") {
+          if (rt === "AuditLog" && ctx.role !== "admin") {
             tabsOut[rt] = { error: "Not authorised", code: 403 };
+          } else if ((rt === "ParadeArchive" || rt === "SickArchive") && !canWrite(ctx)) {
+            tabsOut[rt] = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
           } else if (rt === "Accounts") {
             tabsOut[rt] = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
           } else {
@@ -1246,7 +1250,7 @@ function bravesMigrateSchema() {
   ensureTabWithHeaders_(ss, "Roster",
     ["platoon", "section", "rankGroup", "fourD"]);
   ensureTabWithHeaders_(ss, "Medical",
-    ["location", "type", "urtiType", "mrTiming", "visitId", "origin", "bookInDate"]);
+    ["location", "type", "urtiType", "mrTiming", "visitId", "origin", "bookInDate", "time", "outOfCamp"]);
   ensureTabWithHeaders_(ss, "Appointments",
     ["outOfCamp"]);
   ensureTabWithHeaders_(ss, "Leave",
@@ -1525,8 +1529,11 @@ function readAllTabs(ctx) {
     // (a handful of snapshots), so their full-sheet cost is not material the
     // way AuditLog's per-write growth is; re-evaluate if that changes.
     result.auditLog = ss.getSheetByName("AuditLog") ? readTabTail("AuditLog", AUDIT_READALL_MAX_ROWS) : [];
-    // Archived parade-state / report-sick messages (Item 1) — admin-only, same as
-    // the audit log. Empty arrays when the tabs don't exist yet.
+  }
+  // Archived parade-state / report-sick messages (Item 1) — readable by commanders
+  // AND admins (Fix1B): parade state is archived when either role copies it, and
+  // both need to review/compare. Empty arrays when the tabs don't exist yet.
+  if (canWrite(ctx)) {
     result.paradeArchive = ss.getSheetByName("ParadeArchive") ? readTab("ParadeArchive") : [];
     result.sickArchive = ss.getSheetByName("SickArchive") ? readTab("SickArchive") : [];
   }
@@ -1555,7 +1562,7 @@ function readAllTabs(ctx) {
 // every re-save of a morning conduct DUPLICATES its rows — and the client-side
 // dedup/preload (which compare against pad4Time keys). Forcing "@" keeps "0730"
 // verbatim, exactly like participants.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"] };
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"] };
 
 function writeTab(tabName, data) {
   if (!Array.isArray(data)) {
@@ -3303,6 +3310,18 @@ function bpClassifyPerson(r, dateIso) {
     if (m.status === "Warded" && medStatusActive(m, dateIso) && !bookedInBy(m, dateIso)) {
       pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
       notInCamp = true;
+    }
+
+    // Item 17: Medical Appointment (type MA) dated today → OTHERS. Mirrors the
+    // legacy standalone-Appointments block below (booking now routes through the
+    // Medical form): outOfCamp → NOT IN CAMP; in camp → OTHERS (IN CAMP). A
+    // booked-in MA drops off. Independent of any status the visit carries (Q2).
+    // MUST mirror js/braves-parade.js — parade-port-parity.test.js guards this.
+    if (m.type === "MA" && displayDateToISO(m.date) === dateIso && !bookedInBy(m, dateIso)) {
+      const outOfCamp = !!m.outOfCamp;
+      const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
+      pushS("others", `${rn} - ${m.reason || "Medical Appointment"} (${label})`.trim(), null); // point event, never superseded
+      if (outOfCamp) notInCamp = true;
     }
   });
 

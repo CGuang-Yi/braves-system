@@ -183,6 +183,13 @@ module.exports = async function run() {
               startDate: "28 Jun 2026", endDate: "30 Jun 2026", isInCamp: false }]
   }));
 
+  // Item 17: a Medical Appointment (type MA) dated today lands under OTHERS with
+  // the in/out-of-camp sub-type — guards the ported MA branch against drift.
+  await parity("OTHERS — medical appointment (type MA, out of camp)", "OTHERS", fixture({
+    medical: [{ id: 1, d4: "1411", type: "MA", date: "29 Jun 2026", status: "",
+                reason: "dental specialist", outOfCamp: true }]
+  }));
+
   // The client-side 2-day recovery tail after an MC ends (not stored; derived).
   // Drifted between the copies at the source level (the port lacks the `persisted`
   // meta flag), so this is the case most likely to expose a real regression.

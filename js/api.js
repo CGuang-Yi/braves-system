@@ -101,6 +101,19 @@ const API = {
   async deleteArchive(kind, row) {
     return this.post({ action: "deleteArchive", kind, timestamp: row.timestamp || "", date: row.date || "", slot: row.slot || "" });
   },
+  // Lazily fetch the archive tabs on demand (Fix1C). The warm-cache launch pull
+  // (autoSyncOnLaunch) only pulls CHANGED data tabs and never the commander/admin-
+  // only ParadeArchive/SickArchive, so a device whose last full pull predated the
+  // archive rows would otherwise render them empty. Returns
+  // { paradeArchive, sickArchive } (each an array, or null when a tab is missing/
+  // not authorised), or null when the whole call is unusable (older backend that
+  // lacks readTabs, an error, or an unrecognized shape).
+  async fetchArchives() {
+    const res = await this.get("readTabs", null, { tabs: "ParadeArchive,SickArchive" });
+    if (!res || res.error || !res.tabs) return null;
+    const pick = name => { const e = res.tabs[name]; return e && Array.isArray(e.rows) ? e.rows : null; };
+    return { paradeArchive: pick("ParadeArchive"), sickArchive: pick("SickArchive") };
+  },
   async pullAll() {
     const data = await this.get("readAll");
     if (data.error) throw new Error(data.error);
@@ -145,9 +158,11 @@ const API = {
     // Admin pulls include the audit log; non-admins never receive it. Assign
     // unconditionally to the admin-provided value so it clears if absent.
     if (STATE.role === "admin") STATE.auditLog = Array.isArray(data.auditLog) ? data.auditLog : [];
-    // Archived parade-state / report-sick messages (Item 1) — admin-only, same as
-    // the audit log. The backend only returns these to admins.
-    if (STATE.role === "admin") {
+    // Archived parade-state / report-sick messages (Item 1) — readable by
+    // commanders AND admins (Fix1B). The backend returns these to canWrite roles;
+    // assign unconditionally to the provided value so they clear if absent. Guard
+    // on canWrite() so a stale viewer STATE never keeps someone else's archives.
+    if (canWrite()) {
       STATE.paradeArchive = Array.isArray(data.paradeArchive) ? data.paradeArchive : [];
       STATE.sickArchive = Array.isArray(data.sickArchive) ? data.sickArchive : [];
     }

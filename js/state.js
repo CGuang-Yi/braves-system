@@ -358,7 +358,16 @@ function normalizeMedical(records) {
       // (a Pending report-sick backfill); "manual" = entered directly in the
       // Medical tab. Legacy rows default to "manual". Surfaced as a badge so
       // operators can tell auto-backfilled rows from hand-logged ones.
-      origin: r.origin || "manual"
+      origin: r.origin || "manual",
+      // Item 17: appointment/report-sick time (HHMM) — shared field. For a
+      // Medical Appointment (type MA) it is the appointment time; for RSI/RSO it
+      // is the (optional) report-sick time. Kept as a string; the backend force-
+      // texts it (WRITE_TEXT_COLS_BY_TAB.Medical) so "0930" is not coerced to 930.
+      time: r.time || "",
+      // Item 17: MA only — recruit leaves camp for the appointment. Drives the
+      // parade classifier's OTHERS (IN CAMP) vs (NOT IN CAMP) split. Tolerates the
+      // "TRUE"/"true" string Sheets round-trips a boolean column as.
+      outOfCamp: r.outOfCamp === true || r.outOfCamp === "TRUE" || r.outOfCamp === "true"
     };
   });
 }

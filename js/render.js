@@ -66,6 +66,9 @@ let _archiveTab = "parade";   // "parade" | "sick"
 let _archiveQuery = "";
 let _archiveCompare = false;  // parade tab: list view vs two-snapshot diff view
 let _cmpLeft = 0, _cmpRight = 1;   // indices into the (newest-first) parade archive
+let _archiveScope = "";   // parade tab: "" = all scopes; else "company" | "platoon:<CODE>"
+let _archiveFetched = false;  // Fix1C: one-shot per session — lazily pulled the archive tabs on first open
+function setArchiveScope(v) { _archiveScope = v; renderArchiveList(); }
 function setArchiveTab(t) { _archiveTab = t; _archiveCompare = false; render(); }
 function setArchiveQuery(q) { _archiveQuery = q; renderArchiveList(); }
 function setArchiveCompareMode(on) { _archiveCompare = on; renderArchive(document.getElementById("content")); }
@@ -90,16 +93,32 @@ async function doArchiveNow(kind) {
 }
 
 function renderArchive(el) {
-  if (!isAdminRole()) {
+  if (!canWrite()) {
     el.innerHTML = `<div class="card empty-state"><h2 style="font-size:18px;margin-bottom:8px">🗄️ Archive</h2>
-      <p>This area is restricted to <strong>admin</strong> accounts.</p></div>`;
+      <p>This area is restricted to <strong>commander</strong> and <strong>admin</strong> accounts.</p></div>`;
     return;
+  }
+  // Fix1C: the warm-cache launch (autoSyncOnLaunch) pulls only CHANGED data tabs
+  // and never the commander/admin-only archive tabs, so they can render empty even
+  // though the Sheet holds rows. Lazily fetch them once per session on first open
+  // when we have nothing cached, then re-render. One-shot guard reset on failure
+  // so a transient error can retry on the next open.
+  if (STATE.apiUrl && STATE.authToken && !_archiveFetched
+      && !(STATE.paradeArchive || []).length && !(STATE.sickArchive || []).length) {
+    _archiveFetched = true;
+    API.fetchArchives().then(res => {
+      if (!res) return;
+      let got = false;
+      if (Array.isArray(res.paradeArchive)) { STATE.paradeArchive = res.paradeArchive; got = true; }
+      if (Array.isArray(res.sickArchive)) { STATE.sickArchive = res.sickArchive; got = true; }
+      if (got) { saveLocal(); if (STATE.nav === "archive") renderArchive(document.getElementById("content")); }
+    }).catch(() => { _archiveFetched = false; });
   }
   const pTimes = configGet("archiveParadeTimes");
   const sTimes = configGet("archiveSickTimes");
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <h2 style="font-size:18px;font-weight:700">🗄️ Message Archive <span style="font-size:12px;color:var(--muted);font-weight:400">(admin only)</span></h2>
+      <h2 style="font-size:18px;font-weight:700">🗄️ Message Archive <span style="font-size:12px;color:var(--muted);font-weight:400">(commander + admin · delete admin-only)</span></h2>
       <div style="display:flex;gap:6px">
         <button class="btn" onclick="doArchiveNow('parade')" title="Snapshot the current company parade state now">＋ Archive Parade now</button>
         <button class="btn" onclick="doArchiveNow('sick')" title="Snapshot the current report-sick message now">＋ Archive Sick now</button>
@@ -117,6 +136,12 @@ function renderArchive(el) {
         <button class="btn ${_archiveTab === "sick" ? "btn-primary" : ""}" onclick="setArchiveTab('sick')">Report Sick (${(STATE.sickArchive || []).length})</button>
         ${_archiveTab === "parade" ? `<button class="btn ${_archiveCompare ? "btn-primary" : ""}" onclick="setArchiveCompareMode(${!_archiveCompare})" title="Compare two archived parade states line-by-line">⇄ Compare</button>` : ""}
       </div>
+      ${_archiveTab === "parade" ? `<select id="archive-scope" onchange="setArchiveScope(this.value)" title="Filter archived parade states by scope"
+        style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
+        <option value="" ${_archiveScope === "" ? "selected" : ""}>All scopes</option>
+        <option value="company" ${_archiveScope === "company" ? "selected" : ""}>Company</option>
+        ${(typeof activePlatoons === "function" ? activePlatoons() : []).map(p => `<option value="platoon:${p.code}" ${_archiveScope === `platoon:${p.code}` ? "selected" : ""}>${escapeAttr(p.code)}</option>`).join("")}
+      </select>` : ""}
       <input id="archive-search" placeholder="Filter by date / slot / text…" value="${escapeAttr(_archiveQuery)}" oninput="setArchiveQuery(this.value)"
         style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
       <button class="btn" onclick="exportArchiveCSV('${_archiveTab}')" title="Export the messages currently shown (respects the filter) to CSV">⬇ Export CSV</button>
@@ -133,9 +158,14 @@ function renderArchiveList() {
   const q = _archiveQuery.trim().toLowerCase();
   // Newest first by timestamp (ISO); fall back to insertion order.
   const sorted = rows.slice().sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
-  const filtered = q
+  const textFiltered = q
     ? sorted.filter(r => `${r.date} ${r.slot} ${r.type || r.format || ""} ${r.message || ""}`.toLowerCase().includes(q))
     : sorted;
+  // Fix1A: parade archives carry a scope; filter by the chosen scope (rows with
+  // no stored scope are treated as company, matching the pre-scope default).
+  const filtered = (_archiveTab === "parade" && _archiveScope)
+    ? textFiltered.filter(r => (r.scope || "company") === _archiveScope)
+    : textFiltered;
 
   if (!filtered.length) {
     host.innerHTML = `<div class="empty-state">${rows.length ? "No entries match the filter." : "No archived messages yet. Use “Archive … now”, or set up scheduled archiving."}</div>`;
@@ -149,12 +179,12 @@ function renderArchiveList() {
         <div style="font-size:12px"><strong class="mono" style="color:var(--accent)">${escapeAttr(r.date || "")}</strong>
           <span style="color:var(--muted)">slot ${escapeAttr(r.slot || "—")}</span>
           <span class="badge badge-accent" style="font-size:9px">${escapeAttr(label)}</span>
-          ${r.scope ? `<span style="font-size:10px;color:var(--dim)">${escapeAttr(r.scope)}</span>` : ""}
+          ${_archiveTab === "parade" ? `<span class="badge" style="font-size:9px" title="Parade-state scope this snapshot was copied from">${escapeAttr((r.scope || "company") === "company" ? "Company" : String(r.scope || "").replace(/^platoon:/, ""))}</span>` : ""}
           ${r.timestamp ? `<span style="font-size:10px;color:var(--dim)">· ${new Date(r.timestamp).toLocaleString()}</span>` : ""}
         </div>
         <div style="display:flex;gap:6px">
           <button class="btn" style="font-size:10px" onclick="(function(){const t=document.getElementById('${id}').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
-          <button class="btn btn-icon btn-danger" title="Delete this archived message (admin only)" onclick="deleteArchiveEntry('${_archiveTab}','${escapeAttr(r.timestamp || "")}','${escapeAttr(r.date || "")}','${escapeAttr(r.slot || "")}')">✕</button>
+          ${isAdminRole() ? `<button class="btn btn-icon btn-danger" title="Delete this archived message (admin only)" onclick="deleteArchiveEntry('${_archiveTab}','${escapeAttr(r.timestamp || "")}','${escapeAttr(r.date || "")}','${escapeAttr(r.slot || "")}')">✕</button>` : ""}
         </div>
       </div>
       <pre id="${id}" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;max-height:320px;overflow:auto">${escapeAttr(r.message || "")}</pre>
@@ -643,7 +673,7 @@ function renderDashMSKCases(visible) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
         <div onclick="openPerson('${c.d4}')" style="cursor:pointer;font-weight:700">${displayId(c.d4) ? `<span class="mono" style="color:var(--accent);margin-right:6px">${displayId(c.d4)}</span>` : ""}${escapeHTML(displayPersonLabel(c.d4))} <span class="badge badge-pink" style="font-size:9px;margin-left:4px">🦵 MSK</span></div>
         <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="btn" style="font-size:10px;padding:3px 8px" onclick="openAppointmentForm(null, {d4:'${c.d4}', reason:'Physio review', location:'Physio Centre'})" title="Book a physio appointment for this recruit">📅 Book</button>
+          <button class="btn" style="font-size:10px;padding:3px 8px" onclick="openMedicalForm(null, {type:'MA', d4:'${c.d4}', reason:'Physio review', location:'Physio Centre'})" title="Book a physio appointment for this recruit">📅 Book</button>
           <button class="btn ${c.allCleared ? 'btn-success' : ''}" style="font-size:10px;padding:3px 8px" onclick="toggleMSKCleared('${c.d4}')" title="${c.allCleared ? 'Reopen this case' : 'Mark this case cleared (hides from active list)'}">${c.allCleared ? '↺ Reopen' : '✓ Mark Cleared'}</button>
         </div>
       </div>
@@ -1228,23 +1258,26 @@ function renderLeaveTimeline(scoped, todayIso) {
 }
 
 function renderDashAppointments(visible, todayIso) {
-  const upcoming = STATE.appointments
-    .filter(a => !a.resolved)
-    .filter(a => passesFilter(a.d4, visible))
-    .filter(a => {
-      const iso = displayDateToISO(a.date);
-      return iso && iso >= todayIso;
-    })
-    .sort((a, b) => {
-      const ai = displayDateToISO(a.date) || "";
-      const bi = displayDateToISO(b.date) || "";
-      if (ai !== bi) return ai < bi ? -1 : 1;
-      return (a.time || "") < (b.time || "") ? -1 : 1;
-    });
+  // Item 17 consolidation: bookings now route through the Medical form (type MA),
+  // but legacy standalone Appointments records still exist. Merge BOTH sources so
+  // nothing disappears — tag each row's origin so edit/actions dispatch correctly.
+  const dateOk = d => { const iso = displayDateToISO(d); return iso && iso >= todayIso; };
+  const legacy = (STATE.appointments || [])
+    .filter(a => !a.resolved && passesFilter(a.d4, visible) && dateOk(a.date))
+    .map(a => ({ src: "appt", id: a.id, d4: a.d4, reason: a.reason, date: a.date, time: a.time, location: a.location, outOfCamp: a.outOfCamp }));
+  const maRows = (STATE.medical || [])
+    .filter(m => m.type === "MA" && passesFilter(m.d4, visible) && dateOk(m.date))
+    .map(m => ({ src: "med", id: m.id, d4: m.d4, reason: m.reason, date: m.date, time: m.time, location: m.location, outOfCamp: m.outOfCamp }));
+  const upcoming = [...legacy, ...maRows].sort((a, b) => {
+    const ai = displayDateToISO(a.date) || "";
+    const bi = displayDateToISO(b.date) || "";
+    if (ai !== bi) return ai < bi ? -1 : 1;
+    return (a.time || "") < (b.time || "") ? -1 : 1;
+  });
 
   const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
     <h3 style="font-size:13px;color:var(--muted);margin:0">📅 Upcoming Appointments <span style="color:var(--dim);font-weight:400">(${upcoming.length})</span></h3>
-    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openAppointmentForm()">+ Book</button>
+    <button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="openMedicalForm(null, {type:'MA'})">+ Book</button>
   </div>`;
 
   if (!upcoming.length) {
@@ -1256,14 +1289,19 @@ function renderDashAppointments(visible, todayIso) {
     const iso = displayDateToISO(a.date);
     const isToday = iso === todayIso;
     const dayLabel = isToday ? `<span class="badge badge-red" style="font-size:9px">TODAY</span>` : "";
+    // Medical-form MA rows edit via the Medical form (they carry a status/range);
+    // the resolve/delete-appointment actions apply only to legacy Appointments rows.
+    const actions = a.src === "med"
+      ? `<button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${a.id})" title="Edit (Medical Appointment)">✎</button>`
+      : `<button class="btn btn-icon" style="color:var(--green)" onclick="event.stopPropagation(); toggleAppointmentResolved(${a.id})" title="Mark as resolved (hides from dashboard + parade state)">✓</button> <button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button>`;
     return `<tr onclick="openPerson('${a.d4}')" style="cursor:pointer${isToday ? ';background:#F8514911' : ''}">
       <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(a.d4)}</td>
       <td style="text-align:left">${escapeHTML(displayPersonLabel(a.d4))}</td>
-      <td style="text-align:left">${escapeHTML(a.reason || "")}</td>
+      <td style="text-align:left">${escapeHTML(a.reason || "")}${a.src === "med" ? ` <span class="badge" style="font-size:9px" title="Logged via the Medical form">MA</span>` : ""}</td>
       <td style="white-space:nowrap">${a.date || ""} ${dayLabel}</td>
       <td class="mono" style="white-space:nowrap">${fmtHrs(a.time)}</td>
       <td style="text-align:left;font-size:11px;color:var(--muted)">${escapeHTML(a.location || "")}${a.outOfCamp ? ` <span class="badge badge-pink" style="font-size:9px">OUTSIDE</span>` : ""}</td>
-      <td style="white-space:nowrap"><button class="btn btn-icon" style="color:var(--green)" onclick="event.stopPropagation(); toggleAppointmentResolved(${a.id})" title="Mark as resolved (hides from dashboard + parade state)">✓</button> <button class="btn btn-icon" onclick="event.stopPropagation(); openAppointmentForm(${a.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('appointments', ${a.id}, 'appointment')" title="Delete">✕</button></td>
+      <td style="white-space:nowrap">${actions}</td>
     </tr>`;
   }).join("");
 
