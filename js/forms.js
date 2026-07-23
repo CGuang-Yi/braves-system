@@ -737,12 +737,22 @@ function openMedicalForm(id) {
         <div class="form-group">
           <label>Visit type</label>
           <select id="f-type" onchange="medTypeChanged(this.value)">
-            ${[["", "— (status only / pre-existing)"], ["RSI", "RSI — Report Sick In-camp"], ["RSO", "RSO — Report Sick Out-of-camp"], ["MR", "MR — Medical Review"]]
+            ${[["", "— (status only / pre-existing)"], ["RSI", "RSI — Report Sick In-camp"], ["RSO", "RSO — Report Sick Out-of-camp"], ["MR", "MR — Medical Review"], ["MA", "MA — Medical Appointment"]]
               .map(([v, l]) => `<option value="${v}" ${v === (e?.type || "") ? "selected" : ""}>${l}</option>`).join("")}
           </select>
           <div style="font-size:10px;color:var(--muted);margin-top:4px">RSI/RSO drive the REPORTING SICK section &amp; URTI split; MR is its own parade-state section (person stays in camp).</div>
         </div>
-        ${formField("f-date", "Date Reported Sick", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
+        <div class="form-row">
+          ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
+          <div class="form-group" id="f-time-wrap" style="${(e?.type === "RSI" || e?.type === "RSO" || e?.type === "MA") ? "" : "display:none"}">
+            <label>Time ${e?.type === "MA" ? "" : "<span style=\"color:var(--dim);font-weight:400\">(optional)</span>"}</label>
+            <input id="f-time" type="text" maxlength="10" placeholder="0930" value="${escapeAttr(e?.time)}" onfocus="medTimeLazyFill()">
+          </div>
+        </div>
+        <label id="f-med-ooc-wrap" style="${e?.type === "MA" ? "display:flex" : "display:none"};align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;margin:-2px 0 2px">
+          <input id="f-med-ooc" type="checkbox" ${e?.outOfCamp ? "checked" : ""} style="width:16px;height:16px;cursor:pointer">
+          Out of camp (recruit leaves camp for this appointment) — otherwise OTHERS (IN CAMP)
+        </label>
         ${formField("f-reason", "Reason / Purpose", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}" oninput="medReasonChanged(this.value)"`)}
         <div id="f-mr-timing-wrap" style="${(e?.type === "MR") ? "" : "display:none"}">
           ${formField("f-mr-timing", "MR timing (optional)", "text", "e.g. PM / 1400", `maxlength="40" value="${escapeAttr(e?.mrTiming)}"`)}
@@ -789,7 +799,9 @@ function medStatusSelChanged(v) {
 }
 // Visit-type toggle: MR reveals the timing field; RSI/RSO reveal the URTI +
 // follow-up fields and default the location to the configured sick location
-// (PTMC) when it's still blank — RSO leaves it for manual entry.
+// (PTMC) when it's still blank — RSO leaves it for manual entry. Item 17: RSI/
+// RSO/MA reveal the Time field (and MA the out-of-camp checkbox); the time lazily
+// autofills the current HHMM when empty.
 function medTypeChanged(v) {
   const mr = document.getElementById("f-mr-timing-wrap");
   const urti = document.getElementById("f-urti-wrap");
@@ -799,6 +811,19 @@ function medTypeChanged(v) {
     const loc = document.getElementById("f-location");
     if (loc && !loc.value.trim()) loc.value = (typeof configGet === "function" ? configGet("defaultSickLocation") : "PTMC") || "PTMC";
   }
+  const timeWrap = document.getElementById("f-time-wrap");
+  if (timeWrap) timeWrap.style.display = (v === "RSI" || v === "RSO" || v === "MA") ? "" : "none";
+  const oocWrap = document.getElementById("f-med-ooc-wrap");
+  if (oocWrap) oocWrap.style.display = v === "MA" ? "flex" : "none";
+  if (v === "RSI" || v === "RSO" || v === "MA") medTimeLazyFill();
+}
+// Item 17: fill f-time with the current HHMM only when it is empty (lazy), so we
+// never clobber a user-entered/edited time. Called on type-switch and on focus.
+function medTimeLazyFill() {
+  const el = document.getElementById("f-time");
+  if (!el || el.value.trim()) return;
+  const now = new Date();
+  el.value = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
 }
 // Live URTI auto-suggest: while the URTI dropdown is on "Auto", mirror the
 // classifier's guess into a hint so the commander sees what will be stored.
@@ -829,6 +854,10 @@ function submitMedical() {
   if ((type === "RSI" || type === "RSO") && !urtiType) urtiType = classifyURTI(gv("f-reason"));
   if (type !== "RSI" && type !== "RSO") urtiType = "";
   const mrTiming = type === "MR" ? gv("f-mr-timing").trim() : "";
+  // Item 17: visit-level time (appointment time for MA; optional report-sick time
+  // for RSI/RSO) and the MA out-of-camp flag. pad4Time keeps "930" → "0930".
+  const time = (type === "RSI" || type === "RSO" || type === "MA") ? pad4Time(gv("f-time")) : "";
+  const outOfCamp = type === "MA" ? !!document.getElementById("f-med-ooc")?.checked : false;
 
   // Gather the main status plus any "additional status" rows. Each carries its
   // own status + duration; they share the recruit/date/reason/location/type below.
@@ -881,6 +910,8 @@ function submitMedical() {
     startDate: isoToDisplayDate(st.startIso),
     endDate: st.endIso ? isoToDisplayDate(st.endIso) : "",
     type, urtiType, mrTiming, visitId,
+    // Item 17: visit-level (shared across sibling status rows), like type/urtiType.
+    time, outOfCamp,
     // Preserve provenance on edit (don't silently flip a conduct-log row to
     // "manual"); new sibling rows are manual.
     origin: (i === 0 && prev) ? (prev.origin || "manual") : "manual"
