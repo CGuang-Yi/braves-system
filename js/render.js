@@ -67,6 +67,7 @@ let _archiveQuery = "";
 let _archiveCompare = false;  // parade tab: list view vs two-snapshot diff view
 let _cmpLeft = 0, _cmpRight = 1;   // indices into the (newest-first) parade archive
 let _archiveScope = "";   // parade tab: "" = all scopes; else "company" | "platoon:<CODE>"
+let _archiveFetched = false;  // Fix1C: one-shot per session — lazily pulled the archive tabs on first open
 function setArchiveScope(v) { _archiveScope = v; renderArchiveList(); }
 function setArchiveTab(t) { _archiveTab = t; _archiveCompare = false; render(); }
 function setArchiveQuery(q) { _archiveQuery = q; renderArchiveList(); }
@@ -96,6 +97,22 @@ function renderArchive(el) {
     el.innerHTML = `<div class="card empty-state"><h2 style="font-size:18px;margin-bottom:8px">🗄️ Archive</h2>
       <p>This area is restricted to <strong>commander</strong> and <strong>admin</strong> accounts.</p></div>`;
     return;
+  }
+  // Fix1C: the warm-cache launch (autoSyncOnLaunch) pulls only CHANGED data tabs
+  // and never the commander/admin-only archive tabs, so they can render empty even
+  // though the Sheet holds rows. Lazily fetch them once per session on first open
+  // when we have nothing cached, then re-render. One-shot guard reset on failure
+  // so a transient error can retry on the next open.
+  if (STATE.apiUrl && STATE.authToken && !_archiveFetched
+      && !(STATE.paradeArchive || []).length && !(STATE.sickArchive || []).length) {
+    _archiveFetched = true;
+    API.fetchArchives().then(res => {
+      if (!res) return;
+      let got = false;
+      if (Array.isArray(res.paradeArchive)) { STATE.paradeArchive = res.paradeArchive; got = true; }
+      if (Array.isArray(res.sickArchive)) { STATE.sickArchive = res.sickArchive; got = true; }
+      if (got) { saveLocal(); if (STATE.nav === "archive") renderArchive(document.getElementById("content")); }
+    }).catch(() => { _archiveFetched = false; });
   }
   const pTimes = configGet("archiveParadeTimes");
   const sTimes = configGet("archiveSickTimes");
