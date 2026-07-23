@@ -92,16 +92,16 @@ async function doArchiveNow(kind) {
 }
 
 function renderArchive(el) {
-  if (!isAdminRole()) {
+  if (!canWrite()) {
     el.innerHTML = `<div class="card empty-state"><h2 style="font-size:18px;margin-bottom:8px">🗄️ Archive</h2>
-      <p>This area is restricted to <strong>admin</strong> accounts.</p></div>`;
+      <p>This area is restricted to <strong>commander</strong> and <strong>admin</strong> accounts.</p></div>`;
     return;
   }
   const pTimes = configGet("archiveParadeTimes");
   const sTimes = configGet("archiveSickTimes");
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <h2 style="font-size:18px;font-weight:700">🗄️ Message Archive <span style="font-size:12px;color:var(--muted);font-weight:400">(admin only)</span></h2>
+      <h2 style="font-size:18px;font-weight:700">🗄️ Message Archive <span style="font-size:12px;color:var(--muted);font-weight:400">(commander + admin · delete admin-only)</span></h2>
       <div style="display:flex;gap:6px">
         <button class="btn" onclick="doArchiveNow('parade')" title="Snapshot the current company parade state now">＋ Archive Parade now</button>
         <button class="btn" onclick="doArchiveNow('sick')" title="Snapshot the current report-sick message now">＋ Archive Sick now</button>
@@ -167,7 +167,7 @@ function renderArchiveList() {
         </div>
         <div style="display:flex;gap:6px">
           <button class="btn" style="font-size:10px" onclick="(function(){const t=document.getElementById('${id}').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
-          <button class="btn btn-icon btn-danger" title="Delete this archived message (admin only)" onclick="deleteArchiveEntry('${_archiveTab}','${escapeAttr(r.timestamp || "")}','${escapeAttr(r.date || "")}','${escapeAttr(r.slot || "")}')">✕</button>
+          ${isAdminRole() ? `<button class="btn btn-icon btn-danger" title="Delete this archived message (admin only)" onclick="deleteArchiveEntry('${_archiveTab}','${escapeAttr(r.timestamp || "")}','${escapeAttr(r.date || "")}','${escapeAttr(r.slot || "")}')">✕</button>` : ""}
         </div>
       </div>
       <pre id="${id}" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;max-height:320px;overflow:auto">${escapeAttr(r.message || "")}</pre>

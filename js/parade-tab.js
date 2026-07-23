@@ -221,13 +221,14 @@ async function copyParadeText() {
 }
 
 // Archive the exact copied parade text (incl. hand edits) so it can be compared
-// later in the admin Archive → Compare view. Copy is the "this is what was sent"
-// moment. Admin-only (paradeArchive is admin-only) and fire-and-forget — a failed
-// or blocked archive must NEVER interfere with the copy. Optimistically prepends
-// the row to STATE.paradeArchive so the compare picker sees it immediately;
-// deduped so re-copying identical text doesn't pile up rows.
+// later in the Archive → Compare view. Copy is the "this is what was sent"
+// moment. Commander + admin (Fix1B — parade state is archived when either role
+// copies it) and fire-and-forget — a failed or blocked archive must NEVER
+// interfere with the copy. The snapshot records its real scope (company or a
+// platoon). Optimistically prepends the row to STATE.paradeArchive so the compare
+// picker sees it immediately; deduped so re-copying identical text doesn't pile up.
 function archiveParadeSnapshot(text) {
-  if (!text || typeof isAdminRole !== "function" || !isAdminRole()) return;
+  if (!text || typeof canWrite !== "function" || !canWrite()) return;
   if (!STATE.apiUrl || !STATE.authToken) return;
   const row = {
     timestamp: new Date().toISOString(),

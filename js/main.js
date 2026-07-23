@@ -185,6 +185,9 @@ function showApp() { document.getElementById("login-overlay")?.classList.add("hi
 function applyRoleUI() {
   document.body.classList.toggle("role-viewer", STATE.role === "viewer");
   document.body.classList.toggle("role-admin", STATE.role === "admin");
+  // Fix1B: drives the .commander-plus visibility class (e.g. the Archive nav),
+  // which shows for commanders as well as admins.
+  document.body.classList.toggle("role-commander", STATE.role === "commander");
   // A viewer can never legitimately have unsynced edits. Scrub any stale dirty
   // markers (e.g. left by a write attempt before this guard existed, or by a
   // commander who previously used this device) so the launch "push now?" prompt

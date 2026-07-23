@@ -145,9 +145,11 @@ const API = {
     // Admin pulls include the audit log; non-admins never receive it. Assign
     // unconditionally to the admin-provided value so it clears if absent.
     if (STATE.role === "admin") STATE.auditLog = Array.isArray(data.auditLog) ? data.auditLog : [];
-    // Archived parade-state / report-sick messages (Item 1) — admin-only, same as
-    // the audit log. The backend only returns these to admins.
-    if (STATE.role === "admin") {
+    // Archived parade-state / report-sick messages (Item 1) — readable by
+    // commanders AND admins (Fix1B). The backend returns these to canWrite roles;
+    // assign unconditionally to the provided value so they clear if absent. Guard
+    // on canWrite() so a stale viewer STATE never keeps someone else's archives.
+    if (canWrite()) {
       STATE.paradeArchive = Array.isArray(data.paradeArchive) ? data.paradeArchive : [];
       STATE.sickArchive = Array.isArray(data.sickArchive) ? data.sickArchive : [];
     }
