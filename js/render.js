@@ -23,17 +23,20 @@ function render() {
   if (typeof refreshFilterUI === "function") refreshFilterUI();
 
   const el = document.getElementById("content");
-  const scoped = filteredRoster();
+  // Both topbar numbers come out of ONE bpStrength() call — the same computation
+  // that prints TOTAL/CURRENT STRENGTH in the parade state, so "Str" and "Active"
+  // can never drift from the message the company actually sends.
   // "Active" = present in camp today. Before item 4a this was read straight off
   // roster.status, which mirrored the person's current medical status; that mirror
   // is gone (roster.status now only marks departures), so we reuse the canonical
-  // current-strength count — the same bpStrength(...).current the Dashboard shows
-  // — which derives presence from the Medical / Leave / Appointment layers via
-  // bpClassifyPerson (and so respects parade book-ins, the leave In-Camp override
-  // and out-of-camp appointments). Keeps the topbar and Dashboard figures in step.
-  const active = bpStrength(scoped, todayISO()).current;
+  // current-strength count, which derives presence from the Medical / Leave /
+  // Appointment layers via bpClassifyPerson (and so respects parade book-ins, the
+  // leave In-Camp override and out-of-camp appointments).
+  // "Str" is strength.total, NOT filteredRoster().length — the raw row count also
+  // counted departures (ORD/Posted Out/…), which the parade state excludes.
+  const str = bpStrength(filteredRoster(), todayISO());
   const scopeLabel = isFilterActive() ? ` [${filterLabel()}]` : "";
-  document.getElementById("str-counter").textContent = `Str: ${scoped.length} | Active: ${active}${scopeLabel}`;
+  document.getElementById("str-counter").textContent = `Str: ${str.total} | Active: ${str.current}${scopeLabel}`;
 
   switch (STATE.nav) {
     case "dashboard": renderDashboard(el); break;
@@ -363,7 +366,15 @@ function renderDashboard(el) {
     return;
   }
 
-  const scoped = filteredRoster();
+  // Strength scope, not raw roster scope: strengthRoster() drops genuine
+  // departures (ORD / Posted Out / Discharged / …) exactly as bpStrength does, so
+  // every tile, table and card below is counted over the same population the
+  // parade state reports. Using filteredRoster() here made "Total Str" (and the
+  // Non-Active table) include people who have left the company, so the Dashboard
+  // read a couple of PAX above the parade state's TOTAL STRENGTH. Departures are
+  // still listed and badged on the Roster tab — they just aren't strength.
+  const scoped = strengthRoster();
+  const scopedIds = new Set(scoped.map(r => r.id));
   const visible = visibleD4Set();
   const today = todayISO();
   // Derive non-active personnel from today's effective medical layer. A
@@ -372,13 +383,22 @@ function renderDashboard(el) {
   // variant returns every active status; we partition into live vs recovering
   // based on the recruit's *most-severe* tag (statuses[0]) so a recruit with
   // an active MC plus a ghost-tagged LD still sits in the live (red) table.
-  const effectiveAll = currentMedicalEffectiveAll(today).filter(e => passesFilter(e.d4, visible));
+  // Filtered against `scopedIds` rather than passesFilter(): that set already IS
+  // the scoped roster, and keying off it also drops medical rows belonging to a
+  // departed (or unknown) 4D, which must not show up in the tables or the chart.
+  const effectiveAll = currentMedicalEffectiveAll(today).filter(e => scopedIds.has(e.d4));
   const allByD4 = Object.fromEntries(effectiveAll.map(e => [e.d4, e]));
   const topTag = r => allByD4[r.id]?.statuses[0];
   const liveRows = scoped.filter(r => topTag(r) && topTag(r).ghostDay === 0)
     .sort((a, b) => medSeverityRank(topTag(b).tag) - medSeverityRank(topTag(a).tag));
   const recoveringRows = scoped.filter(r => topTag(r) && topTag(r).ghostDay > 0)
     .sort((a, b) => topTag(a).ghostDay - topTag(b).ghostDay);
+  // "Active today" is deliberately the MEDICAL-layer complement of the Non-Active
+  // table below (everyone without a live MC/LD/excuse/… today) — it is NOT the
+  // parade state's CURRENT STRENGTH, which is the In Camp tile: an in-camp RSI
+  // counts as non-active here but still in camp there, and a person on AL is in
+  // camp for neither. Now that `scoped` is departure-free the pair adds up:
+  // Active today + Non-Active === Total Str.
   const active = scoped.length - liveRows.length;
   const _part = scopedParticipation(STATE.attendance, STATE.conductDetail, visible);
   const avgPart = _part.pct;
@@ -392,9 +412,13 @@ function renderDashboard(el) {
   // bpIsNotAvailable in braves-parade.js. Strength-by-rank-group replaces
   // Cougar's platoon-by-platoon breakdown (§16).
   const notAvailable = scoped.filter(r => bpIsNotAvailable(r, today)).length;
-  // In Camp = the §8 classifier's CURRENT STRENGTH for this scope (same math
-  // the parade-state message uses) — NOT a simplified MC/Warded-only guess.
+  // Total Str / In Camp = the §8 classifier's TOTAL / CURRENT STRENGTH for this
+  // scope (same math the parade-state message uses) — NOT a raw row count, and
+  // NOT a simplified MC/Warded-only guess. `scoped` is already departure-free, so
+  // totalStr === scoped.length; reading it off the same object the In Camp tile
+  // uses keeps the pair provably consistent with the message.
   const grpStrength = bpStrength(scoped, today);
+  const totalStr = grpStrength.total;
   const inCamp = grpStrength.current;
   const grpLine = g => `${grpStrength.groups[g].cur}/${grpStrength.groups[g].tot}`;
 
@@ -438,7 +462,7 @@ function renderDashboard(el) {
     </div>
     ${scopeBanner}
     <div class="stats-row" style="margin-top:12px">
-      <div class="stat"><label>Total Str</label><div class="val">${scoped.length}${inlineBreakdown(recRows.length, cmdRows.length)}</div></div>
+      <div class="stat"><label>Total Str</label><div class="val">${totalStr}${inlineBreakdown(recRows.length, cmdRows.length)}</div></div>
       <div class="stat"><label>Active today</label><div class="val" style="color:var(--green)">${active}${inlineBreakdown(recActive, cmdActive)}</div></div>
       <div class="stat"><label>Non-Active</label><div class="val" style="color:var(--red)">${liveRows.length}${inlineBreakdown(recLive.length, cmdLive.length)}</div></div>
       <div class="stat"><label>In Camp</label><div class="val" style="color:var(--teal)">${inCamp}${inlineBreakdown(recInCamp, cmdInCamp)}</div></div>
