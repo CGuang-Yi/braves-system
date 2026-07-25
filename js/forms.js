@@ -755,15 +755,22 @@ function openMedicalForm(id, prefill) {
             <label>Time ${e?.type === "MA" ? "" : "<span style=\"color:var(--dim);font-weight:400\">(optional)</span>"}</label>
             <input id="f-time" type="text" maxlength="10" placeholder="0930" value="${escapeAttr(e?.time)}" onfocus="medTimeLazyFill()">
           </div>
+          <!-- MR keeps its own free-text timing column (mrTiming, spec §6 — "PM" is
+               as valid as "1400", which the HHMM time column can't hold), but it
+               belongs in the SAME slot as the RSI/RSO/MA Time field: the two are
+               mutually exclusive (medTypeChanged shows exactly one), so the Date row
+               reads identically whatever the visit type is, instead of the timing
+               question jumping down the form for MR. -->
+          <div class="form-group" id="f-mr-timing-wrap" style="${(e?.type === "MR") ? "" : "display:none"}">
+            <label>Time <span style="color:var(--dim);font-weight:400">(optional)</span></label>
+            <input id="f-mr-timing" type="text" maxlength="40" placeholder="e.g. PM / 1400" value="${escapeAttr(e?.mrTiming)}">
+          </div>
         </div>
         <label id="f-med-ooc-wrap" style="${e?.type === "MA" ? "display:flex" : "display:none"};align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;margin:-2px 0 2px">
           <input id="f-med-ooc" type="checkbox" ${e?.outOfCamp ? "checked" : ""} style="width:16px;height:16px;cursor:pointer">
           Out of camp (recruit leaves camp for this appointment) — otherwise OTHERS (IN CAMP)
         </label>
         ${formField("f-reason", "Reason / Purpose", "text", "Fever, sore throat...", `required maxlength="200" value="${escapeAttr(e?.reason)}" oninput="medReasonChanged(this.value)"`)}
-        <div id="f-mr-timing-wrap" style="${(e?.type === "MR") ? "" : "display:none"}">
-          ${formField("f-mr-timing", "MR timing (optional)", "text", "e.g. PM / 1400", `maxlength="40" value="${escapeAttr(e?.mrTiming)}"`)}
-        </div>
         ${formField("f-location", "Location (clinic/hospital if outside)", "text", "e.g. Lim Clinic and Surgery", `maxlength="200" value="${escapeAttr(e?.location)}"`)}
         <div class="form-group" id="f-urti-wrap" style="${(e?.type === "RSI" || e?.type === "RSO") ? "" : "display:none"}">
           <label>URTI classification</label>
@@ -4311,6 +4318,9 @@ function refreshLmsFromPolar() {
 //     status: [                // pre-existing-status checklist, filtered to participants
 //       { d4, statusTag, reason, notParticipating }
 //     ],
+//     statusBuiltFor,          // the date `status` was derived for — lets a rebuild
+//                              // tell a participant change (keep the user's ticks)
+//                              // from a date change (re-derive from that day)
 //     rsi:        [{ d4, reason }],   // reported sick at FP (no participation)
 //     fallout:    [{ d4, reason }],   // dropped out mid-conduct, didn't go to MO
 //     reportSick: [{ d4, reason }],   // dropped out mid-conduct AND went to MO
@@ -4322,6 +4332,13 @@ function refreshLmsFromPolar() {
 //     haPeriods: 1             // Single (1) / Double (2) period selector
 //   }
 let _logConduct = null;
+
+// Medical visit types whose VISIT DATE (Medical.date, not the status window) puts
+// the person away from that day's training: they were at the MO, the review, or
+// the appointment. Used by rebuildLogConductStatus to list them on the Status
+// Personnel checklist even when no status is active on the date. Same set the §8
+// parade classifier keys off the visit date (js/braves-parade.js).
+const MED_VISIT_TYPES = ["RSI", "RSO", "MR", "MA"];
 
 // Enter-to-save for the conduct wizard. The wizard is a plain <div> (not a
 // <form>), so Enter does nothing by default. We bind ONE keydown listener on the
@@ -4417,8 +4434,18 @@ function openLogConductWizard(attendanceId) {
 // if a d4 was already in the previous state list, carry over the flags.
 function rebuildLogConductStatus() {
   if (!_logConduct) return;
+  // Carry the user's edits (ticks + typed reasons) over ONLY when the checklist
+  // is being rebuilt for the SAME date it was last built for. A participant-set
+  // change (wizAddGroup/wizRemoveGroup) must preserve them; a DATE change must
+  // NOT — every tick and reason below is derived from one specific day's medical
+  // layer, so carrying them across a date change left e.g. a recruit tagged with
+  // the newly-active "MC" but sitting unticked, wearing the previous day's
+  // reason. `statusBuiltFor` is the date the current rows were derived for
+  // (undefined on a fresh open, where status is [] anyway).
   const prevByD4 = {};
-  (_logConduct.status || []).forEach(s => { prevByD4[s.d4] = s; });
+  if (_logConduct.statusBuiltFor === _logConduct.date) {
+    (_logConduct.status || []).forEach(s => { prevByD4[s.d4] = s; });
+  }
   // For edit mode, also seed "notParticipating" from existing Status
   // conductDetail rows matching this attendance — so re-opening shows the
   // correct ticks. ("Status" = the pre-existing-status non-participation type,
@@ -4433,12 +4460,19 @@ function rebuildLogConductStatus() {
   // import never accounted for their medical status. So while unreviewed we fall
   // back to the medical default (defaultNP, same as a brand-new conduct); once
   // reviewed, an absent Status row is an explicit "participates" decision we honor.
+  //
+  // The review is only good for the date it was reviewed ON. Once the user moves
+  // an edited conduct to a different date, "no Status row" says nothing about the
+  // new date's medical layer, so we drop back to the medical default there —
+  // otherwise back-dating a reviewed conduct onto someone's active MC would leave
+  // them silently unticked. The saved Status rows themselves still count as
+  // explicit absences (they belong to this conduct, whatever date it now carries).
   let existingPxByD4 = {};
   let statusReviewed = false;
   if (_logConduct.attendanceId) {
     const a = STATE.attendance.find(x => x.id === _logConduct.attendanceId);
     if (a) {
-      statusReviewed = !!a.statusReviewed;
+      statusReviewed = !!a.statusReviewed && displayDateToISO(a.date) === _logConduct.date;
       STATE.conductDetail
         .filter(d => d.date === a.date && (d.time || "") === (a.time || "") && d.conductId === a.conductId && d.type === "Status")
         .forEach(d => { existingPxByD4[d.d4] = d.reason || ""; });
@@ -4460,19 +4494,49 @@ function rebuildLogConductStatus() {
   allEffective.forEach(e => { effByD4[e.d4] = e; });
   const effective = allEffective.filter(({ d4 }) => participantSet.has(d4));
 
+  // Medical VISITS dated exactly on this conduct's date. An active-status window
+  // is not the only way to be away from a day's training: the visit itself is,
+  // and currentMedicalEffectiveAll knows nothing about visit dates — it only
+  // reports statuses whose [startDate, endDate] covers the date. So these people
+  // were silently missing from the checklist:
+  //   • RSI/RSO on the day whose MO outcome only STARTS the next day
+  //     (RSI 20 Jul → MC 21–23 Jul: nothing is active on the 20th),
+  //   • an MR or MA carrying no status window at all.
+  // Most visible when back-dating the wizard to reconstruct a past day, where the
+  // medical record already exists in its RESOLVED form (live logging goes through
+  // the Report Sick card instead). The §8 parade classifier reads the visit date
+  // the same way (js/braves-parade.js: `reportedToday` for RSI/RSO/MR, and the MA
+  // clause) — but it gates RSI/RSO/MR on the MO outcome still being pending, since
+  // a resolved visit surfaces under ATT C / STATUS instead. We deliberately do NOT
+  // gate: attendance only cares that the person left for the MO that day, whatever
+  // the MO later wrote. So the wizard can list someone the parade state counts as
+  // present — every tick here is a default the user overrides per conduct anyway.
+  const visitByD4 = {};
+  (STATE.medical || []).forEach(m => {
+    if (!MED_VISIT_TYPES.includes(m.type)) return;
+    if (displayDateToISO(m.date) !== dateIso) return;
+    const v = (visitByD4[m.d4] = visitByD4[m.d4] || { tags: [], reason: "" });
+    if (!v.tags.includes(m.type)) v.tags.push(m.type);
+    if (!v.reason) v.reason = m.reason || "";
+  });
+
   const rows = effective.map(({ d4, statuses }) => {
     // Pick the most-severe active status as the canonical tag/reason.
     const top = statuses[0];
     const prev = prevByD4[d4];
+    const visit = visitByD4[d4];
     // A status can mean "still does the conduct" (e.g. a finger injury). Default
     // to participating only when EVERY active status participates; any
     // restrictive status (MC/LD/Excuse/…) defaults the recruit to not-
-    // participating. The user can always override per conduct.
-    const defaultNP = statuses.some(s => !statusParticipates(s.tag));
+    // participating. A medical visit that same day is itself an absence (they
+    // were at the MO / the appointment), so it forces the default even when the
+    // status alone would have let them train. The user can always override.
+    const defaultNP = statuses.some(s => !statusParticipates(s.tag)) || !!visit;
     return {
       d4,
-      // Concatenate every active status so the user sees "MC + Excuse Heavy Load"
-      statusTag: statuses.map(s => s.tag).join(" + "),
+      // Concatenate every active status so the user sees "MC + Excuse Heavy Load",
+      // then the day's visit types ("MC + RSO") so it's clear WHY they're listed.
+      statusTag: [...statuses.map(s => s.tag), ...(visit ? visit.tags : [])].join(" + "),
       reason: prev ? prev.reason : (existingPxByD4[d4] ?? top.record.reason ?? ""),
       // A recorded Status row always wins (ticked). Otherwise: an already
       // reviewed conduct treats "no row" as a deliberate participates decision
@@ -4481,6 +4545,25 @@ function rebuildLogConductStatus() {
       notParticipating: prev ? prev.notParticipating
         : ((d4 in existingPxByD4) || (statusReviewed ? false : defaultNP))
     };
+  });
+
+  // Participants whose ONLY reason to be on the checklist is a visit dated today
+  // — no active status window on this date, so the map above never saw them.
+  const visitOnly = new Set(rows.map(r => r.d4));
+  Object.keys(visitByD4).forEach(d4 => {
+    if (visitOnly.has(d4) || !participantSet.has(d4)) return;
+    const prev = prevByD4[d4];
+    const v = visitByD4[d4];
+    rows.push({
+      d4,
+      statusTag: v.tags.join(" + "),
+      reason: prev ? prev.reason : (existingPxByD4[d4] ?? v.reason ?? ""),
+      // Same seeding rule as an active status whose defaultNP is true: a medical
+      // visit means they were away unless this conduct was already reviewed on
+      // this date and no Status row was recorded for them.
+      notParticipating: prev ? prev.notParticipating
+        : ((d4 in existingPxByD4) || (statusReviewed ? false : true))
+    });
   });
 
   // UNION in everyone with a saved "Status" ConductDetail row who isn't already
@@ -4506,6 +4589,9 @@ function rebuildLogConductStatus() {
   });
 
   _logConduct.status = rows.sort((a, b) => a.d4.localeCompare(b.d4));
+  // Record which date these rows were derived for, so the next rebuild can tell a
+  // participant change (preserve edits) from a date change (re-derive).
+  _logConduct.statusBuiltFor = dateIso;
 }
 
 // Builds the modal HTML and opens it. Re-rendering is full-replace; row-level
