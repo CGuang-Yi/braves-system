@@ -22,6 +22,16 @@ const path = require("path");
 const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
 
+// helpers.js's displayDateToISO, re-implemented for the "DD Mon YYYY" sheet
+// format these fixtures use. rebuildLogConductStatus needs it (it compares the
+// attendance row's stored date against the wizard's current date, and reads each
+// medical row's visit date), and helpers.js isn't loaded into these sandboxes.
+const MONTHS = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+function sheetDateToIso(s) {
+  const m = /^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/.exec(String(s || "").trim());
+  return m ? `${m[3]}-${MONTHS[m[2]]}-${m[1].padStart(2, "0")}` : "";
+}
+
 // Build a fresh vm context with forms.js loaded and the wizard collaborators
 // stubbed. currentMedicalEffectiveAll always surfaces 2415 on LD (a restrictive,
 // non-participating status).
@@ -35,6 +45,7 @@ function loadCtx() {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
   target.isCommander = () => false;
   target.statusParticipates = () => false;   // LD/MC/Excuse are restrictive ⇒ defaultNP true
+  target.displayDateToISO = sheetDateToIso;
   target.currentMedicalEffectiveAll = () => [
     { d4: "2415", statuses: [{ tag: "LD", record: { reason: "SORE THROAT" } }] }
   ];
@@ -323,6 +334,7 @@ module.exports = async function run() {
     target.isCommander = () => false;
     target.statusParticipates = () => false;
     target.getName = d4 => "Name" + d4;
+    target.displayDateToISO = sheetDateToIso;
     // Only 2415 (LD) has an ACTIVE medical status; 5555 / 6666 (CSV Off/Leave)
     // have none — they exist purely as saved Status ConductDetail rows.
     target.currentMedicalEffectiveAll = () => [
@@ -915,5 +927,171 @@ module.exports = async function run() {
       { d4: "1001", statusTag: "MC+1 + Excuse Heavy Load", notParticipating: true }
     ], "MC+1");
     eq(out[0].notParticipating, true, "impure row excluded ⇒ unchanged");
+  });
+
+  // ── Back-dating the wizard: visit-date rows + no stale carry-over ──────────
+  //
+  // Two defects, both only visible once the Date field is moved off today:
+  //
+  //  (1) currentMedicalEffectiveAll only knows about ACTIVE [startDate, endDate]
+  //      windows. Someone who reported sick (RSI/RSO) — or had an MR/MA — ON the
+  //      conduct date but whose status window starts LATER (RSI 20 Jul → MC
+  //      21–23 Jul), or who has no window at all, was invisible on the checklist
+  //      even though they were plainly away that day. The §8 parade classifier
+  //      does read the visit date (js/braves-parade.js: reportedToday / the MA
+  //      clause); the wizard didn't.
+  //
+  //  (2) rebuildLogConductStatus carried the previous rows' ticks and reasons
+  //      over unconditionally, so changing the date kept the OLD day's medical
+  //      defaults — an active-MC recruit could show "MC" while sitting unticked
+  //      with the previous day's reason.
+  suite("Log Conduct wizard: back-dated checklist (visit date + no stale carry-over)");
+
+  // A context whose medical layer is the REAL date logic: statuses come from a
+  // hand-rolled currentMedicalEffectiveAll driven off STATE.medical windows, so a
+  // date change genuinely changes what's active.
+  function loadBackDateCtx(medical, customParticipates) {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    const toIso = sheetDateToIso;
+    target.isCommander = () => false;
+    target.getName = d4 => "Name" + d4;
+    target.displayDateToISO = toIso;
+    // Only a status named in `customParticipates` still does conducts.
+    target.statusParticipates = tag => (customParticipates || []).includes(tag);
+    // Active = dateIso within [startDate, endDate]; most-severe-first is faked by
+    // input order. Mirrors medStatusActive's window rule for these fixtures.
+    target.currentMedicalEffectiveAll = dateIso => {
+      const byD4 = {};
+      medical.forEach(m => {
+        if (!m.status) return;
+        const s = toIso(m.startDate), e = toIso(m.endDate);
+        if (!s || !e || dateIso < s || dateIso > e) return;
+        (byD4[m.d4] = byD4[m.d4] || { d4: m.d4, statuses: [] }).statuses.push({ tag: m.status, record: m });
+      });
+      return Object.values(byD4);
+    };
+    target.STATE = { attendance: [], conductDetail: [], medical };
+    return { target, ctx };
+  }
+
+  // Recruit 1001 RSI'd on 20 Jul; the MO issued an MC that only STARTS on 21 Jul.
+  // Recruit 1003 had an out-of-camp MA on 20 Jul and carries no status at all.
+  const VISIT_MEDICAL = [
+    { id: "m1", d4: "1001", date: "20 Jul 2026", type: "RSI", reason: "FEVER", status: "MC", startDate: "21 Jul 2026", endDate: "23 Jul 2026" },
+    { id: "m2", d4: "1002", date: "18 Jul 2026", type: "RSI", reason: "ANKLE", status: "LD", startDate: "18 Jul 2026", endDate: "25 Jul 2026" },
+    { id: "m3", d4: "1003", date: "20 Jul 2026", type: "MA", reason: "DENTAL", status: "", startDate: "", endDate: "", outOfCamp: true }
+  ];
+  function backDatedStatus(medical, dateIso, participants, customParticipates) {
+    const { ctx } = loadBackDateCtx(medical, customParticipates);
+    ctx._lc = { date: dateIso, status: [], participants, importedBaseline: participants };
+    vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
+    return JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+  }
+
+  await test("someone who RSI'd that day is listed even when the MC starts the next day", () => {
+    const rows = backDatedStatus(VISIT_MEDICAL, "2026-07-20", ["1001", "1002", "1003"]);
+    const r = rows.find(s => s.d4 === "1001");
+    ok(r, "1001 reported sick on the conduct date ⇒ must be on the checklist");
+    eq(r.notParticipating, true, "a medical visit that day defaults to not participating");
+    eq(r.statusTag, "RSI", "tagged with the visit type so it's clear WHY they're listed");
+    eq(r.reason, "FEVER", "reason seeded from the visit record");
+  });
+
+  await test("an MA dated that day is listed even with no status window at all", () => {
+    const rows = backDatedStatus(VISIT_MEDICAL, "2026-07-20", ["1001", "1002", "1003"]);
+    const r = rows.find(s => s.d4 === "1003");
+    ok(r, "1003's out-of-camp appointment that day ⇒ on the checklist");
+    eq(r.statusTag, "MA");
+    eq(r.notParticipating, true);
+  });
+
+  await test("an active status window still lists normally, unchanged", () => {
+    const rows = backDatedStatus(VISIT_MEDICAL, "2026-07-20", ["1001", "1002", "1003"]);
+    const r = rows.find(s => s.d4 === "1002");
+    eq(r.statusTag, "LD", "no visit on 20 Jul ⇒ status tag alone");
+    eq(r.notParticipating, true);
+  });
+
+  await test("a visit on the same day as an active status appends to the tag", () => {
+    // 1001's own MC window covers 21–23 Jul; on 21 Jul they are BOTH on active MC
+    // and (per m4) reporting sick again.
+    const med = VISIT_MEDICAL.concat([
+      { id: "m4", d4: "1001", date: "21 Jul 2026", type: "RSO", reason: "WORSE", status: "", startDate: "", endDate: "" }
+    ]);
+    const r = backDatedStatus(med, "2026-07-21", ["1001"]).find(s => s.d4 === "1001");
+    eq(r.statusTag, "MC + RSO", "active status first, then the day's visit type");
+    eq(r.reason, "FEVER", "an active status's reason still wins over the visit's");
+  });
+
+  await test("a visit that day overrides a participating status's default", () => {
+    // "Excuse Finger" still does conducts, but they went to the MO that morning.
+    const med = [
+      { id: "m1", d4: "1001", date: "18 Jul 2026", type: "RSI", reason: "FINGER", status: "Excuse Finger", startDate: "18 Jul 2026", endDate: "25 Jul 2026" },
+      { id: "m2", d4: "1001", date: "20 Jul 2026", type: "MR", reason: "REVIEW", status: "", startDate: "", endDate: "" }
+    ];
+    const on20 = backDatedStatus(med, "2026-07-20", ["1001"], ["Excuse Finger"]).find(s => s.d4 === "1001");
+    eq(on20.notParticipating, true, "the MR visit that day forces not-participating");
+    const on19 = backDatedStatus(med, "2026-07-19", ["1001"], ["Excuse Finger"]).find(s => s.d4 === "1001");
+    eq(on19.notParticipating, false, "no visit on 19 Jul ⇒ the participating status governs");
+  });
+
+  await test("changing the date re-derives ticks and reasons instead of carrying them", () => {
+    // 1004 is on a restrictive MC 19–20 Jul and a PARTICIPATING custom status
+    // 24–26 Jul. Opening on 25 Jul then back-dating to 20 Jul must land on the
+    // same rows a fresh open at 20 Jul produces.
+    const med = [
+      { id: "m1", d4: "1004", date: "19 Jul 2026", type: "RSI", reason: "FEVER", status: "MC", startDate: "19 Jul 2026", endDate: "20 Jul 2026" },
+      { id: "m2", d4: "1004", date: "24 Jul 2026", type: "RSI", reason: "BLISTER", status: "Excuse Combat Boots", startDate: "24 Jul 2026", endDate: "26 Jul 2026" }
+    ];
+    const { ctx } = loadBackDateCtx(med, ["Excuse Combat Boots"]);
+    ctx._lc = { date: "2026-07-25", status: [], participants: ["1004"], importedBaseline: ["1004"] };
+    vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
+    const before = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx))[0];
+    eq(before.notParticipating, false, "sanity: on 25 Jul the participating custom status governs");
+    vm.runInContext("_logConduct.date = '2026-07-20'; rebuildLogConductStatus();", ctx);
+    const after = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx))[0];
+    const fresh = backDatedStatus(med, "2026-07-20", ["1004"], ["Excuse Combat Boots"])[0];
+    eq(after.statusTag, "MC");
+    eq(after.notParticipating, true, "back-dating onto the active MC must re-tick");
+    eq(after.reason, "FEVER", "reason re-derived from the MC, not carried from 25 Jul");
+    eq(after, fresh, "a date change lands exactly where a fresh open at that date does");
+  });
+
+  await test("a same-date rebuild (participant change) still preserves user edits", () => {
+    const { ctx } = loadBackDateCtx(VISIT_MEDICAL);
+    ctx._lc = { date: "2026-07-20", status: [], participants: ["1002"], importedBaseline: ["1002"] };
+    vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
+    // The user unticks 1002 (LD but actually participating) and types a reason.
+    vm.runInContext("_logConduct.status[0].notParticipating = false; _logConduct.status[0].reason = 'doing it anyway';", ctx);
+    // Adding another participant rebuilds the checklist — same date, so edits hold.
+    vm.runInContext("_logConduct.participants = ['1002','1001']; rebuildLogConductStatus();", ctx);
+    const rows = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+    const kept = rows.find(s => s.d4 === "1002");
+    eq(kept.notParticipating, false, "same-date rebuild keeps the manual untick");
+    eq(kept.reason, "doing it anyway", "same-date rebuild keeps the typed reason");
+    ok(rows.find(s => s.d4 === "1001"), "the newly added participant's visit row appears");
+  });
+
+  await test("moving an edited conduct off its saved date re-applies medical defaults", () => {
+    // A saved+reviewed conduct on 25 Jul: 1004's participating custom status meant
+    // no Status row was written. Back-dating it to 20 Jul (active MC) must not read
+    // that absence as "participated despite status" — the review was for 25 Jul.
+    const med = [
+      { id: "m1", d4: "1004", date: "19 Jul 2026", type: "RSI", reason: "FEVER", status: "MC", startDate: "19 Jul 2026", endDate: "20 Jul 2026" },
+      { id: "m2", d4: "1004", date: "24 Jul 2026", type: "RSI", reason: "BLISTER", status: "Excuse Combat Boots", startDate: "24 Jul 2026", endDate: "26 Jul 2026" }
+    ];
+    const { target, ctx } = loadBackDateCtx(med, ["Excuse Combat Boots"]);
+    target.STATE.attendance = [{ id: "A1", date: "25 Jul 2026", time: "", conductId: "c1", statusReviewed: true }];
+    ctx._lc = { attendanceId: "A1", date: "2026-07-20", status: [], participants: ["1004"], importedBaseline: ["1004"] };
+    vm.runInContext("_logConduct = _lc; rebuildLogConductStatus();", ctx);
+    const rows = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
+    eq(rows[0].notParticipating, true,
+      "statusReviewed applies only to the date it was reviewed on ⇒ MC re-ticks");
   });
 };
