@@ -42,6 +42,26 @@ function filteredRoster() {
   });
 }
 
+// The in-scope roster MINUS genuine departures — the population every STRENGTH
+// figure must be counted over, so the Dashboard/topbar numbers reconcile with
+// the parade state instead of running a couple of PAX high.
+//
+// Why this exists: the parade state counts strength through bpStrength(), which
+// drops rows whose roster status is a real departure (BP_DEPARTED_STATUSES —
+// Discharged/ORD/Posted Out/…). filteredRoster() deliberately keeps those rows,
+// because the Roster tab still has to list and badge a person who has ORD'd.
+// Reading `filteredRoster().length` as "Total Str" therefore counted people who
+// have left the company, while the parade-state message did not — the same roster
+// reported two different totals. Strength-bearing views call this instead;
+// list/record views keep calling filteredRoster().
+//
+// bpIsActive lives in braves-parade.js (loaded after helpers.js), but this only
+// runs at render time — long after every script has loaded — so it resolves fine
+// (same pattern as rosterDisplayStatus's BP_DEPARTED_STATUSES reference below).
+function strengthRoster() {
+  return filteredRoster().filter(bpIsActive);
+}
+
 // Is a person (by id/4D) within the active global scope (spec §11.3)? Used by
 // views that filter non-roster records (Medical/Leave/IPPT/…) directly by d4
 // rather than going through filteredRoster(). Mirrors filteredRoster's logic.

@@ -134,7 +134,12 @@ module.exports = async function run() {
 
   await test("the Active counter reuses bpStrength(...).current, not roster.status === Active", () => {
     ok(!/r\.status === "Active"/.test(render), "the Active counter still reads the raw roster.status mirror");
-    ok(/const active = bpStrength\(scoped, todayISO\(\)\)\.current/.test(render),
+    // Both topbar numbers now come off ONE bpStrength() call — `Str:` reads .total
+    // (departures excluded, so it matches the parade state) and `Active:` .current.
+    // See test/dashboard-strength.test.js for the behavioural guard.
+    ok(/const str = bpStrength\(filteredRoster\(\), todayISO\(\)\)/.test(render),
+      "the topbar counters are not derived from the canonical bpStrength()");
+    ok(/\$\{str\.current\}/.test(render),
       "the Active counter is not derived from the canonical bpStrength(...).current");
   });
 };
