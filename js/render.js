@@ -681,7 +681,7 @@ function renderDashMSKCases(visible) {
     // by clicking the pencil. Stored on the latest Report Injury row.
     const regions = c.latestInjury ? getMSKRegionsForRecruit(c.d4) : [];
     const regionsLine = c.latestInjury ? `<div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-      ${regions.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join("")}
+      ${regions.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join("")}
       <button class="btn btn-icon" onclick="event.stopPropagation(); openMSKRegionMenu('${c.d4}')" title="Re-tag body regions" style="font-size:9px;padding:1px 6px">✎ tag</button>
     </div>` : "";
 
@@ -783,7 +783,7 @@ function viewMSKRegion(region) {
     return { d4, sources, allRegions, hasManual };
   });
 
-  const regionChipsHtml = regs => regs.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join(" ");
+  const regionChipsHtml = regs => regs.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join(" ");
 
   const body = `
     <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:10px;line-height:1.55">
@@ -902,7 +902,7 @@ function renderMSKAnalytics(el) {
     .map(d4 => ({ d4, count: freq[d4].count, regions: getMSKRegionsForRecruit(d4) }))
     .sort((a, b) => b.count - a.count);
 
-  const regionChip = reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other};margin-right:3px">${escapeHTML(reg)}</span>`;
+  const regionChip = reg => `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other};margin-right:3px">${escapeHTML(reg)}</span>`;
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px">
@@ -2810,7 +2810,7 @@ function renderHA(el) {
               <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(r.id)}</td>
               <td style="text-align:left">${escapeHTML(displayPersonLabel(r.id))}</td>
               <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
-              <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
+              <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
               <td style="text-align:left">${cell(barVal(ha.single), 10, "#2DD4BF")}</td>
               <td style="text-align:left">${cell(barVal(ha.expanded), 14, "#D29922")}</td>
               <td style="text-align:left">${dbl}</td>
@@ -2959,8 +2959,8 @@ function renderSBLeaderboard() {
   const row = (x, i) => `<div onclick="openPerson('${x.r.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px">
       <span class="mono" style="color:var(--muted);min-width:20px">${i + 1}.</span>
       <span style="flex:1">${escapeAttr(x.r.name || "")} ${x.r.role !== "Commander" && x.r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${x.r.fourD}</span>` : ""}</span>
-      <span style="background:#EF9F2722;color:#EF9F27;border:1px solid #EF9F2744;border-radius:4px;padding:1px 6px;font-size:10px">RSI ${x.rsi}</span>
-      <span style="background:#378ADD22;color:#378ADD;border:1px solid #378ADD44;border-radius:4px;padding:1px 6px;font-size:10px">RSO ${x.rso}</span>
+      <span style="background:#EF9F2722;color:#EF9F27;border:1px solid #EF9F2744;border-radius:999px;padding:1px 6px;font-size:10px">RSI ${x.rsi}</span>
+      <span style="background:#378ADD22;color:#378ADD;border:1px solid #378ADD44;border-radius:999px;padding:1px 6px;font-size:10px">RSO ${x.rso}</span>
       <strong style="min-width:24px;text-align:right">${x.total}</strong>
     </div>`;
   host.innerHTML = `
@@ -3010,10 +3010,10 @@ function renderSBRosterList() {
       return best;
     })();
     const catBadge = p.primary
-      ? `<span style="background:${catColor(p.primary).bg}33;color:${catColor(p.primary).bg};border:1px solid ${catColor(p.primary).bg}66;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.type === "WD" ? "WARDED" : p.primary.label}</span>`
+      ? `<span style="background:${catColor(p.primary).bg}33;color:${catColor(p.primary).bg};border:1px solid ${catColor(p.primary).bg}66;border-radius:999px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.type === "WD" ? "WARDED" : p.primary.label}</span>`
       : `<span style="color:var(--green);font-size:11px">Present</span>`;
-    const mrBadge = p.mr ? ` <span style="background:#7F77DD33;color:#7F77DD;border:1px solid #7F77DD66;border-radius:4px;padding:2px 6px;font-size:9px">MR</span>` : "";
-    const ghostBadge = ghostInfo ? ` <span title="recovering" style="color:var(--muted);font-size:9px;border:1px solid var(--border);border-radius:3px;padding:1px 4px">${ghostInfo.tag}</span>` : "";
+    const mrBadge = p.mr ? ` <span style="background:#7F77DD33;color:#7F77DD;border:1px solid #7F77DD66;border-radius:999px;padding:2px 6px;font-size:9px">MR</span>` : "";
+    const ghostBadge = ghostInfo ? ` <span title="recovering" style="color:var(--muted);font-size:9px;border:1px solid var(--border);border-radius:999px;padding:1px 4px">${ghostInfo.tag}</span>` : "";
     const reason = p.primary ? p.primary.reason : (p.mr || "");
     body += `<tr onclick="openSBCellDetail('${r.id}','${today}')" style="cursor:pointer">
       <td style="text-align:left">${escapeAttr(paradeRN(r.id))}</td>

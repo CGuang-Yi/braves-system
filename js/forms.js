@@ -234,7 +234,8 @@ function openPerson(d4) {
   if (ippts.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">IPPT Progression</h4>`;
     html += `<div class="chart-box"><canvas id="person-ippt-chart"></canvas></div>`;
-    html += ippts.map(i => `<span style="display:inline-flex;align-items:center;margin:2px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:11px">#${i.attempt}: ${isYTT(i) ? "—" : i.score} ${awardBadge(i.score)}${pcBtns("openIPPTForm", "ippt", i.id, "IPPT entry")}</span>`).join("");
+    // Fix 17: progression chips take the same full-pill shape as every other tag.
+    html += ippts.map(i => `<span style="display:inline-flex;align-items:center;margin:2px;background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:2px 6px;font-size:11px">#${i.attempt}: ${isYTT(i) ? "—" : i.score} ${awardBadge(i.score)}${pcBtns("openIPPTForm", "ippt", i.id, "IPPT entry")}</span>`).join("");
   }
   if (rms.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Route March</h4><div style="display:flex;gap:8px;flex-wrap:wrap">`;
@@ -359,7 +360,7 @@ function openPerson(d4) {
       <h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">🌡️ Heat Acclimatisation (HA)</h4>
       <div class="card" style="padding:14px;background:var(--surface2);margin-bottom:12px">
         <div style="margin-bottom:10px">
-          Status: <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span>
+          Status: <span class="badge" style="background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;padding:2px 6px;border-radius:999px;font-size:11px;font-weight:600">${ha.overallStatus}</span>
           ${ha.singleTrack ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">(via ${ha.singleTrack})</span>` : ""}
         </div>
         ${bar("Single", ha.single, 10, "#2DD4BF", ha.single ? `, ${ha.single.breaksUsed} breaks` : "")}

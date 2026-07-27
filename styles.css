@@ -57,7 +57,12 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .tab-toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .tab-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
 
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+/* Fix 17: status/label tags all share one full-pill shape (999px), matching
+   .ps-badge, .ps-select and #sync-status. Structural boxes (.sect-strength__box,
+   the wizard's group chips, cards, inputs) and the .sb-cell/.ha-grid-cell
+   calendar squares deliberately keep their smaller radii — 999px on a wide or
+   multi-line box reads as a lozenge, and on a 22×18 grid square as an oval. */
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
 .badge-green{background:#3FB95022;color:var(--green);border:1px solid #3FB95044}
 .badge-red{background:#F8514922;color:var(--red);border:1px solid #F8514944}
 .badge-orange{background:#D2992222;color:var(--orange);border:1px solid #D2992244}
