@@ -3107,6 +3107,18 @@ function bpDDMMYY(iso) {
 }
 function bp2(n) { return String(n).padStart(2, "0"); }
 
+// ISO + n days, tz-safe (anchored at local midnight, never toISOString — which
+// would shift the date back a day for any positive UTC offset). Mirror of the
+// js/braves-parade.js twin; the lookahead horizon below is the only caller.
+function bpAddDaysISO(iso, n) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d)) return "";
+  d.setDate(d.getDate() + (Number(n) || 0));
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-"
+    + String(d.getDate()).padStart(2, "0");
+}
+
 // Inclusive day count between two display dates, e.g. 13–21 May = 9.
 function bpInclusiveDays(record) {
   const s = displayDateToISO(record.startDate || record.date || "");
@@ -3201,17 +3213,57 @@ function bookedInBy(rec, dateIso) {
   return !!b && dateIso >= b;
 }
 
-function bpClassifyPerson(r, dateIso) {
+// `opts.lookaheadDays` (Fix 18) is OFF by default. The archiver and the Telegram
+// bot never pass it, so their output is unchanged; it exists here only so this
+// port stays behaviourally identical to js/braves-parade.js, which is what
+// test/parade-port-parity.test.js asserts.
+function bpClassifyPerson(r, dateIso, opts) {
   const rn = bravesParadeRN(r.id);
   const out = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
   let notInCamp = false;
+  // Tracked separately from out.attC.length because the lookahead can put a
+  // not-yet-started MC in that array — see the recovery tail below, whose whole
+  // premise is "no MC running TODAY".
+  let hasCurrentAttC = false;
+
+  // ── Fix 18: opt-in lookahead (mirror of js/braves-parade.js) ──────────────
+  // A record is "upcoming" when its window STARTS after dateIso but within the
+  // horizon. It is LISTED and COUNTED in its section but must never touch
+  // notInCamp — notInCamp feeds bpStrength, and a person present today is
+  // present today whatever is booked for next week.
+  const lookaheadDays = (opts && opts.lookaheadDays) || 0;
+  const bpUpcoming = startIso => {
+    if (!lookaheadDays || !startIso || startIso <= dateIso) return false;
+    if (lookaheadDays === Infinity) return true;
+    return startIso <= bpAddDaysISO(dateIso, lookaheadDays);
+  };
+  // Mirrors medStatusActive's own preconditions: a blank end date makes a record
+  // inert everywhere else, and Pending/NIL put nobody away, so the lookahead
+  // must not become a back door for either.
+  const bpUpcomingStatus = m => {
+    if (!m.status || m.status === "Pending" || m.status === "NIL") return false;
+    if (!displayDateToISO(m.endDate || "")) return false;
+    return bpUpcoming(displayDateToISO(m.startDate || m.date || ""));
+  };
+  // Upcoming rows supersede only each other: a future MC always ends after the
+  // one the person is on today, so a shared pool would delete today's entry.
+  const supPool = upcoming => (upcoming ? "UPCOMING:" : "");
+  // Book-in for an upcoming record is judged at the record's OWN start date —
+  // bookedInBy asks "is dateIso on or after the book-in?", always false for a
+  // window that has not started.
+  const bookedInFor = (rec, upcoming, startIso) => bookedInBy(rec, upcoming ? startIso : dateIso);
 
   // Supersede tags, parallel to out[] for the duration-bearing sections only
   // (js/braves-parade.js carries these on its `meta` twin — this file has no
   // meta, so track them alongside). Every push into these four sections must go
   // through pushS so the arrays stay index-aligned for bpSupersedeSameType.
   const sup = { alOil: [], attC: [], status: [], others: [] };
-  const pushS = (section, line, tag) => { out[section].push(line); sup[section].push(tag || null); };
+  const pushS = (section, line, tag, upcoming) => {
+    // Fix 18: the date range already reveals futurity, but an explicit marker
+    // removes all doubt when scanning a long section.
+    out[section].push(line + (upcoming ? " [UPCOMING]" : ""));
+    sup[section].push(tag || null);
+  };
 
   // Leave → AL/OIL (in the AL/OIL type set) or OTHERS. Every leave row now
   // carries an explicit isInCamp — see js/braves-parade.js for the frontend
@@ -3224,25 +3276,30 @@ function bpClassifyPerson(r, dateIso) {
   STATE.leave.forEach(l => {
     if (l.d4 !== r.id) return;
     const s = displayDateToISO(l.startDate), e = displayDateToISO(l.endDate);
-    if (!s || !e || !(s <= dateIso && dateIso <= e)) return;
-    if (bookedInBy(l, dateIso)) return;   // booked in ⇒ Present from bookInDate onward
+    if (!s || !e) return;
+    const active = s <= dateIso && dateIso <= e;
+    const upcoming = !active && bpUpcoming(s);
+    if (!active && !upcoming) return;
+    if (bookedInFor(l, upcoming, s)) return;   // booked in ⇒ Present from bookInDate onward
     // The entry text is the free-text reason ("48HR BO"), falling back to the
     // leave type when no reason was recorded. (NOT "type — reason" — the sample
     // shows a single clean label.)
     const reason = l.reason || l.type || "";
     const inCamp = l.isInCamp === true;
-    if (inCamp) leaveOverride = true;
-    const leaveSup = { supKey: String(l.type || "").trim().toUpperCase(), supEnd: displayDateToISO(l.endDate || "") };
+    // An upcoming In-Camp leave must not clear today's notInCamp either — the
+    // override is about who is in camp NOW, same as the flag it clears.
+    if (inCamp && !upcoming) leaveOverride = true;
+    const leaveSup = { supKey: supPool(upcoming) + String(l.type || "").trim().toUpperCase(), supEnd: displayDateToISO(l.endDate || "") };
     if (bpIsAlOilType(l.type)) {
-      pushS("alOil", `${rn} - ${reason} ${bpRange(l, true)}`.trim(), leaveSup);
-      notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
+      pushS("alOil", `${rn} - ${reason} ${bpRange(l, true)}`.trim(), leaveSup, upcoming);
+      if (!upcoming) notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
     } else {
       // Non-AL/OIL leave → OTHERS; the commander picks In Camp/Not In Camp
       // explicitly on every record (no more reason-keyword guessing here).
       const label = inCamp ? "OTHERS (IN CAMP)" : "OTHERS (NOT IN CAMP)";
       const rng = bpRange(l, false);
-      pushS("others", `${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim(), leaveSup);
-      if (!inCamp) notInCamp = true;
+      pushS("others", `${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim(), leaveSup, upcoming);
+      if (!inCamp && !upcoming) notInCamp = true;
     }
   });
   if (leaveOverride) notInCamp = false;
@@ -3287,11 +3344,13 @@ function bpClassifyPerson(r, dateIso) {
     }
 
     // ATT C — active MC (not-in-camp). Warded handled as OTHERS below.
-    if (m.status === "MC" && medStatusActive(m, dateIso) && !bookedInBy(m, dateIso)) {
+    const mcUpcoming = m.status === "MC" && !medStatusActive(m, dateIso) && bpUpcomingStatus(m);
+    if (m.status === "MC" && (medStatusActive(m, dateIso) || mcUpcoming)
+        && !bookedInFor(m, mcUpcoming, displayDateToISO(m.startDate || m.date || ""))) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D MC` : "MC";
-      pushS("attC", `${rn} - ${label} ${bpRange(m, false)}`.trim(), { supKey: "MC", supEnd: displayDateToISO(m.endDate || "") });
-      notInCamp = true;
+      pushS("attC", `${rn} - ${label} ${bpRange(m, false)}`.trim(), { supKey: supPool(mcUpcoming) + "MC", supEnd: displayDateToISO(m.endDate || "") }, mcUpcoming);
+      if (!mcUpcoming) { notInCamp = true; hasCurrentAttC = true; }
     }
 
     // STATUS — active LD, RIB, Excuse-*, or any other in-camp-restricted status.
@@ -3299,17 +3358,20 @@ function bpClassifyPerson(r, dateIso) {
     // status:"" with an active date range, which would otherwise emit a blank
     // "RN - " STATUS line (and double-list someone already in REPORTING SICK).
     // Every status here gets the same "{days}D {status}" duration prefix.
-    if (m.status && medStatusActive(m, dateIso) && m.status !== "MC" && m.status !== "Warded"
-        && m.status !== "Pending" && m.status !== "NIL" && !bookedInBy(m, dateIso)) {
+    const stUpcoming = !medStatusActive(m, dateIso) && bpUpcomingStatus(m);
+    if (m.status && (medStatusActive(m, dateIso) || stUpcoming) && m.status !== "MC" && m.status !== "Warded"
+        && m.status !== "Pending" && m.status !== "NIL"
+        && !bookedInFor(m, stUpcoming, displayDateToISO(m.startDate || m.date || ""))) {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D ${m.status}` : m.status;
-      pushS("status", `${rn} - ${label} ${bpRange(m, true)}`.trim(), { supKey: String(m.status).trim(), supEnd: displayDateToISO(m.endDate || "") });
+      pushS("status", `${rn} - ${label} ${bpRange(m, true)}`.trim(), { supKey: supPool(stUpcoming) + String(m.status).trim(), supEnd: displayDateToISO(m.endDate || "") }, stUpcoming);
     }
 
     // Warded → OTHERS (NOT IN CAMP).
-    if (m.status === "Warded" && medStatusActive(m, dateIso) && !bookedInBy(m, dateIso)) {
-      pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: "WD", supEnd: displayDateToISO(m.endDate || "") });
-      notInCamp = true;
+    if (m.status === "Warded" && (medStatusActive(m, dateIso) || stUpcoming)
+        && !bookedInFor(m, stUpcoming, displayDateToISO(m.startDate || m.date || ""))) {
+      pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: supPool(stUpcoming) + "WD", supEnd: displayDateToISO(m.endDate || "") }, stUpcoming);
+      if (!stUpcoming) notInCamp = true;
     }
 
     // Item 17: Medical Appointment (type MA) dated today → OTHERS. Mirrors the
@@ -3317,11 +3379,13 @@ function bpClassifyPerson(r, dateIso) {
     // Medical form): outOfCamp → NOT IN CAMP; in camp → OTHERS (IN CAMP). A
     // booked-in MA drops off. Independent of any status the visit carries (Q2).
     // MUST mirror js/braves-parade.js — parade-port-parity.test.js guards this.
-    if (m.type === "MA" && displayDateToISO(m.date) === dateIso && !bookedInBy(m, dateIso)) {
+    const maUpcoming = m.type === "MA" && bpUpcoming(displayDateToISO(m.date));
+    if (m.type === "MA" && (displayDateToISO(m.date) === dateIso || maUpcoming)
+        && !bookedInFor(m, maUpcoming, displayDateToISO(m.date))) {
       const outOfCamp = !!m.outOfCamp;
       const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
-      pushS("others", `${rn} - ${m.reason || "Medical Appointment"} (${label})`.trim(), null); // point event, never superseded
-      if (outOfCamp) notInCamp = true;
+      pushS("others", `${rn} - ${m.reason || "Medical Appointment"} (${label})`.trim(), null, maUpcoming); // point event, never superseded
+      if (outOfCamp && !maUpcoming) notInCamp = true;
     }
   });
 
@@ -3341,7 +3405,10 @@ function bpClassifyPerson(r, dateIso) {
   //
   // Strength: affects CURRENT strength (in/out of camp) only — TOTAL strength is
   // unchanged (bpIsActive keys off roster departure statuses, not this tail).
-  if (!out.attC.length) {
+  // Fix 18: keyed off hasCurrentAttC, NOT out.attC.length — with the lookahead on
+  // that array can hold a future MC, and gating on it would make booking next
+  // week's MC silently erase this week's recovery tail.
+  if (!hasCurrentAttC) {
     const endedMc = STATE.medical
       .filter(m => m.d4 === r.id && m.status === "MC" && !bookedInBy(m, dateIso)
         && displayDateToISO(m.endDate || "") && displayDateToISO(m.endDate) < dateIso)
@@ -3361,13 +3428,19 @@ function bpClassifyPerson(r, dateIso) {
   // (set when booking, toggled live by the parade presence-tick) drives the
   // sub-type: out of camp → NOT IN CAMP (and subtracts from current strength);
   // in camp → OTHERS (IN CAMP), still present. Resolved appointments drop out.
+  // Fix 18: these look ahead too. Appointments are still written to BOTH stores
+  // (the Medical form's type-MA rows and this legacy Appointments tab), so
+  // honouring the lookahead in one and not the other would surface next week's
+  // dental appointment or not depending purely on which form booked it.
   (STATE.appointments || []).forEach(a => {
     if (a.d4 !== r.id || a.resolved) return;
-    if (displayDateToISO(a.date) !== dateIso) return;
+    const apptIso = displayDateToISO(a.date);
+    const upcoming = apptIso !== dateIso && bpUpcoming(apptIso);
+    if (apptIso !== dateIso && !upcoming) return;
     const outOfCamp = !!a.outOfCamp;
     const label = outOfCamp ? "OTHERS (NOT IN CAMP)" : "OTHERS (IN CAMP)";
-    pushS("others", `${rn} - ${a.reason || "Appointment"} (${label})`.trim(), null); // appointments: point events, never superseded
-    if (outOfCamp) notInCamp = true;
+    pushS("others", `${rn} - ${a.reason || "Appointment"} (${label})`.trim(), null, upcoming); // appointments: point events, never superseded
+    if (outOfCamp && !upcoming) notInCamp = true;
   });
 
   // Dedupe each section by exact line first, keeping the sup tags aligned for the
@@ -3478,7 +3551,7 @@ function bpBuildBlock(people, dateIso, type, opts) {
   const buckets = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
   [...people].sort((a, b) => bp4DNum(a) - bp4DNum(b)).forEach(r => {
     if (!bpIsActive(r)) return;
-    const c = bpClassifyPerson(r, dateIso);
+    const c = bpClassifyPerson(r, dateIso, { lookaheadDays: opts.lookaheadDays });
     BP_SECTIONS.forEach(k => { c.sections[k].forEach(line => buckets[k].push(line)); });
   });
 
@@ -3521,20 +3594,23 @@ function bpBuildBlock(people, dateIso, type, opts) {
 // ── Public entry point ──────────────────────────────────────────────────────
 // scope: { level: "company" } | { level: "platoon", platoon: "PLT1" | "HQ" }
 // type: "FP" | "LP". Returns the full message text.
-function generateBravesParadeState(scope, type, dateIso, time) {
+// opts (optional): { lookaheadDays } — Fix 18, forwarded to every block. Omitted
+// by the archiver and the Telegram bot, so their output is unchanged.
+function generateBravesParadeState(scope, type, dateIso, time, opts) {
   scope = scope || { level: "company" };
+  const lookaheadDays = (opts && opts.lookaheadDays) || 0;
   const roster = STATE.roster || [];
   const platoonPeople = code => roster.filter(r => personPlatoon(r) === code);
 
   if (scope.level === "platoon") {
     const code = scope.platoon;
     const label = code === "HQ" ? configGet("hqLabel") : `PLATOON ${String(code).replace(/^PLT/i, "")}`;
-    return bpBuildBlock(platoonPeople(code), dateIso, type, { headerLabel: label });
+    return bpBuildBlock(platoonPeople(code), dateIso, type, { headerLabel: label, lookaheadDays });
   }
 
   // Company: aggregate block → 30 `=` → HQ block → (80 dashes) → PLT blocks.
   const parts = [];
-  parts.push(bpBuildBlock(roster, dateIso, type, { aggregate: true, time }));
+  parts.push(bpBuildBlock(roster, dateIso, type, { aggregate: true, time, lookaheadDays }));
   parts.push("");
   parts.push(BP_EQ_SEP);
   parts.push("");
@@ -3550,7 +3626,7 @@ function generateBravesParadeState(scope, type, dateIso, time) {
     const people = platoonPeople(code);
     if (!people.length && code !== "HQ") return; // skip empty platoons (keep HQ)
     const label = code === "HQ" ? configGet("hqLabel") : `PLATOON ${String(code).replace(/^PLT/i, "")}`;
-    blocks.push(bpBuildBlock(people, dateIso, type, { headerLabel: label }));
+    blocks.push(bpBuildBlock(people, dateIso, type, { headerLabel: label, lookaheadDays }));
   });
   parts.push(blocks.join(`\n\n${BP_BIG_SEP}\n`));
   return parts.join("\n");

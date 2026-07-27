@@ -106,6 +106,15 @@ const paradeOf = (fx, type) => both(
   b => b.generateBravesParadeState({ level: "company" }, type, TODAY, "0800"),
   `generateBravesParadeState({level:'company'},'${type}','${TODAY}','0800')`
 );
+// Fix 18: the same call with the lookahead switched on. The archiver never
+// passes it, so nothing in production exercises the ported branches — which is
+// exactly why they need pinning here, or the port would drift the moment anyone
+// wires the option into a backend caller.
+const paradeLookaheadOf = (fx, days) => both(
+  fx,
+  b => b.generateBravesParadeState({ level: "company" }, "first", TODAY, "0800", { lookaheadDays: days }),
+  `generateBravesParadeState({level:'company'},'first','${TODAY}','0800',{lookaheadDays:${days}})`
+);
 const rsOf = fx => both(fx, b => b.generateRSFormat(TODAY, "0800"), `generateRSFormat('${TODAY}','0800')`);
 
 // ── Assertions ──────────────────────────────────────────────────────────────
@@ -266,6 +275,62 @@ module.exports = async function run() {
       ok(/PLATOON/.test(gas), `${code} block should render a platoon header`);
     });
   }
+
+  // ── Fix 18: the lookahead path ────────────────────────────────────────────
+  // Future-dated rows across every section that honours the horizon, so the
+  // ported predicates, the [UPCOMING] marker, the segregated supersede pool and
+  // the recovery-tail guard are all compared rather than just the default path.
+  const LOOKAHEAD = fixture({
+    medical: [
+      // 1422: an MC running TODAY plus a later one — the supersede pool must keep
+      // both, and today's must not be eaten by the future one that ends later.
+      { id: 1, d4: "1422", type: "RSI", date: "28 Jun 2026", status: "MC",
+        startDate: "28 Jun 2026", endDate: "30 Jun 2026", reason: "URTI" },
+      { id: 2, d4: "1422", type: "RSI", date: "02 Jul 2026", status: "MC",
+        startDate: "02 Jul 2026", endDate: "06 Jul 2026", reason: "MC review" },
+      // 2411: a future LD (STATUS) and a future MA (OTHERS).
+      { id: 3, d4: "2411", type: "RSI", date: "03 Jul 2026", status: "LD",
+        startDate: "03 Jul 2026", endDate: "08 Jul 2026", reason: "ankle sprain" },
+      { id: 4, d4: "2411", type: "MA", date: "01 Jul 2026", status: "",
+        reason: "dental specialist", outOfCamp: true },
+      // 1433: an MC that ENDED yesterday (recovery tail) plus a future one — the
+      // tail must survive alongside it.
+      { id: 5, d4: "1433", type: "RSI", date: "24 Jun 2026", status: "MC",
+        startDate: "24 Jun 2026", endDate: "28 Jun 2026", reason: "fever" },
+      { id: 6, d4: "1433", type: "RSI", date: "04 Jul 2026", status: "MC",
+        startDate: "04 Jul 2026", endDate: "07 Jul 2026", reason: "follow up" }
+    ],
+    leave: [
+      { id: 1, d4: "1411", type: "AL", reason: "48HR BO",
+        startDate: "02 Jul 2026", endDate: "03 Jul 2026", isInCamp: false },
+      { id: 2, d4: "1411", type: "Course", reason: "APSC course",
+        startDate: "05 Jul 2026", endDate: "06 Jul 2026", isInCamp: false }
+    ],
+    appointments: [
+      { id: 1, d4: "2411", date: "02 Jul 2026", reason: "Physio", resolved: false }
+    ]
+  });
+
+  await test("lookahead 7d — parade text identical, and it really did surface entries", () => {
+    const { gas, fe } = paradeLookaheadOf(LOOKAHEAD, 7);
+    assertIdentical("generateBravesParadeState(lookahead 7)", gas, fe);
+    ok(/\[UPCOMING\]/.test(gas), "the fixture must actually produce upcoming entries");
+    ["AL/OIL", "ATT C", "STATUS", "OTHERS"].forEach(s =>
+      ok(sectionCount(gas, s) >= 1, s + " should be populated under the lookahead"));
+  });
+
+  await test("lookahead Infinity — parade text identical", () => {
+    const { gas, fe } = paradeLookaheadOf(LOOKAHEAD, Infinity);
+    assertIdentical("generateBravesParadeState(lookahead Infinity)", gas, fe);
+  });
+
+  await test("lookahead off — the SAME fixture renders no upcoming entries in either copy", () => {
+    // The negative control: proves the two tests above are comparing the
+    // lookahead path and not just agreeing on the default one.
+    const { gas, fe } = paradeOf(LOOKAHEAD, "first");
+    assertIdentical("generateBravesParadeState(lookahead off)", gas, fe);
+    ok(!/\[UPCOMING\]/.test(gas), "nothing may leak into the default path:\n" + gas);
+  });
 
   await test("kitchen sink — generateRSIPersonnel identical (company-wide and PLT1)", () => {
     ["", "PLT1"].forEach(scope => {
