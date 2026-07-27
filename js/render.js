@@ -71,6 +71,11 @@ let _archiveCompare = false;  // parade tab: list view vs two-snapshot diff view
 let _cmpLeft = 0, _cmpRight = 1;   // indices into the (newest-first) parade archive
 let _archiveScope = "";   // parade tab: "" = all scopes; else "company" | "platoon:<CODE>"
 let _archiveFetched = false;  // Fix1C: one-shot per session — lazily pulled the archive tabs on first open
+// Feature 21: identity of the row whose detail drawer is open, or "" for closed.
+// The 20s auto-refresh poll (and every tab re-focus) re-renders the list, which
+// would otherwise wipe an open drawer mid-read. Keyed by timestamp|date|slot
+// rather than row index because a refresh or a filter change can move the row.
+let _arcDrawerKey = "", _arcDrawerTab = "";
 function setArchiveScope(v) { _archiveScope = v; renderArchiveList(); }
 function setArchiveTab(t) { _archiveTab = t; _archiveCompare = false; render(); }
 function setArchiveQuery(q) { _archiveQuery = q; renderArchiveList(); }
@@ -174,25 +179,95 @@ function renderArchiveList() {
     host.innerHTML = `<div class="empty-state">${rows.length ? "No entries match the filter." : "No archived messages yet. Use “Archive … now”, or set up scheduled archiving."}</div>`;
     return;
   }
-  host.innerHTML = filtered.map((r, i) => {
-    const label = _archiveTab === "parade" ? (r.type || "") : (r.format || "RS");
-    const id = `arc-${_archiveTab}-${i}`;
-    return `<div class="card" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
-        <div style="font-size:12px"><strong class="mono" style="color:var(--accent)">${escapeAttr(r.date || "")}</strong>
-          <span style="color:var(--muted)">slot ${escapeAttr(r.slot || "—")}</span>
-          <span class="badge badge-accent" style="font-size:9px">${escapeAttr(label)}</span>
-          ${_archiveTab === "parade" ? `<span class="badge" style="font-size:9px" title="Parade-state scope this snapshot was copied from">${escapeAttr((r.scope || "company") === "company" ? "Company" : String(r.scope || "").replace(/^platoon:/, ""))}</span>` : ""}
-          ${r.timestamp ? `<span style="font-size:10px;color:var(--dim)">· ${new Date(r.timestamp).toLocaleString()}</span>` : ""}
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn" style="font-size:10px" onclick="(function(){const t=document.getElementById('${id}').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
-          ${isAdminRole() ? `<button class="btn btn-icon btn-danger" title="Delete this archived message (admin only)" onclick="deleteArchiveEntry('${_archiveTab}','${escapeAttr(r.timestamp || "")}','${escapeAttr(r.date || "")}','${escapeAttr(r.slot || "")}')">✕</button>` : ""}
-        </div>
-      </div>
-      <pre id="${id}" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;max-height:320px;overflow:auto">${escapeAttr(r.message || "")}</pre>
-    </div>`;
+  // Feature 21: the list is now one row per snapshot; the message body lives in
+  // an on-demand right-side drawer. Two archives a day made the old inline-<pre>
+  // list an unreadable wall of text. Row index (not timestamp) keys the drawer
+  // because `filtered` is what the user is actually looking at — the drawer must
+  // open the row they clicked, under whatever search/scope filter is active.
+  const isParade = _archiveTab === "parade";
+  const scopeLabel = r => {
+    const s = r.scope || "company";   // pre-scope rows default to company
+    if (s === "company") return "Company";
+    const code = String(s).replace(/^platoon:/, "");
+    return typeof platoonDisplayName === "function" ? platoonDisplayName(code) : code;
+  };
+  const head = isParade
+    ? `<tr><th>Date</th><th>Slot</th><th>FP/LP</th><th style="text-align:left">Type</th></tr>`
+    : `<tr><th>Date</th><th>Slot</th><th style="text-align:left">Format</th></tr>`;
+  const body = filtered.map((r, i) => {
+    const cells = isParade
+      ? `<td>${escapeHTML(r.date || "")}</td><td class="mono">${escapeHTML(r.slot || "")}</td>`
+        + `<td>${escapeHTML(r.type || "")}</td><td style="text-align:left">${escapeHTML(scopeLabel(r))}</td>`
+      : `<td>${escapeHTML(r.date || "")}</td><td class="mono">${escapeHTML(r.slot || "")}</td>`
+        + `<td style="text-align:left">${escapeHTML(r.format || "RS")}</td>`;
+    return `<tr class="arc-row" onclick="openArchiveDrawer('${escapeAttr(_archiveTab)}', ${i})" style="cursor:pointer">${cells}</tr>`;
   }).join("");
+  host.innerHTML = `<div class="table-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`
+    + `<div id="arc-drawer-backdrop" class="arc-drawer-backdrop" onclick="closeArchiveDrawer()"></div>`
+    + `<div id="arc-drawer" class="arc-drawer"></div>`;
+  // Re-open a drawer that was open before this re-render (auto-refresh poll,
+  // tab re-focus, or a filter keystroke). Re-resolved by key, so it follows the
+  // row to its new index; if the row is now filtered out or was deleted, the
+  // drawer simply stays closed rather than opening someone else's message.
+  if (_arcDrawerKey && _arcDrawerTab === _archiveTab) {
+    const at = filtered.findIndex(r => arcRowKey(r) === _arcDrawerKey);
+    if (at >= 0) openArchiveDrawer(_archiveTab, at);
+    else _arcDrawerKey = "";
+  }
+}
+
+// Stable identity for an archive row. deleteArchiveEntry already treats
+// (timestamp, date, slot) as the row's key, so the drawer uses the same triple.
+function arcRowKey(r) {
+  return `${r.timestamp || ""}|${r.date || ""}|${r.slot || ""}`;
+}
+
+// Feature 21: the archive detail drawer. Re-derives the same filtered+sorted
+// list renderArchiveList built rather than caching it, so a drawer opened after
+// a filter change can never show a stale row. Copy and the admin-only Delete
+// move in here with the body — they were per-card actions before.
+function archiveFilteredRows(tab) {
+  const rows = (tab === "parade" ? STATE.paradeArchive : STATE.sickArchive) || [];
+  const q = _archiveQuery.trim().toLowerCase();
+  const sorted = rows.slice().sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
+  const textFiltered = q
+    ? sorted.filter(r => `${r.date} ${r.slot} ${r.type || r.format || ""} ${r.message || ""}`.toLowerCase().includes(q))
+    : sorted;
+  return (tab === "parade" && _archiveScope)
+    ? textFiltered.filter(r => (r.scope || "company") === _archiveScope)
+    : textFiltered;
+}
+
+function openArchiveDrawer(tab, index) {
+  const r = archiveFilteredRows(tab)[index];
+  const el = document.getElementById("arc-drawer");
+  const bd = document.getElementById("arc-drawer-backdrop");
+  if (!r || !el) return;
+  _arcDrawerKey = arcRowKey(r);
+  _arcDrawerTab = tab;
+  const label = tab === "parade"
+    ? `${r.date || ""} ${r.slot || ""} ${r.type || ""}`.trim()
+    : `${r.date || ""} ${r.slot || ""} ${r.format || "RS"}`.trim();
+  el.innerHTML = `
+    <div class="arc-drawer-head">
+      <strong style="font-size:13px">${escapeHTML(label)}</strong>
+      <button class="modal-close" onclick="closeArchiveDrawer()" aria-label="Close">×</button>
+    </div>
+    <pre id="arc-drawer-body" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;flex:1;overflow:auto">${escapeAttr(r.message || "")}</pre>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="btn" onclick="(function(){const t=document.getElementById('arc-drawer-body').textContent;navigator.clipboard&&navigator.clipboard.writeText(t);})()">Copy</button>
+      ${isAdminRole() ? `<button class="btn btn-danger" onclick="deleteArchiveEntry('${escapeAttr(tab)}','${escapeAttr(r.timestamp || "")}','${escapeAttr(r.date || "")}','${escapeAttr(r.slot || "")}'); closeArchiveDrawer()">Delete</button>` : ""}
+    </div>`;
+  el.classList.add("open");
+  if (bd) bd.classList.add("open");
+}
+
+function closeArchiveDrawer() {
+  _arcDrawerKey = ""; _arcDrawerTab = "";
+  const el = document.getElementById("arc-drawer");
+  const bd = document.getElementById("arc-drawer-backdrop");
+  if (el) { el.classList.remove("open"); el.innerHTML = ""; }
+  if (bd) bd.classList.remove("open");
 }
 
 // Compare two archived parade states line-by-line (admin only; the whole Archive
@@ -681,7 +756,7 @@ function renderDashMSKCases(visible) {
     // by clicking the pencil. Stored on the latest Report Injury row.
     const regions = c.latestInjury ? getMSKRegionsForRecruit(c.d4) : [];
     const regionsLine = c.latestInjury ? `<div style="margin-top:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-      ${regions.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join("")}
+      ${regions.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join("")}
       <button class="btn btn-icon" onclick="event.stopPropagation(); openMSKRegionMenu('${c.d4}')" title="Re-tag body regions" style="font-size:9px;padding:1px 6px">✎ tag</button>
     </div>` : "";
 
@@ -783,7 +858,7 @@ function viewMSKRegion(region) {
     return { d4, sources, allRegions, hasManual };
   });
 
-  const regionChipsHtml = regs => regs.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join(" ");
+  const regionChipsHtml = regs => regs.map(reg => `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}">${escapeHTML(reg)}</span>`).join(" ");
 
   const body = `
     <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:10px;line-height:1.55">
@@ -902,7 +977,7 @@ function renderMSKAnalytics(el) {
     .map(d4 => ({ d4, count: freq[d4].count, regions: getMSKRegionsForRecruit(d4) }))
     .sort((a, b) => b.count - a.count);
 
-  const regionChip = reg => `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other};margin-right:3px">${escapeHTML(reg)}</span>`;
+  const regionChip = reg => `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;background:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other}22;color:${MSK_REGION_COLORS[reg] || MSK_REGION_COLORS.Other};margin-right:3px">${escapeHTML(reg)}</span>`;
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px">
@@ -2810,7 +2885,7 @@ function renderHA(el) {
               <td class="mono" style="font-weight:700;color:var(--accent)">${displayId(r.id)}</td>
               <td style="text-align:left">${escapeHTML(displayPersonLabel(r.id))}</td>
               <td>${personPlatoon(r) || "—"}${personSection(r) ? " · " + personSection(r) : ""}</td>
-              <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
+              <td><span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600">${ha.overallStatus}</span></td>
               <td style="text-align:left">${cell(barVal(ha.single), 10, "#2DD4BF")}</td>
               <td style="text-align:left">${cell(barVal(ha.expanded), 14, "#D29922")}</td>
               <td style="text-align:left">${dbl}</td>
@@ -2959,8 +3034,8 @@ function renderSBLeaderboard() {
   const row = (x, i) => `<div onclick="openPerson('${x.r.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px">
       <span class="mono" style="color:var(--muted);min-width:20px">${i + 1}.</span>
       <span style="flex:1">${escapeAttr(x.r.name || "")} ${x.r.role !== "Commander" && x.r.fourD ? `<span class="mono" style="color:var(--accent)">${configGet("companyPrefix")}${x.r.fourD}</span>` : ""}</span>
-      <span style="background:#EF9F2722;color:#EF9F27;border:1px solid #EF9F2744;border-radius:4px;padding:1px 6px;font-size:10px">RSI ${x.rsi}</span>
-      <span style="background:#378ADD22;color:#378ADD;border:1px solid #378ADD44;border-radius:4px;padding:1px 6px;font-size:10px">RSO ${x.rso}</span>
+      <span style="background:#EF9F2722;color:#EF9F27;border:1px solid #EF9F2744;border-radius:999px;padding:1px 6px;font-size:10px">RSI ${x.rsi}</span>
+      <span style="background:#378ADD22;color:#378ADD;border:1px solid #378ADD44;border-radius:999px;padding:1px 6px;font-size:10px">RSO ${x.rso}</span>
       <strong style="min-width:24px;text-align:right">${x.total}</strong>
     </div>`;
   host.innerHTML = `
@@ -3010,10 +3085,10 @@ function renderSBRosterList() {
       return best;
     })();
     const catBadge = p.primary
-      ? `<span style="background:${catColor(p.primary).bg}33;color:${catColor(p.primary).bg};border:1px solid ${catColor(p.primary).bg}66;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.type === "WD" ? "WARDED" : p.primary.label}</span>`
+      ? `<span style="background:${catColor(p.primary).bg}33;color:${catColor(p.primary).bg};border:1px solid ${catColor(p.primary).bg}66;border-radius:999px;padding:2px 7px;font-size:10px;font-weight:600">${p.primary.type === "WD" ? "WARDED" : p.primary.label}</span>`
       : `<span style="color:var(--green);font-size:11px">Present</span>`;
-    const mrBadge = p.mr ? ` <span style="background:#7F77DD33;color:#7F77DD;border:1px solid #7F77DD66;border-radius:4px;padding:2px 6px;font-size:9px">MR</span>` : "";
-    const ghostBadge = ghostInfo ? ` <span title="recovering" style="color:var(--muted);font-size:9px;border:1px solid var(--border);border-radius:3px;padding:1px 4px">${ghostInfo.tag}</span>` : "";
+    const mrBadge = p.mr ? ` <span style="background:#7F77DD33;color:#7F77DD;border:1px solid #7F77DD66;border-radius:999px;padding:2px 6px;font-size:9px">MR</span>` : "";
+    const ghostBadge = ghostInfo ? ` <span title="recovering" style="color:var(--muted);font-size:9px;border:1px solid var(--border);border-radius:999px;padding:1px 4px">${ghostInfo.tag}</span>` : "";
     const reason = p.primary ? p.primary.reason : (p.mr || "");
     body += `<tr onclick="openSBCellDetail('${r.id}','${today}')" style="cursor:pointer">
       <td style="text-align:left">${escapeAttr(paradeRN(r.id))}</td>

@@ -624,7 +624,9 @@ function medTagBadge(tag) {
     : customStatusByName(medStatusBaseFamily(tag))
     ? { bg: "#39D2C022", bd: "#39D2C044", fg: "#39D2C0" }
     : palettes.Pending);
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:${p.bg};color:${p.fg};border:1px solid ${p.bd}">${tag}</span>`;
+  // Fix 17: full-pill radius, matching .badge / .ps-badge. This is an inline
+  // clone of .badge (it needs a per-status palette), so it has to track it.
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:${p.bg};color:${p.fg};border:1px solid ${p.bd}">${tag}</span>`;
 }
 
 // Small grey pill for a medical record's VISIT type (RSI/RSO/MR/…), shown before
@@ -634,7 +636,7 @@ function medTagBadge(tag) {
 function medTypeBadge(m) {
   if (!m || !m.type) return "";
   const timing = m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : "";
-  return `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${timing}</span>`;
+  return `<span style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${timing}</span>`;
 }
 
 // Format a record's date range as "16 May – 20 May (5D)" for display.
