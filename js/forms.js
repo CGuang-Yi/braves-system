@@ -748,19 +748,16 @@ function openMedicalForm(id, prefill) {
         </div>
         <div class="form-row">
           ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
-          <div class="form-group" id="f-time-wrap" style="${(e?.type === "RSI" || e?.type === "RSO" || e?.type === "MA") ? "" : "display:none"}">
+          <!-- MR used to have its own free-text timing input here (mrTiming, spec
+               §6 — "PM" was as valid as "1400"). Feature 30.1 needs ONE time
+               source across all four visit types so the status suffix can read a
+               single field, so MR now shares this HHMM input like everyone else.
+               Existing values were moved across by the one-shot
+               bravesMigrateMrTiming() in apps-script-Code.gs, which drops (and
+               reports) anything that isn't a parseable time. -->
+          <div class="form-group" id="f-time-wrap" style="${MED_TIMED_TYPES.includes(e?.type || "") ? "" : "display:none"}">
             <label>Time ${e?.type === "MA" ? "" : "<span style=\"color:var(--dim);font-weight:400\">(optional)</span>"}</label>
             <input id="f-time" type="text" maxlength="10" placeholder="0930" value="${escapeAttr(e?.time)}" onfocus="medTimeLazyFill()">
-          </div>
-          <!-- MR keeps its own free-text timing column (mrTiming, spec §6 — "PM" is
-               as valid as "1400", which the HHMM time column can't hold), but it
-               belongs in the SAME slot as the RSI/RSO/MA Time field: the two are
-               mutually exclusive (medTypeChanged shows exactly one), so the Date row
-               reads identically whatever the visit type is, instead of the timing
-               question jumping down the form for MR. -->
-          <div class="form-group" id="f-mr-timing-wrap" style="${(e?.type === "MR") ? "" : "display:none"}">
-            <label>Time <span style="color:var(--dim);font-weight:400">(optional)</span></label>
-            <input id="f-mr-timing" type="text" maxlength="40" placeholder="e.g. PM / 1400" value="${escapeAttr(e?.mrTiming)}">
           </div>
         </div>
         <label id="f-med-ooc-wrap" style="${e?.type === "MA" ? "display:flex" : "display:none"};align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;margin:-2px 0 2px">
@@ -813,20 +810,28 @@ function medStatusSelChanged(v) {
 // (PTMC) when it's still blank — RSO leaves it for manual entry. Item 17: RSI/
 // RSO/MA reveal the Time field (and MA the out-of-camp checkbox); the time lazily
 // autofills the current HHMM when empty.
+// Feature 30.1: the visit types that carry an HHMM `time`. MR joined this set
+// when its free-text mrTiming column was retired, so all four visit types now
+// read their time from ONE field — which is what lets helpers.js visitSuffix()
+// render a status suffix without knowing the visit type.
+//
+// Deliberately the same set as helpers.js VISIT_SUFFIX_TYPES, and duplicated
+// rather than aliased: a top-level `const X = VISIT_SUFFIX_TYPES` would throw at
+// load in any test that loads forms.js without helpers.js. Change one, change
+// both — test/visit-suffix.test.js pins the helpers copy.
+const MED_TIMED_TYPES = ["RSI", "RSO", "MA", "MR"];
 function medTypeChanged(v) {
-  const mr = document.getElementById("f-mr-timing-wrap");
   const urti = document.getElementById("f-urti-wrap");
-  if (mr) mr.style.display = v === "MR" ? "" : "none";
   if (urti) urti.style.display = (v === "RSI" || v === "RSO") ? "" : "none";
   if (v === "RSI") {
     const loc = document.getElementById("f-location");
     if (loc && !loc.value.trim()) loc.value = (typeof configGet === "function" ? configGet("defaultSickLocation") : "PTMC") || "PTMC";
   }
   const timeWrap = document.getElementById("f-time-wrap");
-  if (timeWrap) timeWrap.style.display = (v === "RSI" || v === "RSO" || v === "MA") ? "" : "none";
+  if (timeWrap) timeWrap.style.display = MED_TIMED_TYPES.includes(v) ? "" : "none";
   const oocWrap = document.getElementById("f-med-ooc-wrap");
   if (oocWrap) oocWrap.style.display = v === "MA" ? "flex" : "none";
-  if (v === "RSI" || v === "RSO" || v === "MA") medTimeLazyFill();
+  if (MED_TIMED_TYPES.includes(v)) medTimeLazyFill();
 }
 // Item 17: fill f-time with the current HHMM only when it is empty (lazy), so we
 // never clobber a user-entered/edited time. Called on type-switch and on focus.
@@ -864,10 +869,18 @@ function submitMedical() {
   let urtiType = gv("f-urti");
   if ((type === "RSI" || type === "RSO") && !urtiType) urtiType = classifyURTI(gv("f-reason"));
   if (type !== "RSI" && type !== "RSO") urtiType = "";
-  const mrTiming = type === "MR" ? gv("f-mr-timing").trim() : "";
-  // Item 17: visit-level time (appointment time for MA; optional report-sick time
-  // for RSI/RSO) and the MA out-of-camp flag. pad4Time keeps "930" → "0930".
-  const time = (type === "RSI" || type === "RSO" || type === "MA") ? pad4Time(gv("f-time")) : "";
+  // Item 17 / Feature 30.1: visit-level time (appointment time for MA, review
+  // time for MR, optional report-sick time for RSI/RSO) and the MA out-of-camp
+  // flag. pad4Time keeps "930" → "0930".
+  //
+  // MR joined this field in the mrTiming migration. The old free-text mrTiming
+  // column is no longer WRITTEN, but it is still emitted as "" below — writeTab
+  // derives the sheet's headers from Object.keys(data[0]), so dropping the key
+  // from newly-written rows would silently strip the column from the whole
+  // pushed Medical sheet, taking every historical value with it. Keeping the
+  // blank key preserves the column (and the migration's own audit trail) while
+  // guaranteeing nothing new lands in it.
+  const time = MED_TIMED_TYPES.includes(type) ? pad4Time(gv("f-time")) : "";
   const outOfCamp = type === "MA" ? !!document.getElementById("f-med-ooc")?.checked : false;
 
   // Gather the main status plus any "additional status" rows. Each carries its
@@ -913,14 +926,17 @@ function submitMedical() {
   const visitId = statuses.length > 1 ? (prev?.visitId || ("v" + nextId())) : (prev?.visitId || "");
 
   // First status reuses the edited row's id; each extra status becomes a new
-  // sibling row. type/urtiType/mrTiming/visitId are per-visit (shared across siblings).
+  // sibling row. type/urtiType/visitId are per-visit (shared across siblings).
   const records = statuses.map((st, i) => ({
     id: (i === 0 && editId) ? editId : nextId(),
     d4, date, reason, location,
     status: st.status,
     startDate: isoToDisplayDate(st.startIso),
     endDate: st.endIso ? isoToDisplayDate(st.endIso) : "",
-    type, urtiType, mrTiming, visitId,
+    type, urtiType, visitId,
+    // Written as "" and never populated again — see the comment on `time` above
+    // for why the KEY has to survive even though the value never will.
+    mrTiming: "",
     // Item 17: visit-level (shared across sibling status rows), like type/urtiType.
     time, outOfCamp,
     // Preserve provenance on edit (don't silently flip a conduct-log row to
@@ -4628,12 +4644,33 @@ function renderLogConductWizard() {
     ? `<div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:4px">Editing existing conduct. Saving replaces all child rows for this (date, time, conduct) tuple.</div>`
     : "";
 
+  // Feature 30.1: the visit TIME beside each person's status.
+  //
+  // Only the time, not the full "TYPE time" the other two surfaces show —
+  // rebuildLogConductStatus already appends the day's visit types to statusTag
+  // (see visitByD4 there, "MC + RSO"), so emitting visitSuffix() wholesale
+  // printed the type twice: "Pending + RSI + RSI 0830". Appending just the time
+  // gives the spec's "Pending + RSI 0830". Where the tag does NOT end in this
+  // visit's type — a multi-visit day, RSI in the morning and an MA after lunch —
+  // the type is named, so the time can't attach itself to the wrong visit.
+  //
+  // Shown once per person (the suffix describes the VISIT, not each status it
+  // produced) and only for a visit on the wizard's OWN date: the wizard
+  // routinely back-dates, and today's RSI time against last Tuesday's status
+  // would be a lie. A blank time adds nothing at all — the type is already there.
+  const wizVisitSuffix = (d4, statusTag) => {
+    const v = visitForDay(d4, dateVal);
+    const time = v ? String(v.time || "").trim() : "";
+    if (!time) return "";
+    return String(statusTag || "").endsWith(v.type) ? ` ${time}` : ` + ${visitSuffix(v)}`;
+  };
+
   const statusRows = w.status.length ? w.status.map(s => `
     <div class="lc-wiz-status-row" style="display:grid;grid-template-columns:18px 48px minmax(0,1.4fr) minmax(80px,auto) minmax(0,1fr);gap:8px;align-items:center;padding:6px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
       <input type="checkbox" ${s.notParticipating ? "checked" : ""} onchange="wizToggleStatusNP('${s.d4}', this.checked)" style="width:16px;height:16px;cursor:pointer" title="Tick = not participating">
       <span class="mono" style="font-weight:700;color:var(--accent);font-size:12px">${displayId(s.d4)}</span>
       <span style="font-size:12px;min-width:0;line-height:1.3" title="${escapeAttr(getName(s.d4))}">${escapeAttr(getName(s.d4))}</span>
-      <span style="font-size:10px;color:var(--orange);font-weight:600;line-height:1.4;background:#D2992222;border:1px solid #D2992244;border-radius:10px;padding:3px 9px;white-space:normal;justify-self:start" title="${escapeAttr(s.statusTag)}">${escapeAttr(s.statusTag)}</span>
+      <span style="font-size:10px;color:var(--orange);font-weight:600;line-height:1.4;background:#D2992222;border:1px solid #D2992244;border-radius:10px;padding:3px 9px;white-space:normal;justify-self:start" title="${escapeAttr(s.statusTag)}">${escapeAttr(s.statusTag)}<span style="color:var(--muted);font-weight:400">${escapeAttr(wizVisitSuffix(s.d4, s.statusTag))}</span></span>
       <input type="text" value="${escapeAttr(s.reason)}" placeholder="reason (optional)" oninput="wizUpdateStatusReason('${s.d4}', this.value)" style="min-width:0;width:100%;padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
     </div>
   `).join("") : `<div style="color:var(--muted);font-size:11px;padding:8px 10px;background:var(--surface);border:1px dashed var(--border);border-radius:6px;text-align:center">No recruits on medical status for this date.</div>`;

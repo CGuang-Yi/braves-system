@@ -65,6 +65,8 @@ function makeGoogle() {
     };
   }
 
+  const logs = [];   // captured Logger.log output (see the Logger service below)
+
   function makeSheet(sheet) {
     return {
       getName() { return sheet.name; },
@@ -135,7 +137,10 @@ function makeGoogle() {
       createTextOutput: s => ({ _s: s, setMimeType() { return this; }, getContent() { return this._s; } }),
       MimeType: { JSON: "json" }
     },
-    Logger: { log() {} },
+    // Recorded rather than discarded: bravesMigrateMrTiming REPORTS the values it
+    // had to drop, and that report is the only reason the migration is allowed to
+    // be lossy — so it is worth asserting. Read via db.logs().
+    Logger: { log(m) { logs.push(String(m)); } },
     // Stubs for services the sync paths never invoke (present so incidental refs
     // in unrelated branches don't ReferenceError if ever reached).
     ScriptApp: {
@@ -164,6 +169,8 @@ function makeGoogle() {
       const s = sheets.get(tab);
       return s && s.numberFormats ? (s.numberFormats[col1Based] || null) : null;
     },
+    logs() { return logs.slice(); },
+    clearLogs() { logs.length = 0; },
     setProp(k, v) { props.set(k, String(v)); },
     getProp(k) { return props.has(k) ? props.get(k) : null; },
     spy

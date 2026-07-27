@@ -35,6 +35,17 @@ let _paradeDate = "";              // ISO yyyy-mm-dd; lazily defaulted to today
 let _paradeType = "FP";            // "FP" | "LP"
 let _paradeTime = "";              // free-text HHMM for the company header
 
+// Fix 18: how far forward the parade state looks for not-yet-started absences
+// (spec §8.3 — default 7d). Session-scoped like _paradeDate / _paradeType and
+// deliberately NOT persisted, so a commander who widened it once to plan the
+// month doesn't silently keep a month-wide parade state tomorrow morning.
+//
+// This is the ONLY place the horizon lives. bpClassifyPerson defaults it off, so
+// every other consumer of the classifier — the Status Board grid, the Dashboard
+// tables, the sick-report generators, the archiver, the Telegram bot — keeps
+// strict today-only semantics without knowing this variable exists.
+let _paradeLookahead = 7;          // days; Infinity = "All"
+
 // Item 19: once the user picks a parade type by hand, we stop auto-flipping to
 // LP for the rest of the session (manual choice wins). Reset only on reload.
 let _paradeTypeManual = false;
@@ -77,6 +88,36 @@ function setParadeScope(v) { _paradeScope = v; refreshParade(); }
 function setParadeDate(v) { _paradeDate = v; refreshParade(); }
 function setParadeType(v) { _paradeType = v; _paradeTypeManual = true; refreshParade(); }
 function setParadeTime(v) { _paradeTime = v; if (_paradeScope === "company") refreshParade(); }
+function setParadeLookahead(v) { _paradeLookahead = (v === "all") ? Infinity : Number(v) || 0; refreshParade(); }
+// The opts object every parade-side classifier call threads through. Exported as
+// a function rather than the bare variable so the Dashboard's parade textarea
+// (branch 5) picks up the same horizon without reaching into module state.
+function paradeLookaheadOpts() { return { lookaheadDays: _paradeLookahead }; }
+
+// Fix 18: the sections now COUNT upcoming entries but CURRENT STRENGTH
+// deliberately does not, so the two visibly stop reconciling. Say so, rather
+// than letting a commander find the arithmetic broken and quietly distrust the
+// number. UI only — it never enters the message text, so archived snapshots are
+// unaffected.
+//
+// The count is read off the generated message rather than by re-classifying
+// everyone: the message IS the list, so this can never disagree with what is on
+// screen, and it saves a fourth full pass over the roster on every render.
+//
+// Only the FIRST block is counted. The company message lists every person twice
+// — once in the aggregate block, once in their platoon's — so counting the whole
+// string would report exactly double. Splitting on BP_EQ_SEP takes the aggregate
+// block alone; a platoon message has no such separator, so the split is a no-op
+// there and the whole text is counted, which is what we want.
+function paradeUpcomingBanner(text) {
+  const firstBlock = String(text || "").split(BP_EQ_SEP)[0];
+  const n = (firstBlock.match(/ \[UPCOMING\]/g) || []).length;
+  if (!n) return "";
+  return `<div class="card" style="padding:10px 14px;margin-bottom:12px;border-color:var(--yellow);font-size:12px;color:var(--muted)">
+    ⚠️ <strong>${n}</strong> future-dated ${n === 1 ? "status is" : "statuses are"} listed and counted in the sections below (marked <code>[UPCOMING]</code>),
+    but <strong>are not deducted from CURRENT STRENGTH</strong> — those personnel are present today.
+    The section totals and CURRENT STRENGTH will not reconcile while this is showing.</div>`;
+}
 
 // Item 19: default/flip the parade type by local wall-clock. FP before 1700,
 // LP from 1700 on. `new Date()` (local tz) is intentional — the app runs in the
@@ -145,6 +186,15 @@ function renderParade(el) {
           <label style="font-size:11px;color:var(--muted)">Time (company header)</label><br>
           <input type="text" value="${escapeAttr(_paradeTime)}" placeholder="e.g. 0730" maxlength="9" oninput="setParadeTime(this.value)" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:110px">
         </div>
+        <div class="form-group" style="margin:0">
+          <label style="font-size:11px;color:var(--muted)" title="How far ahead to list absences that have not started yet">Lookahead</label><br>
+          <div class="filter-role-group">
+            ${[["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
+              const on = (v === "all") ? _paradeLookahead === Infinity : Number(v) === _paradeLookahead;
+              return `<button type="button" class="role-btn${on ? " active" : ""}" onclick="setParadeLookahead('${v}')">${l}</button>`;
+            }).join("")}
+          </div>
+        </div>
       </div>
     </div>
     <div id="parade-body"></div>`;
@@ -180,12 +230,12 @@ function paradeCompanyBlocks() {
 
 function renderParadeCompany(host) {
   const dateIso = paradeCurrentDateISO();
-  const text = generateBravesParadeState({ level: "company" }, _paradeType, dateIso, _paradeTime);
+  const text = generateBravesParadeState({ level: "company" }, _paradeType, dateIso, _paradeTime, paradeLookaheadOpts());
   const blockBtns = paradeCompanyBlocks().map((b, i) =>
     `<button type="button" id="parade-copy-${i}" class="btn" style="font-size:12px"
        onclick="copyParadeBlock('${escapeAttr(b.code)}','parade-copy-${i}')">📋 ${escapeHTML(b.label)}</button>`
   ).join("");
-  host.innerHTML = `
+  host.innerHTML = paradeUpcomingBanner(text) + `
     <div class="card" style="padding:14px">
       <textarea id="parade-text" rows="26" spellcheck="false"
         style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(text)}</textarea>
@@ -244,7 +294,7 @@ function archiveParadeSnapshot(text) {
 // Copy a single platoon/HQ block's standalone parade-state text. Reads the
 // current toolbar state (type/date/time) so it always matches what's shown.
 async function copyParadeBlock(code, btnId) {
-  const text = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, paradeCurrentDateISO(), _paradeTime);
+  const text = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, paradeCurrentDateISO(), _paradeTime, paradeLookaheadOpts());
   await paradeCopyString(text, btnId);
 }
 
@@ -255,7 +305,7 @@ async function copyParadeBlock(code, btnId) {
 // [{ code, editable, reason }], always at least one entry.
 function paradeClassifyPlatoon(people, dateIso) {
   return people.map(r => {
-    const c = bpClassifyPerson(r, dateIso);
+    const c = bpClassifyPerson(r, dateIso, null, paradeLookaheadOpts());
     // List EVERY section the person is classified into — not just the single
     // §8 primary. Collapsing to one code dropped a lower-priority TOGGLEABLE
     // status (MC/AL·OIL/OTHERS) whenever a higher-priority NON-editable one
@@ -269,10 +319,35 @@ function paradeClassifyPlatoon(people, dateIso) {
       if (!c.sections[k] || !c.sections[k].length) return;
       const code = k === "mr" ? "MR" : (PARADE_SECTION_TO_CODE[k] || "OTHERS");
       const reason = (c.meta[k] && c.meta[k][0] && c.meta[k][0].reason) || "";
-      codes.push({ code, editable: PARADE_EDITABLE_CODES.includes(code), reason });
+      // Fix 18: an upcoming entry is never editable, whatever its code. The only
+      // grid edit is "Mark Present", which books a record IN as of the parade
+      // date — meaningless for a window that has not started, and
+      // paradeEndActiveContributors only touches records active TODAY, so the
+      // select would have silently done nothing while looking like it worked.
+      const upcoming = !!(c.meta[k] && c.meta[k][0] && c.meta[k][0].upcoming);
+      codes.push({ code, editable: PARADE_EDITABLE_CODES.includes(code) && !upcoming, reason, upcoming });
     });
     // Section-less ⇒ a single, non-editable Present cell (old fallback).
     if (!codes.length) codes.push({ code: "Present", editable: false, reason: "" });
+    // Feature 30.1: attach the visit-type-and-time suffix to the FIRST pill only.
+    // It cannot go on the RS pill as one might expect — once the MO issues a
+    // status the person DROPS OFF reporting-sick entirely and holds only a
+    // STATUS/MC pill, which is exactly the "LD + RSI 0830" case. Where the code
+    // already names the visit type (RS, MR) only the time is appended, since
+    // "RS + RSI" reads redundantly; elsewhere the full "+ TYPE time" carries it.
+    // Never applied to an UPCOMING pill — that pill describes a window which has
+    // not started, and today's visit time pinned to it would read as "the MC
+    // starting Thursday began at 0830". So it lands on the first pill that is
+    // actually current: an upcoming MC can outrank the LD the person is really
+    // on today, and dropping the suffix in that case would lose the visit
+    // entirely rather than move it one row down.
+    const visit = visitForDay(r.id, dateIso);
+    const target = codes.find(cc => !cc.upcoming);
+    if (visit && target) {
+      const bare = target.code === "RS" || target.code === "MR";
+      const time = String(visit.time || "").trim();
+      target.suffix = bare ? (time ? ` ${time}` : "") : ` + ${visitSuffix(visit)}`;
+    }
     const remark = codes.map(cc => cc.reason).filter(Boolean).join(" · ");
     return { r, codes, remark, notInCamp: c.notInCamp };
   });
@@ -295,7 +370,9 @@ function renderParadePlatoon(host, code) {
   const sec = { alOil: 0, mr: 0, reportingSick: 0, attC: 0, status: 0, others: 0 };
   people.forEach(r => {
     if (!bpIsActive(r)) return;
-    const c = bpClassifyPerson(r, dateIso);
+    // Lookahead-aware, so the tiles keep matching the message's section counts —
+    // which now include upcoming entries.
+    const c = bpClassifyPerson(r, dateIso, null, paradeLookaheadOpts());
     BP_SECTIONS.forEach(k => { sec[k] += c.sections[k].length; });
   });
 
@@ -342,12 +419,18 @@ function renderParadePlatoon(host, code) {
     const codeCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">${
       x.codes.map(cc => {
         const hex = PARADE_CODE_HEX[cc.code];
+        // Fix 18: an upcoming pill is dimmed and given a "→" lead-in so it reads
+        // as "coming, not current" at a glance. The Remarks cell carries the
+        // dates and the [UPCOMING] marker, so no extra text is needed here.
+        const dim = cc.upcoming ? "opacity:.55;" : "";
+        const label = (cc.upcoming ? "→ " : "") + cc.code + (cc.suffix || "");
+        const tip = cc.upcoming ? ' title="Not started yet — listed and counted, but still present today"' : "";
         return cc.editable
           ? `<span class="ps-select-wrap"><select class="ps-select" onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-              style="background:${hex}22;border-color:${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select></span>`
+              style="background:${hex}22;border-color:${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(label)}</option><option value="Present">Present</option></select></span>`
           : hex
-            ? `<span class="ps-badge" style="background:${hex}22;border-color:${hex}55;color:${hex}">${escapeHTML(cc.code)}</span>`
-            : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(cc.code)}</span>`;
+            ? `<span class="ps-badge"${tip} style="${dim}background:${hex}22;border-color:${hex}55;color:${hex}">${escapeHTML(label)}</span>`
+            : `<span${tip} style="display:inline-block;${dim}padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(label)}</span>`;
       }).join("")
     }</div>`;
     // 4D + Name open the person's full profile card (openPerson — the same card
@@ -380,12 +463,12 @@ function renderParadePlatoon(host, code) {
   // from fresh data — so grid edits flow into the message, but any free-text
   // edits typed here are discarded on the next grid edit (same as the company
   // textarea; the normal flow is edit-grid-then-copy, or free-text edit last).
-  const msg = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, dateIso, _paradeTime);
+  const msg = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, dateIso, _paradeTime, paradeLookaheadOpts());
 
   // Message textarea sits ABOVE the grid so a commander lands on the copy-ready
   // parade text first; the editable grid (which regenerates the textarea on every
   // code change — see refreshParade) follows below.
-  host.innerHTML = bento + `
+  host.innerHTML = paradeUpcomingBanner(msg) + bento + `
     <div class="card" style="padding:14px;margin-bottom:14px">
       <textarea id="parade-text" rows="20" spellcheck="false"
         style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(msg)}</textarea>
