@@ -1,14 +1,26 @@
 // Modal infrastructure, person-detail view, form openers/submitters, and CSV importers.
 
-function openModal(title, html) {
+// There is exactly ONE overlay (index.html), so a modal opened from inside
+// another modal REPLACES its caller rather than stacking on it. `onClose` is the
+// escape hatch for that case: closeModal runs it instead of leaving the user on
+// a blank screen, so the ✕, the backdrop and any Cancel button all restore the
+// caller. Cleared on every open, so an ordinary modal never inherits the hook.
+let _modalOnClose = null;
+function openModal(title, html, onClose) {
+  _modalOnClose = onClose || null;
   document.getElementById("modal-title").textContent = title;
   document.getElementById("modal-body").innerHTML = html;
   document.getElementById("modal-overlay").classList.remove("hidden");
 }
 function closeModal() {
+  // Read and clear BEFORE running: the hook re-opens a modal, and a hook that
+  // was still installed at that moment would fire again on the next close.
+  const after = _modalOnClose;
+  _modalOnClose = null;
   document.getElementById("modal-overlay").classList.add("hidden");
   // Reset the wide-modal flag so the next form-style modal isn't oversized.
   document.querySelector(".modal")?.classList.remove("wide");
+  if (after) after();
 }
 
 // Delete a record from within the person card, then re-open the card so the
@@ -1260,8 +1272,14 @@ function submitSOC() {
 // recruit's history instead of duplicating it. A blank Attempt can't serve as a
 // key (colNum yields 0 for blank, and every blank would then collide with every
 // other blank), so those always append.
+// The key also has to hold WITHIN the batch: STATE.ippt isn't mutated until the
+// caller applies the records, so two CSV lines for the same 4D+Attempt would
+// otherwise both miss the lookup and append (two rows for one attempt), or both
+// take the same existing id and fire two upserts for it (one line silently lost
+// while the alert counts both). Later line wins, mirroring the re-import rule.
 function ipptUpsertRows(rows) {
   const records = [];
+  const byKey = {};          // "d4|attempt" → index in records (blank attempt never keys)
   const uncalculated = [];   // 4Ds imported with a blank score we couldn't derive
   let autoScored = 0;
   rows.forEach(row => {
@@ -1294,13 +1312,20 @@ function ipptUpsertRows(rows) {
       if (result) { score = result.total; autoScored++; }
       else { score = ""; uncalculated.push(d4); }
     }
+    const key = attempt ? d4 + "|" + attempt : "";
+    const dupIdx = key && key in byKey ? byKey[key] : -1;
     const existing = attempt
       ? (STATE.ippt || []).find(i => i.d4 === d4 && String(i.attempt) === String(attempt))
       : null;
-    records.push({
-      id: existing ? existing.id : nextId(),
+    const rec = {
+      // A repeat within this batch keeps the id already assigned to it, so the
+      // pair collapses into ONE row rather than burning a second id.
+      id: dupIdx >= 0 ? records[dupIdx].id : (existing ? existing.id : nextId()),
       d4, attempt, date: col(row, "Date", "date"), pushups, situps, runTime, score
-    });
+    };
+    if (dupIdx >= 0) { records[dupIdx] = rec; return; }
+    if (key) byKey[key] = records.length;
+    records.push(rec);
   });
   return { records, autoScored, uncalculated };
 }
@@ -1340,24 +1365,31 @@ function importIPPT(input) {
 // socDurationDisplay the manual form uses. Upsert key is 4D+socNum; a blank
 // socNum always appends. Unknown 4Ds are imported but collected and reported, so
 // a mistyped id is visible instead of silently joining to nobody.
+// Same in-batch collapse as ipptUpsertRows — see the note there.
 function socUpsertRows(rows) {
   const records = [];
+  const byKey = {};          // "d4|socNum" → index in records (blank socNum never keys)
   const unmatched = [];
   rows.forEach(row => {
     const d4 = padD4(col(row, "4D", "id"));
     if (!(STATE.roster || []).some(x => x.id === d4)) unmatched.push(d4);
     const socNum = colNum(row, "SOC", "SOC #", "SOC#", "socNum", "soc");
+    const key = socNum ? d4 + "|" + socNum : "";
+    const dupIdx = key && key in byKey ? byKey[key] : -1;
     const existing = socNum
       ? (STATE.soc || []).find(s => s.d4 === d4 && String(s.socNum) === String(socNum))
       : null;
-    records.push({
-      id: existing ? existing.id : nextId(),
+    const rec = {
+      id: dupIdx >= 0 ? records[dupIdx].id : (existing ? existing.id : nextId()),
       d4, socNum,
       date: col(row, "Date", "date"),
       time: String(col(row, "Time", "time", "Duration", "Completion Time") || "").trim(),
       avgHr: colNum(row, "Avg HR", "AvgHR", "avg_hr", "Average HR", "Heart Rate"),
       pass: col(row, "Pass", "pass", "Result", "Status") || "Y"
-    });
+    };
+    if (dupIdx >= 0) { records[dupIdx] = rec; return; }
+    if (key) byKey[key] = records.length;
+    records.push(rec);
   });
   return { records, unmatched };
 }
@@ -5109,9 +5141,25 @@ function parsePastedD4s(text, roster) {
 // there is nothing to tick for someone who does not — and fabricating a row
 // would put a person on the parade state under a status they were never given.
 // They simply come out of the other two buckets.
+//
+// Because of that, a roster match is NOT the same as something that will
+// happen. splitPastedForDest is the single source of truth for the difference,
+// shared by the preview and the apply so the confirm panel cannot promise 20
+// and deliver 8 — and so the 12 it cannot tick are left completely alone rather
+// than being quietly released from Fallout/Report Sick into "participating".
+function splitPastedForDest(dest, matched) {
+  if (dest !== "status") return { applied: matched, skipped: [] };
+  const onList = new Set(((_logConduct && _logConduct.status) || []).map(s => s.d4));
+  return {
+    applied: matched.filter(d4 => onList.has(d4)),
+    skipped: matched.filter(d4 => !onList.has(d4))
+  };
+}
+
 function applyPastedAbsentees(dest, matched) {
   if (!_logConduct) return;
-  const set = new Set(matched);
+  const { applied } = splitPastedForDest(dest, matched);
+  const set = new Set(applied);
   // Release from wherever they currently sit, preserving any reason already
   // typed for someone who is staying in the same bucket (handled below by only
   // pushing when absent).
@@ -5126,7 +5174,7 @@ function applyPastedAbsentees(dest, matched) {
   if (dest !== "status") {
     const bucket = dest === "reportSick" ? "reportSick" : "fallout";
     _logConduct[bucket] = _logConduct[bucket] || [];
-    matched.forEach(d4 => {
+    applied.forEach(d4 => {
       if (!_logConduct[bucket].some(x => x.d4 === d4)) {
         _logConduct[bucket].push(keep[d4] || { d4, reason: "" });
       }
@@ -5159,8 +5207,16 @@ function openWizPasteModal() {
           style="padding:8px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%;box-sizing:border-box"></textarea>
       </div>
       <div id="wiz-paste-preview"></div>
-      <button type="button" class="btn btn-primary" onclick="wizPastePreview()">Preview</button>
-    </div>`);
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="wizPastePreview()">Preview</button>
+      </div>
+    </div>`,
+    // This modal took over the wizard's overlay — dismissing it any way at all
+    // (Cancel, ✕, backdrop) must put the wizard back. Without this the ticks,
+    // reasons, added groups and remarks are unreachable: _logConduct still holds
+    // them but nothing re-renders it, and re-opening the wizard builds a fresh one.
+    renderLogConductWizard);
 }
 
 // Step 2: show what WOULD happen. Apply is only reachable from here, and only
@@ -5172,6 +5228,8 @@ function wizPastePreview() {
   const host = document.getElementById("wiz-paste-preview");
   if (!host) return;
   const { matched, unmatched } = parsePastedD4s(text, STATE.roster);
+  // On the roster is not enough for "status" — see splitPastedForDest.
+  const { applied, skipped } = splitPastedForDest(dest, matched);
   const destLabel = { fallout: "Fallout", reportSick: "Report Sick", status: "Status Personnel" }[dest];
   // Named individually, not just counted: "3 unmatched" tells the user something
   // is wrong but not which line to fix.
@@ -5180,14 +5238,23 @@ function wizPastePreview() {
       ⚠️ <strong>${unmatched.length}</strong> not on the roster and will be skipped:
       <div class="mono" style="margin-top:4px;color:var(--text)">${unmatched.map(escapeHTML).join(", ")}</div>
     </div>` : "";
-  const names = matched.map(d4 =>
+  // Named individually for the same reason: "12 hold no status" doesn't tell the
+  // commander WHO to chase up (or re-paste into Fallout instead).
+  const noStatusWarn = skipped.length ? `
+    <div style="margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--yellow);font-size:11px;color:var(--muted)">
+      ⚠️ <strong>${skipped.length}</strong> hold no status on this date, so there is nothing to tick —
+      they will be skipped (use Fallout or Report Sick for them):
+      <div class="mono" style="margin-top:4px;color:var(--text)">${skipped.map(escapeHTML).join(", ")}</div>
+    </div>` : "";
+  const names = applied.map(d4 =>
     `<div style="padding:1px 0"><span class="mono" style="color:var(--accent);font-weight:700">${escapeHTML(d4)}</span> ${escapeHTML(displayPersonLabel(d4))}</div>`).join("");
   host.innerHTML = `
     <div class="card" style="padding:10px 12px;background:var(--surface2);border-radius:6px">
-      <div style="font-size:12px"><strong>${matched.length}</strong> matched → <strong>${escapeHTML(destLabel)}</strong></div>
-      ${matched.length ? `<div style="margin-top:6px;max-height:180px;overflow-y:auto;font-size:11px">${names}</div>` : ""}
+      <div style="font-size:12px"><strong>${applied.length}</strong> matched → <strong>${escapeHTML(destLabel)}</strong></div>
+      ${applied.length ? `<div style="margin-top:6px;max-height:180px;overflow-y:auto;font-size:11px">${names}</div>` : ""}
       ${warn}
-      ${matched.length
+      ${noStatusWarn}
+      ${applied.length
         ? `<button type="button" class="btn btn-primary" style="margin-top:10px" onclick="wizPasteApply('${escapeAttr(dest)}')">Apply to ${escapeHTML(destLabel)}</button>`
         : `<div style="margin-top:10px;font-size:11px;color:var(--muted)">Nothing to apply.</div>`}
     </div>`;
@@ -5198,8 +5265,8 @@ function wizPasteApply(dest) {
   // Re-parsed rather than carried over from the preview, so an edit to the
   // textarea after previewing cannot apply a stale match list.
   const { matched } = parsePastedD4s(text, STATE.roster);
-  if (!matched.length) return;
-  closeModal();
+  if (!splitPastedForDest(dest, matched).applied.length) return;
+  closeModal();   // restores the wizard via the onClose hook
   applyPastedAbsentees(dest, matched);
 }
 

@@ -114,11 +114,18 @@ function renderArchive(el) {
   }
   // Fix1C: the warm-cache launch (autoSyncOnLaunch) pulls only CHANGED data tabs
   // and never the commander/admin-only archive tabs, so they can render empty even
-  // though the Sheet holds rows. Lazily fetch them once per session on first open
-  // when we have nothing cached, then re-render. One-shot guard reset on failure
-  // so a transient error can retry on the next open.
-  if (STATE.apiUrl && STATE.authToken && !_archiveFetched
-      && !(STATE.paradeArchive || []).length && !(STATE.sickArchive || []).length) {
+  // though the Sheet holds rows. Lazily fetch them once per session on first open,
+  // then re-render. One-shot guard reset on failure so a transient error can retry
+  // on the next open.
+  //
+  // The guard is the _archiveFetched flag ALONE. It used to also require both
+  // arrays to be empty, but archiveParadeSnapshot optimistically prepends the row
+  // it just copied — so copying a parade state before opening Archive made
+  // paradeArchive non-empty and suppressed the fetch for the rest of the session,
+  // leaving the tab showing that one local row and hiding every server-side
+  // snapshot. Neither array is persisted by saveLocal either, so "already has
+  // rows" was never a reliable stand-in for "already fetched".
+  if (STATE.apiUrl && STATE.authToken && !_archiveFetched) {
     _archiveFetched = true;
     API.fetchArchives().then(res => {
       if (!res) return;
@@ -1254,7 +1261,17 @@ let _dashParadeDate = "", _dashParadeType = "", _dashParadeTime = "";
 let _dashParadeLookahead = 7;      // days; Infinity = "All". Session-scoped, like the tab's.
 function setDashParadeDate(v) { _dashParadeDate = v; render(); }
 function setDashParadeType(v) { _dashParadeType = v; render(); }
-function setDashParadeTime(v) { _dashParadeTime = v; render(); }
+// Time is the one control bound to `oninput` — a full render() rebuilds
+// #content and REPLACES the very input being typed into, so focus is lost after
+// every keystroke and "0730" ends up as "0". Refresh only the generated block,
+// exactly as the Parade tab's toolbar/refreshParade split does. The other three
+// setters fire on commit (change/click) and re-render their own control state
+// (the Lookahead pill highlight), so they still go through render().
+function setDashParadeTime(v) { _dashParadeTime = v; refreshDashParade(); }
+function refreshDashParade() {
+  const host = document.getElementById("dash-parade-body");
+  if (host) host.innerHTML = dashParadeBodyHtml();
+}
 function setDashParadeLookahead(v) { _dashParadeLookahead = (v === "all") ? Infinity : Number(v) || 0; render(); }
 
 // The topbar filter drives scope. STATE.filterPlt is the platoon filter (there is
@@ -1274,12 +1291,24 @@ function dashParadeMeta() {
   };
 }
 
+// The generated half of the card, split out so refreshDashParade can replace it
+// without touching the controls above it.
+function dashParadeBodyHtml() {
+  const dateIso = _dashParadeDate || todayISO();
+  const type = _dashParadeType || (paradeShouldBeLP() ? "LP" : "FP");
+  const text = generateBravesParadeState(dashParadeScope(), type, dateIso, _dashParadeTime,
+    { lookaheadDays: _dashParadeLookahead });
+  return paradeUpcomingBanner(text) + `
+    <textarea id="dash-parade-text" rows="18" spellcheck="false"
+      style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(text)}</textarea>
+    <button type="button" id="dash-parade-copy" class="btn btn-success" style="margin-top:10px"
+      onclick="copyDashParadeText()">📋 Copy to Clipboard</button>`;
+}
+
 function renderDashParade() {
   const dateIso = _dashParadeDate || todayISO();
   const type = _dashParadeType || (paradeShouldBeLP() ? "LP" : "FP");
   const scope = dashParadeScope();
-  const text = generateBravesParadeState(scope, type, dateIso, _dashParadeTime,
-    { lookaheadDays: _dashParadeLookahead });
   const scopeNote = scope.level === "platoon"
     ? `Scoped to <strong>${escapeHTML(filterLabel())}</strong> by the topbar filter.`
     : `Whole company. Use the topbar filter to scope to a platoon.`;
@@ -1307,11 +1336,7 @@ function renderDashParade() {
         </div>
       </div>
     </div>
-    ${paradeUpcomingBanner(text)}
-    <textarea id="dash-parade-text" rows="18" spellcheck="false"
-      style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(text)}</textarea>
-    <button type="button" id="dash-parade-copy" class="btn btn-success" style="margin-top:10px"
-      onclick="copyDashParadeText()">📋 Copy to Clipboard</button>
+    <div id="dash-parade-body">${dashParadeBodyHtml()}</div>
   </div>`;
 }
 
@@ -1516,8 +1541,19 @@ function renderDashAppointments(visible, todayIso) {
   const legacy = (STATE.appointments || [])
     .filter(a => !a.resolved && passesFilter(a.d4, visible) && dateOk(a.date))
     .map(a => ({ src: "appt", id: a.id, d4: a.d4, reason: a.reason, date: a.date, time: a.time, location: a.location, outOfCamp: a.outOfCamp }));
-  const maRows = (STATE.medical || [])
-    .filter(m => m.type === "MA" && passesFilter(m.d4, visible) && dateOk(m.date))
+  // Feature 30.1: ONE visit can produce several Medical rows (LD + Excuse RMJ),
+  // and submitMedical stamps type="MA" on every sibling — so a plain filter lists
+  // the same appointment once per status. groupByVisit collapses them the way the
+  // Medical list and the person card already do; `first` is the row the ✎ edits,
+  // which re-opens the whole visit anyway.
+  //
+  // bookInDate is the medical-side equivalent of the legacy rows' `resolved`:
+  // once the commander has marked the person Present on the parade grid the
+  // appointment is done with, and this path (which offers only Edit) would
+  // otherwise keep showing it as upcoming with no way to clear it.
+  const maRows = groupByVisit((STATE.medical || [])
+      .filter(m => m.type === "MA" && !m.bookInDate && passesFilter(m.d4, visible) && dateOk(m.date)))
+    .map(g => g.first)
     .map(m => ({ src: "med", id: m.id, d4: m.d4, reason: m.reason, date: m.date, time: m.time, location: m.location, outOfCamp: m.outOfCamp }));
   const upcoming = [...legacy, ...maRows].sort((a, b) => {
     const ai = displayDateToISO(a.date) || "";

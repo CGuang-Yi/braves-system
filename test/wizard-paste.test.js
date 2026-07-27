@@ -178,7 +178,10 @@ module.exports = async function run() {
     ok(/onclick="openWizPasteModal\(\)"/.test(src), "the wizard no longer offers a paste trigger");
     ok(!/wiz-paste-text[\s\S]{0,400}onclick="wizPasteApply/.test(src),
       "the paste modal exposes Apply without going through Preview");
-    ok(/matched\.length[\s\S]{0,120}onclick="wizPasteApply/.test(src),
+    // Gated on `applied`, not `matched`: for the Status destination a roster
+    // match that holds no status that day cannot be ticked, so counting it would
+    // let a paste that changes nothing confirm as success.
+    ok(/applied\.length[\s\S]{0,120}onclick="wizPasteApply/.test(src),
       "the Apply button is no longer gated on there being a match");
   });
 
