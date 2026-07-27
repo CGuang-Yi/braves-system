@@ -11,7 +11,8 @@
 //     the old modal produced; this view only relocates it into the tab.
 //
 //     • PLATOON — a strength/counts bento header plus a spreadsheet-style grid
-//     (4D · Name · Attendance Code · Remarks). The Attendance Code cell is
+//     (4D · Name · Attendance Code · Remarks · quick-log, the last shown only to
+//     canWrite() roles). The Attendance Code cell is
 //     editable ONLY for the away-codes MC / AL/OIL / OTHERS (item 5), and the
 //     one change offered is → Present (book-in); every other code renders as
 //     read-only text. Booking a person in sets `bookInDate` on their REAL source
@@ -448,6 +449,17 @@ function renderParadePlatoon(host, code) {
       <td>${cardBtn(escapeHTML(displayPersonLabel(x.r.id)))}</td>
       <td>${codeCell}</td>
       <td style="color:${remarkColor};white-space:normal;font-size:12px">${escapeHTML(x.remark)}</td>
+      <!-- Feature 22: its OWN column, deliberately never inside the Attendance
+           Code cell. That cell's Mark-Present select is its sole action by
+           design (see the header comment above), so that an incidental tap
+           while swipe-scrolling the grid on a phone cannot fire something else.
+           Adding a second control there would give that away. Hidden entirely
+           from viewers rather than disabled — and the <th> and the empty-state
+           colspan are gated on the same canWrite() so the column count still
+           lines up either way. -->
+      ${canWrite() ? `<td style="width:44px;text-align:center"><button type="button" class="btn btn-icon"
+        title="Log medical or leave for ${escapeAttr(displayPersonLabel(x.r.id))}"
+        onclick="event.stopPropagation(); openQuickLogMenu('${escapeAttr(x.r.id)}')">＋</button></td>` : ""}
     </tr>`;
   }).join("");
 
@@ -475,8 +487,8 @@ function renderParadePlatoon(host, code) {
       <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" onclick="copyParadeText()">📋 Copy to Clipboard</button>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th style="width:70px">4D</th><th>Name</th><th style="width:120px">Attendance Code</th><th>Remarks</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="4" class="empty-state">No personnel in this platoon.</td></tr>`}</tbody>
+      <thead><tr><th style="width:70px">4D</th><th>Name</th><th style="width:120px">Attendance Code</th><th>Remarks</th>${canWrite() ? "<th></th>" : ""}</tr></thead>
+      <tbody>${body || `<tr><td colspan="${canWrite() ? 5 : 4}" class="empty-state">No personnel in this platoon.</td></tr>`}</tbody>
     </table></div>`;
 }
 

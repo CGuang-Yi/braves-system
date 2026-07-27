@@ -529,6 +529,12 @@ function renderDashboard(el) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <h2 style="font-size:18px;font-weight:700">Company Strength Board</h2>
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+      <!-- Feature 22: the Dashboard has no row context, so it gets one button
+           in the header rather than a per-row trigger, and both forms open
+           blank — each already carries a person search box, so no separate
+           person-picker step is needed. Hidden from viewers, not disabled. -->
+      ${canWrite() ? `<button class="btn" onclick="openQuickLogMenu('')" title="Log a medical or leave record">＋ Log</button>` : ""}
       <div class="dropdown-wrapper">
         <button class="btn btn-primary" onclick="toggleReportMenu(event)">📋 Generate Report ▾</button>
         <div id="report-menu" class="dropdown-menu hidden">
@@ -539,6 +545,7 @@ function renderDashboard(el) {
           <button type="button" onclick="openReportModal('CONDUCT'); closeReportMenu()">📊 Per-Conduct Chat Format</button>
           <button type="button" onclick="openReportModal('MR'); closeReportMenu()">🩺 MR (Medical Review)</button>
         </div>
+      </div>
       </div>
     </div>
     ${scopeBanner}
@@ -1802,6 +1809,35 @@ function renderMedical(el) {
   registerListRenderer("medical", renderMedicalRows);
   renderMedicalRows();
 }
+// Feature 29 stacking. A grouped visit renders its Status / Start / End / Today
+// cells as one line per status, and every one of those columns must use THIS
+// helper so the four stay aligned row-for-row — a badge and a bare date string
+// have different natural heights, so the fixed min-height is what keeps line 2
+// of Status level with line 2 of End. A single-status group produces exactly one
+// line, i.e. the pre-grouping appearance, so nothing shifts for the common case.
+//
+// Reason, location, visit type and the reported date deliberately do NOT stack:
+// submitMedical writes them identically to every sibling, so stacking would just
+// repeat the same text N times.
+// nowrap is load-bearing here, not cosmetic: the four columns stack
+// independently, so if one column's line 2 wraps to two lines ("EXCUSE RMJ",
+// "27 Jul 2026") while its neighbour's does not, every line below drifts out of
+// register and the row starts pairing the wrong status with the wrong end date.
+//
+// It is applied ONLY to genuinely multi-status groups. Forcing it on every row
+// widened the table by ~120px at a 1280 viewport — enough to push the Edit /
+// Delete column behind .table-wrap's horizontal scroll — and a single-status
+// group has nothing to align against, so it pays that cost for no benefit.
+function medStack(grp, fn) {
+  const nowrap = grp.rows.length > 1 ? "white-space:nowrap;" : "";
+  return grp.rows.map(r =>
+    `<div style="min-height:22px;${nowrap}display:flex;align-items:center;justify-content:center">${fn(r)}</div>`).join("");
+}
+// Pending / NIL carry no date window, so their Start and End render an em dash
+// rather than blank. Per-status, not per-visit: one sibling can be a dated LD
+// while another is still Pending.
+function medNoDur(r) { return r.status === "Pending" || r.status === "NIL"; }
+
 function renderMedicalRows() {
   const host = document.getElementById("med-results");
   if (!host) return;
@@ -1848,11 +1884,18 @@ function renderMedicalRows() {
     .map(([d4, days]) => ({ d4, count: days.size }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
+  // Feature 29: one row per VISIT, not per status. Grouped AFTER the search /
+  // date filter and the sort, so a filter that matches only one sibling still
+  // shows just that sibling — the list must never claim a row the filter
+  // excluded. The group inherits the sort position of its first surviving
+  // sibling (see groupByVisit), which keeps the date ordering stable even when
+  // two statuses of one visit carry different start dates.
+  const medVisitGroups = groupByVisit(medRows.map(x => x.m));
   host.innerHTML = `
     <div class="grid-2" style="grid-template-columns:2fr 1fr;align-items:start">
       <div>
-        ${medRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("medical", "reported", "Reported")}${sortTh("medical", "fourD", "4D")}${sortTh("medical", "name", "Name", "left")}<th style="text-align:left">Reason</th>${sortTh("medical", "status", "Status")}<th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
-        ${medRows.map(({ m, tagInfo }) => { const noDur = m.status === "Pending" || m.status === "NIL"; const _dow = m.date ? medDayOfWeek(m.date) : ""; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td style="white-space:nowrap">${m.date || ""}${_dow ? ` <span style="color:var(--dim);font-size:10px">${_dow}</span>` : ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(m.d4))}</td><td style="text-align:left">${medTypeBadge(m)}${escapeHTML(m.reason || "")}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${escapeHTML(m.urtiType)}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}</td><td>${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">—</span>'}</td><td>${m.startDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${m.endDate || (noDur ? '<span style="color:var(--muted)">—</span>' : "")}</td><td>${tagInfo ? medTagBadge(tagInfo.tag) : '<span style="color:var(--dim)">cleared</span>'}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${m.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${m.id}, 'medical record')" title="Delete">✕</button></td></tr>`; }).join("")}
+        ${medVisitGroups.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("medical", "reported", "Reported")}${sortTh("medical", "fourD", "4D")}${sortTh("medical", "name", "Name", "left")}<th style="text-align:left">Reason</th>${sortTh("medical", "status", "Status")}<th>Start</th><th>End</th><th>Today</th><th></th></tr></thead><tbody>
+        ${medVisitGroups.map(grp => { const m = grp.first; const _dow = m.date ? medDayOfWeek(m.date) : ""; const multi = grp.rows.length > 1; return `<tr onclick="openPerson('${m.d4}')" style="cursor:pointer"><td style="white-space:nowrap">${m.date || ""}${_dow ? ` <span style="color:var(--dim);font-size:10px">${_dow}</span>` : ""}</td><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(m.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(m.d4))}</td><td style="text-align:left">${medTypeBadge(m)}${escapeHTML(m.reason || "")}${m.urtiType ? `<span style="font-size:9px;color:var(--dim);margin-left:5px">${escapeHTML(m.urtiType)}</span>` : ""}${m.origin === "conductLog" ? `<span class="badge badge-teal" style="font-size:8px;margin-left:5px" title="Auto-created from a conduct import/log — confirm the MO outcome">from conduct log</span>` : ""}${m.location ? `<div style="font-size:10px;color:var(--muted)">📍 ${escapeAttr(m.location)}</div>` : ""}${multi ? `<div style="font-size:10px;color:var(--muted)">${grp.rows.length} statuses from one visit</div>` : ""}</td><td>${medStack(grp, r => r.status ? medTagBadge(r.status) : '<span style="color:var(--muted)">—</span>')}</td><td>${medStack(grp, r => r.startDate || (medNoDur(r) ? '<span style="color:var(--muted)">—</span>' : ""))}</td><td>${medStack(grp, r => r.endDate || (medNoDur(r) ? '<span style="color:var(--muted)">—</span>' : ""))}</td><td>${medStack(grp, r => { const ti = medStatusTag(r, today); return ti ? medTagBadge(ti.tag) : '<span style="color:var(--dim)">cleared</span>'; })}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="event.stopPropagation(); openMedicalForm(${JSON.stringify(m.id)})" title="${multi ? "Edit this visit (all statuses)" : "Edit"}">✎</button> ${medStack(grp, r => `<button class="btn btn-icon btn-danger" onclick="event.stopPropagation(); deleteEntry('medical', ${JSON.stringify(r.id)}, ${multi ? "'status'" : "'medical record'"})" title="${multi ? `Delete just the ${escapeAttr(r.status || "status")} line` : "Delete"}">✕</button>`)}</td></tr>`; }).join("")}
         </tbody></table></div>` : `<div class="empty-state">${_medQ ? "No records match the search." : (STATE.medical.length ? `No report sick records in ${filterLabel()}.` : "No report sick records yet.")}</div>`}
       </div>
       <div class="card">

@@ -425,11 +425,26 @@ function deleteEntry(arrayName, id, label) {
 //   • LD / Excuse X (incl. Excuse RMJ) — in camp, restricted
 //   • Pending — reported sick, MO outcome not yet known
 //   • NIL — MO seen, no status issued (recruit back to active)
+// Feature 27: "Awaiting MO" leads, so Pending is the first selectable status.
+// It is what a commander picks most often — the recruit has reported sick and
+// the MO has not ruled yet — and it used to sit fourth, below every outcome the
+// commander is not yet in a position to know.
+//
+// This is the DROPDOWN order and nothing else. medSeverityRank (below) is
+// deliberately NOT changed: it decides statuses[0], which splits the Dashboard's
+// Non-Active from Recovering and orders every badge stack, so promoting Pending
+// there would silently reclassify people across several views. js/forms.js's
+// `statusOrder` (the report-sick analytics bars) is likewise out of scope.
+//
+// The group moved whole rather than hoisting Pending into "Severe (away from
+// camp)", which would have put it under a heading that contradicts it. Order
+// here is display-only: MED_STATUSES is derived from this array but is used
+// solely as a membership Set.
 const MED_STATUS_GROUPS = [
+  { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
   { label: "In camp, restricted",     options: ["LD", "RIB (Rest in Bunk)"] },
   { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Camo", "Excuse Loud Noise"] },
-  { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Cleared by MO",           options: ["NIL"] }
 ];
 const MED_STATUSES = MED_STATUS_GROUPS.flatMap(g => g.options);
@@ -634,6 +649,42 @@ function visitSuffix(rec) {
 function visitForDay(d4, dateIso) {
   return (STATE.medical || []).find(m =>
     m.d4 === d4 && displayDateToISO(m.date) === dateIso && visitSuffix(m)) || null;
+}
+
+// Feature 29 — collapse the sibling rows of one report-sick visit into a single
+// displayed entry. submitMedical already writes them sharing a visitId, so this
+// only groups what storage already relates: no schema change, no classifier
+// change, no GAS port change. The complaint was never about the data, only that
+// the views listed one MO consultation as several unrelated entries.
+//
+// Keyed on d4 + visitId, not visitId alone — id generators get reused across
+// devices and two people must never merge. A blank/absent visitId is ungroupable
+// (legacy rows predating the field, and origin:"conductLog" rows have none), so
+// each becomes its own group and renders exactly as it does today; its key is
+// namespaced by row id so two such rows can't collide on the empty string.
+//
+// visitId is stringified before comparison because it is NOT in
+// WRITE_TEXT_COLS_BY_TAB: a numeric-looking id comes back from the sheet as a
+// Number while the sibling written this session is still a String, so keying on
+// the raw value would split a visit in half on the next reload.
+//
+// Rows are held BY REFERENCE — callers render per-status delete controls off
+// grp.rows[i].id and compare identity against STATE.medical, so cloning here
+// would quietly break them.
+function groupByVisit(records) {
+  const groups = [];
+  const byKey = new Map();
+  (records || []).forEach(r => {
+    const vid = String(r.visitId == null ? "" : r.visitId).trim();
+    if (!vid) { groups.push({ key: "solo:" + r.id, visitId: "", rows: [r], first: r }); return; }
+    const key = r.d4 + "|" + vid;
+    let grp = byKey.get(key);
+    // Push on FIRST sight only, so the group keeps the position of its first
+    // sibling even when the table's date sort has separated them.
+    if (!grp) { grp = { key, visitId: vid, rows: [], first: r }; byKey.set(key, grp); groups.push(grp); }
+    grp.rows.push(r);
+  });
+  return groups;
 }
 
 // Inline-styled badge HTML for a medical tag. Uses theme tokens but adds

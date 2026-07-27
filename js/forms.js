@@ -252,16 +252,41 @@ function openPerson(d4) {
       const bi = displayDateToISO(b.startDate || b.date) || "";
       return ai < bi ? 1 : ai > bi ? -1 : 0;
     });
+    // Feature 29: one card per VISIT. The count in the heading stays a count of
+    // STATUSES (med.length) — it feeds the "how many report-sick events" read
+    // that the patterns panel below is built on, and quietly changing it to a
+    // visit count would move a number the rest of the card reasons about.
+    const medGroups = groupByVisit(medSorted);
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Medical History <span style="color:var(--dim);font-weight:400">(${med.length})</span></h4>`;
-    html += medSorted.map(m => {
-      const tagInfo = medStatusTag(m, today);
-      const todayLabel = tagInfo ? `<span style="margin-left:6px">${medTagBadge(tagInfo.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
+    html += medGroups.map(grp => {
+      const m = grp.first;
+      const shared = `${medTypeBadge(m)}${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}`;
+      const todayOf = r => {
+        const ti = medStatusTag(r, today);
+        return ti ? `<span style="margin-left:6px">${medTagBadge(ti.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
+      };
+      // A single-status visit keeps its existing one-card layout exactly —
+      // that is the overwhelmingly common case and there is no reason to move
+      // anything under it. Only a genuine multi-status visit gets the stacked
+      // shape, where Edit belongs to the visit and Delete to each status.
+      if (grp.rows.length === 1) {
+        return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <span>${medTypeBadge(m)}${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px">${todayOf(m)}${pcBtns("openMedicalForm", "medical", m.id, "medical record")}</span>
+          </div>
+          <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
+        </div>`;
+      }
       return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <span>${medTypeBadge(m)}${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
-          <span style="display:inline-flex;align-items:center;gap:4px">${todayLabel}${pcBtns("openMedicalForm", "medical", m.id, "medical record")}</span>
+          <span>${shared} <span style="color:var(--dim);font-size:10px">· ${grp.rows.length} statuses from one visit</span></span>
+          <button class="btn btn-icon" style="padding:0 5px" onclick="event.stopPropagation(); openMedicalForm(${JSON.stringify(m.id)})" title="Edit this visit (all statuses)">✎</button>
         </div>
-        <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
+        ${grp.rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">
+          <span>${r.status ? medTagBadge(r.status) : '<span style="color:var(--muted)">No status</span>'} <span style="color:var(--muted);font-size:11px">${medDurationLabel(r)}</span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px">${todayOf(r)}<button class="btn btn-icon btn-danger" style="padding:0 5px" onclick="event.stopPropagation(); pcDelete('medical',${JSON.stringify(r.id)},'status','${d4}')" title="Delete just this status">✕</button></span>
+        </div>`).join("")}
       </div>`;
     }).join("");
   }
@@ -799,6 +824,26 @@ function openMedicalForm(id, prefill) {
         <button type="submit" class="btn btn-primary">${isEdit ? "Save" : "Submit"}</button>
       </div>
     </form>`);
+  // Feature 29: Edit opens the whole VISIT, not one of its status rows. The
+  // grouped list row offers a single Edit button, so the form has to show
+  // everything that row shows — otherwise you open "2D LD + 4D Excuse RMJ",
+  // see only the LD, and the Excuse silently survives whatever you do.
+  //
+  // This is not cosmetic. date / reason / location / type / time are per-visit
+  // and submitMedical writes them to every sibling it emits, so editing one row
+  // in isolation used to move the visit's date on the primary while leaving the
+  // sibling behind on the old one — two rows that still grouped (same d4 +
+  // visitId) but disagreed about the day they happened.
+  //
+  // Matched on d4 + visitId, exactly as groupByVisit does, so the form and the
+  // list can never disagree about what belongs to this visit.
+  if (isEdit && e && String(e.visitId || "").trim()) {
+    const vid = String(e.visitId).trim();
+    STATE.medical
+      .filter(m => m.d4 === e.d4 && String(m.visitId || "").trim() === vid && m.id !== e.id)
+      .forEach(m => addMedStatusRow(m.status || "",
+        displayDateToISO(m.startDate) || "", displayDateToISO(m.endDate) || ""));
+  }
 }
 // Reveal the custom-status fields only when "＋ New custom status…" is picked.
 function medStatusSelChanged(v) {
@@ -925,6 +970,19 @@ function submitMedical() {
   const prev = editId ? STATE.medical.find(m => m.id === editId) : null;
   const visitId = statuses.length > 1 ? (prev?.visitId || ("v" + nextId())) : (prev?.visitId || "");
 
+  // Feature 29: since the form now LOADS the whole visit, it must SAVE the whole
+  // visit. Every sibling except the edited row is replaced by the freshly-emitted
+  // records below (which take new ids), so the originals are stale and have to
+  // go — without this, re-saving a two-status visit leaves the old Excuse RMJ
+  // beside a new identical one, and each subsequent save doubles the row count.
+  // Removing a status row in the form therefore also deletes it, which is the
+  // behaviour the single Edit button implies.
+  const staleSiblings = (editId && prev && String(prev.visitId || "").trim())
+    ? STATE.medical.filter(m => m.d4 === prev.d4
+        && String(m.visitId || "").trim() === String(prev.visitId).trim()
+        && m.id !== editId)
+    : [];
+
   // First status reuses the edited row's id; each extra status becomes a new
   // sibling row. type/urtiType/visitId are per-visit (shared across siblings).
   const records = statuses.map((st, i) => ({
@@ -953,9 +1011,21 @@ function submitMedical() {
     }
   });
 
+  // Drop the superseded sibling rows AFTER the new ones are in place, so a
+  // failure part-way through leaves duplicates (visible, fixable) rather than a
+  // visit that lost a status.
+  staleSiblings.forEach(s => {
+    const i = STATE.medical.findIndex(m => m.id === s.id);
+    if (i >= 0) STATE.medical.splice(i, 1);
+  });
+
   saveLocal(); closeModal(); render();
   if (STATE.apiUrl) {
     records.forEach(rec => autoSync("Medical", { type: "upsert", row: rec }));
+    // Queued after the upserts on purpose: writes are strictly FIFO per tab, so
+    // the replacements land before the originals are removed and the visit is
+    // never momentarily statusless on another device mid-sequence.
+    staleSiblings.forEach(s => autoSync("Medical", { type: "delete", id: s.id }));
   }
 }
 
@@ -2248,9 +2318,34 @@ function leaveRemoveSelectedPerson(d4) {
   renderLeaveSelectedPeople();
 }
 
-function openLeaveForm(id) {
+// Feature 22 — one menu, two entry points. `d4` is optional: the Parade grid
+// passes the row's person so both forms open prefilled, the Dashboard passes
+// nothing and they open blank, relying on the person search box each already
+// carries. That is why there is no separate person-picker step.
+//
+// Gated on canWrite() (commander + admin), the same gate the Archive nav uses.
+// A viewer is never shown the trigger at all rather than shown a disabled one —
+// but the gate is repeated HERE too, because the callers only hide the button
+// and a hidden button is not a permission check.
+function openQuickLogMenu(d4) {
+  if (!canWrite()) return;
+  const pre = d4 ? `{ d4: '${escapeAttr(d4)}' }` : "null";
+  const who = d4 ? ` for ${escapeHTML(displayPersonLabel(d4))}` : "";
+  openModal("Log" + who, `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button type="button" class="btn" style="text-align:left;padding:10px 12px" onclick="closeModal(); openMedicalForm(null, ${pre})">🏥 Medical / Report Sick</button>
+      <button type="button" class="btn" style="text-align:left;padding:10px 12px" onclick="closeModal(); openLeaveForm(null, ${pre})">📅 Leave / Out</button>
+    </div>`);
+}
+
+function openLeaveForm(id, prefill) {
   _leaveSelectedD4s = [];
-  const e = id ? STATE.leave.find(x => x.id === id) : null;
+  // `prefill` mirrors openMedicalForm's contract exactly: honoured only when
+  // CREATING, never when editing, so a stray argument can never overwrite the
+  // person on a saved row. Added for the Feature 22 quick-log menu, which opens
+  // this form from a parade-grid row that already knows who it is about.
+  const isEdit = !!id;
+  const e = id ? STATE.leave.find(x => x.id === id) : (prefill || null);
   const startVal = e ? displayDateToISO(e.startDate) || todayISO() : todayISO();
   const endVal = e ? displayDateToISO(e.endDate) || todayISO() : todayISO();
   const LEAVE_TYPES = [
@@ -2263,7 +2358,11 @@ function openLeaveForm(id) {
   // form effectively defaults to the first option (Off-in-Lieu) — matched
   // here so the In Camp smart-prefill agrees with what the browser shows.
   const initialType = e?.type || LEAVE_TYPES[0][0];
-  const inCampDefault = e ? (e.isInCamp === true) : leaveInCampGuess(initialType, e?.reason || "");
+  // isEdit, not the truthiness of `e` — `e` now also holds a prefill for a NEW
+  // row (same contract as openMedicalForm). Every "is this an edit" test below
+  // keys off isEdit, so a prefill cannot hide the bulk scope selector, stamp a
+  // junk entry id, or flip the submit button to "Save".
+  const inCampDefault = isEdit ? (e.isInCamp === true) : leaveInCampGuess(initialType, e?.reason || "");
   // Bulk "Apply to" scope options (add mode only). Organisational scopes show
   // their recruit counts; "Selected people" instead accumulates any rostered
   // people, including commanders. One Log batches either kind via appendMany.
@@ -2287,17 +2386,17 @@ function openLeaveForm(id) {
   })();
   openModal(e ? "Edit Leave/Out Entry" : "Log Leave / Out", `
     <form onsubmit="event.preventDefault(); submitLeave(); return false">
-      <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
+      <input type="hidden" id="f-entry-id" value="${isEdit ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
-        ${e ? editHint : ""}
+        ${isEdit ? editHint : ""}
         <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;line-height:1.6">
           <div style="font-weight:600;color:var(--text);margin-bottom:4px">📋 Pick the type</div>
           <div><strong>Off-in-Lieu</strong> — counts against the commander's quota.</div>
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
-        ${e ? "" : `<div class="form-group"><label>Apply to</label><select id="f-leave-scope" onchange="onLeaveScopeChange()">${scopeOpts}</select></div>`}
+        ${isEdit ? "" : `<div class="form-group"><label>Apply to</label><select id="f-leave-scope" onchange="onLeaveScopeChange()">${scopeOpts}</select></div>`}
         <div class="form-group" id="f-leave-person-wrap"><label>Person</label>${personSearchBox({ boxId: "leave-person", valueId: "f-d4", placeholder: "Search person by name / 4D…", selected: e?.d4 || "" })}</div>
-        ${e ? "" : `<div class="form-group" id="f-leave-selected-wrap" style="display:none">
+        ${isEdit ? "" : `<div class="form-group" id="f-leave-selected-wrap" style="display:none">
           <label>People <span id="f-leave-selected-count" style="color:var(--muted);font-weight:400">0 selected</span></label>
           ${personSearchBox({
             boxId: "leave-selected-person",
@@ -2315,11 +2414,11 @@ function openLeaveForm(id) {
         </div>
         ${formField("f-days", "Days (drives End; editable — half-days for quota)", "number", "1", `required min="0" max="365" step="0.5" value="${e?.days ?? 1}" oninput="recalcLeaveEndFromDays()"`)}
         ${formField("f-reason", "Reason / notes", "text", "APSC course / NDP rehearsal / Cleared leave balance…", `maxlength="200" value="${escapeAttr(e?.reason)}" oninput="updateLeaveInCampDefault()"`)}
-        <div class="form-group"><label>In Camp?</label><select id="f-in-camp" required onchange="markLeaveInCampTouched()" ${e ? 'data-touched="1"' : ""}>
+        <div class="form-group"><label>In Camp?</label><select id="f-in-camp" required onchange="markLeaveInCampTouched()" ${isEdit ? 'data-touched="1"' : ""}>
           <option value="true" ${inCampDefault ? "selected" : ""}>In Camp</option>
           <option value="false" ${!inCampDefault ? "selected" : ""}>Not In Camp</option>
         </select></div>
-        <button type="submit" class="btn btn-primary">${e ? "Save" : "Log"}</button>
+        <button type="submit" class="btn btn-primary">${isEdit ? "Save" : "Log"}</button>
       </div>
     </form>`);
 }
@@ -4762,6 +4861,17 @@ function renderLogConductWizard() {
         </div>
       </div>
 
+      <!-- Feature 30: heads the three absence sections below rather than sitting
+           inside any one of them, because the destination is chosen in the modal
+           and the paste can land in any of Status / Report Sick / Fallout. A
+           button rather than an always-visible textarea: the common case is
+           ticking a couple of names, and a permanent textarea would push the
+           checklist down the modal for everyone. -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <button type="button" class="btn" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="openWizPasteModal()">📋 Paste absentees</button>
+        <span style="font-size:10px;color:var(--dim)">Have the list already? Paste 4Ds straight into Fallout, Report Sick or Status.</span>
+      </div>
+
       <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <div style="flex:1;min-width:0">
@@ -4960,6 +5070,139 @@ function wizRecomputeParticipants() {
     ...(w.addedGroups || []).flatMap(g => resolveConductGroup(g.value))
   ])];
 }
+// ── Feature 30: paste a list of 4Ds as absentees ────────────────────────────
+// A commander typically arrives with the absentee list already written down —
+// in a chat message, a notebook, a spreadsheet column — and ticking twenty
+// names one at a time is the slow part of logging a conduct.
+//
+// Matching is STRICT against the roster: "123" and "C0123" are NOT normalized
+// to "0123". Everywhere else in the app padD4() is applied liberally at read
+// boundaries, and that is right for data arriving from the sheet — but this is
+// bulk human input, where a silent helpful correction quietly lands the wrong
+// person in the absent list and nobody sees it happen. A token that does not
+// match exactly comes back as unmatched so the confirm panel can show it.
+//
+// Separators are whitespace (newlines and tabs included — a column copied out
+// of a spreadsheet arrives tab-separated) and commas. Anything else stays part
+// of the token, so "0123;0124" reports as one bad entry rather than being split
+// into two ids the user never typed.
+function parsePastedD4s(text, roster) {
+  const known = new Set((roster || []).map(r => String(r.id)));
+  const tokens = String(text || "").split(/[\s,]+/).map(t => t.trim()).filter(Boolean);
+  const matched = [], unmatched = [];
+  const seen = new Set();
+  tokens.forEach(t => {
+    if (seen.has(t)) return;   // one entry per id, in pasted order
+    seen.add(t);
+    if (known.has(t)) matched.push(t); else unmatched.push(t);
+  });
+  return { matched, unmatched };
+}
+
+// The paste is AUTHORITATIVE: a 4D already sitting in another bucket (typically
+// auto-listed under Status Personnel) is removed from it and placed in the
+// pasted destination. Skipping them instead would make a deliberate correction
+// look like it did nothing.
+//
+// "status" is the one destination that cannot create a row. The Status
+// Personnel checklist is derived from who actually holds a status that day, so
+// there is nothing to tick for someone who does not — and fabricating a row
+// would put a person on the parade state under a status they were never given.
+// They simply come out of the other two buckets.
+function applyPastedAbsentees(dest, matched) {
+  if (!_logConduct) return;
+  const set = new Set(matched);
+  // Release from wherever they currently sit, preserving any reason already
+  // typed for someone who is staying in the same bucket (handled below by only
+  // pushing when absent).
+  const keep = {};
+  ["fallout", "reportSick"].forEach(b => {
+    (_logConduct[b] || []).forEach(x => { if (set.has(x.d4)) keep[x.d4] = x; });
+    _logConduct[b] = (_logConduct[b] || []).filter(x => !set.has(x.d4));
+  });
+  (_logConduct.status || []).forEach(s => {
+    if (set.has(s.d4)) s.notParticipating = (dest === "status");
+  });
+  if (dest !== "status") {
+    const bucket = dest === "reportSick" ? "reportSick" : "fallout";
+    _logConduct[bucket] = _logConduct[bucket] || [];
+    matched.forEach(d4 => {
+      if (!_logConduct[bucket].some(x => x.d4 === d4)) {
+        _logConduct[bucket].push(keep[d4] || { d4, reason: "" });
+      }
+    });
+  }
+  renderLogConductWizard();
+}
+
+// Step 1 of the paste flow: collect the text and the destination. Nothing is
+// applied here — Preview re-renders this same modal with a confirm panel, so
+// the user always sees the match result before the wizard is touched.
+function openWizPasteModal() {
+  if (!_logConduct) return;
+  openModal("Paste absentees", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:11px;color:var(--muted);line-height:1.5">
+        One 4D per line, or comma-separated — both may be mixed. Ids must match the roster
+        <strong>exactly</strong>: <code>123</code> and <code>C0123</code> are not accepted, so a typo
+        shows up in the preview instead of landing on the wrong recruit.
+      </div>
+      <div class="form-group"><label>Destination</label>
+        <select id="wiz-paste-dest">
+          <option value="fallout" selected>Fallout — dropped out mid-conduct, did not go to MO</option>
+          <option value="reportSick">Report Sick — dropped out mid-conduct and went to MO</option>
+          <option value="status">Status Personnel — tick as not participating</option>
+        </select>
+      </div>
+      <div class="form-group"><label>4Ds</label>
+        <textarea id="wiz-paste-text" rows="8" placeholder="0123&#10;0124, 0125"
+          style="padding:8px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%;box-sizing:border-box"></textarea>
+      </div>
+      <div id="wiz-paste-preview"></div>
+      <button type="button" class="btn btn-primary" onclick="wizPastePreview()">Preview</button>
+    </div>`);
+}
+
+// Step 2: show what WOULD happen. Apply is only reachable from here, and only
+// when at least one id matched — so a paste that is entirely typos cannot be
+// confirmed into a no-op the user reads as success.
+function wizPastePreview() {
+  const text = document.getElementById("wiz-paste-text")?.value || "";
+  const dest = document.getElementById("wiz-paste-dest")?.value || "fallout";
+  const host = document.getElementById("wiz-paste-preview");
+  if (!host) return;
+  const { matched, unmatched } = parsePastedD4s(text, STATE.roster);
+  const destLabel = { fallout: "Fallout", reportSick: "Report Sick", status: "Status Personnel" }[dest];
+  // Named individually, not just counted: "3 unmatched" tells the user something
+  // is wrong but not which line to fix.
+  const warn = unmatched.length ? `
+    <div style="margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--yellow);font-size:11px;color:var(--muted)">
+      ⚠️ <strong>${unmatched.length}</strong> not on the roster and will be skipped:
+      <div class="mono" style="margin-top:4px;color:var(--text)">${unmatched.map(escapeHTML).join(", ")}</div>
+    </div>` : "";
+  const names = matched.map(d4 =>
+    `<div style="padding:1px 0"><span class="mono" style="color:var(--accent);font-weight:700">${escapeHTML(d4)}</span> ${escapeHTML(displayPersonLabel(d4))}</div>`).join("");
+  host.innerHTML = `
+    <div class="card" style="padding:10px 12px;background:var(--surface2);border-radius:6px">
+      <div style="font-size:12px"><strong>${matched.length}</strong> matched → <strong>${escapeHTML(destLabel)}</strong></div>
+      ${matched.length ? `<div style="margin-top:6px;max-height:180px;overflow-y:auto;font-size:11px">${names}</div>` : ""}
+      ${warn}
+      ${matched.length
+        ? `<button type="button" class="btn btn-primary" style="margin-top:10px" onclick="wizPasteApply('${escapeAttr(dest)}')">Apply to ${escapeHTML(destLabel)}</button>`
+        : `<div style="margin-top:10px;font-size:11px;color:var(--muted)">Nothing to apply.</div>`}
+    </div>`;
+}
+
+function wizPasteApply(dest) {
+  const text = document.getElementById("wiz-paste-text")?.value || "";
+  // Re-parsed rather than carried over from the preview, so an edit to the
+  // textarea after previewing cannot apply a stale match list.
+  const { matched } = parsePastedD4s(text, STATE.roster);
+  if (!matched.length) return;
+  closeModal();
+  applyPastedAbsentees(dest, matched);
+}
+
 function wizAddGroup(value, label) {
   // Re-adding an already-added group is a no-op, not a duplicate chip.
   if (_logConduct.addedGroups.some(g => g.value === value)) return;
