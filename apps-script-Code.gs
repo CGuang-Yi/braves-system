@@ -1224,6 +1224,66 @@ function ensureTabWithHeaders_(ss, name, headers) {
   sheet.setFrozenRows(1);
 }
 
+/**
+ * One-shot data migration: Medical.mrTiming -> Medical.time (MR rows only).
+ * Run ONCE from the Apps Script editor, BEFORE deploying the matching frontend.
+ *
+ * MR used to carry a free-text timing column because spec §6 allows "PM" where an
+ * HHMM column cannot hold it. Feature 30.1 needs ONE time source across all four
+ * visit types, so MR moved onto Medical.time. Values that parse as a time are
+ * copied across; anything else ("PM", "AM", free text) CANNOT be represented and
+ * is dropped — by decision, not by accident, which is why every dropped value is
+ * logged with its 4D and date so it can be re-entered by hand.
+ *
+ * The mrTiming COLUMN is deliberately left in place, values and all. It is the
+ * only surviving record of the dropped timings, the app still surfaces an
+ * unmigrated value on the visit-type badge ("MR PM"), and removing a column that
+ * writeTab derives its headers from is a far larger operation than this needs.
+ * Nothing writes to it again — submitMedical emits it blank.
+ *
+ * Idempotent: a row that already has a time is skipped, so re-running is a no-op.
+ * Ordering matters — run this BEFORE the frontend ships, or existing MR rows
+ * render with no timing in the parade state and on the Telegram bot.
+ */
+function bravesMigrateMrTiming() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Medical");
+  if (!sh) { Logger.log("No Medical tab — nothing to do."); return; }
+  var values = sh.getDataRange().getValues();
+  if (values.length < 2) { Logger.log("Medical is empty — nothing to do."); return; }
+  var head = values[0];
+  var cType = head.indexOf("type"), cTiming = head.indexOf("mrTiming");
+  var cTime = head.indexOf("time"), cD4 = head.indexOf("d4"), cDate = head.indexOf("date");
+  if (cType < 0 || cTiming < 0 || cTime < 0) {
+    Logger.log("Missing a required column (type/mrTiming/time) — run bravesMigrateSchema() first.");
+    return;
+  }
+  var moved = 0, skipped = 0, dropped = [];
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    if (String(row[cType]).trim() !== "MR") continue;
+    var raw = String(row[cTiming] == null ? "" : row[cTiming]).trim();
+    if (!raw) continue;
+    if (String(row[cTime] == null ? "" : row[cTime]).trim()) { skipped++; continue; }  // idempotent
+    // Accept "1400", "930", "14:00" -> "1400"; reject anything else.
+    var m = /^(\d{1,2}):?(\d{2})$/.exec(raw);
+    if (m && Number(m[1]) < 24 && Number(m[2]) < 60) {
+      // setValue on a WRITE_TEXT_COLS_BY_TAB column: Medical.time is already
+      // forced to plain-text format, so "0930" survives instead of becoming 930.
+      sh.getRange(i + 1, cTime + 1).setValues([[("0" + m[1]).slice(-2) + m[2]]]);
+      moved++;
+    } else {
+      dropped.push(String(row[cD4]) + " / " + String(row[cDate]) + " / \"" + raw + "\"");
+    }
+  }
+  Logger.log("mrTiming migration: " + moved + " moved, " + skipped
+    + " already had a time, " + dropped.length + " dropped.");
+  if (dropped.length) {
+    Logger.log("DROPPED — these could not be represented as HHMM. The mrTiming column still");
+    Logger.log("holds them and the app shows them on the visit badge; re-enter any that matter:");
+    for (var j = 0; j < dropped.length; j++) Logger.log("  " + dropped[j]);
+  }
+}
+
 // One-off schema migration (sheet-audit remediation). Run once from the editor:
 //   bravesMigrateSchema()
 // Brings an existing live sheet up to the schema the frontend already expects.
