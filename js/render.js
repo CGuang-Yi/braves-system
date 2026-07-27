@@ -9,6 +9,13 @@ function render() {
   // builder can't pin its captured scope or fire against now-stale DOM.
   _deferredBuilders = {};
 
+  // Chore 7: "rm" was a nav target until the Route March tab was retired. STATE.nav
+  // is cached in localStorage, so anyone whose last-viewed tab was Route March comes
+  // back after the upgrade with a nav value nothing handles — it would fall to the
+  // switch's `default:` and paint an empty content pane with no tab highlighted,
+  // which reads as a broken app. Redirect once, before anything renders.
+  if (STATE.nav === "rm") STATE.nav = "dashboard";
+
   // Reset scroll only on an actual tab switch so a long previous tab doesn't
   // leave the next one looking pre-scrolled (and on mobile hiding the topbar).
   // Same-tab re-renders keep scroll position so in-place edits don't bounce the view.
@@ -47,7 +54,6 @@ function render() {
     case "medical": renderMedical(el); break;
     case "statusboard": renderStatusBoard(el); break;
     case "ippt": renderIPPT(el); break;
-    case "rm": renderRM(el); break;
     case "soc": renderSOC(el); break;
     case "ha": renderHA(el); break;
     case "polar": renderPolar(el); break;
@@ -2260,25 +2266,10 @@ function buildIPPTCompareChart(series, a, b) {
   });
 }
 
-function renderRM(el) {
-  const visible = visibleD4Set();
-  const scoped = STATE.rm.filter(r => passesFilter(r.d4, visible));
-  el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-size:18px;font-weight:700">Route March Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.rm.length}]</span>` : ""}</h2>
-      <div style="display:flex;gap:8px">
-        <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importRM(this)" style="display:none"></label>
-        <button class="btn btn-success" onclick="pushTab('RouteMarch',STATE.rm)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
-        <button class="btn btn-primary" onclick="openRMForm()">+ Add</button>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-    ${[{ n: 1, d: "3KM" }, { n: 2, d: "3KM" }, { n: 3, d: "3KM" }, { n: 4, d: "4KM" }, { n: 5, d: "8KM" }, { n: 6, d: "12KM" }].map(rm => `<div style="flex:1;min-width:90px;background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid ${scoped.some(r => r.rmNum == rm.n) ? 'var(--green)' : 'var(--border)'};text-align:center"><div style="font-size:16px;font-weight:700;color:${scoped.some(r => r.rmNum == rm.n) ? 'var(--green)' : 'var(--muted)'}">RM ${rm.n}</div><div style="font-size:10px;color:var(--muted)">${rm.d}</div><div style="font-size:10px;color:var(--dim)">${scoped.filter(r => r.rmNum == rm.n).length} entries</div></div>`).join("")}
-    </div>
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>RM</th><th>Date</th><th>Finish Time</th><th>Avg HR</th><th>Max HR</th><th>Pass</th><th></th></tr></thead><tbody>
-    ${scoped.map(r => `<tr><td class="mono" style="font-weight:700">${r.d4}</td><td style="text-align:left">${escapeHTML(getName(r.d4))}</td><td>${r.rmNum}</td><td>${r.date}</td><td class="mono" style="font-weight:700">${r.time}</td><td>${r.avgHr === "" || r.avgHr == null ? "—" : r.avgHr}</td><td>${r.maxHr === "" || r.maxHr == null ? "—" : r.maxHr}</td><td>${badge(r.pass === "Y" ? "PASS" : "FAIL", r.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openRMForm(${r.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('rm', ${r.id}, 'route march entry')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : ""}`;
-}
+// Chore 7: renderRM lived here. The Route March TAB was retired from the UI, but
+// the DATA is deliberately untouched — STATE.rm still loads, syncs and pushes, the
+// RouteMarch sheet tab is unchanged, and Settings still exports it. Re-adding the
+// tab later is a pure-frontend change with no migration.
 
 function renderSOC(el) {
   const visible = visibleD4Set();

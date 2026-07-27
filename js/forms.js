@@ -119,7 +119,6 @@ function openPerson(d4) {
   const p = STATE.roster.find(r => r.id === d4); if (!p) return;
   const med = STATE.medical.filter(m => m.d4 === d4);
   const ippts = STATE.ippt.filter(i => i.d4 === d4).sort((a, b) => a.attempt - b.attempt);
-  const rms = STATE.rm.filter(r => r.d4 === d4).sort((a, b) => a.rmNum - b.rmNum);
   const socs = STATE.soc.filter(s => s.d4 === d4).sort((a, b) => a.socNum - b.socNum);
 
   // Polar sessions, chronological. Dates from the sheet arrive as "17 May 2026",
@@ -190,7 +189,6 @@ function openPerson(d4) {
   const medDays = new Set(med.map(m => m.date)).size;
   html += `<div class="stats-row"><div class="stat" ${rsClickable ? `onclick="toggleReportSickPatterns('${d4}')" style="cursor:pointer" title="Click to see patterns (unique days — multiple medical rows on the same day count as 1)"` : ""}><label>RSIs ${rsClickable ? '<span style="color:var(--dim);font-size:9px">▾ patterns</span>' : ''}</label><div class="val" style="color:${medDays > 1 ? 'var(--red)' : 'var(--muted)'}">${medDays}</div></div>`;
   html += `<div class="stat"><label>IPPT Best</label><div class="val" style="color:var(--orange)">${ippts.length ? Math.max(...ippts.map(i => +i.score)) : "—"}</div></div>`;
-  html += `<div class="stat"><label>RMs</label><div class="val" style="color:var(--teal)">${rms.length}</div></div>`;
   html += `<div class="stat"><label>SOCs</label><div class="val" style="color:var(--purple)">${socs.length}</div></div></div>`;
   html += `<div id="rs-patterns" style="display:none"></div>`;
 
@@ -237,11 +235,9 @@ function openPerson(d4) {
     // Fix 17: progression chips take the same full-pill shape as every other tag.
     html += ippts.map(i => `<span style="display:inline-flex;align-items:center;margin:2px;background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:2px 6px;font-size:11px">#${i.attempt}: ${isYTT(i) ? "—" : i.score} ${awardBadge(i.score)}${pcBtns("openIPPTForm", "ippt", i.id, "IPPT entry")}</span>`).join("");
   }
-  if (rms.length) {
-    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Route March</h4><div style="display:flex;gap:8px;flex-wrap:wrap">`;
-    html += rms.map(r => `<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">RM ${r.rmNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--teal)">${r.time}</div>${pcBtns("openRMForm", "rm", r.id, "route march entry")}</div>`).join("");
-    html += `</div>`;
-  }
+  // Chore 7: the Route March block sat here (and an "RMs" count in the stats
+  // strip above). Both went with the Route March tab — STATE.rm still holds the
+  // data and Settings still exports it, there is just no UI reading it.
   if (socs.length) {
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">SOC</h4><div style="display:flex;gap:8px;flex-wrap:wrap">`;
     html += socs.map(s => `<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">SOC ${s.socNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--purple)">${socDurationDisplay(s.time)}</div>${pcBtns("openSOCForm", "soc", s.id, "SOC entry")}</div>`).join("");
@@ -1113,51 +1109,10 @@ function submitIPPT() {
   if (STATE.apiUrl) autoSync("IPPT", { type: "upsert", row: entry });
 }
 
-function openRMForm(id) {
-  // f-time is the wall-clock time the march was completed (e.g. 13:45), not a duration.
-  const e = id ? STATE.rm.find(x => x.id === id) : null;
-  const dateVal = e ? displayDateToISO(e.date) || todayISO() : todayISO();
-  const numVal = v => v !== undefined && v !== null && v !== "" ? ` value="${v}"` : "";
-  openModal(e ? "Edit Route March Result" : "Add Route March Result", `
-    <form onsubmit="event.preventDefault(); submitRM(); return false">
-      <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${e ? editHint : ""}
-        <div class="form-group"><label>Recruit</label>${rosterSelect("f-d4", true, e?.d4 || "")}</div>
-        ${formSelect("f-rm", "RM #", ["1", "2", "3", "4", "5", "6"], true, e?.rmNum ? String(e.rmNum) : "")}
-        ${formField("f-date", "Date", "date", "", `required value="${dateVal}" min="2020-01-01" max="2099-12-31"`)}
-        ${formField("f-time", "Finish Time (hh:mm)", "time", "", `required value="${escapeAttr(e?.time)}"`)}
-        <div class="form-row">
-          ${formField("f-avghr", "Avg HR (optional)", "number", "", `min="30" max="220" step="1"${numVal(e?.avgHr)}`)}
-          ${formField("f-maxhr", "Max HR (optional)", "number", "", `min="30" max="220" step="1"${numVal(e?.maxHr)}`)}
-        </div>
-        ${formSelect("f-pass", "Pass", [["Y", "Pass"], ["N", "Fail"]], true, e?.pass || "")}
-        <button type="submit" class="btn btn-primary">${e ? "Save" : "Submit"}</button>
-      </div>
-    </form>`);
-}
-function submitRM() {
-  const editId = +gv("f-entry-id");
-  // HR is optional → keep "" rather than NaN when blank. Only enforce the
-  // max≥avg sanity check when both values are actually present.
-  const avgRaw = gv("f-avghr").trim(), maxRaw = gv("f-maxhr").trim();
-  const avgHr = avgRaw === "" ? "" : +avgRaw, maxHr = maxRaw === "" ? "" : +maxRaw;
-  if (avgHr !== "" && maxHr !== "" && maxHr < avgHr) { alert("Max HR cannot be lower than Avg HR."); return; }
-  const entry = {
-    id: editId || nextId(), d4: gv("f-d4"), rmNum: +gv("f-rm"),
-    date: isoToDisplayDate(gv("f-date")),
-    time: gv("f-time"),
-    avgHr, maxHr, pass: gv("f-pass")
-  };
-  if (editId) {
-    const idx = STATE.rm.findIndex(r => r.id === editId);
-    if (idx >= 0) STATE.rm[idx] = entry;
-  } else {
-    STATE.rm.push(entry);
-  }
-  saveLocal(); closeModal(); render();
-  if (STATE.apiUrl) autoSync("RouteMarch", { type: "upsert", row: entry });
-}
+// Chore 7: openRMForm / submitRM lived here, alongside importRM further down.
+// All three went with the Route March tab. Nothing writes STATE.rm any more, but
+// it is still loaded, normalized, synced and pushed — see js/state.js and
+// js/sync.js — so retiring the UI cost no data and needs no sheet migration.
 
 function openSOCForm(id) {
   const e = id ? STATE.soc.find(x => x.id === id) : null;
@@ -1260,20 +1215,6 @@ function importIPPT(input) {
     msg += ".";
     if (uncalculated.length) msg += `\n\n${uncalculated.length} row(s) had no score and couldn't be auto-calculated (age missing from roster or incomplete stations):\n${uncalculated.join(", ")}`;
     alert(msg);
-  } }); input.value = "";
-}
-function importRM(input) {
-  Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => {
-    const missing = checkCols(r.meta.fields, ["4D"]);
-    if (missing.length) { alert("CSV missing required column: 4D\n\nExpected: 4D, RM, Date, Time, Avg HR, Max HR, Pass"); return; }
-    r.data.forEach(row => STATE.rm.push({
-      id: nextId(), d4: col(row, "4D", "id"), rmNum: colNum(row, "RM", "RM #", "RM#", "rmNum", "Route March"),
-      date: col(row, "Date", "date"), time: col(row, "Time", "Completion Time", "time", "Duration"),
-      avgHr: colNum(row, "Avg HR", "AvgHR", "avg_hr", "Average HR", "Heart Rate"),
-      maxHr: colNum(row, "Max HR", "MaxHR", "max_hr", "Maximum HR"),
-      pass: col(row, "Pass", "pass", "Result", "Status") || "Y"
-    }));
-    saveLocal(); render(); alert(`Imported ${r.data.length} Route March rows`);
   } }); input.value = "";
 }
 // Normalize a free-text date string to the app's display format ("17 May 2026")
