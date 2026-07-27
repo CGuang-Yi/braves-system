@@ -904,6 +904,51 @@ function paradeSnapshotDup(archive, row) {
     String(r.message || "") === String(row.message || ""));
 }
 
+// Feature 26 — build the 14-day status trend series from a per-day snapshot of
+// the effective medical layer. Deliberate exclusions, all of them decisions:
+//   • "Active" is dropped — it runs ~100 against single digits and would flatten
+//     every other line into the axis.
+//   • Ghost recovery tags (MC+1/MC+2/LD+1/LD+2, identified by ghostDay > 0) are
+//     dropped entirely — NOT folded back into MC/LD. They are a recovery signal,
+//     not a status, and counting them would double-count a single episode.
+//   • Every "Excuse *" collapses into one "Excuse" line. There are twenty-odd of
+//     them and individually they are all noise.
+//   • Capped at the top N by PEAK count (not total), so a status that spiked once
+//     still earns its line; the tail folds into "Other". Statuses are
+//     user-extensible via "＋ New custom status…", so without a cap this chart
+//     grows unbounded.
+// Counts STATUSES, not people: someone on MC + Excuse RMJ contributes to both
+// lines, matching the slice tallies of the doughnut this replaces. Every series
+// is padded to the full window so an absent day reads 0 rather than leaving a
+// hole Chart.js would draw straight through.
+function statusTrendSeries(effectiveByDay, days, cap) {
+  const limit = cap == null ? 8 : cap;
+  const labels = (effectiveByDay || []).map(d => d.iso);
+  const counts = new Map();   // label -> array indexed by day
+  const bump = (label, i) => {
+    if (!counts.has(label)) counts.set(label, labels.map(() => 0));
+    counts.get(label)[i]++;
+  };
+  (effectiveByDay || []).forEach((d, i) => {
+    (d.entries || []).forEach(e => {
+      (e.statuses || []).forEach(s => {
+        if (!s || !s.tag) return;
+        if (s.ghostDay > 0) return;                 // recovery tag, not a status
+        if (s.tag === "Active") return;             // would flatten the chart
+        bump(String(s.tag).indexOf("Excuse") === 0 ? "Excuse" : s.tag, i);
+      });
+    });
+  });
+  const all = [...counts.entries()].map(([label, data]) => ({ label, data, peak: Math.max.apply(null, data) }));
+  all.sort((a, b) => b.peak - a.peak || String(a.label).localeCompare(String(b.label)));
+  const kept = all.slice(0, limit);
+  const tail = all.slice(limit);
+  if (tail.length) {
+    kept.push({ label: "Other", data: labels.map((_, i) => tail.reduce((n, s) => n + s.data[i], 0)) });
+  }
+  return { labels, series: kept.map(s => ({ label: s.label, data: s.data })) };
+}
+
 // Tallies aggregated entries by award tier. Returns ready-to-render counts
 // plus avg score (excluding YTT) and avg run seconds (excluding YTT).
 function computeIPPTStats(entries) {

@@ -586,12 +586,11 @@ function renderDashboard(el) {
       </div>`;
     })()}
     ${renderDashAppointments(visible, today)}
-    <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
-      <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
-    </div>
-    ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
-    ${renderDashProfileCards(scoped)}
+    <!-- Feature 25: the people who are OUT come before the analytics. A duty
+         commander opens this page to find out who is missing, not to read a
+         chart — so Non-Active, Recovering and Out-today sit directly under
+         Appointments, and the charts and reference cards move below them.
+         This is a pure re-order: no card's contents changed. -->
     <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel <span style="color:var(--dim);font-weight:400">(live medical status on ${today})</span></h3>
     ${liveRows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Status today</th><th style="text-align:left">Reason</th><th style="text-align:left">Duration</th></tr></thead><tbody>
     ${liveRows.map(r => {
@@ -624,28 +623,18 @@ function renderDashboard(el) {
       return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${escapeHTML(displayPersonLabel(r.id))}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${originalCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${clearedCell}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : ""}
-    ${renderDashMSKCases(visible)}
-    ${renderDashLeaveOut(visible, today)}`;
+    ${renderDashLeaveOut(visible, today)}
+    ${renderDashParade()}
+    <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
+      <div class="card"><h3>Status Trend (14 days)</h3><canvas id="chart-status" height="200"></canvas></div>
+      <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
+    </div>
+    ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
+    ${renderDashProfileCards(scoped)}
+    ${renderDashMSKCases(visible)}`;
 
-  // Status Breakdown chart: tally every active status (a recruit on MC +
-  // Excuse contributes once to each slice). The "Active" slice is per-recruit
-  // so it adds up to roster size only when nobody has stacked statuses.
-  const statusCounts = { Active: active };
-  effectiveAll.forEach(e => e.statuses.forEach(s => { statusCounts[s.tag] = (statusCounts[s.tag] || 0) + 1; }));
   const buildDashboardCharts = () => {
-  const chartColor = label => {
-    if (label === "Active") return "#3FB950";
-    if (label === "MC" || label === "Warded") return "#F85149";
-    if (label === "LD" || label === "MC+1") return "#D29922";
-    if (label === "LD+1" || label === "MC+2") return "#E3B341";
-    if (label === "RMJ" || (typeof label === "string" && label.startsWith("Excuse"))) return "#58A6FF";
-    return "#8B949E";
-  };
-  STATE.charts.status = new Chart(document.getElementById("chart-status"), {
-    type: "doughnut",
-    data: { labels: Object.keys(statusCounts), datasets: [{ data: Object.values(statusCounts), backgroundColor: Object.keys(statusCounts).map(chartColor) }] },
-    options: { plugins: { legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } } } }
-  });
+  buildStatusTrendChart(scopedIds);
 
   // Participation trend — a smooth line whose color ENCODES participation
   // health using the same thresholds as the attendance table: green ≥95%
@@ -1193,6 +1182,148 @@ function renderMSKAnalytics(el) {
       });
     }
   }, 50);
+}
+
+// ── Feature 26: status trend, replacing the single-day status doughnut ───────
+// The doughnut answered "what does today look like?", which the Non-Active table
+// directly above already answers better and by name. A trend answers the thing a
+// table cannot: is this getting worse?
+//
+// Registered on STATE.charts.status — the SAME key the doughnut used, so
+// render()'s destroy-before-dispatch sweep keeps working unchanged and the
+// instance can never leak across renders.
+//
+// See statusTrendSeries (helpers.js) for the exclusion rules; they are decisions,
+// not omissions.
+function buildStatusTrendChart(scopedIds) {
+  const canvas = document.getElementById("chart-status");
+  if (!canvas) return;
+  // 14 days ending today. This recomputes the effective medical layer once per
+  // day, so it is 14x the single-day work the old doughnut did — which is exactly
+  // why this chart lives inside #dash-charts and inherits the defer gate.
+  const DAYS = 14;
+  const end = todayISO();
+  const byDay = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const iso = addDaysISO(end, -i);
+    byDay.push({ iso, entries: currentMedicalEffectiveAll(iso).filter(e => scopedIds.has(e.d4)) });
+  }
+  const { labels, series } = statusTrendSeries(byDay, DAYS, 8);
+  const palette = ["#F85149", "#D29922", "#58A6FF", "#3FB950", "#BC8CFF", "#E3B341", "#43C59E", "#8B949E", "#484F58"];
+  STATE.charts.status = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: labels.map(iso => iso.slice(5).replace("-", "/")),   // MM/DD
+      datasets: series.map((s, i) => ({
+        label: s.label, data: s.data,
+        borderColor: palette[i % palette.length],
+        backgroundColor: palette[i % palette.length] + "22",
+        tension: 0.3, pointRadius: 2, pointHoverRadius: 5, fill: false
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } },
+        // Counts on hover — the doughnut showed them by slice, so the replacement
+        // must not lose them.
+        tooltip: { backgroundColor: "#161B22", borderColor: "#30363D", borderWidth: 1, padding: 10 }
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#30363D" }, ticks: { color: "#8B949E", precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// ── Feature 28: parade state on the Dashboard ────────────────────────────────
+// A second VIEW onto the Parade tab's machinery, not a second implementation —
+// same generator, same copy helper, same archive path (including its
+// double-archive guard). The point is that a duty commander gets the message
+// without leaving the board they already have open.
+//
+// Scope deliberately has NO dropdown here: it follows the topbar platoon filter,
+// so the card always shows the block matching whatever the app is already scoped
+// to. Its own controls are Date, FP/LP, Time and Lookahead only.
+//
+// Not role-gated. A viewer can read and copy; only the archive side effect is
+// commander+admin, and archiveParadeSnapshot enforces that itself.
+let _dashParadeDate = "", _dashParadeType = "", _dashParadeTime = "";
+let _dashParadeLookahead = 7;      // days; Infinity = "All". Session-scoped, like the tab's.
+function setDashParadeDate(v) { _dashParadeDate = v; render(); }
+function setDashParadeType(v) { _dashParadeType = v; render(); }
+function setDashParadeTime(v) { _dashParadeTime = v; render(); }
+function setDashParadeLookahead(v) { _dashParadeLookahead = (v === "all") ? Infinity : Number(v) || 0; render(); }
+
+// The topbar filter drives scope. STATE.filterPlt is the platoon filter (there is
+// no currentFilterPlatoon accessor); a section or role filter alone still means
+// the company block, because the §8 message has no narrower unit than a platoon.
+function dashParadeScope() {
+  const plt = String(STATE.filterPlt || "");
+  return plt ? { level: "platoon", platoon: plt } : { level: "company" };
+}
+function dashParadeMeta() {
+  const s = dashParadeScope();
+  return {
+    date: _dashParadeDate || todayISO(),
+    slot: _dashParadeTime,
+    type: _dashParadeType || (paradeShouldBeLP() ? "LP" : "FP"),
+    scope: s.level === "platoon" ? `platoon:${s.platoon}` : "company"
+  };
+}
+
+function renderDashParade() {
+  const dateIso = _dashParadeDate || todayISO();
+  const type = _dashParadeType || (paradeShouldBeLP() ? "LP" : "FP");
+  const scope = dashParadeScope();
+  const text = generateBravesParadeState(scope, type, dateIso, _dashParadeTime,
+    { lookaheadDays: _dashParadeLookahead });
+  const scopeNote = scope.level === "platoon"
+    ? `Scoped to <strong>${escapeHTML(filterLabel())}</strong> by the topbar filter.`
+    : `Whole company. Use the topbar filter to scope to a platoon.`;
+  const ctl = "padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px";
+  return `<div class="card" style="padding:14px;margin-bottom:14px">
+    <h3 style="font-size:13px;color:var(--muted);margin-bottom:4px">🎖️ Parade State</h3>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:10px">${scopeNote}</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+      <div class="form-group" style="margin:0"><label style="font-size:11px;color:var(--muted)">Date</label><br>
+        <input type="date" value="${escapeAttr(dateIso)}" onchange="setDashParadeDate(this.value)" style="${ctl}"></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px;color:var(--muted)">Parade</label><br>
+        <select onchange="setDashParadeType(this.value)" style="${ctl};padding:7px 10px">
+          <option value="FP"${type === "FP" ? " selected" : ""}>First Parade</option>
+          <option value="LP"${type === "LP" ? " selected" : ""}>Last Parade</option></select></div>
+      <div class="form-group" style="margin:0"><label style="font-size:11px;color:var(--muted)">Time</label><br>
+        <input type="text" value="${escapeAttr(_dashParadeTime)}" placeholder="e.g. 0730" maxlength="9"
+          oninput="setDashParadeTime(this.value)" style="${ctl};width:110px"></div>
+      <div class="form-group" style="margin:0">
+        <label style="font-size:11px;color:var(--muted)" title="How far ahead to list absences that have not started yet">Lookahead</label><br>
+        <div class="filter-role-group">
+          ${[["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
+            const on = (v === "all") ? _dashParadeLookahead === Infinity : Number(v) === _dashParadeLookahead;
+            return `<button type="button" class="role-btn${on ? " active" : ""}" onclick="setDashParadeLookahead('${v}')">${l}</button>`;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+    ${paradeUpcomingBanner(text)}
+    <textarea id="dash-parade-text" rows="18" spellcheck="false"
+      style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(text)}</textarea>
+    <button type="button" id="dash-parade-copy" class="btn btn-success" style="margin-top:10px"
+      onclick="copyDashParadeText()">📋 Copy to Clipboard</button>
+  </div>`;
+}
+
+// Mirrors copyParadeText: copy the on-screen text INCLUDING hand edits, then
+// archive that exact string. Archiving is fire-and-forget — a viewer whose
+// archive write is refused still gets their clipboard. The meta goes with it
+// because archiveParadeSnapshot would otherwise stamp the Parade TAB's state.
+async function copyDashParadeText() {
+  const ta = document.getElementById("dash-parade-text");
+  if (!ta) return;
+  await paradeCopyString(ta.value, "dash-parade-copy", "dash-parade-text");
+  archiveParadeSnapshot(ta.value, dashParadeMeta());
 }
 
 // Dashboard sub-widgets — kept separate from renderDashboard to keep the main
