@@ -112,13 +112,58 @@ module.exports = async function run() {
       "no PARADE_EDITABLE_CODES gate defined");
     ok(/PARADE_EDITABLE_CODES\.includes\(code\)/.test(paradeTab),
       "paradeClassifyPlatoon no longer marks codes editable via PARADE_EDITABLE_CODES");
-    ok(/x\.codes\.map\(cc =>[\s\S]{0,200}cc\.editable/.test(paradeTab),
+    // Window widened past 200 chars when Fix 18 added the upcoming dim/label
+    // lines between the map head and the cc.editable branch.
+    ok(/x\.codes\.map\(cc =>[\s\S]{0,600}cc\.editable/.test(paradeTab),
       "renderParadePlatoon no longer renders one control per concurrent status via cc.editable");
     // The editable branch offers exactly the current code + Present, not the full list.
     ok(/<option value="Present">Present<\/option>/.test(paradeTab),
       "the editable select no longer offers a Present option");
     ok(!/PARADE_CODES\.map\(c =>[\s\S]{0,120}onParadeCodeChange/.test(paradeTab),
       "the grid still renders the full PARADE_CODES <select> for every row");
+  });
+
+  suite("parade lookahead wiring: the control reaches every parade-side surface (Fix 18)");
+
+  await test("setParadeLookahead is declared — the toolbar buttons call it from an onclick", () => {
+    ok(/function setParadeLookahead\(/.test(paradeTab), "setParadeLookahead is not defined");
+    ok(/onclick="setParadeLookahead\('\$\{v\}'\)"/.test(paradeTab),
+      "the Lookahead button group no longer wires setParadeLookahead");
+    ok(/function paradeLookaheadOpts\(/.test(paradeTab), "paradeLookaheadOpts is not defined");
+  });
+
+  await test("every parade-side classifier call threads the horizon", () => {
+    // Four surfaces have to agree, or the grid, the bento tiles and the copied
+    // message disagree about who is away: the company message, the per-platoon
+    // copy button, the platoon message, and the grid/bento classification.
+    // Matched per SOURCE LINE rather than by balancing parens: every one of
+    // these calls is written on a single line, and a "up to the next )" regex
+    // stops at the first nested close and reports a false miss.
+    const callLines = fn => paradeTab.split("\n").filter(l => l.includes(fn + "("));
+    const generateCalls = callLines("generateBravesParadeState").filter(l => !l.trim().startsWith("//"));
+    ok(generateCalls.length >= 3, "expected the company, per-block and platoon message calls");
+    generateCalls.forEach(c => ok(/paradeLookaheadOpts\(\)/.test(c),
+      "a generateBravesParadeState call does not pass the lookahead: " + c.trim()));
+    const classifyCalls = callLines("bpClassifyPerson").filter(l => !l.trim().startsWith("//"));
+    ok(classifyCalls.length >= 2, "expected the grid and bento classification calls");
+    classifyCalls.forEach(c => ok(/paradeLookaheadOpts\(\)/.test(c),
+      "a bpClassifyPerson call does not pass the lookahead: " + c.trim()));
+  });
+
+  await test("an upcoming code is never editable — Mark Present would be a silent no-op", () => {
+    ok(/PARADE_EDITABLE_CODES\.includes\(code\) && !upcoming/.test(paradeTab),
+      "paradeClassifyPlatoon still offers Mark Present on a not-yet-started record");
+  });
+
+  await test("the divergence banner exists and stays out of the message text", () => {
+    ok(/function paradeUpcomingBanner\(/.test(paradeTab), "paradeUpcomingBanner is not defined");
+    ok(/CURRENT STRENGTH/.test(paradeTab), "the banner no longer names the figure it is explaining");
+    // It must wrap the host HTML, never the textarea contents — an archived
+    // snapshot is the copied text, and banner markup must never reach it.
+    ok(/host\.innerHTML = paradeUpcomingBanner\(text\)/.test(paradeTab), "company view renders no banner");
+    ok(/host\.innerHTML = paradeUpcomingBanner\(msg\) \+ bento/.test(paradeTab), "platoon view renders no banner");
+    ok(!/parade-text[^>]*>\$\{paradeUpcomingBanner/.test(paradeTab),
+      "the banner leaks into the copyable/archivable message text");
   });
 
   suite("render wiring: roster status badge derives from the medical layer (item 4b)");
