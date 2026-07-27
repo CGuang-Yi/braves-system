@@ -343,7 +343,12 @@ function bpClassifyPerson(r, dateIso, idx, opts) {
     // drops off this list (the resolved status surfaces it under ATT C /
     // STATUS / OTHERS instead) — otherwise a resolved MR double-lists.
     if (m.type === "MR" && reportedToday && moPending) {
-      const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
+      // Timing reads the shared HHMM `time` field. It used to read the free-text
+      // mrTiming column, which allowed "PM"; Feature 30.1 needs one time source
+      // across all four visit types, so MR moved onto `time` and the old column
+      // was migrated (bravesMigrateMrTiming in apps-script-Code.gs) — lossily and
+      // by decision, since "PM" cannot be represented as HHMM.
+      const timing = m.time ? ` (${m.time})` : "";
       push2("mr", `${m.reason || ""}${timing}`, "MR");
     }
     // An MR (Medical Review) visit is NOT a report-sick and must never surface

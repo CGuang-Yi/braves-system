@@ -664,13 +664,21 @@ function medTagBadge(tag) {
 }
 
 // Small grey pill for a medical record's VISIT type (RSI/RSO/MR/…), shown before
-// the reason. Appends the MR timing ("MR AM") when present. "" when no type.
-// Shared by the Medical list rows (render.js) and the person-card medical
-// history (forms.js) — keep the two call sites reading from this one badge.
+// the reason, with the visit time appended when there is one ("MR 1400"). ""
+// when no type. Shared by the Medical list rows (render.js) and the person-card
+// medical history (forms.js) — keep the two call sites reading from this one badge.
+//
+// This IS visitSuffix's output, so the pill and the status suffix can never
+// disagree about what a visit was or when. It used to special-case MR onto the
+// free-text mrTiming column; that column is retired (see the visitSuffix comment
+// above), but a legacy row whose value the migration could not parse is still
+// shown rather than silently dropped — its "PM" is the only record of the time.
 function medTypeBadge(m) {
   if (!m || !m.type) return "";
-  const timing = m.type === "MR" && m.mrTiming ? " " + escapeAttr(m.mrTiming) : "";
-  return `<span style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${m.type}${timing}</span>`;
+  const legacy = (m.type === "MR" && !String(m.time || "").trim() && m.mrTiming)
+    ? " " + String(m.mrTiming).trim() : "";
+  const label = escapeHTML(visitSuffix(m) || m.type) + escapeHTML(legacy);
+  return `<span style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:9px;font-weight:700;letter-spacing:.5px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-right:5px">${label}</span>`;
 }
 
 // Format a record's date range as "16 May – 20 May (5D)" for display.

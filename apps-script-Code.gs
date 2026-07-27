@@ -3326,7 +3326,10 @@ function bpClassifyPerson(r, dateIso, opts) {
     // drops off this list (the resolved status surfaces it under ATT C /
     // STATUS / OTHERS instead) — otherwise a resolved MR double-lists.
     if (m.type === "MR" && reportedToday && moPending) {
-      const timing = m.mrTiming ? ` (${m.mrTiming})` : "";
+      // Reads the shared HHMM `time` field, not the retired free-text mrTiming
+      // column — mirror of js/braves-parade.js. Run bravesMigrateMrTiming() once
+      // before deploying this, or MR rows render with no timing at all.
+      const timing = m.time ? ` (${m.time})` : "";
       out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
     }
     // An MR (Medical Review) visit is NOT a report-sick and must never surface

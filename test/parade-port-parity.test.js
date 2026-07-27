@@ -167,8 +167,21 @@ module.exports = async function run() {
 
   await parity("MR — awaiting review", "MR", fixture({
     medical: [{ id: 1, d4: "1411", type: "MR", date: "29 Jun 2026", status: "",
-                reason: "knee review", mrTiming: "0900" }]
+                reason: "knee review", time: "0900" }]
   }));
+
+  // The retired column must not quietly keep working in either copy: a row
+  // carrying ONLY mrTiming has to render with no timing at all. If this ever
+  // goes green with "(0900)" in the text, one of the copies still reads it.
+  await test("MR — the retired mrTiming column no longer produces a timing", () => {
+    const { gas, fe } = paradeOf(fixture({
+      medical: [{ id: 1, d4: "1411", type: "MR", date: "29 Jun 2026", status: "",
+                  reason: "knee review", mrTiming: "0900" }]
+    }), "first");
+    assertIdentical("generateBravesParadeState(legacy mrTiming)", gas, fe);
+    ok(sectionCount(gas, "MR") === 1, "the MR itself must still be listed");
+    ok(!/\(0900\)/.test(gas), "mrTiming still drives the MR timing:\n" + gas);
+  });
 
   await parity("REPORTING SICK — RSI still pending", "REPORTING SICK", fixture({
     medical: [{ id: 1, d4: "1411", type: "RSI", date: "29 Jun 2026", status: "Pending",
@@ -226,7 +239,7 @@ module.exports = async function run() {
       { id: 1, d4: "1411", type: "RSI", date: "29 Jun 2026", status: "Pending", startDate: "29 Jun 2026", reason: "fever" },
       { id: 2, d4: "1422", type: "RSI", date: "28 Jun 2026", status: "MC", startDate: "28 Jun 2026", endDate: "01 Jul 2026", reason: "URTI" },
       { id: 3, d4: "2411", type: "RSI", date: "25 Jun 2026", status: "LD", startDate: "25 Jun 2026", endDate: "05 Jul 2026", reason: "ankle sprain" },
-      { id: 4, d4: "1433", type: "MR", date: "29 Jun 2026", status: "", reason: "knee review", mrTiming: "0900" },
+      { id: 4, d4: "1433", type: "MR", date: "29 Jun 2026", status: "", reason: "knee review", time: "0900" },
       { id: 5, d4: "0001", type: "RSI", date: "27 Jun 2026", status: "Warded", startDate: "27 Jun 2026", endDate: "02 Jul 2026", reason: "dengue" }
     ],
     leave: [
