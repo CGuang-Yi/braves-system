@@ -425,11 +425,26 @@ function deleteEntry(arrayName, id, label) {
 //   • LD / Excuse X (incl. Excuse RMJ) — in camp, restricted
 //   • Pending — reported sick, MO outcome not yet known
 //   • NIL — MO seen, no status issued (recruit back to active)
+// Feature 27: "Awaiting MO" leads, so Pending is the first selectable status.
+// It is what a commander picks most often — the recruit has reported sick and
+// the MO has not ruled yet — and it used to sit fourth, below every outcome the
+// commander is not yet in a position to know.
+//
+// This is the DROPDOWN order and nothing else. medSeverityRank (below) is
+// deliberately NOT changed: it decides statuses[0], which splits the Dashboard's
+// Non-Active from Recovering and orders every badge stack, so promoting Pending
+// there would silently reclassify people across several views. js/forms.js's
+// `statusOrder` (the report-sick analytics bars) is likewise out of scope.
+//
+// The group moved whole rather than hoisting Pending into "Severe (away from
+// camp)", which would have put it under a heading that contradicts it. Order
+// here is display-only: MED_STATUSES is derived from this array but is used
+// solely as a membership Set.
 const MED_STATUS_GROUPS = [
+  { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
   { label: "In camp, restricted",     options: ["LD", "RIB (Rest in Bunk)"] },
   { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Camo", "Excuse Loud Noise"] },
-  { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Cleared by MO",           options: ["NIL"] }
 ];
 const MED_STATUSES = MED_STATUS_GROUPS.flatMap(g => g.options);
