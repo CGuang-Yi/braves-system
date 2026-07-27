@@ -251,13 +251,18 @@ function renderParadeCompany(host) {
 // Copy an arbitrary string, with a transient "✓ Copied!" on the given button and
 // the same select-and-alert fallback as the old report modal (drops the text into
 // the textarea so the user can Cmd+C when the clipboard API is blocked).
-async function paradeCopyString(text, btnId) {
+//
+// `taId` names the textarea used for that fallback. It defaults to the Parade
+// tab's own, but the Dashboard card (Feature 28) renders a DIFFERENT textarea on
+// a page where "parade-text" does not exist — without this the clipboard-blocked
+// path would alert "text is selected" having selected nothing at all.
+async function paradeCopyString(text, btnId, taId) {
   const btn = btnId ? document.getElementById(btnId) : null;
   try {
     await navigator.clipboard.writeText(text);
     if (btn) { const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => { btn.textContent = o; }, 1800); }
   } catch {
-    const ta = document.getElementById("parade-text");
+    const ta = document.getElementById(taId || "parade-text");
     if (ta) { ta.value = text; ta.focus(); ta.select(); }
     alert("Copy blocked — text is selected, press Cmd+C / Ctrl+C to copy.");
   }
@@ -278,13 +283,24 @@ async function copyParadeText() {
 // interfere with the copy. The snapshot records its real scope (company or a
 // platoon). Optimistically prepends the row to STATE.paradeArchive so the compare
 // picker sees it immediately; deduped so re-copying identical text doesn't pile up.
-function archiveParadeSnapshot(text) {
+//
+// `meta` supplies {date, slot, type, scope} for callers outside this tab. It
+// defaults to the Parade tab's own toolbar state, which is what every original
+// caller wants — but the Dashboard card (Feature 28) has its OWN date/type/time
+// and takes its scope from the topbar filter, and without passing them the
+// snapshot would be stamped with whatever the Parade tab happened to be showing.
+// That mislabels the archive row (wrong date/slot) and, worse, defeats the
+// paradeSnapshotDup guard, which keys on date+slot+type+message.
+function archiveParadeSnapshot(text, meta) {
   if (!text || typeof canWrite !== "function" || !canWrite()) return;
   if (!STATE.apiUrl || !STATE.authToken) return;
+  const m = meta || {
+    date: paradeCurrentDateISO(), slot: _paradeTime, type: _paradeType, scope: _paradeScope
+  };
   const row = {
     timestamp: new Date().toISOString(),
-    date: paradeCurrentDateISO(), slot: String(_paradeTime || ""),
-    type: _paradeType || "", scope: _paradeScope || "company", message: String(text)
+    date: m.date || todayISO(), slot: String(m.slot || ""),
+    type: m.type || "", scope: m.scope || "company", message: String(text)
   };
   if (paradeSnapshotDup(STATE.paradeArchive, row)) return;
   STATE.paradeArchive = [row, ...(STATE.paradeArchive || [])];

@@ -358,4 +358,79 @@ module.exports = async function run() {
     ok(/\$\{str\.current\}/.test(render),
       "the Active counter is not derived from the canonical bpStrength(...).current");
   });
+
+  suite("render wiring: Dashboard order puts who-is-out above the analytics (Feature 25)");
+
+  await test("Non-Active, Recovering and Out-today all precede the charts grid", () => {
+    const body = render.slice(render.indexOf("function renderDashboard"), render.indexOf("// Status Breakdown chart"));
+    const at = s => { const i = body.indexOf(s); ok(i >= 0, "block not found in renderDashboard: " + s); return i; };
+    const nonActive = at(">Non-Active Personnel");
+    const recovering = at("recoveringRows.length ?");
+    const leaveOut = at("renderDashLeaveOut(visible, today)");
+    const charts = at(`id="dash-charts"`);
+    // A duty commander opens this page to find who is missing, not to read a
+    // chart. If any of these slides back below the charts the page has silently
+    // regressed to the old analytics-first order.
+    ok(nonActive < charts, "Non-Active fell back below the charts");
+    ok(recovering < charts, "Recovering fell back below the charts");
+    ok(leaveOut < charts, "Out today / This week fell back below the charts");
+    ok(nonActive < recovering && recovering < leaveOut, "the three out-tables are out of order");
+  });
+
+  await test("the chart gate still immediately follows the grid it reveals", () => {
+    // chartGateMarkup renders the "load charts" button; it only makes sense
+    // adjacent to the hidden #dash-charts div it un-hides. The reorder moved
+    // both — this fails if only one of them travelled.
+    ok(/id="dash-charts"[\s\S]{0,400}?chartGateMarkup\("loadDashboardCharts\(\)", "dash-chart-gate"\)/.test(render),
+      "the dashboard chart gate is no longer adjacent to #dash-charts");
+  });
+
+  suite("render wiring: Dashboard parade card reuses the Parade tab (Feature 28)");
+
+  await test("it calls the shared generator/copy/archive, not a private reimplementation", () => {
+    ok(/function renderDashParade\(/.test(render), "renderDashParade is not defined");
+    ok(/\$\{renderDashParade\(\)\}/.test(render), "renderDashParade is never rendered into the Dashboard");
+    ok(/generateBravesParadeState\(scope, type, dateIso/.test(render),
+      "the Dashboard card no longer builds its text with the canonical generator");
+    ok(/paradeCopyString\(ta\.value, "dash-parade-copy", "dash-parade-text"\)/.test(render),
+      "the Dashboard card no longer copies via the shared paradeCopyString");
+    ok(/archiveParadeSnapshot\(ta\.value, dashParadeMeta\(\)\)/.test(render),
+      "the Dashboard card no longer archives through the shared snapshot path");
+  });
+
+  await test("the archive helper takes explicit meta so the card is not stamped with the tab's state", () => {
+    // archiveParadeSnapshot used to read _paradeDate/_paradeTime/_paradeType/
+    // _paradeScope straight off parade-tab module state. A second caller with its
+    // own date and time would have archived rows labelled with whatever the
+    // Parade TAB was showing — wrong date/slot, and it defeats paradeSnapshotDup,
+    // which keys on date+slot+type+message.
+    ok(/function archiveParadeSnapshot\(text, meta\)/.test(paradeTab),
+      "archiveParadeSnapshot no longer accepts caller-supplied meta");
+    ok(/const m = meta \|\| \{/.test(paradeTab),
+      "archiveParadeSnapshot no longer defaults meta to the Parade tab's own state");
+    ok(/function paradeCopyString\(text, btnId, taId\)/.test(paradeTab),
+      "paradeCopyString no longer accepts a fallback textarea id");
+    ok(/getElementById\(taId \|\| "parade-text"\)/.test(paradeTab),
+      "the clipboard-blocked fallback is hardcoded to the Parade tab's textarea again");
+  });
+
+  await test("scope follows the topbar filter and has no dropdown of its own", () => {
+    const card = render.slice(render.indexOf("function renderDashParade"), render.indexOf("async function copyDashParadeText"));
+    ok(card.length > 0, "renderDashParade block not found — this guard needs re-pointing");
+    ok(/function dashParadeScope\(\)[\s\S]*?STATE\.filterPlt/.test(render),
+      "dashParadeScope no longer derives scope from the topbar platoon filter");
+    // The settled decision: its own controls are Date, FP/LP, Time and Lookahead
+    // — NOT Scope. A Scope select here would silently diverge from the filter the
+    // rest of the Dashboard is already obeying.
+    ok(!/setDashParadeScope/.test(render), "the Dashboard parade card grew its own Scope control");
+    ok(/setDashParadeDate|setDashParadeType|setDashParadeTime|setDashParadeLookahead/.test(card),
+      "the Dashboard parade card lost its own controls");
+  });
+
+  await test("it is not role-gated — only the archive side effect is", () => {
+    const card = render.slice(render.indexOf("function renderDashParade"), render.indexOf("async function copyDashParadeText"));
+    ok(!/canWrite\(\)/.test(card), "the parade card was role-gated; a viewer must still be able to read and copy it");
+    ok(/if \(!text \|\| typeof canWrite !== "function" \|\| !canWrite\(\)\) return;/.test(paradeTab),
+      "archiveParadeSnapshot no longer enforces the write gate itself");
+  });
 };
