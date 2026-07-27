@@ -329,6 +329,25 @@ function paradeClassifyPlatoon(people, dateIso) {
     });
     // Section-less ⇒ a single, non-editable Present cell (old fallback).
     if (!codes.length) codes.push({ code: "Present", editable: false, reason: "" });
+    // Feature 30.1: attach the visit-type-and-time suffix to the FIRST pill only.
+    // It cannot go on the RS pill as one might expect — once the MO issues a
+    // status the person DROPS OFF reporting-sick entirely and holds only a
+    // STATUS/MC pill, which is exactly the "LD + RSI 0830" case. Where the code
+    // already names the visit type (RS, MR) only the time is appended, since
+    // "RS + RSI" reads redundantly; elsewhere the full "+ TYPE time" carries it.
+    // Never applied to an UPCOMING pill — that pill describes a window which has
+    // not started, and today's visit time pinned to it would read as "the MC
+    // starting Thursday began at 0830". So it lands on the first pill that is
+    // actually current: an upcoming MC can outrank the LD the person is really
+    // on today, and dropping the suffix in that case would lose the visit
+    // entirely rather than move it one row down.
+    const visit = visitForDay(r.id, dateIso);
+    const target = codes.find(cc => !cc.upcoming);
+    if (visit && target) {
+      const bare = target.code === "RS" || target.code === "MR";
+      const time = String(visit.time || "").trim();
+      target.suffix = bare ? (time ? ` ${time}` : "") : ` + ${visitSuffix(visit)}`;
+    }
     const remark = codes.map(cc => cc.reason).filter(Boolean).join(" · ");
     return { r, codes, remark, notInCamp: c.notInCamp };
   });
@@ -404,11 +423,11 @@ function renderParadePlatoon(host, code) {
         // as "coming, not current" at a glance. The Remarks cell carries the
         // dates and the [UPCOMING] marker, so no extra text is needed here.
         const dim = cc.upcoming ? "opacity:.55;" : "";
-        const label = (cc.upcoming ? "→ " : "") + cc.code;
+        const label = (cc.upcoming ? "→ " : "") + cc.code + (cc.suffix || "");
         const tip = cc.upcoming ? ' title="Not started yet — listed and counted, but still present today"' : "";
         return cc.editable
           ? `<span class="ps-select-wrap"><select class="ps-select" onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-              style="background:${hex}22;border-color:${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select></span>`
+              style="background:${hex}22;border-color:${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(label)}</option><option value="Present">Present</option></select></span>`
           : hex
             ? `<span class="ps-badge"${tip} style="${dim}background:${hex}22;border-color:${hex}55;color:${hex}">${escapeHTML(label)}</span>`
             : `<span${tip} style="display:inline-block;${dim}padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(label)}</span>`;

@@ -29,6 +29,18 @@ function medStatusActive(record, todayIso) {
   return todayIso >= start && todayIso <= end;
 }
 
+// Feature 30.1's two helpers, copied verbatim from js/helpers.js. They live in
+// helpers.js, which cannot be loaded here — its real displayDateToISO parses only
+// "DD MMM YYYY" and would return "" for this suite's ISO fixtures, making every
+// record inert and every assertion vacuous. Copied rather than faked to nothing,
+// because paradeClassifyPlatoon's suffix placement is asserted below.
+const VISIT_SUFFIX_TYPES = ["RSI", "RSO", "MR", "MA"];
+function visitSuffix(rec) {
+  if (!rec || !rec.type || VISIT_SUFFIX_TYPES.indexOf(rec.type) < 0) return "";
+  const t = String(rec.time || "").trim();
+  return t ? `${rec.type} ${t}` : rec.type;
+}
+
 const PERSON = { id: "1201", d4: "1201", fourD: "1201", name: "Test Rec", rank: "REC", role: "Recruit" };
 
 function codesFor(medical, leave) {
@@ -36,7 +48,10 @@ function codesFor(medical, leave) {
   const target = {
     console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map, RegExp,
     isNaN, parseInt, parseFloat,
-    STATE, configGet: k => (k === "companyPrefix" ? "B" : ""), displayDateToISO, medStatusActive
+    STATE, configGet: k => (k === "companyPrefix" ? "B" : ""), displayDateToISO, medStatusActive,
+    visitSuffix,
+    visitForDay: (d4, dateIso) => STATE.medical.find(m =>
+      m.d4 === d4 && displayDateToISO(m.date) === dateIso && visitSuffix(m)) || null
   };
   const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
   vm.createContext(ctx);
@@ -84,5 +99,111 @@ module.exports = async function run() {
   await test("a person with no active records is a single non-editable Present", () => {
     const codes = codesFor([], []);
     eq(codes, [{ code: "Present", editable: false, reason: "" }]);
+  });
+
+  suite("parade grid: visit-type suffix lands on the pill the person actually has (Feature 30.1)");
+
+  await test("an RSI resolved to LD hangs its time on the STATUS pill, not an RS pill", () => {
+    // The headline case. The classifier gates REPORTING SICK on the MO outcome
+    // still being pending, so issuing LD drops the person off REPORTING SICK
+    // entirely — there is no RS pill left to carry "RSI 0830".
+    const codes = codesFor([{ id: 1, d4: "1201", type: "RSI", time: "0830", status: "LD",
+      date: TODAY, startDate: TODAY, endDate: "2026-07-03" }], []);
+    ok(!codeOf(codes, "RS"), "an assigned status must drop the person off RS: " + JSON.stringify(codes));
+    eq(codes[0].code, "STATUS");
+    eq(codes[0].suffix, " + RSI 0830");
+  });
+
+  await test("a still-pending RSI appends only the time — 'RS + RSI' reads redundantly", () => {
+    const codes = codesFor([{ id: 1, d4: "1201", type: "RSI", time: "0830", status: "Pending",
+      date: TODAY, startDate: TODAY }], []);
+    eq(codes[0].code, "RS");
+    eq(codes[0].suffix, " 0830");
+  });
+
+  await test("with an upcoming pill ranked first, the suffix falls to the first CURRENT pill", () => {
+    // Caught in the browser, not by the plan: an upcoming MC outranks the LD the
+    // person is actually on today, so an "only codes[0]" rule silently dropped
+    // the visit instead of moving it one row down.
+    const STATE = { roster: [PERSON], appointments: [], leave: [],
+      medical: [{ id: 1, d4: "1201", type: "RSI", time: "0830", status: "LD",
+                  date: TODAY, startDate: TODAY, endDate: "2026-07-03" },
+                { id: 2, d4: "1201", type: "RSI", status: "MC", date: "2026-07-02",
+                  startDate: "2026-07-02", endDate: "2026-07-05" }] };
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map, RegExp,
+      isNaN, parseInt, parseFloat,
+      STATE, configGet: k => (k === "companyPrefix" ? "B" : ""), displayDateToISO, medStatusActive,
+      visitSuffix,
+      visitForDay: (d4, dateIso) => STATE.medical.find(m =>
+        m.d4 === d4 && displayDateToISO(m.date) === dateIso && visitSuffix(m)) || null
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8"), ctx, { filename: "braves-parade.js" });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8"), ctx, { filename: "parade-tab.js" });
+    vm.runInContext("_paradeLookahead = 7;", ctx);
+    vm.runInContext(`_r = paradeClassifyPlatoon(STATE.roster, ${JSON.stringify(TODAY)});`, ctx);
+    const codes = JSON.parse(vm.runInContext("JSON.stringify(_r[0].codes)", ctx));
+    eq(codes[0].code, "MC");
+    eq(codes[0].upcoming, true);
+    eq(codes[0].suffix, undefined, "the upcoming pill must not carry it");
+    eq(codes[1].code, "STATUS");
+    eq(codes[1].suffix, " + RSI 0830", "the visit belongs on the status they are actually on today");
+  });
+
+  await test("the suffix goes on the FIRST pill only, never on the others", () => {
+    const codes = codesFor(
+      [{ id: 1, d4: "1201", type: "RSI", time: "0830", status: "MC", date: TODAY, startDate: TODAY, endDate: "2026-07-01" }],
+      [{ id: 10, d4: "1201", type: "Course", startDate: TODAY, endDate: "2026-06-30", isInCamp: false }]
+    );
+    eq(codes[0].code, "MC");
+    eq(codes[0].suffix, " + RSI 0830");
+    codes.slice(1).forEach(c => eq(c.suffix, undefined, "only the first pill carries the visit: " + c.code));
+  });
+
+  await test("a blank time yields the bare type with no dangling separator", () => {
+    const codes = codesFor([{ id: 1, d4: "1201", type: "RSI", time: "", status: "LD",
+      date: TODAY, startDate: TODAY, endDate: "2026-07-03" }], []);
+    eq(codes[0].suffix, " + RSI");
+  });
+
+  await test("yesterday's visit does not stamp today's pill", () => {
+    const codes = codesFor([{ id: 1, d4: "1201", type: "RSI", time: "0830", status: "LD",
+      date: "2026-06-28", startDate: "2026-06-28", endDate: "2026-07-03" }], []);
+    eq(codes[0].code, "STATUS");
+    eq(codes[0].suffix, undefined, "the RSI was yesterday — its time is not today's news");
+  });
+
+  await test("an upcoming pill never carries today's visit suffix", () => {
+    // The pill describes a window that has not started; the visit is today's.
+    // Pinning them together would read as "the LD starting Thursday began at 0830".
+    const STATE = { roster: [PERSON], appointments: [], leave: [],
+      medical: [{ id: 1, d4: "1201", type: "MA", time: "1400", status: "", date: TODAY, outOfCamp: false },
+                { id: 2, d4: "1201", type: "RSI", status: "MC", date: "2026-07-02",
+                  startDate: "2026-07-02", endDate: "2026-07-05" }] };
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map, RegExp,
+      isNaN, parseInt, parseFloat,
+      STATE, configGet: k => (k === "companyPrefix" ? "B" : ""), displayDateToISO, medStatusActive,
+      visitSuffix,
+      visitForDay: (d4, dateIso) => STATE.medical.find(m =>
+        m.d4 === d4 && displayDateToISO(m.date) === dateIso && visitSuffix(m)) || null
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8"), ctx, { filename: "braves-parade.js" });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8"), ctx, { filename: "parade-tab.js" });
+    // Assigned directly rather than through setParadeLookahead: the setter calls
+    // refreshParade(), which needs a document this headless context has no use for.
+    vm.runInContext("_paradeLookahead = 7;", ctx);
+    vm.runInContext(`_r = paradeClassifyPlatoon(STATE.roster, ${JSON.stringify(TODAY)});`, ctx);
+    const codes = JSON.parse(vm.runInContext("JSON.stringify(_r[0].codes)", ctx));
+    const upcoming = codes.find(c => c.upcoming);
+    ok(upcoming, "the fixture must produce an upcoming pill: " + JSON.stringify(codes));
+    // MC (upcoming) outranks OTHERS in PARADE_CODE_ORDER, so it is codes[0] —
+    // which is exactly the case the !codes[0].upcoming guard exists for.
+    eq(codes[0].upcoming, true);
+    eq(codes[0].suffix, undefined, "today's MA time must not be pinned to next week's MC");
   });
 };

@@ -4628,12 +4628,33 @@ function renderLogConductWizard() {
     ? `<div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:4px">Editing existing conduct. Saving replaces all child rows for this (date, time, conduct) tuple.</div>`
     : "";
 
+  // Feature 30.1: the visit TIME beside each person's status.
+  //
+  // Only the time, not the full "TYPE time" the other two surfaces show —
+  // rebuildLogConductStatus already appends the day's visit types to statusTag
+  // (see visitByD4 there, "MC + RSO"), so emitting visitSuffix() wholesale
+  // printed the type twice: "Pending + RSI + RSI 0830". Appending just the time
+  // gives the spec's "Pending + RSI 0830". Where the tag does NOT end in this
+  // visit's type — a multi-visit day, RSI in the morning and an MA after lunch —
+  // the type is named, so the time can't attach itself to the wrong visit.
+  //
+  // Shown once per person (the suffix describes the VISIT, not each status it
+  // produced) and only for a visit on the wizard's OWN date: the wizard
+  // routinely back-dates, and today's RSI time against last Tuesday's status
+  // would be a lie. A blank time adds nothing at all — the type is already there.
+  const wizVisitSuffix = (d4, statusTag) => {
+    const v = visitForDay(d4, dateVal);
+    const time = v ? String(v.time || "").trim() : "";
+    if (!time) return "";
+    return String(statusTag || "").endsWith(v.type) ? ` ${time}` : ` + ${visitSuffix(v)}`;
+  };
+
   const statusRows = w.status.length ? w.status.map(s => `
     <div class="lc-wiz-status-row" style="display:grid;grid-template-columns:18px 48px minmax(0,1.4fr) minmax(80px,auto) minmax(0,1fr);gap:8px;align-items:center;padding:6px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
       <input type="checkbox" ${s.notParticipating ? "checked" : ""} onchange="wizToggleStatusNP('${s.d4}', this.checked)" style="width:16px;height:16px;cursor:pointer" title="Tick = not participating">
       <span class="mono" style="font-weight:700;color:var(--accent);font-size:12px">${displayId(s.d4)}</span>
       <span style="font-size:12px;min-width:0;line-height:1.3" title="${escapeAttr(getName(s.d4))}">${escapeAttr(getName(s.d4))}</span>
-      <span style="font-size:10px;color:var(--orange);font-weight:600;line-height:1.4;background:#D2992222;border:1px solid #D2992244;border-radius:10px;padding:3px 9px;white-space:normal;justify-self:start" title="${escapeAttr(s.statusTag)}">${escapeAttr(s.statusTag)}</span>
+      <span style="font-size:10px;color:var(--orange);font-weight:600;line-height:1.4;background:#D2992222;border:1px solid #D2992244;border-radius:10px;padding:3px 9px;white-space:normal;justify-self:start" title="${escapeAttr(s.statusTag)}">${escapeAttr(s.statusTag)}<span style="color:var(--muted);font-weight:400">${escapeAttr(wizVisitSuffix(s.d4, s.statusTag))}</span></span>
       <input type="text" value="${escapeAttr(s.reason)}" placeholder="reason (optional)" oninput="wizUpdateStatusReason('${s.d4}', this.value)" style="min-width:0;width:100%;padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:11px;box-sizing:border-box">
     </div>
   `).join("") : `<div style="color:var(--muted);font-size:11px;padding:8px 10px;background:var(--surface);border:1px dashed var(--border);border-radius:6px;text-align:center">No recruits on medical status for this date.</div>`;

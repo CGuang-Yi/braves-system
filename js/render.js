@@ -592,7 +592,15 @@ function renderDashboard(el) {
       const multi = entry.statuses.length > 1;
       // Stack badges, reasons, and durations vertically so each cell aligns
       // row-by-row across the three columns when a recruit has 2+ statuses.
-      const tagsCell = entry.statuses.map(s => `<div style="padding:2px 0">${medTagBadge(s.tag)}</div>`).join("");
+      // Feature 30.1: one visit can yield several statuses (LD + Excuse RMJ).
+      // The suffix belongs to the VISIT, not to each status, so it is shown once
+      // — on the first badge. Same-day only: yesterday's RSI time against
+      // today's badge would be a lie.
+      const visit = visitForDay(r.id, today);
+      const visitSuf = visit ? visitSuffix(visit) : "";
+      const tagsCell = entry.statuses.map((s, i) =>
+        `<div style="padding:2px 0">${medTagBadge(s.tag)}${(i === 0 && visitSuf)
+          ? ` <span style="font-size:10px;color:var(--muted)">+ ${escapeHTML(visitSuf)}</span>` : ""}</div>`).join("");
       const reasonsCell = entry.statuses.map(s => `<div style="padding:2px 0">${s.record.reason ? escapeHTML(s.record.reason) : '<span style="color:var(--dim)">—</span>'}</div>`).join("");
       const durationsCell = entry.statuses.map(s => `<div style="padding:2px 0">${escapeHTML(medDurationLabel(s.record))}</div>`).join("");
       const multiHint = multi ? ` <span style="font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px">×${entry.statuses.length}</span>` : "";

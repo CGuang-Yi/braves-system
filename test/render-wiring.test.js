@@ -166,6 +166,57 @@ module.exports = async function run() {
       "the banner leaks into the copyable/archivable message text");
   });
 
+  suite("visit suffix wiring: one builder, three surfaces (Feature 30.1)");
+
+  await test("all three consumers go through the shared builder, none rolls its own", () => {
+    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    ok(/function visitSuffix\(/.test(helpers), "visitSuffix is not defined in helpers.js");
+    ok(/function visitForDay\(/.test(helpers), "visitForDay is not defined in helpers.js");
+    [["parade grid", paradeTab], ["Dashboard Non-Active", render], ["conduct wizard", forms]]
+      .forEach(([name, src]) => {
+        ok(/visitSuffix\(/.test(src), name + " does not call visitSuffix");
+        ok(/visitForDay\(/.test(src), name + " does not use the shared same-day lookup");
+      });
+  });
+
+  await test("the suffix is same-day only, and the wizard uses ITS date not today", () => {
+    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    // The date argument is what makes this same-day. The wizard routinely
+    // back-dates, so binding it to todayISO() would stamp today's visit time
+    // onto a status from last Tuesday.
+    ok(/visitForDay\(d4, dateVal\)/.test(forms),
+      "the wizard checklist resolves the visit against the wrong date");
+    ok(/visitForDay\(r\.id, today\)/.test(render), "the Dashboard table is not bound to `today`");
+    ok(/visitForDay\(r\.id, dateIso\)/.test(paradeTab), "the parade grid is not bound to the parade date");
+  });
+
+  await test("the parade grid targets the first CURRENT pill and suppresses the redundant type", () => {
+    // Placement itself is asserted behaviourally in
+    // test/parade-grid-multistatus.test.js; this only pins the two structural
+    // choices a refactor could quietly undo — that the target is chosen by
+    // skipping upcoming pills, and that RS/MR pills get the bare time because
+    // "RS + RSI" reads redundantly.
+    ok(/codes\.find\(cc => !cc\.upcoming\)/.test(paradeTab),
+      "the grid no longer skips upcoming pills when choosing where the visit lands");
+    ok(/target\.code === "RS" \|\| target\.code === "MR"/.test(paradeTab),
+      "the grid no longer suppresses the redundant type on RS/MR pills");
+  });
+
+  await test("the Dashboard table shows the suffix once, on the first badge", () => {
+    ok(/i === 0 && visitSuf/.test(render),
+      "the Dashboard repeats the visit suffix on every status badge from one visit");
+  });
+
+  await test("the wizard appends only the TIME — its statusTag already names the type", () => {
+    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    // rebuildLogConductStatus folds the day's visit types into statusTag
+    // ("MC + RSO"), so emitting the full TYPE+time there printed the type twice.
+    ok(forms.includes('...(visit ? visit.tags : [])].join(" + ")'),
+      "statusTag no longer carries the day's visit types — the wizard suffix rule depends on it");
+    ok(/endsWith\(v\.type\) \? ` \$\{time\}` : ` \+ \$\{visitSuffix\(v\)\}`/.test(forms),
+      "the wizard no longer suppresses the type it is already displaying");
+  });
+
   suite("render wiring: roster status badge derives from the medical layer (item 4b)");
 
   await test("the Roster list badges rosterDisplayStatus, not the raw stored status", () => {

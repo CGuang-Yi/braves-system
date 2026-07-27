@@ -602,6 +602,40 @@ function currentMedicalEffectiveAll(todayIso) {
   return Object.values(byD4);
 }
 
+// ── Visit-type suffix (Feature 30.1) ────────────────────────────────────────
+// The "what kind of visit, and when" tail shown alongside a person's status:
+// "LD + RSI 0830". ONE builder with THREE consumers — the parade grid
+// (parade-tab.js), the Dashboard Non-Active table (render.js) and the conduct
+// wizard's status checklist (forms.js) — precisely so those surfaces cannot
+// drift apart on which visits qualify or how a blank time renders.
+//
+// The non-obvious part is WHERE the suffix lands, and it is not where you would
+// first guess. The §8 classifier gates REPORTING SICK on the MO outcome still
+// being pending (`!m.status || m.status === "Pending"`), so the moment the MO
+// issues LD the person drops off REPORTING SICK entirely and shows only a STATUS
+// pill. There is no RS pill left to hang the RSI time on — which is exactly the
+// headline case, "LD + RSI 0830". So each consumer attaches this to whatever
+// pill the person actually has, not to the RS pill.
+//
+// Time is medical.time for ALL FOUR types: MR moved onto it from the old
+// free-text mrTiming column so there is exactly one time source. A blank time
+// yields the bare type ("LD + RSI"), never a dangling separator. The value is
+// emitted as stored — pad4Time normalises on the way in (submitMedical), and
+// re-padding here would mask a bad stored value rather than show it.
+const VISIT_SUFFIX_TYPES = ["RSI", "RSO", "MR", "MA"];
+function visitSuffix(rec) {
+  if (!rec || !rec.type || VISIT_SUFFIX_TYPES.indexOf(rec.type) < 0) return "";
+  const t = String(rec.time || "").trim();
+  return t ? `${rec.type} ${t}` : rec.type;
+}
+// The person's visit record for a given day, or null. Shared by all three
+// consumers so "same day as the surface's current date" means the same thing on
+// each of them — a suffix from yesterday's visit on today's pill would be a lie.
+function visitForDay(d4, dateIso) {
+  return (STATE.medical || []).find(m =>
+    m.d4 === d4 && displayDateToISO(m.date) === dateIso && visitSuffix(m)) || null;
+}
+
 // Inline-styled badge HTML for a medical tag. Uses theme tokens but adds
 // custom shades for MC+2 / LD+2 since the existing badge classes don't cover
 // the gradient between severity tiers.
