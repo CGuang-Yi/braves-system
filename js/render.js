@@ -2061,7 +2061,16 @@ function renderIPPT(el) {
     </div>
     ${tableRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("ippt", "fourD", "4D")}${sortTh("ippt", "name", "Name", "left")}${sortTh("ippt", "attempt", "#")}${sortTh("ippt", "date", "Date")}${sortTh("ippt", "pushups", "PU")}${sortTh("ippt", "situps", "SU")}<th>2.4km</th>${sortTh("ippt", "score", "Score")}<th>Award</th><th></th></tr></thead><tbody>
     ${tableRows.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(i.d4))}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${isYTT(i) ? '<span style="color:var(--muted)">—</span>' : i.score}</td><td>${ipptAwardBadge(i)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries match the current scope / filter.` : "No IPPT data yet. Add results or import CSV."}</div>`}`;
+    </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries match the current scope / filter.` : "No IPPT data yet. Add results or import CSV."}</div>`}
+
+    <!-- Feature 24: the accepted CSV shape used to be discoverable only by
+         triggering the missing-column alert. Same card the Polar tab already
+         carries; keep the column list in step with the aliases ipptUpsertRows
+         actually resolves in js/forms.js. -->
+    <div class="card" style="margin-top:16px"><h3>Expected CSV Columns</h3>
+      <code class="mono" style="font-size:11px;color:var(--accent)">4D, Attempt, Date, Push-ups, Sit-ups, 2.4km, Score</code>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Only <strong>4D</strong> is required. <strong>Score</strong> is optional — it is auto-calculated from the three stations plus the recruit's roster age when left blank. Re-importing the same <strong>4D + Attempt</strong> updates that row instead of adding a duplicate.</div>
+    </div>`;
 
   // Charts attached after DOM is in place. Old instances were already wiped
   // by the destroy loop at the top of render().
@@ -2285,7 +2294,15 @@ function renderSOC(el) {
     </div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>SOC#</th><th>Date</th><th>Duration</th><th>Avg HR</th><th>Pass</th><th></th></tr></thead><tbody>
     ${scoped.map(s => `<tr><td class="mono">${s.d4}</td><td style="text-align:left">${escapeHTML(getName(s.d4))}</td><td>${s.socNum}</td><td>${s.date}</td><td class="mono" style="font-weight:700">${socDurationDisplay(s.time)}</td><td>${s.avgHr === "" || s.avgHr == null ? "—" : s.avgHr}</td><td>${badge(s.pass === "Y" ? "PASS" : "FAIL", s.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openSOCForm(${s.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('soc', ${s.id}, 'SOC entry')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.soc.length ? `No SOC entries in ${filterLabel()}.` : "No SOC data yet."}</div>`}`;
+    </tbody></table></div>` : `<div class="empty-state">${STATE.soc.length ? `No SOC entries in ${filterLabel()}.` : "No SOC data yet."}</div>`}
+
+    <!-- Feature 24 — see the matching card in renderIPPT. Time is called out as a
+         duration because "Time" on a tracker tab otherwise reads as clock time,
+         and socUpsertRows stores it verbatim for socDurationDisplay. -->
+    <div class="card" style="margin-top:16px"><h3>Expected CSV Columns</h3>
+      <code class="mono" style="font-size:11px;color:var(--accent)">4D, SOC, Date, Time, Avg HR, Pass</code>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Only <strong>4D</strong> is required. <strong>Time</strong> is a duration in <strong>MM:SS</strong> (e.g. <code>12:45</code>), not a clock time. Re-importing the same <strong>4D + SOC</strong> updates that row instead of adding a duplicate.</div>
+    </div>`;
 }
 
 function renderPolar(el) {
