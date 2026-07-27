@@ -390,7 +390,10 @@ module.exports = async function run() {
   await test("it calls the shared generator/copy/archive, not a private reimplementation", () => {
     ok(/function renderDashParade\(/.test(render), "renderDashParade is not defined");
     ok(/\$\{renderDashParade\(\)\}/.test(render), "renderDashParade is never rendered into the Dashboard");
-    ok(/generateBravesParadeState\(scope, type, dateIso/.test(render),
+    // The generated half now lives in dashParadeBodyHtml so the Time input can be
+    // refreshed without rebuilding (and unfocusing) itself — the generator call
+    // travelled with it.
+    ok(/generateBravesParadeState\(dashParadeScope\(\), type, dateIso/.test(render),
       "the Dashboard card no longer builds its text with the canonical generator");
     ok(/paradeCopyString\(ta\.value, "dash-parade-copy", "dash-parade-text"\)/.test(render),
       "the Dashboard card no longer copies via the shared paradeCopyString");
