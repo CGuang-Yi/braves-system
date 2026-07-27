@@ -9,6 +9,13 @@ function render() {
   // builder can't pin its captured scope or fire against now-stale DOM.
   _deferredBuilders = {};
 
+  // Chore 7: "rm" was a nav target until the Route March tab was retired. STATE.nav
+  // is cached in localStorage, so anyone whose last-viewed tab was Route March comes
+  // back after the upgrade with a nav value nothing handles — it would fall to the
+  // switch's `default:` and paint an empty content pane with no tab highlighted,
+  // which reads as a broken app. Redirect once, before anything renders.
+  if (STATE.nav === "rm") STATE.nav = "dashboard";
+
   // Reset scroll only on an actual tab switch so a long previous tab doesn't
   // leave the next one looking pre-scrolled (and on mobile hiding the topbar).
   // Same-tab re-renders keep scroll position so in-place edits don't bounce the view.
@@ -47,7 +54,6 @@ function render() {
     case "medical": renderMedical(el); break;
     case "statusboard": renderStatusBoard(el); break;
     case "ippt": renderIPPT(el); break;
-    case "rm": renderRM(el); break;
     case "soc": renderSOC(el); break;
     case "ha": renderHA(el); break;
     case "polar": renderPolar(el); break;
@@ -2055,7 +2061,16 @@ function renderIPPT(el) {
     </div>
     ${tableRows.length ? `<div class="table-wrap"><table><thead><tr>${sortTh("ippt", "fourD", "4D")}${sortTh("ippt", "name", "Name", "left")}${sortTh("ippt", "attempt", "#")}${sortTh("ippt", "date", "Date")}${sortTh("ippt", "pushups", "PU")}${sortTh("ippt", "situps", "SU")}<th>2.4km</th>${sortTh("ippt", "score", "Score")}<th>Award</th><th></th></tr></thead><tbody>
     ${tableRows.map(i => `<tr><td class="mono" style="font-weight:700">${displayId(i.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(i.d4))}</td><td>${i.attempt}</td><td>${i.date}</td><td>${i.pushups}</td><td>${i.situps}</td><td>${i.runTime}</td><td style="font-weight:700;font-size:15px">${isYTT(i) ? '<span style="color:var(--muted)">—</span>' : i.score}</td><td>${ipptAwardBadge(i)}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openIPPTForm(${i.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('ippt', ${i.id}, 'IPPT entry')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries match the current scope / filter.` : "No IPPT data yet. Add results or import CSV."}</div>`}`;
+    </tbody></table></div>` : `<div class="empty-state">${STATE.ippt.length ? `No IPPT entries match the current scope / filter.` : "No IPPT data yet. Add results or import CSV."}</div>`}
+
+    <!-- Feature 24: the accepted CSV shape used to be discoverable only by
+         triggering the missing-column alert. Same card the Polar tab already
+         carries; keep the column list in step with the aliases ipptUpsertRows
+         actually resolves in js/forms.js. -->
+    <div class="card" style="margin-top:16px"><h3>Expected CSV Columns</h3>
+      <code class="mono" style="font-size:11px;color:var(--accent)">4D, Attempt, Date, Push-ups, Sit-ups, 2.4km, Score</code>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Only <strong>4D</strong> is required. <strong>Score</strong> is optional — it is auto-calculated from the three stations plus the recruit's roster age when left blank. Re-importing the same <strong>4D + Attempt</strong> updates that row instead of adding a duplicate.</div>
+    </div>`;
 
   // Charts attached after DOM is in place. Old instances were already wiped
   // by the destroy loop at the top of render().
@@ -2260,25 +2275,10 @@ function buildIPPTCompareChart(series, a, b) {
   });
 }
 
-function renderRM(el) {
-  const visible = visibleD4Set();
-  const scoped = STATE.rm.filter(r => passesFilter(r.d4, visible));
-  el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-size:18px;font-weight:700">Route March Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.rm.length}]</span>` : ""}</h2>
-      <div style="display:flex;gap:8px">
-        <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importRM(this)" style="display:none"></label>
-        <button class="btn btn-success" onclick="pushTab('RouteMarch',STATE.rm)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
-        <button class="btn btn-primary" onclick="openRMForm()">+ Add</button>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-    ${[{ n: 1, d: "3KM" }, { n: 2, d: "3KM" }, { n: 3, d: "3KM" }, { n: 4, d: "4KM" }, { n: 5, d: "8KM" }, { n: 6, d: "12KM" }].map(rm => `<div style="flex:1;min-width:90px;background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid ${scoped.some(r => r.rmNum == rm.n) ? 'var(--green)' : 'var(--border)'};text-align:center"><div style="font-size:16px;font-weight:700;color:${scoped.some(r => r.rmNum == rm.n) ? 'var(--green)' : 'var(--muted)'}">RM ${rm.n}</div><div style="font-size:10px;color:var(--muted)">${rm.d}</div><div style="font-size:10px;color:var(--dim)">${scoped.filter(r => r.rmNum == rm.n).length} entries</div></div>`).join("")}
-    </div>
-    ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>RM</th><th>Date</th><th>Finish Time</th><th>Avg HR</th><th>Max HR</th><th>Pass</th><th></th></tr></thead><tbody>
-    ${scoped.map(r => `<tr><td class="mono" style="font-weight:700">${r.d4}</td><td style="text-align:left">${escapeHTML(getName(r.d4))}</td><td>${r.rmNum}</td><td>${r.date}</td><td class="mono" style="font-weight:700">${r.time}</td><td>${r.avgHr === "" || r.avgHr == null ? "—" : r.avgHr}</td><td>${r.maxHr === "" || r.maxHr == null ? "—" : r.maxHr}</td><td>${badge(r.pass === "Y" ? "PASS" : "FAIL", r.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openRMForm(${r.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('rm', ${r.id}, 'route march entry')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : ""}`;
-}
+// Chore 7: renderRM lived here. The Route March TAB was retired from the UI, but
+// the DATA is deliberately untouched — STATE.rm still loads, syncs and pushes, the
+// RouteMarch sheet tab is unchanged, and Settings still exports it. Re-adding the
+// tab later is a pure-frontend change with no migration.
 
 function renderSOC(el) {
   const visible = visibleD4Set();
@@ -2287,13 +2287,22 @@ function renderSOC(el) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:18px;font-weight:700">SOC Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.soc.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
+        <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importSOC(this)" style="display:none"></label>
         <button class="btn btn-success" onclick="pushTab('SOC',STATE.soc)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openSOCForm()">+ Add</button>
       </div>
     </div>
     ${scoped.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th>Name</th><th>SOC#</th><th>Date</th><th>Duration</th><th>Avg HR</th><th>Pass</th><th></th></tr></thead><tbody>
     ${scoped.map(s => `<tr><td class="mono">${s.d4}</td><td style="text-align:left">${escapeHTML(getName(s.d4))}</td><td>${s.socNum}</td><td>${s.date}</td><td class="mono" style="font-weight:700">${socDurationDisplay(s.time)}</td><td>${s.avgHr === "" || s.avgHr == null ? "—" : s.avgHr}</td><td>${badge(s.pass === "Y" ? "PASS" : "FAIL", s.pass === "Y" ? "green" : "red")}</td><td style="white-space:nowrap"><button class="btn btn-icon" onclick="openSOCForm(${s.id})" title="Edit">✎</button> <button class="btn btn-icon btn-danger" onclick="deleteEntry('soc', ${s.id}, 'SOC entry')" title="Delete">✕</button></td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="empty-state">${STATE.soc.length ? `No SOC entries in ${filterLabel()}.` : "No SOC data yet."}</div>`}`;
+    </tbody></table></div>` : `<div class="empty-state">${STATE.soc.length ? `No SOC entries in ${filterLabel()}.` : "No SOC data yet."}</div>`}
+
+    <!-- Feature 24 — see the matching card in renderIPPT. Time is called out as a
+         duration because "Time" on a tracker tab otherwise reads as clock time,
+         and socUpsertRows stores it verbatim for socDurationDisplay. -->
+    <div class="card" style="margin-top:16px"><h3>Expected CSV Columns</h3>
+      <code class="mono" style="font-size:11px;color:var(--accent)">4D, SOC, Date, Time, Avg HR, Pass</code>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Only <strong>4D</strong> is required. <strong>Time</strong> is a duration in <strong>MM:SS</strong> (e.g. <code>12:45</code>), not a clock time. Re-importing the same <strong>4D + SOC</strong> updates that row instead of adding a duplicate.</div>
+    </div>`;
 }
 
 function renderPolar(el) {
@@ -2430,6 +2439,19 @@ function setConductWindow(days) {
 // show the per-recruit progression list.
 function setConductSeries(base) { _conductSeries = base || ""; render(); }
 
+// Feature 20 — Class Progression export. The rows are stashed when the card is
+// built (see renderConductDashboard) and cleared when it is not, so the button
+// can never export a previous series' numbers: navigating away or switching back
+// to "All conducts" skips the card, which nulls this.
+let _conductExportData = null;
+function exportConductProgression() {
+  if (!_conductExportData) return;
+  const d = _conductExportData;
+  const slug = String(d.series || "all").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  downloadCSVText(conductProgressionCSV(d.rows, d.held, d.partByD4, d.series),
+    exportFileName(`class-progression-${slug}`, "csv"));
+}
+
 function renderConductDashboard(el) {
   const today = todayISO();
   if (_conductDashEnd === "") _conductDashEnd = today;
@@ -2516,6 +2538,10 @@ function renderConductDashboard(el) {
 
   // Series mode: per-recruit progression through the class (calc.conductProgress).
   let progressionHTML = "";
+  // Feature 20: drop any stashed export payload up front. The branch below sets
+  // it again if (and only if) it builds the progression card, so switching back
+  // to "All conducts" can't leave the previous series' rows exportable.
+  _conductExportData = null;
   if (seriesIds) {
     // Held instances + who attended — drawn from the windowed class attendance
     // (attnWin), so the progression frontier/position respect the date window too.
@@ -2560,8 +2586,15 @@ function renderConductDashboard(el) {
       if (p.missed.length) bits.push(`<span style="color:var(--red)">${p.missed.length} gap${p.missed.length > 1 ? "s" : ""}</span>`);
       return bits.length ? bits.join(" · ") : `<span style="color:var(--green)">✓ on track</span>`;
     };
+    // Feature 20: stash what the export needs, rather than making the button
+    // handler recompute the whole progression. Reset on every render of this
+    // card, so an export always matches the filter / series / window currently
+    // on screen — including the sort, since `rows` is already screen-ordered.
+    _conductExportData = { rows, held: prog.held, partByD4, series: _conductSeries };
     progressionHTML = `<div class="card" style="margin-top:10px">
-      <h3>Class Progression — ${escapeHTML(_conductSeries)} <span style="font-weight:400;color:var(--dim);font-size:11px">(company frontier: ${frontier} · ${prog.held.length} held)</span></h3>
+      <h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>Class Progression — ${escapeHTML(_conductSeries)} <span style="font-weight:400;color:var(--dim);font-size:11px">(company frontier: ${frontier} · ${prog.held.length} held)</span></span>
+        <button class="btn" style="font-size:11px;font-weight:400" onclick="exportConductProgression()" title="Download exactly these rows, in this order, as CSV">⤓ Export CSV</button>
+      </h3>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${isFilterActive() ? filterLabel() : "Whole company"} — each member's latest attended instance, gaps below it (missed), and how far behind the frontier they are. Click a row to open the member.</div>
       ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Current</th><th>Done</th><th title="Present ÷ conducts added into (this class, this window)">Part%</th><th style="text-align:left">Missed</th><th style="text-align:left">Status</th></tr></thead><tbody>
         ${rows.map(p => { const pp = partByD4[String(p.d4)] || { present: 0, addedIn: 0, pct: null }; const partCell = pp.pct == null ? `<span style="color:var(--dim)">—</span>` : `${pp.pct}% <span style="color:var(--dim);font-size:10px">(${pp.present}/${pp.addedIn})</span>`; return `<tr onclick="openPerson('${p.d4}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td>${curCell(p)}</td><td>${p.completed}/${prog.held.length}</td><td>${partCell}</td><td style="text-align:left;color:${p.missed.length ? "var(--red)" : "var(--dim)"}">${p.missed.length ? p.missed.map(n => "#" + n).join(", ") : "—"}</td><td style="text-align:left">${statusCell(p)}</td></tr>`; }).join("")}

@@ -862,12 +862,61 @@ function exportFileName(label, ext) {
     `T${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
   return `${stamp} ${label ? label + " " : ""}braves-export.${ext}`;
 }
-function exportCSV(data, filename) {
-  const csv = Papa.unparse(data);
+function exportCSV(data, filename) { downloadCSVText(Papa.unparse(data), filename); }
+// Same download, but for callers that have already built the CSV text themselves.
+// conductProgressionCSV does, because it needs exact control over its header
+// names and its semicolon-separated list cells — round-tripping that through
+// Papa.unparse would only re-derive what it already has.
+function downloadCSVText(csv, filename) {
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+}
+
+// Feature 20 — Class Progression export. `rows` arrives ALREADY filtered by the
+// active platoon/section/role filter and the selected series + window, and
+// already sorted, so the file is exactly what is on screen, in screen order.
+//
+// Two naming decisions worth knowing. The on-screen Status cell computes "gaps"
+// as literally p.missed.length, so a separate "Missed (count)" column would be a
+// byte-identical duplicate — the count column IS "Gaps". And "Behind" gets its
+// own column rather than being folded into a Status string, so it stays sortable
+// in a spreadsheet.
+//
+// "Classes Completed" is not stored anywhere: prog.rows carries only a count. It
+// is derived here as the held instances up to the member's current position minus
+// their gaps — which by conductProgress's definitions (position = highest
+// attended, missed = skipped instances below it) is exactly the set they
+// attended. Semicolons separate list items; a comma would force CSV quoting and
+// read ambiguously against the file's own delimiter.
+function conductProgressionCSV(rows, held, partByD4, seriesName) {
+  const heldNums = (held || []).slice().sort((a, b) => a - b);
+  const q = v => {
+    const s = String(v == null ? "" : v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = ["4D,Name,Current,Done,Classes Completed,Part%,Gaps,Missed Classes,Behind"];
+  (rows || []).forEach(p => {
+    const missedSet = new Set((p.missed || []).map(Number));
+    const completedList = heldNums
+      .filter(n => n <= p.position && !missedSet.has(n))
+      .map(n => "#" + n).join("; ");
+    const missedList = (p.missed || []).map(n => "#" + n).join("; ");
+    const pp = (partByD4 || {})[String(p.d4)] || { pct: null };
+    lines.push([
+      q(displayId(p.d4)),
+      q(displayPersonLabel(p.d4)),
+      q(p.position ? `${seriesName} ${p.position}` : "Not started"),
+      q(p.completed),
+      q(completedList),
+      q(pp.pct == null ? "" : pp.pct),
+      q((p.missed || []).length),
+      q(missedList),
+      q(p.behind)
+    ].join(","));
+  });
+  return lines.join("\n");
 }
 function exportJSON(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
