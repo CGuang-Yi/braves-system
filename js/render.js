@@ -626,32 +626,15 @@ function renderDashboard(el) {
     ${renderDashLeaveOut(visible, today)}
     ${renderDashParade()}
     <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
+      <div class="card"><h3>Status Trend (14 days)</h3><canvas id="chart-status" height="200"></canvas></div>
       <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
     </div>
     ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
     ${renderDashProfileCards(scoped)}
     ${renderDashMSKCases(visible)}`;
 
-  // Status Breakdown chart: tally every active status (a recruit on MC +
-  // Excuse contributes once to each slice). The "Active" slice is per-recruit
-  // so it adds up to roster size only when nobody has stacked statuses.
-  const statusCounts = { Active: active };
-  effectiveAll.forEach(e => e.statuses.forEach(s => { statusCounts[s.tag] = (statusCounts[s.tag] || 0) + 1; }));
   const buildDashboardCharts = () => {
-  const chartColor = label => {
-    if (label === "Active") return "#3FB950";
-    if (label === "MC" || label === "Warded") return "#F85149";
-    if (label === "LD" || label === "MC+1") return "#D29922";
-    if (label === "LD+1" || label === "MC+2") return "#E3B341";
-    if (label === "RMJ" || (typeof label === "string" && label.startsWith("Excuse"))) return "#58A6FF";
-    return "#8B949E";
-  };
-  STATE.charts.status = new Chart(document.getElementById("chart-status"), {
-    type: "doughnut",
-    data: { labels: Object.keys(statusCounts), datasets: [{ data: Object.values(statusCounts), backgroundColor: Object.keys(statusCounts).map(chartColor) }] },
-    options: { plugins: { legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } } } }
-  });
+  buildStatusTrendChart(scopedIds);
 
   // Participation trend — a smooth line whose color ENCODES participation
   // health using the same thresholds as the attendance table: green ≥95%
@@ -1199,6 +1182,60 @@ function renderMSKAnalytics(el) {
       });
     }
   }, 50);
+}
+
+// ── Feature 26: status trend, replacing the single-day status doughnut ───────
+// The doughnut answered "what does today look like?", which the Non-Active table
+// directly above already answers better and by name. A trend answers the thing a
+// table cannot: is this getting worse?
+//
+// Registered on STATE.charts.status — the SAME key the doughnut used, so
+// render()'s destroy-before-dispatch sweep keeps working unchanged and the
+// instance can never leak across renders.
+//
+// See statusTrendSeries (helpers.js) for the exclusion rules; they are decisions,
+// not omissions.
+function buildStatusTrendChart(scopedIds) {
+  const canvas = document.getElementById("chart-status");
+  if (!canvas) return;
+  // 14 days ending today. This recomputes the effective medical layer once per
+  // day, so it is 14x the single-day work the old doughnut did — which is exactly
+  // why this chart lives inside #dash-charts and inherits the defer gate.
+  const DAYS = 14;
+  const end = todayISO();
+  const byDay = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const iso = addDaysISO(end, -i);
+    byDay.push({ iso, entries: currentMedicalEffectiveAll(iso).filter(e => scopedIds.has(e.d4)) });
+  }
+  const { labels, series } = statusTrendSeries(byDay, DAYS, 8);
+  const palette = ["#F85149", "#D29922", "#58A6FF", "#3FB950", "#BC8CFF", "#E3B341", "#43C59E", "#8B949E", "#484F58"];
+  STATE.charts.status = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: labels.map(iso => iso.slice(5).replace("-", "/")),   // MM/DD
+      datasets: series.map((s, i) => ({
+        label: s.label, data: s.data,
+        borderColor: palette[i % palette.length],
+        backgroundColor: palette[i % palette.length] + "22",
+        tension: 0.3, pointRadius: 2, pointHoverRadius: 5, fill: false
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "right", labels: { color: "#8B949E", font: { size: 11 } } },
+        // Counts on hover — the doughnut showed them by slice, so the replacement
+        // must not lose them.
+        tooltip: { backgroundColor: "#161B22", borderColor: "#30363D", borderWidth: 1, padding: 10 }
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: "#30363D" }, ticks: { color: "#8B949E", precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 } } }
+      }
+    }
+  });
 }
 
 // ── Feature 28: parade state on the Dashboard ────────────────────────────────
