@@ -2278,6 +2278,7 @@ function renderSOC(el) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <h2 style="font-size:18px;font-weight:700">SOC Tracker${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.soc.length}]</span>` : ""}</h2>
       <div style="display:flex;gap:8px">
+        <label class="btn" style="cursor:pointer">Import CSV<input type="file" accept=".csv" onchange="importSOC(this)" style="display:none"></label>
         <button class="btn btn-success" onclick="pushTab('SOC',STATE.soc)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openSOCForm()">+ Add</button>
       </div>

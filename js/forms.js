@@ -1167,53 +1167,131 @@ function submitSOC() {
 
 // ─── CSV IMPORTERS ─────────────────────────────────────
 
+// Fix 16: the row-building half of the IPPT import, split out of importIPPT so it
+// can be unit-tested without a file input or PapaParse. Returns the records to
+// WRITE — each either a brand-new row or an existing row's id carrying fresh
+// field values, keyed on 4D+attempt so re-importing an overlapping CSV updates a
+// recruit's history instead of duplicating it. A blank Attempt can't serve as a
+// key (colNum yields 0 for blank, and every blank would then collide with every
+// other blank), so those always append.
+function ipptUpsertRows(rows) {
+  const records = [];
+  const uncalculated = [];   // 4Ds imported with a blank score we couldn't derive
+  let autoScored = 0;
+  rows.forEach(row => {
+    // padD4 up front so the stored id and the roster lookup canonicalize the
+    // same way — a "123"/"C0123" CSV id otherwise renders blank (no roster
+    // join) until the next server pull re-pads the layer.
+    const d4 = padD4(col(row, "4D", "id"));
+    const attempt = colNum(row, "Attempt", "#", "attempt");
+    const pushupsRaw = col(row, "Push-ups", "Pushups", "PU", "push-ups");
+    const situpsRaw = col(row, "Sit-ups", "Situps", "SU", "sit-ups");
+    const runTime = col(row, "2.4km", "Run", "RunTime", "run time", "2.4");
+    const rawScore = col(row, "Score", "Total", "Total Score", "score");
+    const pushups = +pushupsRaw || 0;
+    const situps = +situpsRaw || 0;
+    // A CSV "0" is a real score (YTT/Fail) and is kept verbatim. A blank OR
+    // non-numeric placeholder ("N/A", "-", "TBC") is treated as no-score and
+    // falls through to auto-calc rather than being coerced to a bogus 0.
+    const hasScore = String(rawScore).trim() !== "" && Number.isFinite(+rawScore);
+    let score;
+    if (hasScore) {
+      score = +rawScore;
+    } else {
+      // Auto-calc only when the roster age AND all three stations are present.
+      // A blank station coerces to 0 reps, which calculateIPPTScore happily
+      // scores (lookupRepScore never returns null for low reps) — that would
+      // silently understate the total instead of reporting it uncalculable.
+      const stationsComplete = [pushupsRaw, situpsRaw, runTime].every(v => String(v).trim() !== "");
+      const person = STATE.roster.find(x => x.id === d4);
+      const result = (person?.age && stationsComplete) ? calculateIPPTScore(person.age, pushups, situps, runTime) : null;
+      if (result) { score = result.total; autoScored++; }
+      else { score = ""; uncalculated.push(d4); }
+    }
+    const existing = attempt
+      ? (STATE.ippt || []).find(i => i.d4 === d4 && String(i.attempt) === String(attempt))
+      : null;
+    records.push({
+      id: existing ? existing.id : nextId(),
+      d4, attempt, date: col(row, "Date", "date"), pushups, situps, runTime, score
+    });
+  });
+  return { records, autoScored, uncalculated };
+}
+
 function importIPPT(input) {
   Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => {
     // Score is optional: when the cell is blank we derive it from the reps/run
     // time + roster age via the same calculateIPPTScore() the manual form uses.
     const missing = checkCols(r.meta.fields, ["4D"]);
     if (missing.length) { alert("CSV missing required column: " + missing.join(", ") + "\n\nExpected: 4D, Attempt, Date, Push-ups, Sit-ups, 2.4km, Score\n(Score is optional — auto-calculated from stations + roster age when blank.)"); return; }
-    let autoScored = 0;
-    const uncalculated = [];  // 4Ds imported with a blank score we couldn't derive
-    r.data.forEach(row => {
-      // padD4 up front so the stored id and the roster lookup canonicalize the
-      // same way — a "123"/"C0123" CSV id otherwise renders blank (no roster
-      // join) until the next server pull re-pads the layer.
-      const d4 = padD4(col(row, "4D", "id"));
-      const pushupsRaw = col(row, "Push-ups", "Pushups", "PU", "push-ups");
-      const situpsRaw = col(row, "Sit-ups", "Situps", "SU", "sit-ups");
-      const runTime = col(row, "2.4km", "Run", "RunTime", "run time", "2.4");
-      const rawScore = col(row, "Score", "Total", "Total Score", "score");
-      const pushups = +pushupsRaw || 0;
-      const situps = +situpsRaw || 0;
-      // A CSV "0" is a real score (YTT/Fail) and is kept verbatim. A blank OR
-      // non-numeric placeholder ("N/A", "-", "TBC") is treated as no-score and
-      // falls through to auto-calc rather than being coerced to a bogus 0.
-      const hasScore = String(rawScore).trim() !== "" && Number.isFinite(+rawScore);
-      let score;
-      if (hasScore) {
-        score = +rawScore;
-      } else {
-        // Auto-calc only when the roster age AND all three stations are present.
-        // A blank station coerces to 0 reps, which calculateIPPTScore happily
-        // scores (lookupRepScore never returns null for low reps) — that would
-        // silently understate the total instead of reporting it uncalculable.
-        const stationsComplete = [pushupsRaw, situpsRaw, runTime].every(v => String(v).trim() !== "");
-        const person = STATE.roster.find(x => x.id === d4);
-        const result = (person?.age && stationsComplete) ? calculateIPPTScore(person.age, pushups, situps, runTime) : null;
-        if (result) { score = result.total; autoScored++; }
-        else { score = ""; uncalculated.push(d4); }
-      }
-      STATE.ippt.push({
-        id: nextId(), d4, attempt: colNum(row, "Attempt", "#", "attempt"),
-        date: col(row, "Date", "date"), pushups, situps, runTime, score
-      });
+    const { records, autoScored, uncalculated } = ipptUpsertRows(r.data);
+    // Apply locally: overwrite the row an upsert matched, append the rest.
+    records.forEach(rec => {
+      const idx = STATE.ippt.findIndex(i => i.id === rec.id);
+      if (idx >= 0) STATE.ippt[idx] = rec; else STATE.ippt.push(rec);
     });
     saveLocal(); render();
-    let msg = `Imported ${r.data.length} IPPT rows`;
+    // Fix 16: THIS is what was missing. Without it the imported rows lived only
+    // in localStorage and were wiped by the next full pull — the import looked
+    // like it had worked because render() showed them. autoSync is the single
+    // write chokepoint; it queues per tab, strictly FIFO, so a large import
+    // lands as an ordered series of OCC-guarded upserts rather than one racy
+    // batch that could interleave with another device's write.
+    if (STATE.apiUrl) records.forEach(rec => autoSync("IPPT", { type: "upsert", row: rec }));
+    let msg = `Imported ${records.length} IPPT rows`;
     if (autoScored) msg += ` (${autoScored} auto-scored)`;
     msg += ".";
     if (uncalculated.length) msg += `\n\n${uncalculated.length} row(s) had no score and couldn't be auto-calculated (age missing from roster or incomplete stations):\n${uncalculated.join(", ")}`;
+    msg += "\n\nSyncing to sheet — check the sync indicator.";
+    alert(msg);
+  } }); input.value = "";
+}
+
+// Feature 23: SOC import, mirroring the IPPT pair above. `time` is a DURATION in
+// MM:SS (not a clock time) — the sheet schema and socDurationParts both treat it
+// that way, so it is stored verbatim and rendered through the same
+// socDurationDisplay the manual form uses. Upsert key is 4D+socNum; a blank
+// socNum always appends. Unknown 4Ds are imported but collected and reported, so
+// a mistyped id is visible instead of silently joining to nobody.
+function socUpsertRows(rows) {
+  const records = [];
+  const unmatched = [];
+  rows.forEach(row => {
+    const d4 = padD4(col(row, "4D", "id"));
+    if (!(STATE.roster || []).some(x => x.id === d4)) unmatched.push(d4);
+    const socNum = colNum(row, "SOC", "SOC #", "SOC#", "socNum", "soc");
+    const existing = socNum
+      ? (STATE.soc || []).find(s => s.d4 === d4 && String(s.socNum) === String(socNum))
+      : null;
+    records.push({
+      id: existing ? existing.id : nextId(),
+      d4, socNum,
+      date: col(row, "Date", "date"),
+      time: String(col(row, "Time", "time", "Duration", "Completion Time") || "").trim(),
+      avgHr: colNum(row, "Avg HR", "AvgHR", "avg_hr", "Average HR", "Heart Rate"),
+      pass: col(row, "Pass", "pass", "Result", "Status") || "Y"
+    });
+  });
+  return { records, unmatched };
+}
+
+function importSOC(input) {
+  Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => {
+    const missing = checkCols(r.meta.fields, ["4D"]);
+    if (missing.length) { alert("CSV missing required column: 4D\n\nExpected: 4D, SOC, Date, Time, Avg HR, Pass\n(Time is a duration in MM:SS, not a clock time.)"); return; }
+    const { records, unmatched } = socUpsertRows(r.data);
+    records.forEach(rec => {
+      const idx = STATE.soc.findIndex(s => s.id === rec.id);
+      if (idx >= 0) STATE.soc[idx] = rec; else STATE.soc.push(rec);
+    });
+    saveLocal(); render();
+    if (STATE.apiUrl) records.forEach(rec => autoSync("SOC", { type: "upsert", row: rec }));
+    let msg = `Imported ${records.length} SOC rows.`;
+    // [...new Set()] rather than Array.from — the isolated test sandbox these
+    // importers load into does not expose the Array global.
+    if (unmatched.length) msg += `\n\n${unmatched.length} row(s) reference a 4D not in the roster (imported anyway, but they won't join to a person):\n${[...new Set(unmatched)].join(", ")}`;
+    msg += "\n\nSyncing to sheet — check the sync indicator.";
     alert(msg);
   } }); input.value = "";
 }
