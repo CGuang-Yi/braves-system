@@ -2439,6 +2439,19 @@ function setConductWindow(days) {
 // show the per-recruit progression list.
 function setConductSeries(base) { _conductSeries = base || ""; render(); }
 
+// Feature 20 — Class Progression export. The rows are stashed when the card is
+// built (see renderConductDashboard) and cleared when it is not, so the button
+// can never export a previous series' numbers: navigating away or switching back
+// to "All conducts" skips the card, which nulls this.
+let _conductExportData = null;
+function exportConductProgression() {
+  if (!_conductExportData) return;
+  const d = _conductExportData;
+  const slug = String(d.series || "all").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  downloadCSVText(conductProgressionCSV(d.rows, d.held, d.partByD4, d.series),
+    exportFileName(`class-progression-${slug}`, "csv"));
+}
+
 function renderConductDashboard(el) {
   const today = todayISO();
   if (_conductDashEnd === "") _conductDashEnd = today;
@@ -2525,6 +2538,10 @@ function renderConductDashboard(el) {
 
   // Series mode: per-recruit progression through the class (calc.conductProgress).
   let progressionHTML = "";
+  // Feature 20: drop any stashed export payload up front. The branch below sets
+  // it again if (and only if) it builds the progression card, so switching back
+  // to "All conducts" can't leave the previous series' rows exportable.
+  _conductExportData = null;
   if (seriesIds) {
     // Held instances + who attended — drawn from the windowed class attendance
     // (attnWin), so the progression frontier/position respect the date window too.
@@ -2569,8 +2586,15 @@ function renderConductDashboard(el) {
       if (p.missed.length) bits.push(`<span style="color:var(--red)">${p.missed.length} gap${p.missed.length > 1 ? "s" : ""}</span>`);
       return bits.length ? bits.join(" · ") : `<span style="color:var(--green)">✓ on track</span>`;
     };
+    // Feature 20: stash what the export needs, rather than making the button
+    // handler recompute the whole progression. Reset on every render of this
+    // card, so an export always matches the filter / series / window currently
+    // on screen — including the sort, since `rows` is already screen-ordered.
+    _conductExportData = { rows, held: prog.held, partByD4, series: _conductSeries };
     progressionHTML = `<div class="card" style="margin-top:10px">
-      <h3>Class Progression — ${escapeHTML(_conductSeries)} <span style="font-weight:400;color:var(--dim);font-size:11px">(company frontier: ${frontier} · ${prog.held.length} held)</span></h3>
+      <h3 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>Class Progression — ${escapeHTML(_conductSeries)} <span style="font-weight:400;color:var(--dim);font-size:11px">(company frontier: ${frontier} · ${prog.held.length} held)</span></span>
+        <button class="btn" style="font-size:11px;font-weight:400" onclick="exportConductProgression()" title="Download exactly these rows, in this order, as CSV">⤓ Export CSV</button>
+      </h3>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${isFilterActive() ? filterLabel() : "Whole company"} — each member's latest attended instance, gaps below it (missed), and how far behind the frontier they are. Click a row to open the member.</div>
       ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th>Current</th><th>Done</th><th title="Present ÷ conducts added into (this class, this window)">Part%</th><th style="text-align:left">Missed</th><th style="text-align:left">Status</th></tr></thead><tbody>
         ${rows.map(p => { const pp = partByD4[String(p.d4)] || { present: 0, addedIn: 0, pct: null }; const partCell = pp.pct == null ? `<span style="color:var(--dim)">—</span>` : `${pp.pct}% <span style="color:var(--dim);font-size:10px">(${pp.present}/${pp.addedIn})</span>`; return `<tr onclick="openPerson('${p.d4}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent)">${displayId(p.d4)}</td><td style="text-align:left">${escapeHTML(displayPersonLabel(p.d4))}</td><td>${curCell(p)}</td><td>${p.completed}/${prog.held.length}</td><td>${partCell}</td><td style="text-align:left;color:${p.missed.length ? "var(--red)" : "var(--dim)"}">${p.missed.length ? p.missed.map(n => "#" + n).join(", ") : "—"}</td><td style="text-align:left">${statusCell(p)}</td></tr>`; }).join("")}
