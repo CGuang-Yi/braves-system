@@ -3909,7 +3909,17 @@ function bravesNormalizeMedical_(rows) {
       // Provenance ("conductLog" = auto-backfilled from a conduct import, surfaced
       // as the "(from conduct log)" teal badge; "manual" = hand-entered). Must be
       // carried through the round-trip or the badge vanishes after push + pull.
-      origin: r.origin || "manual"
+      origin: r.origin || "manual",
+      // This normalizer is a WHITELIST — a key omitted here is invisible to the
+      // ported classifier below, which reads the row it returns and not the raw
+      // sheet row. Both of these are read by that classifier, so leaving them out
+      // silently disabled two shipped features on the server side only (the
+      // Telegram bot and the cron archiver), while the identical client code kept
+      // working: MR lines lost their timing, and every MA classified as OTHERS
+      // (IN CAMP) and never left the strength. Mirrors js/state.js normalizeMedical.
+      time: r.time || "",
+      // Tolerates the "TRUE"/"true" string Sheets round-trips a boolean column as.
+      outOfCamp: r.outOfCamp === true || r.outOfCamp === "TRUE" || r.outOfCamp === "true"
     };
   });
 }
