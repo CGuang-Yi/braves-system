@@ -66,6 +66,27 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 /* Parade-state code pill (parade tab grid). Layout only — each status supplies
    its own translucent bg / border / text colour inline from the --ps-* palette. */
 .ps-badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;border:1px solid;white-space:nowrap}
+/* Parade-grid book-in dropdown (Fix 14). The font-size MUST stay >= 16px or iOS
+   auto-zooms the whole page when the select is tapped, so matching .ps-badge's
+   11px directly is not an option — we keep 16px and scale by 11/16 = 0.6875.
+   (transform, not zoom: zoom shrinks the *computed* font-size, which is exactly
+   what iOS reads, so it would reintroduce the bug it is meant to fix.)
+   Because the scale also shrinks padding, that is expressed in em of this
+   element's own 16px font at badgePx/11 em, so 3px/9px come out the far side of
+   the scale as literally 3px/9px. Height is pinned rather than left to grow out
+   of line-height + border: sub-pixel border widths get snapped to whole pixels,
+   so a derived height lands ~1px short and drifts per browser. 2.22727em =
+   .ps-badge's 24.5px / 0.6875 — i.e. exactly 24.5px once scaled. */
+.ps-select-wrap{display:inline-flex;line-height:0}
+.ps-select{font-size:16px;transform:scale(0.6875);transform-origin:left top;box-sizing:border-box;height:2.22727em;padding:0 0.81818em;border:0.09091em solid;border-radius:999px;font-weight:600;line-height:1.5;white-space:nowrap;font-family:inherit;cursor:pointer;
+  /* transform does not shrink the LAYOUT box — the select still reserves the
+     full 2.22727em, which would make a select row ~3px taller than a badge row.
+     Reclaim exactly the 31.25% the scale removed: 0.3125 × 2.22727em = 0.696em,
+     leaving 24.5px reserved. Stated in em of this element (16px) so the base
+     can't drift with inherited font-size — the wrapper inherits 12px here, which
+     is what made an earlier -0.3125em version under-reclaim. Horizontal slack is
+     left alone: this column is fixed-width, so it is never visible. */
+  margin-bottom:-0.696em}
 /* Parade-grid 4D/Name button — opens the person's profile card (openPerson).
    Transparent button chrome styled as an accent link; a tight inline tap target
    (not a full-cell hotspot) so mobile swipe-scrolling won't accidentally fire it. */

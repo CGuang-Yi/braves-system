@@ -336,12 +336,15 @@ function renderParadePlatoon(host, code) {
     // still reads as "editable → Present"; choosing Present routes through
     // onParadeCodeChange → openParadeClearConfirm (book-in). Non-editable codes
     // render a solid .ps-badge pill. hex+'22'/'55' are the translucent fill/border.
+    // Geometry for the select lives in .ps-select/.ps-select-wrap (Fix 14) — it
+    // must stay 16px to dodge iOS auto-zoom, so it is transform-scaled down to
+    // .ps-badge size rather than given a smaller font. Only colour stays inline.
     const codeCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">${
       x.codes.map(cc => {
         const hex = PARADE_CODE_HEX[cc.code];
         return cc.editable
-          ? `<select onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
-              style="padding:3px 9px;border-radius:999px;font-size:16px;font-weight:600;line-height:1.5;white-space:nowrap;background:${hex}22;border:1px solid ${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select>`
+          ? `<span class="ps-select-wrap"><select class="ps-select" onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
+              style="background:${hex}22;border-color:${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(cc.code)}</option><option value="Present">Present</option></select></span>`
           : hex
             ? `<span class="ps-badge" style="background:${hex}22;border-color:${hex}55;color:${hex}">${escapeHTML(cc.code)}</span>`
             : `<span style="display:inline-block;padding:4px 6px;font-size:12px;color:var(--muted)">${escapeHTML(cc.code)}</span>`;
