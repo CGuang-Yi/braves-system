@@ -586,12 +586,11 @@ function renderDashboard(el) {
       </div>`;
     })()}
     ${renderDashAppointments(visible, today)}
-    <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
-      <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
-    </div>
-    ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
-    ${renderDashProfileCards(scoped)}
+    <!-- Feature 25: the people who are OUT come before the analytics. A duty
+         commander opens this page to find out who is missing, not to read a
+         chart — so Non-Active, Recovering and Out-today sit directly under
+         Appointments, and the charts and reference cards move below them.
+         This is a pure re-order: no card's contents changed. -->
     <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">Non-Active Personnel <span style="color:var(--dim);font-weight:400">(live medical status on ${today})</span></h3>
     ${liveRows.length ? `<div class="table-wrap"><table><thead><tr><th>4D</th><th style="text-align:left">Name</th><th style="text-align:left">Status today</th><th style="text-align:left">Reason</th><th style="text-align:left">Duration</th></tr></thead><tbody>
     ${liveRows.map(r => {
@@ -624,8 +623,14 @@ function renderDashboard(el) {
       return `<tr onclick="openPerson('${r.id}')" style="cursor:pointer"><td class="mono" style="font-weight:700;color:var(--accent);vertical-align:top">${displayId(r.id)}</td><td style="text-align:left;vertical-align:top">${escapeHTML(displayPersonLabel(r.id))}</td><td style="text-align:left;vertical-align:top">${tagsCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${originalCell}</td><td style="text-align:left;font-size:11px;color:var(--muted);vertical-align:top">${clearedCell}</td></tr>`;
     }).join("")}
     </tbody></table></div>` : ""}
-    ${renderDashMSKCases(visible)}
-    ${renderDashLeaveOut(visible, today)}`;
+    ${renderDashLeaveOut(visible, today)}
+    <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
+      <div class="card"><h3>Status Breakdown (today)</h3><canvas id="chart-status" height="200"></canvas></div>
+      <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
+    </div>
+    ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
+    ${renderDashProfileCards(scoped)}
+    ${renderDashMSKCases(visible)}`;
 
   // Status Breakdown chart: tally every active status (a recruit on MC +
   // Excuse contributes once to each slice). The "Active" slice is per-recruit
