@@ -135,6 +135,24 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
   font-size:9px;font-weight:700;border-radius:3px}
 .ha-grid-dow{font-size:9px;color:var(--muted);text-align:right;padding-right:4px;white-space:nowrap}
 
+/* Feature 21 — Archive detail drawer. Slides in from the right over the list.
+   At <=768px it becomes a full-width sheet, matching how .modal already behaves
+   on phones. z-index sits above #topbar (sticky, 50) so the drawer's own header
+   isn't painted over by it, and below #modal-overlay (100) so a modal opened
+   from the drawer still wins. */
+.arc-row:hover{background:var(--surface2)}
+.arc-drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:59}
+.arc-drawer-backdrop.open{display:block}
+.arc-drawer{display:none;position:fixed;top:0;right:0;bottom:0;width:min(560px,92vw);
+  background:var(--surface);border-left:1px solid var(--border);box-shadow:-6px 0 24px rgba(0,0,0,.45);
+  z-index:60;padding:16px;flex-direction:column}
+.arc-drawer.open{display:flex}
+.arc-drawer-head{display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+@media (max-width:768px){
+  .arc-drawer{width:100%;border-left:none}
+}
+
 .btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
 .btn:hover{filter:brightness(1.2)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:var(--accentDim);border-color:var(--accent)}
