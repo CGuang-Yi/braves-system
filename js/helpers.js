@@ -636,6 +636,42 @@ function visitForDay(d4, dateIso) {
     m.d4 === d4 && displayDateToISO(m.date) === dateIso && visitSuffix(m)) || null;
 }
 
+// Feature 29 — collapse the sibling rows of one report-sick visit into a single
+// displayed entry. submitMedical already writes them sharing a visitId, so this
+// only groups what storage already relates: no schema change, no classifier
+// change, no GAS port change. The complaint was never about the data, only that
+// the views listed one MO consultation as several unrelated entries.
+//
+// Keyed on d4 + visitId, not visitId alone — id generators get reused across
+// devices and two people must never merge. A blank/absent visitId is ungroupable
+// (legacy rows predating the field, and origin:"conductLog" rows have none), so
+// each becomes its own group and renders exactly as it does today; its key is
+// namespaced by row id so two such rows can't collide on the empty string.
+//
+// visitId is stringified before comparison because it is NOT in
+// WRITE_TEXT_COLS_BY_TAB: a numeric-looking id comes back from the sheet as a
+// Number while the sibling written this session is still a String, so keying on
+// the raw value would split a visit in half on the next reload.
+//
+// Rows are held BY REFERENCE — callers render per-status delete controls off
+// grp.rows[i].id and compare identity against STATE.medical, so cloning here
+// would quietly break them.
+function groupByVisit(records) {
+  const groups = [];
+  const byKey = new Map();
+  (records || []).forEach(r => {
+    const vid = String(r.visitId == null ? "" : r.visitId).trim();
+    if (!vid) { groups.push({ key: "solo:" + r.id, visitId: "", rows: [r], first: r }); return; }
+    const key = r.d4 + "|" + vid;
+    let grp = byKey.get(key);
+    // Push on FIRST sight only, so the group keeps the position of its first
+    // sibling even when the table's date sort has separated them.
+    if (!grp) { grp = { key, visitId: vid, rows: [], first: r }; byKey.set(key, grp); groups.push(grp); }
+    grp.rows.push(r);
+  });
+  return groups;
+}
+
 // Inline-styled badge HTML for a medical tag. Uses theme tokens but adds
 // custom shades for MC+2 / LD+2 since the existing badge classes don't cover
 // the gradient between severity tiers.

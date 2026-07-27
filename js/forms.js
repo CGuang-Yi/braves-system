@@ -252,16 +252,41 @@ function openPerson(d4) {
       const bi = displayDateToISO(b.startDate || b.date) || "";
       return ai < bi ? 1 : ai > bi ? -1 : 0;
     });
+    // Feature 29: one card per VISIT. The count in the heading stays a count of
+    // STATUSES (med.length) — it feeds the "how many report-sick events" read
+    // that the patterns panel below is built on, and quietly changing it to a
+    // visit count would move a number the rest of the card reasons about.
+    const medGroups = groupByVisit(medSorted);
     html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Medical History <span style="color:var(--dim);font-weight:400">(${med.length})</span></h4>`;
-    html += medSorted.map(m => {
-      const tagInfo = medStatusTag(m, today);
-      const todayLabel = tagInfo ? `<span style="margin-left:6px">${medTagBadge(tagInfo.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
+    html += medGroups.map(grp => {
+      const m = grp.first;
+      const shared = `${medTypeBadge(m)}${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}`;
+      const todayOf = r => {
+        const ti = medStatusTag(r, today);
+        return ti ? `<span style="margin-left:6px">${medTagBadge(ti.tag)}<span style="color:var(--dim);font-size:10px;margin-left:4px">today</span></span>` : "";
+      };
+      // A single-status visit keeps its existing one-card layout exactly —
+      // that is the overwhelmingly common case and there is no reason to move
+      // anything under it. Only a genuine multi-status visit gets the stacked
+      // shape, where Edit belongs to the visit and Delete to each status.
+      if (grp.rows.length === 1) {
+        return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <span>${medTypeBadge(m)}${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px">${todayOf(m)}${pcBtns("openMedicalForm", "medical", m.id, "medical record")}</span>
+          </div>
+          <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
+        </div>`;
+      }
       return `<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <span>${medTypeBadge(m)}${m.status ? medTagBadge(m.status) : '<span style="color:var(--muted)">No status</span>'} ${escapeHTML(m.reason || "")}${m.origin === "conductLog" ? ` <span class="badge badge-teal" style="font-size:8px">from conduct log</span>` : ""}</span>
-          <span style="display:inline-flex;align-items:center;gap:4px">${todayLabel}${pcBtns("openMedicalForm", "medical", m.id, "medical record")}</span>
+          <span>${shared} <span style="color:var(--dim);font-size:10px">· ${grp.rows.length} statuses from one visit</span></span>
+          <button class="btn btn-icon" style="padding:0 5px" onclick="event.stopPropagation(); openMedicalForm(${JSON.stringify(m.id)})" title="Edit this visit (all statuses)">✎</button>
         </div>
-        <div style="color:var(--muted);font-size:11px;margin-top:2px">${medDurationLabel(m)}</div>
+        ${grp.rows.map(r => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">
+          <span>${r.status ? medTagBadge(r.status) : '<span style="color:var(--muted)">No status</span>'} <span style="color:var(--muted);font-size:11px">${medDurationLabel(r)}</span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px">${todayOf(r)}<button class="btn btn-icon btn-danger" style="padding:0 5px" onclick="event.stopPropagation(); pcDelete('medical',${JSON.stringify(r.id)},'status','${d4}')" title="Delete just this status">✕</button></span>
+        </div>`).join("")}
       </div>`;
     }).join("");
   }
@@ -799,6 +824,26 @@ function openMedicalForm(id, prefill) {
         <button type="submit" class="btn btn-primary">${isEdit ? "Save" : "Submit"}</button>
       </div>
     </form>`);
+  // Feature 29: Edit opens the whole VISIT, not one of its status rows. The
+  // grouped list row offers a single Edit button, so the form has to show
+  // everything that row shows — otherwise you open "2D LD + 4D Excuse RMJ",
+  // see only the LD, and the Excuse silently survives whatever you do.
+  //
+  // This is not cosmetic. date / reason / location / type / time are per-visit
+  // and submitMedical writes them to every sibling it emits, so editing one row
+  // in isolation used to move the visit's date on the primary while leaving the
+  // sibling behind on the old one — two rows that still grouped (same d4 +
+  // visitId) but disagreed about the day they happened.
+  //
+  // Matched on d4 + visitId, exactly as groupByVisit does, so the form and the
+  // list can never disagree about what belongs to this visit.
+  if (isEdit && e && String(e.visitId || "").trim()) {
+    const vid = String(e.visitId).trim();
+    STATE.medical
+      .filter(m => m.d4 === e.d4 && String(m.visitId || "").trim() === vid && m.id !== e.id)
+      .forEach(m => addMedStatusRow(m.status || "",
+        displayDateToISO(m.startDate) || "", displayDateToISO(m.endDate) || ""));
+  }
 }
 // Reveal the custom-status fields only when "＋ New custom status…" is picked.
 function medStatusSelChanged(v) {
@@ -925,6 +970,19 @@ function submitMedical() {
   const prev = editId ? STATE.medical.find(m => m.id === editId) : null;
   const visitId = statuses.length > 1 ? (prev?.visitId || ("v" + nextId())) : (prev?.visitId || "");
 
+  // Feature 29: since the form now LOADS the whole visit, it must SAVE the whole
+  // visit. Every sibling except the edited row is replaced by the freshly-emitted
+  // records below (which take new ids), so the originals are stale and have to
+  // go — without this, re-saving a two-status visit leaves the old Excuse RMJ
+  // beside a new identical one, and each subsequent save doubles the row count.
+  // Removing a status row in the form therefore also deletes it, which is the
+  // behaviour the single Edit button implies.
+  const staleSiblings = (editId && prev && String(prev.visitId || "").trim())
+    ? STATE.medical.filter(m => m.d4 === prev.d4
+        && String(m.visitId || "").trim() === String(prev.visitId).trim()
+        && m.id !== editId)
+    : [];
+
   // First status reuses the edited row's id; each extra status becomes a new
   // sibling row. type/urtiType/visitId are per-visit (shared across siblings).
   const records = statuses.map((st, i) => ({
@@ -953,9 +1011,21 @@ function submitMedical() {
     }
   });
 
+  // Drop the superseded sibling rows AFTER the new ones are in place, so a
+  // failure part-way through leaves duplicates (visible, fixable) rather than a
+  // visit that lost a status.
+  staleSiblings.forEach(s => {
+    const i = STATE.medical.findIndex(m => m.id === s.id);
+    if (i >= 0) STATE.medical.splice(i, 1);
+  });
+
   saveLocal(); closeModal(); render();
   if (STATE.apiUrl) {
     records.forEach(rec => autoSync("Medical", { type: "upsert", row: rec }));
+    // Queued after the upserts on purpose: writes are strictly FIFO per tab, so
+    // the replacements land before the originals are removed and the visit is
+    // never momentarily statusless on another device mid-sequence.
+    staleSiblings.forEach(s => autoSync("Medical", { type: "delete", id: s.id }));
   }
 }
 
