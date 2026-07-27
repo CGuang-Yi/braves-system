@@ -4832,6 +4832,17 @@ function renderLogConductWizard() {
         </div>
       </div>
 
+      <!-- Feature 30: heads the three absence sections below rather than sitting
+           inside any one of them, because the destination is chosen in the modal
+           and the paste can land in any of Status / Report Sick / Fallout. A
+           button rather than an always-visible textarea: the common case is
+           ticking a couple of names, and a permanent textarea would push the
+           checklist down the modal for everyone. -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <button type="button" class="btn" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="openWizPasteModal()">📋 Paste absentees</button>
+        <span style="font-size:10px;color:var(--dim)">Have the list already? Paste 4Ds straight into Fallout, Report Sick or Status.</span>
+      </div>
+
       <div class="card" style="padding:12px 14px;margin-bottom:10px;background:var(--surface2);border-radius:8px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <div style="flex:1;min-width:0">
@@ -5030,6 +5041,139 @@ function wizRecomputeParticipants() {
     ...(w.addedGroups || []).flatMap(g => resolveConductGroup(g.value))
   ])];
 }
+// ── Feature 30: paste a list of 4Ds as absentees ────────────────────────────
+// A commander typically arrives with the absentee list already written down —
+// in a chat message, a notebook, a spreadsheet column — and ticking twenty
+// names one at a time is the slow part of logging a conduct.
+//
+// Matching is STRICT against the roster: "123" and "C0123" are NOT normalized
+// to "0123". Everywhere else in the app padD4() is applied liberally at read
+// boundaries, and that is right for data arriving from the sheet — but this is
+// bulk human input, where a silent helpful correction quietly lands the wrong
+// person in the absent list and nobody sees it happen. A token that does not
+// match exactly comes back as unmatched so the confirm panel can show it.
+//
+// Separators are whitespace (newlines and tabs included — a column copied out
+// of a spreadsheet arrives tab-separated) and commas. Anything else stays part
+// of the token, so "0123;0124" reports as one bad entry rather than being split
+// into two ids the user never typed.
+function parsePastedD4s(text, roster) {
+  const known = new Set((roster || []).map(r => String(r.id)));
+  const tokens = String(text || "").split(/[\s,]+/).map(t => t.trim()).filter(Boolean);
+  const matched = [], unmatched = [];
+  const seen = new Set();
+  tokens.forEach(t => {
+    if (seen.has(t)) return;   // one entry per id, in pasted order
+    seen.add(t);
+    if (known.has(t)) matched.push(t); else unmatched.push(t);
+  });
+  return { matched, unmatched };
+}
+
+// The paste is AUTHORITATIVE: a 4D already sitting in another bucket (typically
+// auto-listed under Status Personnel) is removed from it and placed in the
+// pasted destination. Skipping them instead would make a deliberate correction
+// look like it did nothing.
+//
+// "status" is the one destination that cannot create a row. The Status
+// Personnel checklist is derived from who actually holds a status that day, so
+// there is nothing to tick for someone who does not — and fabricating a row
+// would put a person on the parade state under a status they were never given.
+// They simply come out of the other two buckets.
+function applyPastedAbsentees(dest, matched) {
+  if (!_logConduct) return;
+  const set = new Set(matched);
+  // Release from wherever they currently sit, preserving any reason already
+  // typed for someone who is staying in the same bucket (handled below by only
+  // pushing when absent).
+  const keep = {};
+  ["fallout", "reportSick"].forEach(b => {
+    (_logConduct[b] || []).forEach(x => { if (set.has(x.d4)) keep[x.d4] = x; });
+    _logConduct[b] = (_logConduct[b] || []).filter(x => !set.has(x.d4));
+  });
+  (_logConduct.status || []).forEach(s => {
+    if (set.has(s.d4)) s.notParticipating = (dest === "status");
+  });
+  if (dest !== "status") {
+    const bucket = dest === "reportSick" ? "reportSick" : "fallout";
+    _logConduct[bucket] = _logConduct[bucket] || [];
+    matched.forEach(d4 => {
+      if (!_logConduct[bucket].some(x => x.d4 === d4)) {
+        _logConduct[bucket].push(keep[d4] || { d4, reason: "" });
+      }
+    });
+  }
+  renderLogConductWizard();
+}
+
+// Step 1 of the paste flow: collect the text and the destination. Nothing is
+// applied here — Preview re-renders this same modal with a confirm panel, so
+// the user always sees the match result before the wizard is touched.
+function openWizPasteModal() {
+  if (!_logConduct) return;
+  openModal("Paste absentees", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:11px;color:var(--muted);line-height:1.5">
+        One 4D per line, or comma-separated — both may be mixed. Ids must match the roster
+        <strong>exactly</strong>: <code>123</code> and <code>C0123</code> are not accepted, so a typo
+        shows up in the preview instead of landing on the wrong recruit.
+      </div>
+      <div class="form-group"><label>Destination</label>
+        <select id="wiz-paste-dest">
+          <option value="fallout" selected>Fallout — dropped out mid-conduct, did not go to MO</option>
+          <option value="reportSick">Report Sick — dropped out mid-conduct and went to MO</option>
+          <option value="status">Status Personnel — tick as not participating</option>
+        </select>
+      </div>
+      <div class="form-group"><label>4Ds</label>
+        <textarea id="wiz-paste-text" rows="8" placeholder="0123&#10;0124, 0125"
+          style="padding:8px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;resize:vertical;width:100%;box-sizing:border-box"></textarea>
+      </div>
+      <div id="wiz-paste-preview"></div>
+      <button type="button" class="btn btn-primary" onclick="wizPastePreview()">Preview</button>
+    </div>`);
+}
+
+// Step 2: show what WOULD happen. Apply is only reachable from here, and only
+// when at least one id matched — so a paste that is entirely typos cannot be
+// confirmed into a no-op the user reads as success.
+function wizPastePreview() {
+  const text = document.getElementById("wiz-paste-text")?.value || "";
+  const dest = document.getElementById("wiz-paste-dest")?.value || "fallout";
+  const host = document.getElementById("wiz-paste-preview");
+  if (!host) return;
+  const { matched, unmatched } = parsePastedD4s(text, STATE.roster);
+  const destLabel = { fallout: "Fallout", reportSick: "Report Sick", status: "Status Personnel" }[dest];
+  // Named individually, not just counted: "3 unmatched" tells the user something
+  // is wrong but not which line to fix.
+  const warn = unmatched.length ? `
+    <div style="margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--yellow);font-size:11px;color:var(--muted)">
+      ⚠️ <strong>${unmatched.length}</strong> not on the roster and will be skipped:
+      <div class="mono" style="margin-top:4px;color:var(--text)">${unmatched.map(escapeHTML).join(", ")}</div>
+    </div>` : "";
+  const names = matched.map(d4 =>
+    `<div style="padding:1px 0"><span class="mono" style="color:var(--accent);font-weight:700">${escapeHTML(d4)}</span> ${escapeHTML(displayPersonLabel(d4))}</div>`).join("");
+  host.innerHTML = `
+    <div class="card" style="padding:10px 12px;background:var(--surface2);border-radius:6px">
+      <div style="font-size:12px"><strong>${matched.length}</strong> matched → <strong>${escapeHTML(destLabel)}</strong></div>
+      ${matched.length ? `<div style="margin-top:6px;max-height:180px;overflow-y:auto;font-size:11px">${names}</div>` : ""}
+      ${warn}
+      ${matched.length
+        ? `<button type="button" class="btn btn-primary" style="margin-top:10px" onclick="wizPasteApply('${escapeAttr(dest)}')">Apply to ${escapeHTML(destLabel)}</button>`
+        : `<div style="margin-top:10px;font-size:11px;color:var(--muted)">Nothing to apply.</div>`}
+    </div>`;
+}
+
+function wizPasteApply(dest) {
+  const text = document.getElementById("wiz-paste-text")?.value || "";
+  // Re-parsed rather than carried over from the preview, so an edit to the
+  // textarea after previewing cannot apply a stale match list.
+  const { matched } = parsePastedD4s(text, STATE.roster);
+  if (!matched.length) return;
+  closeModal();
+  applyPastedAbsentees(dest, matched);
+}
+
 function wizAddGroup(value, label) {
   // Re-adding an already-added group is a no-op, not a duplicate chip.
   if (_logConduct.addedGroups.some(g => g.value === value)) return;
