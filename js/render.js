@@ -529,6 +529,12 @@ function renderDashboard(el) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <h2 style="font-size:18px;font-weight:700">Company Strength Board</h2>
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+      <!-- Feature 22: the Dashboard has no row context, so it gets one button
+           in the header rather than a per-row trigger, and both forms open
+           blank — each already carries a person search box, so no separate
+           person-picker step is needed. Hidden from viewers, not disabled. -->
+      ${canWrite() ? `<button class="btn" onclick="openQuickLogMenu('')" title="Log a medical or leave record">＋ Log</button>` : ""}
       <div class="dropdown-wrapper">
         <button class="btn btn-primary" onclick="toggleReportMenu(event)">📋 Generate Report ▾</button>
         <div id="report-menu" class="dropdown-menu hidden">
@@ -539,6 +545,7 @@ function renderDashboard(el) {
           <button type="button" onclick="openReportModal('CONDUCT'); closeReportMenu()">📊 Per-Conduct Chat Format</button>
           <button type="button" onclick="openReportModal('MR'); closeReportMenu()">🩺 MR (Medical Review)</button>
         </div>
+      </div>
       </div>
     </div>
     ${scopeBanner}

@@ -217,6 +217,56 @@ module.exports = async function run() {
       "the wizard no longer suppresses the type it is already displaying");
   });
 
+  suite("quick-log wiring: gated, and never inside the Attendance Code cell (Feature 22)");
+
+  await test("both entry points go through the one gated opener", () => {
+    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const state = fs.readFileSync(path.join(__dirname, "..", "js", "state.js"), "utf8");
+    ok(/function openQuickLogMenu\(/.test(forms), "openQuickLogMenu is not defined in forms.js");
+    ok(/const canWrite = /.test(state), "canWrite is not defined in state.js");
+    // The opener re-checks the gate itself. The callers only HIDE the button,
+    // and a hidden button is not a permission check.
+    ok(/function openQuickLogMenu\(d4\) \{\s*\n\s*if \(!canWrite\(\)\) return;/.test(forms),
+      "openQuickLogMenu no longer enforces canWrite() itself");
+    ok(/openQuickLogMenu\('\$\{escapeAttr\(x\.r\.id\)\}'\)/.test(paradeTab),
+      "the parade grid no longer passes the row's person to the quick-log menu");
+    ok(/openQuickLogMenu\(''\)/.test(render),
+      "the Dashboard no longer opens the quick-log menu with no person context");
+  });
+
+  await test("the trigger is a separate column — the Attendance Code cell keeps one action", () => {
+    // That cell's Mark-Present select is deliberately its sole action so an
+    // incidental tap while swipe-scrolling cannot fire something else.
+    const codeCell = paradeTab.slice(paradeTab.indexOf("const codeCell"), paradeTab.indexOf("const cardBtn"));
+    ok(codeCell.length > 0, "codeCell block not found — this guard needs re-pointing");
+    ok(!/openQuickLogMenu/.test(codeCell), "the quick-log trigger leaked into the Attendance Code cell");
+  });
+
+  await test("the viewer gate covers the cell, the header AND the empty-state colspan", () => {
+    // Gating only the <td> would leave a stray <th> and misalign every row for
+    // viewers — the column count has to move as one.
+    ok(/canWrite\(\) \? `<td style="width:44px/.test(paradeTab), "the quick-log cell is not gated");
+    ok(/canWrite\(\) \? "<th><\/th>" : ""/.test(paradeTab), "the quick-log header cell is not gated");
+    ok(/colspan="\$\{canWrite\(\) \? 5 : 4\}"/.test(paradeTab),
+      "the empty-state colspan does not track the gated column");
+  });
+
+  await test("both forms honour a prefill, and only when creating", () => {
+    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    // openLeaveForm had no prefill parameter at all; adding one meant every
+    // "is this an edit" test inside it had to stop keying off the truthiness of
+    // `e`, or a prefill would hide the bulk scope selector and flip the submit
+    // button to "Save" on a brand-new row.
+    ok(/function openLeaveForm\(id, prefill\)/.test(forms), "openLeaveForm takes no prefill");
+    ok(/function openMedicalForm\(id, prefill\)/.test(forms), "openMedicalForm takes no prefill");
+    const leave = forms.slice(forms.indexOf("function openLeaveForm"), forms.indexOf("function onLeaveScopeChange"));
+    ok(/const isEdit = !!id;/.test(leave), "openLeaveForm does not distinguish edit from prefill");
+    ok(/: \(prefill \|\| null\);/.test(leave), "openLeaveForm ignores the prefill when creating");
+    ok(!/\$\{e \? "" :/.test(leave), "an edit-only section still keys off `e`, so a prefill would hide it");
+    ok(!/\$\{e \? "Save" : "Log"\}/.test(leave), "the submit label still keys off `e`, not isEdit");
+    ok(!/value="\$\{e \? e\.id : ""\}"/.test(leave), "the hidden entry id still keys off `e`, not isEdit");
+  });
+
   suite("visit grouping wiring: display only, and it must not disturb the suffix (Feature 29)");
 
   await test("the Medical table and the person card both go through groupByVisit", () => {

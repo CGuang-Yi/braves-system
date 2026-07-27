@@ -2318,9 +2318,34 @@ function leaveRemoveSelectedPerson(d4) {
   renderLeaveSelectedPeople();
 }
 
-function openLeaveForm(id) {
+// Feature 22 — one menu, two entry points. `d4` is optional: the Parade grid
+// passes the row's person so both forms open prefilled, the Dashboard passes
+// nothing and they open blank, relying on the person search box each already
+// carries. That is why there is no separate person-picker step.
+//
+// Gated on canWrite() (commander + admin), the same gate the Archive nav uses.
+// A viewer is never shown the trigger at all rather than shown a disabled one —
+// but the gate is repeated HERE too, because the callers only hide the button
+// and a hidden button is not a permission check.
+function openQuickLogMenu(d4) {
+  if (!canWrite()) return;
+  const pre = d4 ? `{ d4: '${escapeAttr(d4)}' }` : "null";
+  const who = d4 ? ` for ${escapeHTML(displayPersonLabel(d4))}` : "";
+  openModal("Log" + who, `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button type="button" class="btn" style="text-align:left;padding:10px 12px" onclick="closeModal(); openMedicalForm(null, ${pre})">🏥 Medical / Report Sick</button>
+      <button type="button" class="btn" style="text-align:left;padding:10px 12px" onclick="closeModal(); openLeaveForm(null, ${pre})">📅 Leave / Out</button>
+    </div>`);
+}
+
+function openLeaveForm(id, prefill) {
   _leaveSelectedD4s = [];
-  const e = id ? STATE.leave.find(x => x.id === id) : null;
+  // `prefill` mirrors openMedicalForm's contract exactly: honoured only when
+  // CREATING, never when editing, so a stray argument can never overwrite the
+  // person on a saved row. Added for the Feature 22 quick-log menu, which opens
+  // this form from a parade-grid row that already knows who it is about.
+  const isEdit = !!id;
+  const e = id ? STATE.leave.find(x => x.id === id) : (prefill || null);
   const startVal = e ? displayDateToISO(e.startDate) || todayISO() : todayISO();
   const endVal = e ? displayDateToISO(e.endDate) || todayISO() : todayISO();
   const LEAVE_TYPES = [
@@ -2333,7 +2358,11 @@ function openLeaveForm(id) {
   // form effectively defaults to the first option (Off-in-Lieu) — matched
   // here so the In Camp smart-prefill agrees with what the browser shows.
   const initialType = e?.type || LEAVE_TYPES[0][0];
-  const inCampDefault = e ? (e.isInCamp === true) : leaveInCampGuess(initialType, e?.reason || "");
+  // isEdit, not the truthiness of `e` — `e` now also holds a prefill for a NEW
+  // row (same contract as openMedicalForm). Every "is this an edit" test below
+  // keys off isEdit, so a prefill cannot hide the bulk scope selector, stamp a
+  // junk entry id, or flip the submit button to "Save".
+  const inCampDefault = isEdit ? (e.isInCamp === true) : leaveInCampGuess(initialType, e?.reason || "");
   // Bulk "Apply to" scope options (add mode only). Organisational scopes show
   // their recruit counts; "Selected people" instead accumulates any rostered
   // people, including commanders. One Log batches either kind via appendMany.
@@ -2357,17 +2386,17 @@ function openLeaveForm(id) {
   })();
   openModal(e ? "Edit Leave/Out Entry" : "Log Leave / Out", `
     <form onsubmit="event.preventDefault(); submitLeave(); return false">
-      <input type="hidden" id="f-entry-id" value="${e ? e.id : ""}">
+      <input type="hidden" id="f-entry-id" value="${isEdit ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
-        ${e ? editHint : ""}
+        ${isEdit ? editHint : ""}
         <div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;line-height:1.6">
           <div style="font-weight:600;color:var(--text);margin-bottom:4px">📋 Pick the type</div>
           <div><strong>Off-in-Lieu</strong> — counts against the commander's quota.</div>
           <div><strong>Leave / Compassionate / Course / Guard Duty / NDP / Other</strong> — tracked but doesn't decrement the off balance.</div>
         </div>
-        ${e ? "" : `<div class="form-group"><label>Apply to</label><select id="f-leave-scope" onchange="onLeaveScopeChange()">${scopeOpts}</select></div>`}
+        ${isEdit ? "" : `<div class="form-group"><label>Apply to</label><select id="f-leave-scope" onchange="onLeaveScopeChange()">${scopeOpts}</select></div>`}
         <div class="form-group" id="f-leave-person-wrap"><label>Person</label>${personSearchBox({ boxId: "leave-person", valueId: "f-d4", placeholder: "Search person by name / 4D…", selected: e?.d4 || "" })}</div>
-        ${e ? "" : `<div class="form-group" id="f-leave-selected-wrap" style="display:none">
+        ${isEdit ? "" : `<div class="form-group" id="f-leave-selected-wrap" style="display:none">
           <label>People <span id="f-leave-selected-count" style="color:var(--muted);font-weight:400">0 selected</span></label>
           ${personSearchBox({
             boxId: "leave-selected-person",
@@ -2385,11 +2414,11 @@ function openLeaveForm(id) {
         </div>
         ${formField("f-days", "Days (drives End; editable — half-days for quota)", "number", "1", `required min="0" max="365" step="0.5" value="${e?.days ?? 1}" oninput="recalcLeaveEndFromDays()"`)}
         ${formField("f-reason", "Reason / notes", "text", "APSC course / NDP rehearsal / Cleared leave balance…", `maxlength="200" value="${escapeAttr(e?.reason)}" oninput="updateLeaveInCampDefault()"`)}
-        <div class="form-group"><label>In Camp?</label><select id="f-in-camp" required onchange="markLeaveInCampTouched()" ${e ? 'data-touched="1"' : ""}>
+        <div class="form-group"><label>In Camp?</label><select id="f-in-camp" required onchange="markLeaveInCampTouched()" ${isEdit ? 'data-touched="1"' : ""}>
           <option value="true" ${inCampDefault ? "selected" : ""}>In Camp</option>
           <option value="false" ${!inCampDefault ? "selected" : ""}>Not In Camp</option>
         </select></div>
-        <button type="submit" class="btn btn-primary">${e ? "Save" : "Log"}</button>
+        <button type="submit" class="btn btn-primary">${isEdit ? "Save" : "Log"}</button>
       </div>
     </form>`);
 }
