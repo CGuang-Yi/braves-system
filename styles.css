@@ -203,6 +203,9 @@ tr:hover{background:var(--surface2)}
    recompute is what was breaking the modal's overflow:auto scroll. */
 .chart-box{position:relative;height:140px}
 .chart-box.tall{height:160px}
+/* Dashboard status trend: 14 points and a right-hand legend of up to 8 series
+   need more room than .tall, and it is a full grid-2 cell rather than a modal. */
+.chart-box.trend{height:260px}
 /* Modal header is sticky inside the modal's scrollable area so the title
    and ✕ close button stay reachable no matter how far you've scrolled.
    Surface background makes it opaque so content scrolling underneath
@@ -425,6 +428,10 @@ tr:hover{background:var(--surface2)}
   .chart-box,.chart-box canvas{max-width:100%}
   .chart-box{height:180px}
   .chart-box.tall{height:220px}
+  /* Stated explicitly rather than inherited: .trend outranks the .chart-box
+     reset above on specificity, so leaving it out would silently keep the
+     desktop 260px here instead of a considered mobile height. */
+  .chart-box.trend{height:240px}
 
   /* Modal body should never scroll horizontally; long text wraps. */
   .modal,.modal *{max-width:100%}

@@ -633,7 +633,7 @@ function renderDashboard(el) {
     ${renderDashLeaveOut(visible, today)}
     ${renderDashParade()}
     <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card"><h3>Status Trend (14 days)</h3><canvas id="chart-status" height="200"></canvas></div>
+      <div class="card"><h3>Status Trend (14 days)</h3><div class="chart-box trend"><canvas id="chart-status"></canvas></div></div>
       <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
     </div>
     ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
@@ -1229,6 +1229,13 @@ function buildStatusTrendChart(scopedIds) {
       }))
     },
     options: {
+      // maintainAspectRatio:false is only safe because the canvas sits in a
+      // .chart-box wrapper with an explicit CSS height (see the markup above and
+      // the comment on .chart-box in styles.css). Without that wrapper Chart.js
+      // derives its height from an auto-height parent, the parent then grows to
+      // fit the taller canvas, the resize observer fires, and the chart ratchets
+      // taller on every pass — which is exactly what this chart did when it
+      // shipped as a bare <canvas> inside the .card.
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {

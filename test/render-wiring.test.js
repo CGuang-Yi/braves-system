@@ -385,6 +385,23 @@ module.exports = async function run() {
       "the dashboard chart gate is no longer adjacent to #dash-charts");
   });
 
+  await test("the status trend canvas stays inside a fixed-height .chart-box", () => {
+    // This is the whole fix for the runaway-height bug, and it is invisible at
+    // the call site: buildStatusTrendChart runs with maintainAspectRatio:false,
+    // which makes Chart.js take its height from the PARENT element. Mounted bare
+    // in the auto-height .card (as it originally shipped), the card grows to fit
+    // the canvas, the resize observer fires, and the chart ratchets taller on
+    // every pass. The .chart-box wrapper's explicit CSS height is what breaks
+    // that loop — a well-meaning "unwrap the redundant div" cleanup reintroduces
+    // the bug, so guard the wrapper rather than trusting a comment.
+    ok(/<div class="chart-box trend"><canvas id="chart-status"><\/canvas><\/div>/.test(render),
+      "#chart-status is no longer wrapped in a fixed-height .chart-box");
+    ok(/maintainAspectRatio: false/.test(
+      render.slice(render.indexOf("function buildStatusTrendChart"),
+                   render.indexOf("function buildStatusTrendChart") + 2500)),
+      "buildStatusTrendChart no longer sets maintainAspectRatio:false — the .chart-box height it relies on may now be wrong");
+  });
+
   suite("render wiring: Dashboard parade card reuses the Parade tab (Feature 28)");
 
   await test("it calls the shared generator/copy/archive, not a private reimplementation", () => {
