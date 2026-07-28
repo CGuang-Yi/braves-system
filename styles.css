@@ -135,22 +135,44 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
   font-size:9px;font-weight:700;border-radius:3px}
 .ha-grid-dow{font-size:9px;color:var(--muted);text-align:right;padding-right:4px;white-space:nowrap}
 
-/* Feature 21 — Archive detail drawer. Slides in from the right over the list.
-   At <=768px it becomes a full-width sheet, matching how .modal already behaves
-   on phones. z-index sits above #topbar (sticky, 50) so the drawer's own header
-   isn't painted over by it, and below #modal-overlay (100) so a modal opened
-   from the drawer still wins. */
+/* Feature 21 — Archive detail drawer, docked to the right.
+   z-index sits above #topbar (sticky, 50) so the drawer's own header isn't
+   painted over by it, and below #modal-overlay (100) so a modal opened from the
+   drawer still wins. Keep that ordering.
+
+   Feature 34 — the drawer no longer COVERS the list on desktop. #main shrinks by
+   the drawer's width while it's open (--arc-drawer-w below is the single source
+   of that number, shared by the panel and the shift so they cannot disagree), so
+   the list reflows into what's left and every row stays clickable: the point of
+   the change is stepping through entries to compare them without closing and
+   reopening the drawer each time. Shrinking #main rather than #content also keeps
+   the topbar's scope filter reachable, which matters when the thing you are
+   browsing is filtered.
+   On <=768px it stays a full-width overlay sheet with its dimming backdrop and
+   tap-to-close: pushing a 560px panel onto a 375px viewport leaves the list
+   unusable, which defeats the purpose. */
+:root{--arc-drawer-w:min(560px,92vw)}
 .arc-row:hover{background:var(--surface2)}
+/* Backdrop is MOBILE-ONLY — its .open rule lives in the media query below.
+   On desktop it is not merely click-through: dimming a list the user is being
+   invited to click reads as disabled. Closing there is the drawer's own ✕ and
+   Escape (bindArchiveDrawerEsc in render.js), which with no backdrop is the only
+   keyboard exit. */
 .arc-drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:59}
-.arc-drawer-backdrop.open{display:block}
-.arc-drawer{display:none;position:fixed;top:0;right:0;bottom:0;width:min(560px,92vw);
+.arc-drawer{display:none;position:fixed;top:0;right:0;bottom:0;width:var(--arc-drawer-w);
   background:var(--surface);border-left:1px solid var(--border);box-shadow:-6px 0 24px rgba(0,0,0,.45);
   z-index:60;padding:16px;flex-direction:column}
 .arc-drawer.open{display:flex}
 .arc-drawer-head{display:flex;justify-content:space-between;align-items:center;
   margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+/* Set on <body> by setArchiveDrawerOpen. The class only records "a drawer is
+   open"; whether that pushes or overlays is decided here, by width. */
+body.arc-drawer-open #main{padding-right:var(--arc-drawer-w)}
 @media (max-width:768px){
   .arc-drawer{width:100%;border-left:none}
+  .arc-drawer-backdrop.open{display:block}
+  /* Overlay, not push — undo the desktop shift rather than restating the layout. */
+  body.arc-drawer-open #main{padding-right:0}
 }
 
 .btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;border:1px solid var(--border);background:var(--surface2);color:var(--text)}

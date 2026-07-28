@@ -31,10 +31,18 @@ function loadCtx(rows, tab) {
   // them and toggle .open — we assert on what it wrote, not on real layout.
   const mkEl = () => ({
     innerHTML: "", _cls: new Set(),
-    classList: { add(c) { this._cls.add(c); }, remove(c) { this._cls.delete(c); }, contains(c) { return this._cls.has(c); } }
+    classList: {
+      add(c) { this._cls.add(c); }, remove(c) { this._cls.delete(c); },
+      contains(c) { return this._cls.has(c); },
+      // Feature 34 marks <body> while a drawer is open; the real DOMTokenList
+      // has toggle(c, force) and setArchiveDrawerOpen always passes the force
+      // argument, so model that form rather than the bare toggle.
+      toggle(c, on) { if (on) this._cls.add(c); else this._cls.delete(c); }
+    }
   });
-  const drawer = mkEl(), backdrop = mkEl();
+  const drawer = mkEl(), backdrop = mkEl(), body = mkEl();
   drawer.classList._cls = drawer._cls; backdrop.classList._cls = backdrop._cls;
+  body.classList._cls = body._cls;
   // renderArchiveList writes the drawer markup as part of #archive-list's own
   // innerHTML, so in a real DOM both drawer nodes are destroyed and recreated
   // (closed) on every render. Model that, or the restore logic looks like it
@@ -43,12 +51,17 @@ function loadCtx(rows, tab) {
     [drawer, backdrop].forEach(e => { e.innerHTML = ""; e._cls.clear(); });
   };
   target.document = {
+    body,
+    // bindArchiveDrawerEsc attaches the Escape handler here. Captured rather
+    // than discarded so a test can fire a synthetic key event at it.
+    _listeners: {},
+    addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); },
     getElementById: id => id === "archive-list" ? { set innerHTML(v) { html = v; resetDrawers(); }, get innerHTML() { return html; } }
       : id === "arc-drawer" ? drawer
       : id === "arc-drawer-backdrop" ? backdrop
       : null
   };
-  return { ctx, target, getHtml: () => html, drawer, backdrop };
+  return { ctx, target, getHtml: () => html, drawer, backdrop, body };
 }
 
 function renderWith(rows, tab, scope) {
@@ -133,5 +146,71 @@ module.exports = async function run() {
     // Filter down to the other row only — the open one is no longer listed.
     vm.runInContext(`_archiveQuery = "21 Jul"; renderArchiveList();`, ctx);
     ok(!drawer.classList.contains("open"), "drawer closed rather than showing a row that is not in the list");
+  });
+
+  // Feature 34 — the drawer pushes the list aside instead of covering it. The
+  // CSS decides whether that shift or the mobile overlay applies; what has to be
+  // right in JS is that the <body> marker tracks the drawer EXACTLY. A marker
+  // left behind renders the next tab into a narrow column with nothing beside
+  // it, which is worse than the overlay it replaced.
+  suite("archive drawer: the push-aside body class tracks the drawer exactly");
+
+  const openedCtx = () => {
+    const h = loadCtx(ROWS.slice(), "parade");
+    vm.runInContext(`_archiveTab="parade"; _archiveQuery=""; _archiveCompare=false; _archiveScope=""; renderArchiveList(); openArchiveDrawer("parade", 0);`, h.ctx);
+    return h;
+  };
+
+  await test("opening sets it, closing clears it", () => {
+    const { ctx, body } = openedCtx();
+    ok(body.classList.contains("arc-drawer-open"), "opening the drawer did not shrink the layout");
+    vm.runInContext(`closeArchiveDrawer();`, ctx);
+    ok(!body.classList.contains("arc-drawer-open"), "closing left the layout shrunk");
+  });
+
+  await test("it survives a re-render that re-opens the same row", () => {
+    const { ctx, body } = openedCtx();
+    vm.runInContext(`renderArchiveList();`, ctx);
+    ok(body.classList.contains("arc-drawer-open"),
+      "the re-render cleared the class and never put it back — drawer open over a full-width list");
+  });
+
+  await test("a re-render that CANNOT re-open the row clears it", () => {
+    // The row scrolls out of the filter: the drawer stays shut, so the layout
+    // must un-shrink with it. This is the path that only clears _arcDrawerKey.
+    const { ctx, body, drawer } = openedCtx();
+    vm.runInContext(`_archiveQuery = "19 Jul"; renderArchiveList();`, ctx);
+    ok(!drawer.classList.contains("open"), "precondition: the drawer really did stay shut");
+    ok(!body.classList.contains("arc-drawer-open"), "layout left shrunk with no drawer on screen");
+  });
+
+  await test("Escape closes the drawer, but not while a modal is on top of it", () => {
+    const { ctx, target, drawer } = openedCtx();
+    const esc = (target.document._listeners.keydown || []);
+    ok(esc.length === 1, "expected exactly one Escape listener, got " + esc.length);
+
+    // A modal opened FROM the drawer owns Escape first.
+    const overlay = { _cls: new Set(["hidden"]) };
+    overlay.classList = { contains: c => overlay._cls.has(c) };
+    const realGet = target.document.getElementById;
+    target.document.getElementById = id => (id === "modal-overlay" ? overlay : realGet(id));
+    overlay._cls.delete("hidden");                       // modal is showing
+    esc[0]({ key: "Escape" });
+    ok(drawer.classList.contains("open"), "Escape closed the drawer out from under an open modal");
+
+    overlay._cls.add("hidden");                          // modal dismissed
+    esc[0]({ key: "Tab" });
+    ok(drawer.classList.contains("open"), "a key that is not Escape closed the drawer");
+    esc[0]({ key: "Escape" });
+    ok(!drawer.classList.contains("open"), "Escape did not close the drawer");
+  });
+
+  await test("the listener is bound once, however many times a drawer is opened", () => {
+    // renderArchiveList re-runs on every auto-refresh poll and re-opens the
+    // drawer each time; per-open binding would stack a handler per poll.
+    const { ctx, target } = openedCtx();
+    vm.runInContext(`renderArchiveList(); openArchiveDrawer("parade", 1); renderArchiveList();`, ctx);
+    const n = (target.document._listeners.keydown || []).length;
+    ok(n === 1, "Escape listeners stacked: " + n);
   });
 };
