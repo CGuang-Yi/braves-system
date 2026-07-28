@@ -1470,6 +1470,7 @@ function renderLeave(el) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h2 style="font-size:18px;font-weight:700">📅 Leave / Out${titleSuffix}</h2>
       <div style="display:flex;gap:8px">
+        <button class="btn" onclick="exportLeaveList()" title="Export the leave records in the current scope to CSV. The scope is in the filename.">⭳ CSV</button>
         <button class="btn btn-success" onclick="pushTab('Leave',STATE.leave)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻ Re-push all</button>
         <button class="btn btn-primary" onclick="openLeaveForm()">+ Log</button>
       </div>
@@ -2002,6 +2003,7 @@ function renderMedical(el) {
     <div class="tab-toolbar">
       <h2 class="tab-title" style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
       <div class="tab-actions">
+        <button class="btn" onclick="exportMCList()" title="Export everyone currently on MC in this scope to CSV (Warded is not MC — it appears in the Status Board export). The scope is in the filename.">⭳<span class="btn-label"> MC list CSV</span></button>
         <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻<span class="btn-label"> Re-push all</span></button>
         <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥<span class="btn-label"> Import Sick History (xlsx)</span><input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
         ${listSearchInput("medical", "Search name / 4D…")}
@@ -3352,6 +3354,140 @@ function sbSetSort(m) { _sbSort = m; _sbShowAll = false; try { localStorage.setI
 function sbToggleCollapse() { _sbCollapsed = !_sbCollapsed; try { localStorage.setItem("braves-sb-collapsed", _sbCollapsed ? "1" : "0"); } catch {} renderSBLeaderboard(); }
 function sbShowAllLeaderboard() { _sbShowAll = true; renderSBLeaderboard(); }
 
+// ════════════════════════════════════════════════════════════════════════════
+// FEATURE 35 — CSV export of the Status, Out/Leave and MC lists
+// ════════════════════════════════════════════════════════════════════════════
+// Three buttons, each on the tab that already renders that list — a combined
+// export menu was rejected because it would hand you lists you are not looking
+// at, and the Dashboard was rejected because its tables are today-only summaries
+// rather than the full lists.
+//
+// All three are TODAY'S LIVE SNAPSHOT (no date picker, no history dump) and all
+// three honour the topbar platoon/section/role scope, the same rule the Conduct
+// Progression export follows. The Roster export is deliberately unscoped instead
+// — it exists to hand over the whole company — so "match the existing exporters"
+// was ambiguous and had to be decided rather than inferred.
+//
+// Sheets' leading-zero trap does NOT get special handling here: 4Ds go out as
+// plain text exactly as the Roster and Conduct exports already emit them, so
+// Sheets will render "0123" as 123 on open. Wrapping them in ="0123" would fix
+// the display and break every other consumer of these files; matching the
+// existing exports is the lesser evil, and this is the only place that says so.
+
+// Scope, rendered for a filename: "Recs-PLT1-Sect2", or "Company" when nothing
+// is filtered. This is the point of the whole helper — a filtered file and a
+// whole-company one are otherwise indistinguishable on disk, and mistaking one
+// platoon's MC list for the company's is a reporting error, not a cosmetic one.
+function exportScopeSlug() {
+  const l = filterLabel();
+  return l ? l.replace(/\s*·\s*/g, "-").replace(/\s+/g, "") : "Company";
+}
+function exportListFileName(label) {
+  return exportFileName(`${label} ${exportScopeSlug()}`, "csv");
+}
+
+// Identity columns every one of the three shares. Rank goes through
+// bpDisplayRank so a blank-rank recruit reads REC here exactly as they do in the
+// parade state (DECISIONS #122) — a spreadsheet that disagrees with the message
+// is the same failure in a different medium.
+function exportPersonCols(d4) {
+  const r = STATE.roster.find(x => x.id === d4) || {};
+  return {
+    "4D": d4,
+    Name: r.name || "",
+    Rank: typeof bpDisplayRank === "function" ? bpDisplayRank(r) : (r.rank || ""),
+    Platoon: personPlatoon(r) || "",
+    Section: personSection(r) || ""
+  };
+}
+
+// STATUS — mirrors the A7 Roster Status List exactly, including its own
+// name/4D search box (the Archive export sets the precedent for honouring a
+// list's local filter: export what is on screen).
+function exportStatusList() {
+  const today = todayISO();
+  let scoped = filteredRoster();
+  const q = _sbSearch.trim().toLowerCase();
+  if (q) scoped = scoped.filter(r => String(r.name || "").toLowerCase().includes(q)
+    || String(r.id || "").toLowerCase().includes(q) || String(r.fourD || "").includes(q));
+  const idx = bpBuildIndex();
+  const rows = sbOrdered(scoped).map(({ r, group }) => {
+    const p = bpPrimaryForDay(r, today, idx);
+    // Most-severe ghost tag today — same scan the on-screen row does.
+    let ghost = null;
+    (idx.medical[r.id] || []).forEach(m => {
+      const t = medStatusTag(m, today);
+      if (t && t.ghostDay > 0 && (!ghost || t.ghostDay < ghost.ghostDay)) ghost = t;
+    });
+    return Object.assign(exportPersonCols(r.id), {
+      Group: group,
+      Status: p.primary ? (p.primary.type === "WD" ? "WARDED" : p.primary.label) : "Present",
+      MR: p.mr ? "Y" : "",
+      Recovering: ghost ? ghost.tag : "",
+      Reason: p.primary ? (p.primary.reason || "") : (p.mr || "")
+    });
+  });
+  if (!rows.length) { alert("Nothing to export — no personnel in scope."); return; }
+  exportCSV(rows, exportListFileName("Status list"));
+}
+
+// OUT / LEAVE — every leave record in scope, newest first, as the Leave tab
+// lists them. Not restricted to today: the tab shows the full log and the export
+// is meant to be the same thing in a spreadsheet.
+function exportLeaveList() {
+  const visible = visibleD4Set();
+  const rows = STATE.leave
+    .filter(l => passesFilter(l.d4, visible))
+    .map(l => ({ l, startIso: displayDateToISO(l.startDate) || "" }))
+    .sort((a, b) => (a.startIso === b.startIso ? 0 : a.startIso < b.startIso ? 1 : -1))
+    .map(({ l }) => Object.assign(exportPersonCols(l.d4), {
+      Type: l.type || "",
+      "In Camp": l.isInCamp ? "Y" : "N",
+      Start: l.startDate || "",
+      End: l.endDate || "",
+      Days: l.days || "",
+      Reason: l.reason || ""
+    }));
+  if (!rows.length) { alert("Nothing to export — no leave records in scope."); return; }
+  exportCSV(rows, exportListFileName("Out-Leave list"));
+}
+
+// MC — who is on MC right now. Warded is deliberately NOT here: spec §8 keeps it
+// out of ATT C, and it surfaces in the Status export instead.
+//
+// Two kinds of row qualify, and the second is easy to miss. An MC whose window
+// covers today, obviously — but ALSO an MC that has ended which nobody has
+// booked in. Since PR #65 an away status ends only when a commander explicitly
+// books the person in, so the parade state still lists those under ATT C; an MC
+// list that dropped them would contradict the parade state sent the same
+// morning. They carry a Note, so the anomaly is legible in the file rather than
+// silently folded in with everyone else.
+function exportMCList() {
+  const today = todayISO();
+  const visible = visibleD4Set();
+  const rows = STATE.medical
+    .filter(m => passesFilter(m.d4, visible))
+    .filter(m => String(m.status || "").trim() === "MC" && !m.bookInDate)
+    .map(m => {
+      const s = displayDateToISO(m.startDate || m.date) || "";
+      const e = displayDateToISO(m.endDate) || "";
+      if (!s || !e || s > today) return null;              // not started (or undated)
+      return { m, s, e, ended: e < today };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.s === b.s ? 0 : a.s < b.s ? 1 : -1))
+    .map(({ m, e, ended }) => Object.assign(exportPersonCols(m.d4), {
+      Status: "MC",
+      Start: m.startDate || m.date || "",
+      End: m.endDate || "",
+      Days: bpInclusiveDays(m) || "",
+      Reason: m.reason || "",
+      Note: ended ? `MC ended ${isoToDisplayDate(e)} — not booked in` : ""
+    }));
+  if (!rows.length) { alert("Nothing to export — nobody is on MC in this scope today."); return; }
+  exportCSV(rows, exportListFileName("MC list"));
+}
+
 // ── A7. Roster Status List (live snapshot) ──────────────────────────────────
 function renderSBRosterList() {
   const host = document.getElementById("sb-rosterlist");
@@ -3399,7 +3535,10 @@ function renderSBRosterList() {
   host.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <h3 style="font-size:14px;font-weight:600">Roster Status List <span style="font-weight:400;color:var(--muted);font-size:11px">(live — ${isoToDisplayDate(today)})</span></h3>
-      <input id="sb-search" placeholder="Filter name / 4D…" value="${escapeAttr(_sbSearch)}" oninput="sbSearchInput(this.value)" style="padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="sb-search" placeholder="Filter name / 4D…" value="${escapeAttr(_sbSearch)}" oninput="sbSearchInput(this.value)" style="padding:5px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+        <button class="btn" onclick="exportStatusList()" title="Export this list, exactly as filtered, to CSV. The scope is in the filename.">⭳ CSV</button>
+      </div>
     </div>
     <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr>
       <th style="text-align:left">R/N</th><th>Plt · Sect</th><th>Today</th><th style="text-align:left">Reason</th>
