@@ -19,6 +19,13 @@ function loadForms(STATE, mrDates) {
   target.toDDMMYY = iso => { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + m[2] + m[1].slice(2) : ""; };
   target.personPlatoon = r => (r ? r.plt : "");
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+  // The REAL braves-parade.js, in index.html's order (it loads after forms.js).
+  // mrRankName calls bpDisplayRank from there for the blank-rank → REC default;
+  // stubbing that would let the MR message drift away from the parade state and
+  // sick message, which is exactly what sharing the helper is meant to prevent.
+  // Loading is side-effect-free — the file is function declarations plus literal
+  // BP_* constants.
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8"), ctx, { filename: "braves-parade.js" });
   // _mrDates is a top-level `let` in forms.js — a lexical binding, NOT a property of the
   // sandbox global. Reach it by assigning within the SAME context (visible to later
   // runInContext calls) so the composer's closure sees the seeded value.
@@ -67,5 +74,18 @@ module.exports = async function run() {
     const out = ctx.generateMRFormat("2026-07-22", "0700");
     ok(out.indexOf("Date of most recent Medical Appointment: 010726") !== -1, "recent MA formatted");
     ok(out.indexOf("Date of next MA: 150826") !== -1, "next MA formatted");
+  });
+
+  // DECISIONS #122: the blank-rank → REC default is shared with the parade state
+  // and sick message via bpDisplayRank. A bare "JASON GOH" here would contradict
+  // the "REC Jason Goh B1110" in a parade state sent the same morning.
+  await test("a blank roster rank renders as REC, not a bare name", () => {
+    const STATE = {
+      roster: [{ id: "1110", name: "Jason Goh", rank: "", role: "Recruit", plt: "1" }],
+      medical: [{ d4: "1110", type: "MR", date: "2026-07-22", status: "Pending" }]
+    };
+    const out = loadForms(STATE, {}).generateMRFormat("2026-07-22", "0700");
+    ok(out.indexOf("1) Rank + Full Name: REC JASON GOH") !== -1,
+      "blank rank should default to REC:\n" + out);
   });
 };

@@ -3201,8 +3201,21 @@ function bpRange(record, spaced) {
 // personnel: "LCP CALVIN LEE" (rank + name) or just "TREVOR LEE". Names rendered
 // as stored (not force-uppercased) per the sample. The rank prefix on 4D
 // personnel is a Braves-requested divergence from Message Formats.md (which
-// shows name + 4D only) — rank comes from the roster's rank column, dropped when
-// blank.
+// shows name + 4D only) — rank comes from the roster's rank column via
+// bpDisplayRank, which falls back to REC for non-commanders.
+
+// Rank to display on an R/N line. The roster's rank column is routinely left
+// blank for recruits (nobody types "REC" 119 times), which used to emit a bare
+// "Martin Tan B1411"; default those to REC so every generated message names a
+// rank. Commanders are deliberately NOT defaulted — a blank rank on a commander
+// means the roster row is incomplete, and calling one REC would be wrong rather
+// than merely terse.
+function bpDisplayRank(r) {
+  const rank = String((r && r.rank) || "").trim();
+  if (rank) return rank;
+  return r && r.role !== "Commander" ? "REC" : "";
+}
+
 function bravesParadeRN(personId) {
   const r = STATE.roster.find(x => x.id == personId);
   if (!r) return String(personId);
@@ -3210,23 +3223,21 @@ function bravesParadeRN(personId) {
   const prefix = configGet("companyPrefix") || "B";
   // Duplicates isCommander/displayPersonLabel (helpers.js) — can't reuse: this needs B<fourD> tagging, not plain name.
   if (r.role !== "Commander" && r.fourD && String(r.fourD).trim() !== "") {
-    return [r.rank, `${name} ${prefix}${String(r.fourD).trim()}`].filter(Boolean).join(" ").trim();
+    return [bpDisplayRank(r), `${name} ${prefix}${String(r.fourD).trim()}`].filter(Boolean).join(" ").trim();
   }
-  return [r.rank, name].filter(Boolean).join(" ").trim();
+  return [bpDisplayRank(r), name].filter(Boolean).join(" ").trim();
 }
 
-// Sick-message R/N (spec §10): name (+ B<4D>) with NO rank prefix. Commanders
-// never get a 4D suffix here either — they're never displayed by id.
+// Sick-message R/N (spec §10). This USED to omit the rank prefix, which is what
+// BRAVES_ADAPTATION_SPEC.md §7/§10 still described; the user overrode that on
+// 2026-07-28 (DECISIONS #122) because the same person read as "REC Martin Tan
+// B1411" in a parade state and "Martin Tan B1411" in the sick message sent
+// minutes later. With the rank added, §10's R/N is identical to §9's — so this
+// delegates rather than carrying a second copy that can drift. Kept as a named
+// function because §9 and §10 are separate spec surfaces that have diverged
+// before, and both this file and its GAS port call it by name.
 function sickRN(personId) {
-  const r = STATE.roster.find(x => x.id == personId);
-  if (!r) return String(personId);
-  const name = r.name || "";
-  const prefix = configGet("companyPrefix") || "B";
-  // Duplicates isCommander/displayPersonLabel (helpers.js) — can't reuse: this needs B<fourD> tagging with no rank prefix.
-  if (r.role !== "Commander" && r.fourD && String(r.fourD).trim() !== "") {
-    return `${name} ${prefix}${String(r.fourD).trim()}`.trim();
-  }
-  return name.trim();
+  return bravesParadeRN(personId);
 }
 
 // ── OTHERS sub-type guess (spec §8, legacy) ─────────────────────────────────
@@ -3705,7 +3716,7 @@ function generateBravesParadeState(scope, type, dateIso, time, opts) {
 // field lines of an entry are SINGLE-spaced (joined "\n" into one chunk); builders
 // then join chunks (header, count headers, per-platoon labels, entries) with
 // "\n\n", so blank lines fall only between entries / around the count headers — not
-// between fields. R/N uses sickRN (name + B<4D>, no rank prefix — spec §10/§7 note).
+// between fields. R/N uses sickRN (rank + name + B<4D>, DECISIONS #122).
 
 // "0700" → "0700H" (battalion time suffix). Pads to 4 digits defensively.
 function bpTimeH(time) {
