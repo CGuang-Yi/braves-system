@@ -2896,10 +2896,14 @@ function mrPeopleForDate(dateIso) {
 }
 
 // "RANK FULLNAME" (name uppercased) from the roster; falls back to the raw 4D.
+// Rank via bpDisplayRank (braves-parade.js) so a blank-rank recruit reads "REC"
+// here exactly as it does in the parade state and the sick message — the three
+// generators stay separate by design, but they must not disagree about a person.
+// braves-parade.js loads AFTER this file; that's fine, the call is at run time.
 function mrRankName(d4) {
   const r = STATE.roster.find(x => x.id === d4);
   if (!r) return d4;
-  return [r.rank, (r.name || "").toUpperCase()].filter(Boolean).join(" ");
+  return [bpDisplayRank(r), (r.name || "").toUpperCase()].filter(Boolean).join(" ");
 }
 
 // MR (Medical Review) message — "MR Message Format" in MD_Docs/Message Formats.md.

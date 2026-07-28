@@ -270,6 +270,27 @@ module.exports = async function run() {
     ok(/URTI/.test(gas), "RS report should mention URTI for a populated fixture");
   });
 
+  // DECISIONS #122: the sick R/N gained the rank prefix, and a blank roster rank
+  // now defaults to REC for non-commanders. Every fixture above carries a rank,
+  // so none of them would notice if only one copy grew the default — and a blank
+  // rank is the COMMON case in the real roster. Pin both surfaces here.
+  await test("blank-rank recruit renders REC identically in both copies", () => {
+    const BLANK_RANK = fixture({
+      roster: clone(ROSTER).map(r => (r.id === "1411" ? Object.assign(r, { rank: "" }) : r)),
+      medical: [{ id: 1, d4: "1411", type: "RSI", date: "29 Jun 2026", status: "Pending",
+                  startDate: "29 Jun 2026", reason: "fever" }]
+    });
+    const rs = rsOf(BLANK_RANK);
+    assertIdentical("generateRSFormat(blank rank)", rs.gas, rs.fe);
+    ok(/REC Alpha One B1411/.test(rs.gas),
+      "sick R/N must default a blank recruit rank to REC:\n" + rs.gas);
+
+    const parade = paradeOf(BLANK_RANK, "first");
+    assertIdentical("generateBravesParadeState(blank rank)", parade.gas, parade.fe);
+    ok(/REC Alpha One B1411/.test(parade.gas),
+      "parade R/N must default a blank recruit rank to REC:\n" + parade.gas);
+  });
+
   // The cases below restore the coverage of the ORIGINAL cross-check harness.
   // DECISIONS #49 records it: /tmp/xcheck.js diffed port output against client
   // output on the seed — "5/5 byte-identical", covering company/PLT1/PLT2 parade

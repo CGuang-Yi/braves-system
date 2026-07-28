@@ -34,32 +34,47 @@ module.exports = async function run() {
       { id: "0001", name: "Martin Tan", rank: "CPT", role: "Commander", fourD: "0001" }
     ]);
     eq(sb.bravesParadeRN("0001"), "CPT Martin Tan");
-    eq(sb.sickRN("0001"), "Martin Tan");
+    // The sick R/N keeps the no-4D rule for commanders but now carries the rank.
+    eq(sb.sickRN("0001"), "CPT Martin Tan");
   });
 
-  await test("recruit with a fourD gets rank + name+B<4D> (parade), no rank (sick)", () => {
+  await test("recruit with a fourD gets rank + name+B<4D> on both surfaces", () => {
     const sb = loadParade([
       { id: "1411", name: "Trevor Lee", rank: "REC", role: "Recruit", fourD: "1411" }
     ]);
-    // Parade R/N prepends the roster rank (Braves-requested divergence from
-    // Message Formats.md); the sick R/N stays rank-less per spec §10.
+    // Both R/N surfaces prepend the roster rank (a Braves-requested divergence
+    // from Message Formats.md). The sick R/N used to be deliberately rank-less
+    // per spec §10; that was overridden on 2026-07-28 — DECISIONS #122.
     eq(sb.bravesParadeRN("1411"), "REC Trevor Lee B1411");
-    eq(sb.sickRN("1411"), "Trevor Lee B1411");
+    eq(sb.sickRN("1411"), "REC Trevor Lee B1411");
   });
 
-  await test("recruit with a blank rank still gets name+B<4D>, no leading space", () => {
+  await test("recruit with a blank rank defaults to REC, not a bare name", () => {
+    // The roster's rank column is left blank for most recruits, so this — not the
+    // populated case above — is what the generators actually see in production.
     const sb = loadParade([
       { id: "1411", name: "Trevor Lee", rank: "", role: "Recruit", fourD: "1411" }
     ]);
-    eq(sb.bravesParadeRN("1411"), "Trevor Lee B1411");
+    eq(sb.bravesParadeRN("1411"), "REC Trevor Lee B1411");
+    eq(sb.sickRN("1411"), "REC Trevor Lee B1411");
   });
 
-  await test("no-4D recruit falls back to rank+name / bare name", () => {
+  await test("commander with a blank rank stays bare — never defaulted to REC", () => {
+    // A blank rank on a commander means the roster row is incomplete. Rendering
+    // a sergeant as "REC" would be wrong, not merely terse.
+    const sb = loadParade([
+      { id: "0002", name: "Nicholas Eng", rank: "", role: "Commander", fourD: "0002" }
+    ]);
+    eq(sb.bravesParadeRN("0002"), "Nicholas Eng");
+    eq(sb.sickRN("0002"), "Nicholas Eng");
+  });
+
+  await test("no-4D recruit falls back to rank+name on both surfaces", () => {
     const sb = loadParade([
       { id: "OC1", name: "Calvin Lee", rank: "LCP", role: "Recruit", fourD: "" }
     ]);
     eq(sb.bravesParadeRN("OC1"), "LCP Calvin Lee");
-    eq(sb.sickRN("OC1"), "Calvin Lee");
+    eq(sb.sickRN("OC1"), "LCP Calvin Lee");
   });
 
   ok(true);
