@@ -8,6 +8,12 @@ function render() {
   // Drop any deferred-build closures from the previous view so an un-tapped
   // builder can't pin its captured scope or fire against now-stale DOM.
   _deferredBuilders = {};
+  // Feature 34: the archive drawer shrinks #main via a <body> class, and the
+  // drawer element lives inside #content — which every tab is about to
+  // overwrite. Navigating away would otherwise leave the next tab rendered into
+  // a narrow column with nothing beside it. renderArchiveList re-applies this
+  // in the same synchronous pass if a drawer is genuinely re-opened.
+  setArchiveDrawerOpen(false);
 
   // Chore 7: "rm" was a nav target until the Route March tab was retired. STATE.nav
   // is cached in localStorage, so anyone whose last-viewed tab was Route March comes
@@ -218,6 +224,11 @@ function renderArchiveList() {
   host.innerHTML = `<div class="table-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`
     + `<div id="arc-drawer-backdrop" class="arc-drawer-backdrop" onclick="closeArchiveDrawer()"></div>`
     + `<div id="arc-drawer" class="arc-drawer"></div>`;
+  // The innerHTML above destroyed the drawer element, so the body class that
+  // shrinks #main for it is now describing a drawer that isn't on screen — that
+  // would leave the list rendered into a narrow column with nothing beside it.
+  // Clear it unconditionally; the re-open below puts it back if the row survived.
+  setArchiveDrawerOpen(false);
   // Re-open a drawer that was open before this re-render (auto-refresh poll,
   // tab re-focus, or a filter keystroke). Re-resolved by key, so it follows the
   // row to its new index; if the row is now filtered out or was deleted, the
@@ -227,6 +238,33 @@ function renderArchiveList() {
     if (at >= 0) openArchiveDrawer(_archiveTab, at);
     else _arcDrawerKey = "";
   }
+}
+
+// Feature 34: records "an archive drawer is open" on <body>. Whether that pushes
+// the list aside (desktop) or overlays it (<=768px) is decided in styles.css by
+// width — deliberately not branched on here, so there is one breakpoint to keep
+// in step rather than a JS copy of it that can disagree after a resize.
+function setArchiveDrawerOpen(on) {
+  document.body.classList.toggle("arc-drawer-open", !!on);
+}
+
+// Escape closes the drawer. On desktop the dimming backdrop is gone (it read as
+// "this list is disabled" for a list we now want clicked), so its tap-to-close
+// went with it and this is the only keyboard exit. Bound once on document —
+// renderArchive re-runs on every poll, and per-render binding would stack.
+let _arcEscBound = false;
+function bindArchiveDrawerEsc() {
+  if (_arcEscBound) return;
+  _arcEscBound = true;
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (!_arcDrawerKey) return;                       // no drawer open
+    // A modal opened FROM the drawer (Compare, a delete confirm) owns Escape
+    // first; closing the drawer out from under it would strand the modal.
+    const ov = document.getElementById("modal-overlay");
+    if (ov && !ov.classList.contains("hidden")) return;
+    closeArchiveDrawer();
+  });
 }
 
 // Stable identity for an archive row. deleteArchiveEntry already treats
@@ -256,6 +294,7 @@ function openArchiveDrawer(tab, index) {
   const el = document.getElementById("arc-drawer");
   const bd = document.getElementById("arc-drawer-backdrop");
   if (!r || !el) return;
+  bindArchiveDrawerEsc();
   _arcDrawerKey = arcRowKey(r);
   _arcDrawerTab = tab;
   const label = tab === "parade"
@@ -273,6 +312,7 @@ function openArchiveDrawer(tab, index) {
     </div>`;
   el.classList.add("open");
   if (bd) bd.classList.add("open");
+  setArchiveDrawerOpen(true);
 }
 
 function closeArchiveDrawer() {
@@ -281,6 +321,7 @@ function closeArchiveDrawer() {
   const bd = document.getElementById("arc-drawer-backdrop");
   if (el) { el.classList.remove("open"); el.innerHTML = ""; }
   if (bd) bd.classList.remove("open");
+  setArchiveDrawerOpen(false);
 }
 
 // Compare two archived parade states line-by-line (admin only; the whole Archive
