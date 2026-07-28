@@ -756,7 +756,12 @@ const statusBadge = s => badge(s, s === "Active" ? "green" : s === "Warded" ? "r
 // from, so they always show the stored value. BP_DEPARTED_STATUSES lives in
 // braves-parade.js (loaded after helpers.js) but this runs at render time, long
 // after every script has loaded, so the reference resolves fine.
-function rosterDisplayStatus(r, effByD4) {
+// Shared body for the two variants below. `all` is the ONLY difference between
+// them — the departed short-circuit, the effByD4 lookup and the stored-value
+// fallback are deliberately not duplicated, because a person card and that
+// person's roster row disagreeing about their status is exactly the bug
+// Feature 33 exists to fix.
+function rosterStatusBadges(r, effByD4, all) {
   const stored = (r && r.status != null) ? String(r.status).trim() : "";
   if (BP_DEPARTED_STATUSES.has(stored)) return statusBadge(stored);
   // Prefer a caller-supplied d4→effective-status map (renderRoster builds it
@@ -765,11 +770,28 @@ function rosterDisplayStatus(r, effByD4) {
   // lone-caller fallback keeps this usable for a one-off lookup.
   const eff = effByD4 ? effByD4[r.id]
     : currentMedicalEffectiveAll(todayISO()).find(e => e.d4 === r.id);
-  if (eff && eff.statuses.length) return medTagBadge(eff.statuses[0].tag);
+  if (eff && eff.statuses.length) {
+    return (all ? eff.statuses : eff.statuses.slice(0, 1)).map(s => medTagBadge(s.tag)).join(" ");
+  }
   // No active medical status → fall back to the stored roster value (usually
   // "Active"/blank; a stale medical-mirror value left from before item 4a just
   // renders as its own badge until a human cleans it up).
   return statusBadge(stored || "Active");
+}
+
+function rosterDisplayStatus(r, effByD4) {
+  return rosterStatusBadges(r, effByD4, false);
+}
+
+// Person-card variant: EVERY concurrent status, not just the top-ranked one.
+// A card is a single person read in detail, so "LD + Excuse RMJ" must both show
+// — the parade grid and the Dashboard Non-Active table already list every
+// concurrent status, and a card naming one of them would contradict the parade
+// state. Strictly display-only: nothing here writes roster.status.
+// Call it WITHOUT effByD4 only for one-off lookups (a card is one person); in a
+// list render, pass a prebuilt map — see the note in rosterStatusBadges.
+function rosterDisplayStatusAll(r, effByD4) {
+  return rosterStatusBadges(r, effByD4, true);
 }
 const typeBadge = t => badge(t, t === "RSI" ? "orange" : t === "Injury" ? "red" : "yellow");
 const awardBadge = s => { const a = getAward(s); const c = { "Gold★": "purple", Gold: "yellow", Silver: "accent", Pass: "green", Fail: "red", "N/A": "accent" }; return badge(a, c[a] || "accent"); };

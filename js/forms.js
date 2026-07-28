@@ -156,9 +156,21 @@ function openPerson(d4) {
 
   // Commanders never show their 00xx id — surface rank instead. Recruits keep
   // the existing "4D — status" header.
+  //
+  // Feature 33: the status here is derived LIVE from the medical layer via
+  // rosterDisplayStatusAll, not read off p.status. Since PR #65 removed the
+  // medical→roster mirror, roster.status holds only active-vs-departed, so the
+  // old statusBadge(p.status) badged someone on MC as "Active" while the roster
+  // row beside it — which already goes through rosterDisplayStatus — said "MC".
+  // The "All" variant lists every concurrent status (LD + Excuse RMJ), matching
+  // the parade grid. Ghost recovery tags (MC+1/LD+2) appear here as everywhere.
+  // DISPLAY ONLY: nothing on this card writes back to the Roster sheet.
+  // No effByD4 map is passed — this is one person, the documented lone-caller
+  // fallback; do not copy this call into a list render.
+  const liveStatus = rosterDisplayStatusAll(p);
   let html = p.role === "Commander"
-    ? `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.rank ? p.rank + " · " : ""}Commander${p.status ? ` — ${statusBadge(p.status)}` : ""}</div>`
-    : `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.id} — ${statusBadge(p.status)}</div>`;
+    ? `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.rank ? p.rank + " · " : ""}Commander — ${liveStatus}</div>`
+    : `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${p.id} — ${liveStatus}</div>`;
 
   // ── Profile section ──────────────────────────────────
   const bmi = calcBMI(p);
@@ -754,6 +766,48 @@ function medExtraStatusChanged(sel) {
   if (wrap) wrap.style.display = sel.value === "__new__" ? "flex" : "none";
 }
 
+// Feature 32 — Enter saves the medical form even when nothing is focused.
+//
+// The form is a real <form> with a type=submit button, so Enter from INSIDE any
+// field already submits it. The gap is everything else: click a checkbox, or pick
+// a recruit from the search box (which blurs), and focus lands on <body> — where
+// a <form> ignores Enter entirely and the user is left pressing it at a form that
+// looks finished.
+//
+// Same shape as bindWizardEnterToSave below: ONE listener on the persistent
+// #modal-overlay, bound once (the overlay outlives every modal, so binding per
+// open would stack listeners), self-gated on the medical form's own DOM being
+// what is on screen. That last check is what keeps it inert for the ~30 other
+// modals that share the overlay — a stray Enter must not become an app-wide save.
+//
+// requestSubmit(), NOT submitMedical(): going through the form keeps HTML5
+// validation, so an empty required field gets the browser's "please fill in this
+// field" flag instead of a silent half-save. (The conduct wizard calls its saver
+// directly only because it is a plain <div> with no required fields to honour.)
+let _medEnterBound = false;
+function bindMedicalEnterToSave() {
+  if (_medEnterBound) return;
+  _medEnterBound = true;
+  document.getElementById("modal-overlay").addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    if (document.getElementById("modal-overlay").classList.contains("hidden")) return;
+    const form = document.getElementById("med-form");
+    if (!form) return;                            // some other modal owns the overlay
+    // The form has no textarea TODAY (Reason is an <input>), so this is a guard
+    // against a future one rather than a live case — kept because the failure it
+    // prevents (Enter saving instead of inserting a newline) is silent and
+    // annoying, and the check is free.
+    if (e.target.tagName === "TEXTAREA") return;
+    // Focus already inside the form → leave it to the browser's own implicit
+    // submission. Doing it ourselves here would double-fire, and would step on
+    // personSearchEnter (which preventDefaults Enter in the recruit box to pick
+    // the top match rather than submit a half-filled form).
+    if (form.contains(e.target)) return;
+    e.preventDefault();
+    form.requestSubmit();
+  });
+}
+
 function openMedicalForm(id, prefill) {
   // `prefill` is honoured only when creating (not editing) — used to route
   // appointment bookings through this form pre-set to type MA (Item 17
@@ -769,8 +823,12 @@ function openMedicalForm(id, prefill) {
   const daysVal = (startVal && endVal) ? daysFromStartEndInclusive(startVal, endVal) : "";
   const selectedStatus = e?.status || "";
   _medExtraIdx = 0;
+  bindMedicalEnterToSave();
+  // The id is load-bearing, not decoration: bindMedicalEnterToSave uses it both
+  // as the "is the medical form the modal on screen?" guard and as the thing it
+  // calls requestSubmit() on.
   openModal(isEdit ? "Edit Report Sick Entry" : "Log Report Sick", `
-    <form onsubmit="event.preventDefault(); submitMedical(); return false">
+    <form id="med-form" onsubmit="event.preventDefault(); submitMedical(); return false">
       <input type="hidden" id="f-entry-id" value="${isEdit ? e.id : ""}">
       <div style="display:flex;flex-direction:column;gap:10px">
         ${isEdit ? editHint : ""}
