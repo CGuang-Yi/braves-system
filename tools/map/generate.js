@@ -18,7 +18,7 @@ const { replaceRegion, sha256, writeJson } = require("./emit");
 // Tunable thresholds — change these, not the logic.
 const MAX_FUNCTION_LINES = 100;
 const FAN_IN_TOP = 25;
-const MD_LONG_FN_SHOWN = 30;
+const MD_LONG_FN_SHOWN = 15;   // the .md is read whole by an agent; the full list lives in the .json
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const MD_PATH = path.join(ROOT, "docs", "CODEBASE_MAP.md");

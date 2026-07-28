@@ -21,11 +21,15 @@ function exemptReason(name) {
 function buildMarkers(byName, files, testRefs, opts) {
   const names = Object.keys(byName);
 
-  // A name is an orphan only if NOTHING references it — including HTML strings.
-  // A handler wired solely through an onclick= attribute is live code, and
-  // reporting it as dead would send a reviewer to delete something a user clicks.
+  // A name is an orphan only if NOTHING mentions it — not a call, not an HTML
+  // string, not even a bare identifier reference. Each of those exclusions is
+  // load-bearing: a handler wired solely through an onclick= attribute is live
+  // code, and a `const` used as `NAME[i]` is never followed by '(' at all.
+  // Reporting either as dead would send a reviewer to delete working code.
   const orphans = names
-    .filter(n => byName[n].directRefs.length === 0 && byName[n].stringRefs.length === 0)
+    .filter(n => byName[n].directRefs.length === 0
+              && byName[n].stringRefs.length === 0
+              && (byName[n].identRefFiles || []).length === 0)
     .filter(n => !exemptReason(n))
     .map(n => ({ name: n, file: byName[n].definedIn, kind: byName[n].kind }));
 

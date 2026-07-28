@@ -41,6 +41,12 @@ module.exports = async function () {
     eq(r.orphans, [], "string-wired handler is live code");
   });
 
+  await test("a const referenced only by subscript is NOT an orphan", () => {
+    const byName = { TABLE: { name: "TABLE", definedIn: "a.js", directRefs: [], stringRefs: [], identRefFiles: ["b.js"], fanIn: 1 } };
+    const r = buildMarkers(byName, [], {}, OPTS);
+    eq(r.orphans, [], "identifier reference keeps it alive");
+  });
+
   await test("untested surface is what no test file names", () => {
     const byName = {
       covered: { name: "covered", definedIn: "a.js", directRefs: [{ file: "a.js", line: 2 }], stringRefs: [], fanIn: 0 },

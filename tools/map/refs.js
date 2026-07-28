@@ -14,6 +14,14 @@
 // ~1150 declarations and a 360KB forms.js the per-name approach means gigabytes
 // of redundant scanning; this is linear in total source size.
 const CALL_RE = /\b([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*\(/g;
+// Orphan detection needs a SECOND, looser pass. Call sites alone answer "who
+// calls this", but most declarations here are not callable: `const BP_SECTIONS`
+// is used as `BP_SECTIONS[i]`, and `const API` only ever appears as `API.pullAll`
+// — neither is ever followed by '('. Judging orphans on call sites alone reported
+// 237 live constants as dead code, including API itself. So references are
+// tracked separately from calls: calls stay precise for navigation, identifier
+// references decide liveness.
+const IDENT_REF_RE = /\b([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 
 // Newline offsets, so a match offset becomes a line number by binary search
 // instead of rescanning the file from byte 0 on every hit.
@@ -41,7 +49,7 @@ function buildRefs(files) {
       if (byName[d.name]) continue;   // first definition wins; duplicates are a finding, not a crash
       byName[d.name] = {
         name: d.name, kind: d.kind, definedIn: f.file, definedAtLine: d.line,
-        directRefs: [], stringRefs: [], fanIn: 0
+        directRefs: [], stringRefs: [], identRefFiles: [], fanIn: 0
       };
     }
   }
@@ -73,16 +81,52 @@ function buildRefs(files) {
       }
     }
 
+    // Liveness pass: any mention of the name at all, anywhere but its own
+    // declaration line. Deliberately loose — over-counting references only ever
+    // keeps something OUT of the orphan list, while under-counting would mark
+    // live code dead, which is the far more expensive mistake.
+    IDENT_REF_RE.lastIndex = 0;
+    let im;
+    while ((im = IDENT_REF_RE.exec(f.masked)) !== null) {
+      const hits = byNeedle[im[1]];
+      if (!hits) continue;
+      const line = lineOf(nl, im.index);
+      for (const name of hits) {
+        const rec = byName[name];
+        if (f.file === rec.definedIn && line === rec.definedAtLine) continue;
+        if (rec.identRefFiles.indexOf(f.file) === -1) rec.identRefFiles.push(f.file);
+      }
+    }
+
     // String-literal references: scan the recorded string bodies only.
     for (const s of f.strings) {
-      if (s.text.indexOf("(") === -1) continue;
-      CALL_RE.lastIndex = 0;
-      let sm;
-      while ((sm = CALL_RE.exec(s.text)) !== null) {
-        const hits = byNeedle[sm[1]];
+      const line = lineOf(nl, s.start);
+
+      // `onclick="submitMedical()"` — a call written inside HTML markup.
+      if (s.text.indexOf("(") !== -1) {
+        CALL_RE.lastIndex = 0;
+        let sm;
+        while ((sm = CALL_RE.exec(s.text)) !== null) {
+          const hits = byNeedle[sm[1]];
+          if (!hits) continue;
+          for (const name of hits) byName[name].stringRefs.push({ file: f.file, line });
+        }
+      }
+
+      // A BARE name in a string is dispatch too: forms.js passes handlers by
+      // name (`onPickFn: "wizPickRow"`) to be invoked later. Those have no '('
+      // after them, so the call scan above cannot see them, and treating them
+      // as dead would send a reviewer to delete a live handler. Liveness only —
+      // these are not recorded as call sites.
+      IDENT_REF_RE.lastIndex = 0;
+      let sim;
+      while ((sim = IDENT_REF_RE.exec(s.text)) !== null) {
+        const hits = byNeedle[sim[1]];
         if (!hits) continue;
-        const line = lineOf(nl, s.start);
-        for (const name of hits) byName[name].stringRefs.push({ file: f.file, line });
+        for (const name of hits) {
+          const rec = byName[name];
+          if (rec.identRefFiles.indexOf(f.file) === -1) rec.identRefFiles.push(f.file);
+        }
       }
     }
   }

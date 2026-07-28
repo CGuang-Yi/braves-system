@@ -61,6 +61,38 @@ module.exports = async function () {
     eq(byName.f.directRefs, [], "unrelated prototype-named calls are ignored");
   });
 
+  await test("a const used by subscript is recorded as referenced", () => {
+    // `const BP_SECTIONS = [...]` is used as BP_SECTIONS[i] and never followed
+    // by '(' — judging liveness on call sites alone marked 237 live constants
+    // as dead code, API included.
+    const a = mk("a.js", "const TABLE = [1,2];", [{ name: "TABLE", kind: "const", line: 1 }]);
+    const b = mk("b.js", "const x = TABLE[0];");
+    const { byName } = buildRefs([a, b]);
+    eq(byName.TABLE.directRefs, [], "not a call site");
+    eq(byName.TABLE.identRefFiles, ["b.js"], "but it is referenced");
+  });
+
+  await test("a handler passed by bare name in a string counts as live", () => {
+    // js/forms.js:4875 does `onPickFn: "wizPickRow"` — dispatch by name, with no
+    // '(' anywhere, so the call scan cannot see it. Marking that dead would send
+    // a reviewer to delete a working handler.
+    const a = mk("a.js", "function wizPickRow(){}", [{ name: "wizPickRow", kind: "function", line: 1 }]);
+    const b = mk("b.js", "const cfg = { onPickFn: 'wizPickRow' };");
+    const { byName } = buildRefs([a, b]);
+    eq(byName.wizPickRow.directRefs, [], "not a call site");
+    eq(byName.wizPickRow.stringRefs, [], "not a string CALL either");
+    eq(byName.wizPickRow.identRefFiles, ["b.js"], "but it is live");
+  });
+
+  await test("a genuinely unused declaration has no identifier references", () => {
+    const a = mk("a.js", "const UNUSED = 1;\nconst other = 2;", [
+      { name: "UNUSED", kind: "const", line: 1 },
+      { name: "other", kind: "const", line: 2 }
+    ]);
+    const { byName } = buildRefs([a]);
+    eq(byName.UNUSED.identRefFiles, [], "declaration line does not count as a reference");
+  });
+
   await test("byFile records cross-file direction", () => {
     const a = mk("a.js", "function f(){}", [{ name: "f", kind: "function", line: 1 }]);
     const b = mk("b.js", "f();");
