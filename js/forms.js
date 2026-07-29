@@ -2673,8 +2673,8 @@ function toDDMMYY(iso) {
 // R/N formatting (spec §7). Delegates to the Braves implementation in
 // braves-parade.js (loaded after this file, so the global is resolved by the
 // time any UI calls paradeRN). Kept under the old name because the medical-
-// status report + the borderline/appointment checklists still call paradeRN;
-// they now get Braves-format R/N ("MARTIN TAN B1411" / "LCP CALVIN LEE").
+// status report still calls paradeRN; it gets Braves-format R/N
+// ("MARTIN TAN B1411" / "LCP CALVIN LEE").
 function paradeRN(d4) {
   return bravesParadeRN(d4);
 }
