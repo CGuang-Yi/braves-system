@@ -54,4 +54,10 @@ module.exports = async function () {
     ok(!masked.includes("b()"), "escaped quote kept inside string");
     ok(masked.includes("after()"), "code after string survives");
   });
+
+  await test("regex flags are blanked, not left as a bare identifier", () => {
+    const { masked } = maskSource("str.replace(/foo/gi, 'bar'); after();");
+    ok(!masked.includes("gi"), "flags after the closing slash are blanked");
+    ok(masked.includes("after()"), "code after the flagged regex survives");
+  });
 };

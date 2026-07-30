@@ -89,16 +89,19 @@ function maskSource(src) {
       blank(i, j); i = j; continue;
     }
     if (c === "/" && isRegexStart(out, i)) {
-      let j = i + 1, inClass = false;
+      let j = i + 1, inClass = false, closed = false;
       while (j < src.length) {
         if (src[j] === "\\") { j += 2; continue; }
         if (src[j] === "[") inClass = true;
         else if (src[j] === "]") inClass = false;
-        else if (src[j] === "/" && !inClass) break;
+        else if (src[j] === "/" && !inClass) { closed = true; break; }
         else if (src[j] === "\n") break;   // unterminated — bail rather than eat the rest of the file
         j++;
       }
       j = Math.min(j + 1, src.length);
+      // Consume trailing flags (g, i, m, s, u, v, y, ...) so they don't leak
+      // into the masked output as an unmasked bare-identifier-looking token.
+      if (closed) while (j < src.length && /[a-zA-Z]/.test(src[j])) j++;
       blank(i + 1, j);
       i = j; continue;
     }
