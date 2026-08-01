@@ -1622,7 +1622,15 @@ function readAllTabs(ctx) {
 // every re-save of a morning conduct DUPLICATES its rows — and the client-side
 // dedup/preload (which compare against pad4Time keys). Forcing "@" keeps "0730"
 // verbatim, exactly like participants.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"] };
+// Attendance.time / Appointments.time / PolarFlow.time are the SAME clock-time
+// shape (js/helpers.js pad4Time — "0730", not the ConductDetail-style HHMM-only
+// exception granted to RouteMarch/SOC's MM:SS duration `time`, which already
+// survives because it contains a colon). Attendance.time in particular is
+// compared for string equality against the now-protected ConductDetail.time in
+// several forms.js call sites (findConductDetailMatch-style (date,time,conductId)
+// lookups) — losing its leading zero on the very next pull silently breaks those
+// matches the same way #69 did, so it needs the same "@" protection.
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"] };
 
 function writeTab(tabName, data) {
   if (!Array.isArray(data)) {
