@@ -127,6 +127,82 @@ function haActivityGridHtml(ha, d4, proj) {
   `;
 }
 
+// ── Roster Notes, editable in place on the person card ──────────────────────
+// Notes is the ONE roster column edited in-app. Every other roster field comes
+// from the pre-enlistment nominal roll and is maintained in the Sheet (see
+// openCommanderForm's comment) — but notes are exactly the kind of thing a
+// commander writes down mid-day, and making them go to the Sheet for it meant
+// they simply never got written.
+//
+// Deliberately NOT a modal: the person card IS the modal, and opening a second
+// one over it would lose the reader's place in a long card. The block swaps
+// itself between a read view and a textarea, in place.
+//
+// Rendered even when blank (for writers) — the old block was skipped when empty,
+// which meant the only people who could see the field were the ones who already
+// had notes, and there was no affordance to add the first one. Viewers still see
+// nothing when it's blank; there is nothing for them to read or do.
+function personNotesHtml(d4, editing) {
+  const p = STATE.roster.find(r => r.id === d4);
+  if (!p) return "";
+  const notes = p.notes || "";
+  const box = "background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:12px";
+  if (!canWrite()) {
+    return notes
+      ? `<div style="${box};color:var(--text);white-space:pre-wrap"><strong style="color:var(--muted)">Notes:</strong> ${escapeHTML(notes)}</div>`
+      : "";
+  }
+  if (editing) {
+    return `<div style="${box}">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Notes</div>
+      <textarea id="person-notes-input" rows="4" maxlength="1000" placeholder="Free-text remarks — e.g. wears specs, vehicle licence, recurring admin"
+        style="width:100%;resize:vertical;padding:7px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit;font-size:12px;outline:none"
+        onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();personNotesSave('${d4}')}">${escapeHTML(notes)}</textarea>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+        <button type="button" class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="personNotesSave('${d4}')">Save</button>
+        <button type="button" class="btn" style="font-size:11px;padding:4px 10px" onclick="personNotesRefresh('${d4}', false)">Cancel</button>
+        <span style="font-size:10px;color:var(--dim)">⌘/Ctrl + Enter to save</span>
+      </div>
+    </div>`;
+  }
+  return `<div style="${box};color:var(--text)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div style="white-space:pre-wrap;min-width:0">${notes
+        ? `<strong style="color:var(--muted)">Notes:</strong> ${escapeHTML(notes)}`
+        : `<span style="color:var(--dim)">No notes yet.</span>`}</div>
+      <button type="button" class="btn btn-icon" style="padding:0 6px;flex-shrink:0"
+        onclick="personNotesRefresh('${d4}', true)" title="${notes ? "Edit notes" : "Add notes"}">✎</button>
+    </div>
+  </div>`;
+}
+// Repaints only the notes block, so the rest of the card — and the reader's
+// scroll position in it, and an open Report Sick Patterns panel — survive.
+function personNotesRefresh(d4, editing) {
+  const host = document.getElementById("person-notes");
+  if (!host) return;
+  host.innerHTML = personNotesHtml(d4, editing);
+  if (editing) {
+    const ta = document.getElementById("person-notes-input");
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }
+}
+function personNotesSave(d4) {
+  const ta = document.getElementById("person-notes-input");
+  if (!ta) return;
+  const idx = STATE.roster.findIndex(r => r.id === d4);
+  if (idx < 0) return;
+  const next = ta.value.trim();
+  if (next === (STATE.roster[idx].notes || "")) { personNotesRefresh(d4, false); return; }
+  STATE.roster[idx] = { ...STATE.roster[idx], notes: next };
+  saveLocal();
+  personNotesRefresh(d4, false);
+  // Push the WHOLE roster row, never a {id, notes} patch. The backend's
+  // upsertRow rewrites every sheet column from the row it is given
+  // (`trimmed.map(h => rowData[h] ?? "")`), so a patch would blank name, age,
+  // phone, allergies — the entire rest of that person's record.
+  if (STATE.apiUrl) autoSync("Roster", { type: "upsert", row: STATE.roster[idx] });
+}
+
 function openPerson(d4) {
   const p = STATE.roster.find(r => r.id === d4); if (!p) return;
   const med = STATE.medical.filter(m => m.d4 === d4);
@@ -201,8 +277,8 @@ function openPerson(d4) {
   if (p.allergies) html += `<div style="background:#E3B34122;border:1px solid #E3B34144;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;color:var(--yellow)"><strong>Allergies:</strong> ${escapeHTML(p.allergies)}</div>`;
   if (p.msk) html += `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--red)"><strong>MSK history:</strong> ${escapeHTML(p.msk)}</div>`;
   // Roster Notes column — free-text remarks kept on the roster row (neutral,
-  // not a warning like allergies/MSK). Rendered verbatim; skipped when blank.
-  if (p.notes) html += `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:12px;color:var(--text);white-space:pre-wrap"><strong style="color:var(--muted)">Notes:</strong> ${escapeHTML(p.notes)}</div>`;
+  // not a warning like allergies/MSK). Editable in place; see personNotesHtml.
+  html += `<div id="person-notes">${personNotesHtml(p.id, false)}</div>`;
 
   // RSIs stat is clickable when there are records — opens an inline patterns
   // panel below the stats strip with day-of-week, status mix, timeline, reasons.
