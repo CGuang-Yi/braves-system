@@ -603,14 +603,23 @@ function toggleReportSickPatterns(d4) {
     </div>`;
   }).join("");
 
+  // Label ABOVE the bar, not in a fixed-width column beside it. The old layout
+  // pinned the badge into a `flex:0 0 110px` track, which is narrower than most
+  // real status names — "Excuse Prolonged Standing" wrapped to three lines and
+  // in this panel's half-width grid column it degenerated into a column of
+  // single words. Stacking removes the constraint entirely: the badge gets the
+  // full row width so it stays on one line, and every bar now starts at x=0, so
+  // they are MORE comparable than when a variable-height label sat beside them.
   const statusBars = statusRows.map(([s, n]) => {
     const pct = Math.round((n / med.length) * 100);
-    return `<div style="display:flex;align-items:center;gap:8px;font-size:11px">
-      <div style="flex:0 0 110px">${medTagBadge(s)}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:3px;height:14px;position:relative;overflow:hidden">
+    return `<div style="display:flex;flex-direction:column;gap:3px;font-size:11px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="min-width:0">${medTagBadge(s)}</span>
+        <span class="mono" style="color:var(--muted);white-space:nowrap">${n} · ${pct}%</span>
+      </div>
+      <div style="background:var(--surface2);border-radius:3px;height:14px;position:relative;overflow:hidden">
         <div style="width:${pct}%;height:100%;background:${statusColor[s] || "var(--accent)"}"></div>
       </div>
-      <div class="mono" style="flex:0 0 60px;text-align:right;color:var(--muted)">${n} · ${pct}%</div>
     </div>`;
   }).join("");
 
@@ -634,7 +643,7 @@ function toggleReportSickPatterns(d4) {
         </div>
         <div>
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Status Mix</div>
-          <div style="display:flex;flex-direction:column;gap:5px">${statusBars}</div>
+          <div style="display:flex;flex-direction:column;gap:9px">${statusBars}</div>
         </div>
       </div>
       ${tlPoints.length ? `<div style="margin-top:14px">
