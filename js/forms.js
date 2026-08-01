@@ -1069,7 +1069,13 @@ function submitMedical() {
     time, outOfCamp,
     // Preserve provenance on edit (don't silently flip a conduct-log row to
     // "manual"); new sibling rows are manual.
-    origin: (i === 0 && prev) ? (prev.origin || "manual") : "manual"
+    origin: (i === 0 && prev) ? (prev.origin || "manual") : "manual",
+    // bookInDate is immutable once stamped by "Mark Present" (PR #65) — it must
+    // survive an edit of this row's other fields (reason/location/dates), or a
+    // routine correction silently un-books someone who is already Present and
+    // resurrects them under ATT C in the parade state / Status exports. New
+    // sibling rows (i > 0) were never booked in, so they start blank.
+    bookInDate: (i === 0 && prev) ? (prev.bookInDate || "") : ""
   }));
 
   records.forEach((rec, i) => {
@@ -2624,6 +2630,7 @@ function submitLeave() {
   const startIso = gv("f-start");
   const endIso = gv("f-end");
   if (endIso < startIso) { alert("End date must be on or after start date."); return; }
+  const prev = editId ? STATE.leave.find(l => l.id === editId) : null;
   const entry = {
     id: editId || nextId(),
     d4,
@@ -2633,7 +2640,11 @@ function submitLeave() {
     days: +gv("f-days") || 0,
     reason: gv("f-reason") || "",
     isInCamp: gv("f-in-camp") === "true",
-    isInCampReviewed: true
+    isInCampReviewed: true,
+    // bookInDate is immutable once stamped by "Mark Present" (PR #65) — carry it
+    // forward on edit, or correcting this record's reason/dates silently un-books
+    // someone already Present. See the matching fix/comment in submitMedical.
+    bookInDate: prev ? (prev.bookInDate || "") : ""
   };
   if (editId) {
     const idx = STATE.leave.findIndex(l => l.id === editId);
