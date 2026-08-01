@@ -381,7 +381,10 @@ module.exports = async function run() {
     // chartGateMarkup renders the "load charts" button; it only makes sense
     // adjacent to the hidden #dash-charts div it un-hides. The reorder moved
     // both — this fails if only one of them travelled.
-    ok(/id="dash-charts"[\s\S]{0,400}?chartGateMarkup\("loadDashboardCharts\(\)", "dash-chart-gate"\)/.test(render),
+    // The character budget is a proximity proxy, not a size limit on the grid:
+    // widened from 400 when the Status Trend card grew its range selector, which
+    // legitimately added ~270 chars of markup BETWEEN the two markers.
+    ok(/id="dash-charts"[\s\S]{0,900}?chartGateMarkup\("loadDashboardCharts\(\)", "dash-chart-gate"\)/.test(render),
       "the dashboard chart gate is no longer adjacent to #dash-charts");
   });
 
