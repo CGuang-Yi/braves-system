@@ -18,7 +18,7 @@ npm run map
 ```
 
 <!-- GENERATED:meta:start -->
-_Generated from `73d8e78` by `npm run map`. 13 source files, 1021 declarations._
+_Generated from `3fff203` by `npm run map`. 14 source files, 1026 declarations._
 <!-- GENERATED:meta:end -->
 
 ## How much to trust each part
@@ -105,15 +105,16 @@ reference it. Per-declaration callers live in `codebase-map.json` → `functions
 <!-- GENERATED:inventory:start -->
 | file | lines | decls | calls into | called by | test files |
 |---|---:|---:|---|---|---:|
+| `js/actions.js` | 107 | 5 | — | `js/parade-tab.js` | 2 |
 | `js/api.js` | 311 | 45 | `apps-script-Code.gs` `js/forms.js` `js/state.js` `js/sync.js` | `apps-script-Code.gs` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render.js` `js/sync.js` | 51 |
 | `js/braves-parade.js` | 910 | 47 | `js/helpers.js` `js/state.js` | `apps-script-Code.gs` `js/forms.js` `js/parade-tab.js` `js/render.js` | 33 |
 | `js/calc.js` | 353 | 18 | — | `js/forms.js` `js/helpers.js` `js/render.js` | 8 |
-| `js/forms.js` | 6296 | 228 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/calc.js` `js/helpers.js` `js/ippt-scoring.js` `js/main.js` `js/render.js` `js/sick-history-import.js` `js/state.js` `js/sync.js` | `js/api.js` `js/main.js` `js/parade-tab.js` `js/render.js` `js/sync.js` | 18 |
+| `js/forms.js` | 6296 | 228 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/calc.js` `js/helpers.js` `js/ippt-scoring.js` `js/main.js` `js/render.js` `js/sick-history-import.js` `js/state.js` `js/sync.js` | `js/api.js` `js/main.js` `js/parade-tab.js` `js/render.js` `js/sync.js` | 19 |
 | `js/helpers.js` | 1958 | 157 | `js/api.js` `js/calc.js` `js/ippt-scoring.js` `js/render.js` `js/state.js` `js/sync.js` | `apps-script-Code.gs` `js/braves-parade.js` `js/forms.js` `js/main.js` `js/parade-tab.js` `js/render.js` `js/sync.js` | 45 |
 | `js/ippt-scoring.js` | 163 | 11 | — | `js/forms.js` `js/helpers.js` `js/render.js` | 1 |
 | `js/main.js` | 363 | 15 | `js/api.js` `js/forms.js` `js/helpers.js` `js/render.js` `js/state.js` `js/sync.js` | `js/forms.js` `js/render.js` `js/sync.js` | 2 |
-| `js/parade-tab.js` | 621 | 40 | `js/api.js` `js/braves-parade.js` `js/forms.js` `js/helpers.js` `js/state.js` `js/sync.js` | `js/render.js` | 4 |
-| `js/render.js` | 3777 | 161 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms.js` `js/helpers.js` `js/ippt-scoring.js` `js/main.js` `js/parade-tab.js` `js/state.js` `js/sync.js` | `js/forms.js` `js/helpers.js` `js/main.js` `js/sync.js` | 35 |
+| `js/parade-tab.js` | 650 | 40 | `js/actions.js` `js/api.js` `js/braves-parade.js` `js/forms.js` `js/helpers.js` `js/state.js` `js/sync.js` | `js/render.js` | 4 |
+| `js/render.js` | 3780 | 161 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms.js` `js/helpers.js` `js/ippt-scoring.js` `js/main.js` `js/parade-tab.js` `js/state.js` `js/sync.js` | `js/forms.js` `js/helpers.js` `js/main.js` `js/sync.js` | 35 |
 | `js/sick-history-import.js` | 270 | 26 | — | `js/forms.js` | 23 |
 | `js/state.js` | 719 | 91 | — | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render.js` `js/sync.js` | 41 |
 | `js/sync.js` | 1066 | 72 | `apps-script-Code.gs` `js/api.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/render.js` `js/state.js` | `js/api.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render.js` | 14 |
@@ -127,13 +128,13 @@ reference it. Per-declaration callers live in `codebase-map.json` → `functions
 
 - `openPerson` — 411 lines, `js/forms.js:206`
 - `bpClassifyPerson` — 314 lines, `js/braves-parade.js:210`
-- `renderMSKAnalytics` — 286 lines, `js/render.js:954`
+- `renderMSKAnalytics` — 286 lines, `js/render.js:957`
 - `API` — 267 lines, `js/api.js:44`
-- `renderConductDashboard` — 266 lines, `js/render.js:2808`
+- `renderConductDashboard` — 266 lines, `js/render.js:2811`
 - `bpClassifyPerson` — 254 lines, `apps-script-Code.gs:2464`
-- `renderDashboard` — 251 lines, `js/render.js:480`
+- `renderDashboard` — 251 lines, `js/render.js:483`
 - `buildFitnessReportHTML` — 250 lines, `js/forms.js:3386`
-- `renderIPPT` — 224 lines, `js/render.js:2215`
+- `renderIPPT` — 224 lines, `js/render.js:2218`
 - `renderLogConductWizard` — 218 lines, `js/forms.js:4841`
 - `saveLogConductWizard` — 173 lines, `js/forms.js:5636`
 - `rebuildLogConductStatus` — 161 lines, `js/forms.js:4676`
@@ -198,7 +199,7 @@ _7 more over the threshold; full list in `docs/codebase-map.json` → `markers.l
 
 **Untested surface**
 
-_639 of 1021 declarations are named by no test file._ Full list in `docs/codebase-map.json` → `markers.untested`. Being named by a test is not proof of meaningful coverage — see the trust table.
+_642 of 1026 declarations are named by no test file._ Full list in `docs/codebase-map.json` → `markers.untested`. Being named by a test is not proof of meaningful coverage — see the trust table.
 <!-- GENERATED:markers:end -->
 
 ## Assets
@@ -219,16 +220,16 @@ checks are the only safety net they have.
 8. `js/calc.js` — `?v=7`
 9. `js/helpers.js` — `?v=147`
 10. `js/sick-history-import.js` — `?v=113`
-11. `js/render.js` — `?v=174`
+11. `js/render.js` — `?v=175`
 12. `js/forms.js` — `?v=178`
 13. `js/braves-parade.js` — `?v=139`
-14. `js/parade-tab.js` — `?v=24`
-15. `js/sync.js` — `?v=126`
-16. `js/main.js` — `?v=123`
+14. `js/actions.js` — `?v=1`
+15. `js/parade-tab.js` — `?v=25`
+16. `js/sync.js` — `?v=126`
+17. `js/main.js` — `?v=123`
 
 **Cache-bust drift** — source committed more recently than its `?v=` was bumped
 
-- `js/render.js` (`?v=174`) — source touched 2026-08-02T13:52:40+08:00, version last bumped 2026-08-02T13:52:21+08:00
 - `js/forms.js` (`?v=178`) — source touched 2026-08-02T14:42:08+08:00, version last bumped 2026-08-02T14:41:38+08:00
 
 **Dead CSS candidates** — 3 of 114 classes

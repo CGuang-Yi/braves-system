@@ -125,10 +125,17 @@ module.exports = async function run() {
 
   suite("parade lookahead wiring: the control reaches every parade-side surface (Fix 18)");
 
-  await test("setParadeLookahead is declared — the toolbar buttons call it from an onclick", () => {
+  await test("setParadeLookahead is declared and reachable from the toolbar buttons", () => {
     ok(/function setParadeLookahead\(/.test(paradeTab), "setParadeLookahead is not defined");
-    ok(/onclick="setParadeLookahead\('\$\{v\}'\)"/.test(paradeTab),
-      "the Lookahead button group no longer wires setParadeLookahead");
+    // Two halves, because parade-tab.js is a data-action pilot (js/actions.js):
+    // the markup names an action, and the registry binds that action to the
+    // function. Asserting only one half would pass while the button is dead.
+    // The registry half is additionally covered by no-undef and by
+    // test/actions.test.js's "every data-action has a registered handler".
+    ok(/data-action="paradeLookahead" data-value="\$\{v\}"/.test(paradeTab),
+      "the Lookahead button group no longer carries the paradeLookahead action");
+    ok(/paradeLookahead:\s*el => setParadeLookahead\(el\.dataset\.value\)/.test(paradeTab),
+      "the paradeLookahead action no longer reaches setParadeLookahead");
     ok(/function paradeLookaheadOpts\(/.test(paradeTab), "paradeLookaheadOpts is not defined");
   });
 
@@ -228,8 +235,13 @@ module.exports = async function run() {
     // and a hidden button is not a permission check.
     ok(/function openQuickLogMenu\(d4\) \{\s*\n\s*if \(!canWrite\(\)\) return;/.test(forms),
       "openQuickLogMenu no longer enforces canWrite() itself");
-    ok(/openQuickLogMenu\('\$\{escapeAttr\(x\.r\.id\)\}'\)/.test(paradeTab),
-      "the parade grid no longer passes the row's person to the quick-log menu");
+    // parade-tab.js is a data-action pilot: the row carries the person on a
+    // data attribute and the registry reads it back off el.dataset. Both halves
+    // are asserted — the markup alone would pass with a dead button.
+    ok(/data-action="paradeQuickLog" data-id="\$\{escapeAttr\(x\.r\.id\)\}"/.test(paradeTab),
+      "the parade grid row no longer carries the person on the quick-log trigger");
+    ok(/paradeQuickLog:\s*\(el, event\) => \{[^}]*openQuickLogMenu\(el\.dataset\.id\)/.test(paradeTab),
+      "the paradeQuickLog action no longer passes the row's person to the quick-log menu");
     ok(/openQuickLogMenu\(''\)/.test(render),
       "the Dashboard no longer opens the quick-log menu with no person context");
   });

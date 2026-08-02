@@ -56,6 +56,9 @@ function codesFor(medical, leave) {
   const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8"), ctx, { filename: "braves-parade.js" });
+  // actions.js first: parade-tab.js calls registerActions() at load, exactly as
+  // it does in the browser where index.html loads actions.js before it.
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "actions.js"), "utf8"), ctx, { filename: "actions.js" });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8"), ctx, { filename: "parade-tab.js" });
   vm.runInContext(`_r = paradeClassifyPlatoon(STATE.roster, ${JSON.stringify(TODAY)});`, ctx);
   return JSON.parse(vm.runInContext("JSON.stringify(_r[0].codes)", ctx));
@@ -141,7 +144,10 @@ module.exports = async function run() {
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
     vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8"), ctx, { filename: "braves-parade.js" });
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8"), ctx, { filename: "parade-tab.js" });
+    // actions.js first: parade-tab.js calls registerActions() at load, exactly as
+  // it does in the browser where index.html loads actions.js before it.
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "actions.js"), "utf8"), ctx, { filename: "actions.js" });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8"), ctx, { filename: "parade-tab.js" });
     vm.runInContext("_paradeLookahead = 7;", ctx);
     vm.runInContext(`_r = paradeClassifyPlatoon(STATE.roster, ${JSON.stringify(TODAY)});`, ctx);
     const codes = JSON.parse(vm.runInContext("JSON.stringify(_r[0].codes)", ctx));
@@ -193,7 +199,10 @@ module.exports = async function run() {
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
     vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8"), ctx, { filename: "braves-parade.js" });
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8"), ctx, { filename: "parade-tab.js" });
+    // actions.js first: parade-tab.js calls registerActions() at load, exactly as
+  // it does in the browser where index.html loads actions.js before it.
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "actions.js"), "utf8"), ctx, { filename: "actions.js" });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "parade-tab.js"), "utf8"), ctx, { filename: "parade-tab.js" });
     // Assigned directly rather than through setParadeLookahead: the setter calls
     // refreshParade(), which needs a document this headless context has no use for.
     vm.runInContext("_paradeLookahead = 7;", ctx);

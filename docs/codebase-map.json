@@ -1,11 +1,12 @@
 {
-  "generatedAt": "2026-08-02T10:58:49.556Z",
-  "commit": "73d8e78",
+  "generatedAt": "2026-08-02T11:12:50.541Z",
+  "commit": "3fff203",
   "thresholds": {
     "maxFunctionLines": 100,
     "fanInTop": 25
   },
   "hashes": {
+    "js/actions.js": "15f66cebe42f939a4f69c13a3a31af4bfc180e22c58ab84b33b5ee8467bda02a",
     "js/api.js": "82118803270127350f5c5de445528d990951d0f904744a645878cd301ff89e53",
     "js/braves-parade.js": "55294376476452969198d6f6a1138def46502cff9b0d04f5ffc0c44e5a3bac86",
     "js/calc.js": "a621ae5f1b5c753851ff2bd540283caeaaad963c802e90b3453aa165a6e6b236",
@@ -13,14 +14,64 @@
     "js/helpers.js": "8abfad96e3257368883e1b0882b199b023531be4a85ea149cc18eba1f8bc8153",
     "js/ippt-scoring.js": "e11cc28c274cac3d778efddc244e19cd5b87635a39e35331ebd27854e29a3717",
     "js/main.js": "f4eca631c72765956182a3f995b4f08babce0c812040e1d7b71b1bf1d3f7da35",
-    "js/parade-tab.js": "a249368b51a054fad4e8f3a2d8f8b7148b7f01fb800d8a5da204db4249952b0b",
-    "js/render.js": "ddbfd5b48b924777f7918bb32d9c04ff23cfff0849f308ec46d4bf8918fc5926",
+    "js/parade-tab.js": "3c2de82db1083d1675f27232e6fc71718447d32a8c1b7b8e31b47c5dcaa53b83",
+    "js/render.js": "3ab0e105b5b925156e6052431741b5137f4c81892fee921b2261e647f367606d",
     "js/sick-history-import.js": "eff90949a813d5a0444f44e47ebc214ba879c395c95911f0fa973bec8ee2e32c",
     "js/state.js": "1aeb919b31f4a9be4f0523e150d9937a005701cf57aa2f68da1615e5f85041c2",
     "js/sync.js": "07e89583a3f3290d5f8e91f5372f0c18b28c84cd0672ddfc4444036358df1c8d",
     "apps-script-Code.gs": "6e5d6d43080c656e97492c72e16d81bd9c5acddd0ecd1e2fbad11b02e25df2a3"
   },
   "files": [
+    {
+      "file": "js/actions.js",
+      "lines": 107,
+      "declCount": 5,
+      "callsInto": [],
+      "calledBy": [
+        "js/parade-tab.js"
+      ],
+      "vmCheck": {
+        "ran": true,
+        "missing": []
+      },
+      "decls": [
+        {
+          "name": "ACTIONS",
+          "kind": "const",
+          "line": 40,
+          "endLine": 40,
+          "length": 1
+        },
+        {
+          "name": "ACTION_ATTRS",
+          "kind": "const",
+          "line": 46,
+          "endLine": 51,
+          "length": 6
+        },
+        {
+          "name": "registerActions",
+          "kind": "function",
+          "line": 56,
+          "endLine": 67,
+          "length": 12
+        },
+        {
+          "name": "actionNames",
+          "kind": "function",
+          "line": 70,
+          "endLine": 89,
+          "length": 20
+        },
+        {
+          "name": "dispatchAction",
+          "kind": "function",
+          "line": 74,
+          "endLine": 89,
+          "length": 16
+        }
+      ]
+    },
     {
       "file": "js/api.js",
       "lines": 311,
@@ -3836,9 +3887,10 @@
     },
     {
       "file": "js/parade-tab.js",
-      "lines": 621,
+      "lines": 650,
       "declCount": 40,
       "callsInto": [
+        "js/actions.js",
         "js/api.js",
         "js/braves-parade.js",
         "js/forms.js",
@@ -3850,8 +3902,9 @@
         "js/render.js"
       ],
       "vmCheck": {
-        "ran": true,
-        "missing": []
+        "ran": false,
+        "missing": [],
+        "reason": "registerActions is not defined"
       },
       "decls": [
         {
@@ -4138,7 +4191,7 @@
     },
     {
       "file": "js/render.js",
-      "lines": 3777,
+      "lines": 3780,
       "declCount": 161,
       "callsInto": [
         "js/api.js",
@@ -4273,1022 +4326,1022 @@
           "name": "renderArchiveList",
           "kind": "function",
           "line": 180,
-          "endLine": 241,
-          "length": 62
+          "endLine": 244,
+          "length": 65
         },
         {
           "name": "setArchiveDrawerOpen",
           "kind": "function",
-          "line": 247,
-          "endLine": 249,
+          "line": 250,
+          "endLine": 252,
           "length": 3
         },
         {
           "name": "_arcEscBound",
           "kind": "let",
-          "line": 255,
-          "endLine": 255,
+          "line": 258,
+          "endLine": 258,
           "length": 1
         },
         {
           "name": "bindArchiveDrawerEsc",
           "kind": "function",
-          "line": 256,
-          "endLine": 268,
+          "line": 259,
+          "endLine": 271,
           "length": 13
         },
         {
           "name": "arcRowKey",
           "kind": "function",
-          "line": 272,
-          "endLine": 274,
+          "line": 275,
+          "endLine": 277,
           "length": 3
         },
         {
           "name": "archiveFilteredRows",
           "kind": "function",
-          "line": 280,
-          "endLine": 290,
+          "line": 283,
+          "endLine": 293,
           "length": 11
         },
         {
           "name": "openArchiveDrawer",
           "kind": "function",
-          "line": 292,
-          "endLine": 316,
+          "line": 295,
+          "endLine": 319,
           "length": 25
         },
         {
           "name": "closeArchiveDrawer",
           "kind": "function",
-          "line": 318,
-          "endLine": 325,
+          "line": 321,
+          "endLine": 328,
           "length": 8
         },
         {
           "name": "renderArchiveCompare",
           "kind": "function",
-          "line": 330,
-          "endLine": 358,
+          "line": 333,
+          "endLine": 361,
           "length": 29
         },
         {
           "name": "deleteArchiveEntry",
           "kind": "function",
-          "line": 362,
-          "endLine": 375,
+          "line": 365,
+          "endLine": 378,
           "length": 14
         },
         {
           "name": "exportArchiveCSV",
           "kind": "function",
-          "line": 378,
-          "endLine": 390,
+          "line": 381,
+          "endLine": 393,
           "length": 13
         },
         {
           "name": "sectionStrengthBreakdown",
           "kind": "function",
-          "line": 408,
-          "endLine": 478,
+          "line": 411,
+          "endLine": 481,
           "length": 71
         },
         {
           "name": "renderDashboard",
           "kind": "function",
-          "line": 480,
-          "endLine": 730,
+          "line": 483,
+          "endLine": 733,
           "length": 251
         },
         {
           "name": "_deferredBuilders",
           "kind": "let",
-          "line": 739,
-          "endLine": 739,
+          "line": 742,
+          "endLine": 742,
           "length": 1
         },
         {
           "name": "_lastRenderedNav",
           "kind": "let",
-          "line": 744,
-          "endLine": 744,
+          "line": 747,
+          "endLine": 747,
           "length": 1
         },
         {
           "name": "chartGateMarkup",
           "kind": "function",
-          "line": 745,
-          "endLine": 750,
+          "line": 748,
+          "endLine": 753,
           "length": 6
         },
         {
           "name": "runDeferred",
           "kind": "function",
-          "line": 752,
-          "endLine": 757,
+          "line": 755,
+          "endLine": 760,
           "length": 6
         },
         {
           "name": "loadDashboardCharts",
           "kind": "function",
-          "line": 758,
-          "endLine": 758,
+          "line": 761,
+          "endLine": 761,
           "length": 1
         },
         {
           "name": "loadConductDashCharts",
           "kind": "function",
-          "line": 759,
-          "endLine": 760,
+          "line": 762,
+          "endLine": 763,
           "length": 2
         },
         {
           "name": "setChartPref",
           "kind": "function",
-          "line": 761,
-          "endLine": 777,
+          "line": 764,
+          "endLine": 780,
           "length": 17
         },
         {
           "name": "renderDashMSKCases",
           "kind": "function",
-          "line": 784,
-          "endLine": 864,
+          "line": 787,
+          "endLine": 867,
           "length": 81
         },
         {
           "name": "_mskAnalyticsStart",
           "kind": "let",
-          "line": 871,
-          "endLine": 871,
+          "line": 874,
+          "endLine": 874,
           "length": 1
         },
         {
           "name": "_mskAnalyticsEnd",
           "kind": "let",
-          "line": 872,
-          "endLine": 872,
+          "line": 875,
+          "endLine": 875,
           "length": 1
         },
         {
           "name": "_mskAnalyticsCharts",
           "kind": "const",
-          "line": 873,
-          "endLine": 873,
+          "line": 876,
+          "endLine": 876,
           "length": 1
         },
         {
           "name": "setMSKAnalyticsRange",
           "kind": "function",
-          "line": 875,
-          "endLine": 879,
+          "line": 878,
+          "endLine": 882,
           "length": 5
         },
         {
           "name": "viewMSKRegion",
           "kind": "function",
-          "line": 886,
-          "endLine": 952,
+          "line": 889,
+          "endLine": 955,
           "length": 67
         },
         {
           "name": "renderMSKAnalytics",
           "kind": "function",
-          "line": 954,
-          "endLine": 1239,
+          "line": 957,
+          "endLine": 1242,
           "length": 286
         },
         {
           "name": "_statusTrendDays",
           "kind": "let",
-          "line": 1257,
-          "endLine": 1257,
+          "line": 1260,
+          "endLine": 1260,
           "length": 1
         },
         {
           "name": "STATUS_TREND_RANGES",
           "kind": "const",
-          "line": 1258,
-          "endLine": 1258,
+          "line": 1261,
+          "endLine": 1261,
           "length": 1
         },
         {
           "name": "STATUS_TREND_MAX_DAYS",
           "kind": "const",
-          "line": 1269,
-          "endLine": 1269,
+          "line": 1272,
+          "endLine": 1272,
           "length": 1
         },
         {
           "name": "statusTrendWindowDays",
           "kind": "function",
-          "line": 1277,
-          "endLine": 1280,
+          "line": 1280,
+          "endLine": 1283,
           "length": 4
         },
         {
           "name": "statusTrendFullSpanDays",
           "kind": "function",
-          "line": 1282,
-          "endLine": 1291,
+          "line": 1285,
+          "endLine": 1294,
           "length": 10
         },
         {
           "name": "statusTrendRangeLabel",
           "kind": "function",
-          "line": 1292,
-          "endLine": 1298,
+          "line": 1295,
+          "endLine": 1301,
           "length": 7
         },
         {
           "name": "statusTrendRangePillsHtml",
           "kind": "function",
-          "line": 1299,
-          "endLine": 1304,
+          "line": 1302,
+          "endLine": 1307,
           "length": 6
         },
         {
           "name": "setStatusTrendDays",
           "kind": "function",
-          "line": 1311,
-          "endLine": 1319,
+          "line": 1314,
+          "endLine": 1322,
           "length": 9
         },
         {
           "name": "buildStatusTrendChart",
           "kind": "function",
-          "line": 1321,
-          "endLine": 1379,
+          "line": 1324,
+          "endLine": 1382,
           "length": 59
         },
         {
           "name": "_dashParadeDate",
           "kind": "let",
-          "line": 1393,
-          "endLine": 1393,
+          "line": 1396,
+          "endLine": 1396,
           "length": 1
         },
         {
           "name": "_dashParadeLookahead",
           "kind": "let",
-          "line": 1394,
-          "endLine": 1394,
+          "line": 1397,
+          "endLine": 1397,
           "length": 1
         },
         {
           "name": "setDashParadeDate",
           "kind": "function",
-          "line": 1395,
-          "endLine": 1395,
+          "line": 1398,
+          "endLine": 1398,
           "length": 1
         },
         {
           "name": "setDashParadeType",
           "kind": "function",
-          "line": 1396,
-          "endLine": 1402,
+          "line": 1399,
+          "endLine": 1405,
           "length": 7
         },
         {
           "name": "setDashParadeTime",
           "kind": "function",
-          "line": 1403,
-          "endLine": 1407,
+          "line": 1406,
+          "endLine": 1410,
           "length": 5
         },
         {
           "name": "refreshDashParade",
           "kind": "function",
-          "line": 1404,
-          "endLine": 1407,
+          "line": 1407,
+          "endLine": 1410,
           "length": 4
         },
         {
           "name": "setDashParadeLookahead",
           "kind": "function",
-          "line": 1408,
-          "endLine": 1416,
+          "line": 1411,
+          "endLine": 1419,
           "length": 9
         },
         {
           "name": "dashParadeScope",
           "kind": "function",
-          "line": 1413,
-          "endLine": 1416,
+          "line": 1416,
+          "endLine": 1419,
           "length": 4
         },
         {
           "name": "dashParadeMeta",
           "kind": "function",
-          "line": 1417,
-          "endLine": 1425,
+          "line": 1420,
+          "endLine": 1428,
           "length": 9
         },
         {
           "name": "dashParadeBodyHtml",
           "kind": "function",
-          "line": 1429,
-          "endLine": 1439,
+          "line": 1432,
+          "endLine": 1442,
           "length": 11
         },
         {
           "name": "renderDashParade",
           "kind": "function",
-          "line": 1441,
-          "endLine": 1474,
+          "line": 1444,
+          "endLine": 1477,
           "length": 34
         },
         {
           "name": "copyDashParadeText",
           "kind": "function",
-          "line": 1480,
-          "endLine": 1485,
+          "line": 1483,
+          "endLine": 1488,
           "length": 6
         },
         {
           "name": "renderDashLeaveOut",
           "kind": "function",
-          "line": 1497,
-          "endLine": 1535,
+          "line": 1500,
+          "endLine": 1538,
           "length": 39
         },
         {
           "name": "renderLeave",
           "kind": "function",
-          "line": 1537,
-          "endLine": 1571,
+          "line": 1540,
+          "endLine": 1574,
           "length": 35
         },
         {
           "name": "toggleLeaveTimeline",
           "kind": "function",
-          "line": 1579,
-          "endLine": 1587,
+          "line": 1582,
+          "endLine": 1590,
           "length": 9
         },
         {
           "name": "renderLeaveTimeline",
           "kind": "function",
-          "line": 1589,
-          "endLine": 1668,
+          "line": 1592,
+          "endLine": 1671,
           "length": 80
         },
         {
           "name": "renderDashAppointments",
           "kind": "function",
-          "line": 1670,
-          "endLine": 1730,
+          "line": 1673,
+          "endLine": 1733,
           "length": 61
         },
         {
           "name": "renderDashProfileCards",
           "kind": "function",
-          "line": 1732,
-          "endLine": 1770,
+          "line": 1735,
+          "endLine": 1773,
           "length": 39
         },
         {
           "name": "renderRoster",
           "kind": "function",
-          "line": 1772,
-          "endLine": 1809,
+          "line": 1775,
+          "endLine": 1812,
           "length": 38
         },
         {
           "name": "renderAttendance",
           "kind": "function",
-          "line": 1811,
-          "endLine": 1859,
+          "line": 1814,
+          "endLine": 1862,
           "length": 49
         },
         {
           "name": "_detailFilterConduct",
           "kind": "let",
-          "line": 1864,
-          "endLine": 1864,
-          "length": 1
-        },
-        {
-          "name": "_detailFilterType",
-          "kind": "let",
-          "line": 1865,
-          "endLine": 1865,
-          "length": 1
-        },
-        {
-          "name": "_showParticipants",
-          "kind": "let",
-          "line": 1866,
-          "endLine": 1866,
-          "length": 1
-        },
-        {
-          "name": "setDetailFilterConduct",
-          "kind": "function",
           "line": 1867,
           "endLine": 1867,
           "length": 1
         },
         {
-          "name": "setDetailFilterType",
-          "kind": "function",
+          "name": "_detailFilterType",
+          "kind": "let",
           "line": 1868,
           "endLine": 1868,
           "length": 1
         },
         {
-          "name": "clearDetailFilters",
-          "kind": "function",
+          "name": "_showParticipants",
+          "kind": "let",
           "line": 1869,
           "endLine": 1869,
           "length": 1
         },
         {
-          "name": "toggleParticipants",
+          "name": "setDetailFilterConduct",
           "kind": "function",
           "line": 1870,
-          "endLine": 1901,
+          "endLine": 1870,
+          "length": 1
+        },
+        {
+          "name": "setDetailFilterType",
+          "kind": "function",
+          "line": 1871,
+          "endLine": 1871,
+          "length": 1
+        },
+        {
+          "name": "clearDetailFilters",
+          "kind": "function",
+          "line": 1872,
+          "endLine": 1872,
+          "length": 1
+        },
+        {
+          "name": "toggleParticipants",
+          "kind": "function",
+          "line": 1873,
+          "endLine": 1904,
           "length": 32
         },
         {
           "name": "renderDetailParticipantsSummary",
           "kind": "function",
-          "line": 1875,
-          "endLine": 1901,
+          "line": 1878,
+          "endLine": 1904,
           "length": 27
         },
         {
           "name": "renderConductDetail",
           "kind": "function",
-          "line": 1903,
-          "endLine": 2002,
+          "line": 1906,
+          "endLine": 2005,
           "length": 100
         },
         {
           "name": "_medDateFrom",
           "kind": "let",
-          "line": 2007,
-          "endLine": 2007,
+          "line": 2010,
+          "endLine": 2010,
           "length": 1
         },
         {
           "name": "medDatesActive",
           "kind": "function",
-          "line": 2008,
-          "endLine": 2020,
+          "line": 2011,
+          "endLine": 2023,
           "length": 13
         },
         {
           "name": "medSyncDateFilterUI",
           "kind": "function",
-          "line": 2014,
-          "endLine": 2020,
+          "line": 2017,
+          "endLine": 2023,
           "length": 7
         },
         {
           "name": "medSetDateFrom",
           "kind": "function",
-          "line": 2021,
-          "endLine": 2021,
+          "line": 2024,
+          "endLine": 2024,
           "length": 1
         },
         {
           "name": "medSetDateTo",
           "kind": "function",
-          "line": 2022,
-          "endLine": 2029,
+          "line": 2025,
+          "endLine": 2032,
           "length": 8
         },
         {
           "name": "medClearDates",
           "kind": "function",
-          "line": 2023,
-          "endLine": 2029,
+          "line": 2026,
+          "endLine": 2032,
           "length": 7
         },
         {
           "name": "_DOW_SHORT",
           "kind": "const",
-          "line": 2032,
-          "endLine": 2032,
+          "line": 2035,
+          "endLine": 2035,
           "length": 1
         },
         {
           "name": "medDayOfWeek",
           "kind": "function",
-          "line": 2033,
-          "endLine": 2037,
+          "line": 2036,
+          "endLine": 2040,
           "length": 5
         },
         {
           "name": "renderMedical",
           "kind": "function",
-          "line": 2039,
-          "endLine": 2113,
+          "line": 2042,
+          "endLine": 2116,
           "length": 75
         },
         {
           "name": "medStack",
           "kind": "function",
-          "line": 2133,
-          "endLine": 2137,
+          "line": 2136,
+          "endLine": 2140,
           "length": 5
         },
         {
           "name": "medNoDur",
           "kind": "function",
-          "line": 2141,
-          "endLine": 2213,
+          "line": 2144,
+          "endLine": 2216,
           "length": 73
         },
         {
           "name": "renderMedicalRows",
           "kind": "function",
-          "line": 2143,
-          "endLine": 2213,
+          "line": 2146,
+          "endLine": 2216,
           "length": 71
         },
         {
           "name": "renderIPPT",
           "kind": "function",
-          "line": 2215,
-          "endLine": 2438,
+          "line": 2218,
+          "endLine": 2441,
           "length": 224
         },
         {
           "name": "_ipptView",
           "kind": "let",
-          "line": 2439,
-          "endLine": 2439,
+          "line": 2442,
+          "endLine": 2442,
           "length": 1
         },
         {
           "name": "setIpptView",
           "kind": "function",
-          "line": 2440,
-          "endLine": 2443,
+          "line": 2443,
+          "endLine": 2446,
           "length": 4
         },
         {
           "name": "_ipptCmpA",
           "kind": "let",
-          "line": 2443,
-          "endLine": 2443,
+          "line": 2446,
+          "endLine": 2446,
           "length": 1
         },
         {
           "name": "setIpptCompare",
           "kind": "function",
-          "line": 2444,
-          "endLine": 2448,
+          "line": 2447,
+          "endLine": 2451,
           "length": 5
         },
         {
           "name": "ipptComparePick",
           "kind": "function",
-          "line": 2445,
-          "endLine": 2448,
+          "line": 2448,
+          "endLine": 2451,
           "length": 4
         },
         {
           "name": "buildIPPTTrendChart",
           "kind": "function",
-          "line": 2450,
-          "endLine": 2470,
+          "line": 2453,
+          "endLine": 2473,
           "length": 21
         },
         {
           "name": "buildIPPTAwardsChart",
           "kind": "function",
-          "line": 2472,
-          "endLine": 2491,
+          "line": 2475,
+          "endLine": 2494,
           "length": 20
         },
         {
           "name": "buildIPPTDistributionChart",
           "kind": "function",
-          "line": 2493,
-          "endLine": 2516,
+          "line": 2496,
+          "endLine": 2519,
           "length": 24
         },
         {
           "name": "buildIPPTProgressChart",
           "kind": "function",
-          "line": 2521,
-          "endLine": 2551,
+          "line": 2524,
+          "endLine": 2554,
           "length": 31
         },
         {
           "name": "buildIPPTAwardMixChart",
           "kind": "function",
-          "line": 2556,
-          "endLine": 2591,
+          "line": 2559,
+          "endLine": 2594,
           "length": 36
         },
         {
           "name": "buildIPPTCompareChart",
           "kind": "function",
-          "line": 2595,
-          "endLine": 2629,
+          "line": 2598,
+          "endLine": 2632,
           "length": 35
         },
         {
           "name": "renderSOC",
           "kind": "function",
-          "line": 2636,
-          "endLine": 2659,
+          "line": 2639,
+          "endLine": 2662,
           "length": 24
         },
         {
           "name": "renderPolar",
           "kind": "function",
-          "line": 2661,
-          "endLine": 2765,
+          "line": 2664,
+          "endLine": 2768,
           "length": 105
         },
         {
           "name": "_conductDashStart",
           "kind": "let",
-          "line": 2776,
-          "endLine": 2776,
-          "length": 1
-        },
-        {
-          "name": "_conductDashEnd",
-          "kind": "let",
-          "line": 2777,
-          "endLine": 2777,
-          "length": 1
-        },
-        {
-          "name": "_conductSeries",
-          "kind": "let",
-          "line": 2778,
-          "endLine": 2778,
-          "length": 1
-        },
-        {
-          "name": "CONDUCT_TYPE_COLORS",
-          "kind": "const",
           "line": 2779,
           "endLine": 2779,
           "length": 1
         },
         {
-          "name": "CONDUCT_TYPE_LABELS",
-          "kind": "const",
+          "name": "_conductDashEnd",
+          "kind": "let",
           "line": 2780,
           "endLine": 2780,
           "length": 1
         },
         {
-          "name": "CONDUCT_GROUP_PALETTE",
-          "kind": "const",
+          "name": "_conductSeries",
+          "kind": "let",
           "line": 2781,
           "endLine": 2781,
           "length": 1
         },
         {
+          "name": "CONDUCT_TYPE_COLORS",
+          "kind": "const",
+          "line": 2782,
+          "endLine": 2782,
+          "length": 1
+        },
+        {
+          "name": "CONDUCT_TYPE_LABELS",
+          "kind": "const",
+          "line": 2783,
+          "endLine": 2783,
+          "length": 1
+        },
+        {
+          "name": "CONDUCT_GROUP_PALETTE",
+          "kind": "const",
+          "line": 2784,
+          "endLine": 2784,
+          "length": 1
+        },
+        {
           "name": "setConductWindow",
           "kind": "function",
-          "line": 2784,
-          "endLine": 2788,
+          "line": 2787,
+          "endLine": 2791,
           "length": 5
         },
         {
           "name": "setConductSeries",
           "kind": "function",
-          "line": 2793,
-          "endLine": 2799,
+          "line": 2796,
+          "endLine": 2802,
           "length": 7
         },
         {
           "name": "_conductExportData",
           "kind": "let",
-          "line": 2799,
-          "endLine": 2799,
+          "line": 2802,
+          "endLine": 2802,
           "length": 1
         },
         {
           "name": "exportConductProgression",
           "kind": "function",
-          "line": 2800,
-          "endLine": 2806,
+          "line": 2803,
+          "endLine": 2809,
           "length": 7
         },
         {
           "name": "renderConductDashboard",
           "kind": "function",
-          "line": 2808,
-          "endLine": 3073,
+          "line": 2811,
+          "endLine": 3076,
           "length": 266
         },
         {
           "name": "renderConducts",
           "kind": "function",
-          "line": 3079,
-          "endLine": 3154,
+          "line": 3082,
+          "endLine": 3157,
           "length": 76
         },
         {
           "name": "promptCreateConduct",
           "kind": "function",
-          "line": 3156,
-          "endLine": 3166,
+          "line": 3159,
+          "endLine": 3169,
           "length": 11
         },
         {
           "name": "promptRenameConduct",
           "kind": "function",
-          "line": 3168,
-          "endLine": 3174,
+          "line": 3171,
+          "endLine": 3177,
           "length": 7
         },
         {
           "name": "haStatusColor",
           "kind": "function",
-          "line": 3179,
-          "endLine": 3188,
+          "line": 3182,
+          "endLine": 3191,
           "length": 10
         },
         {
           "name": "HA_STATUSES",
           "kind": "const",
-          "line": 3189,
-          "endLine": 3189,
+          "line": 3192,
+          "endLine": 3192,
           "length": 1
         },
         {
           "name": "renderHA",
           "kind": "function",
-          "line": 3191,
-          "endLine": 3291,
+          "line": 3194,
+          "endLine": 3294,
           "length": 101
         },
         {
           "name": "buildHADistributionChart",
           "kind": "function",
-          "line": 3293,
-          "endLine": 3313,
+          "line": 3296,
+          "endLine": 3316,
           "length": 21
         },
         {
           "name": "buildHAStreaksChart",
           "kind": "function",
-          "line": 3315,
-          "endLine": 3339,
+          "line": 3318,
+          "endLine": 3342,
           "length": 25
         },
         {
           "name": "_sbSort",
-          "kind": "let",
-          "line": 3344,
-          "endLine": 3344,
-          "length": 1
-        },
-        {
-          "name": "_sbCollapsed",
-          "kind": "let",
-          "line": 3345,
-          "endLine": 3345,
-          "length": 1
-        },
-        {
-          "name": "_sbShowAll",
-          "kind": "let",
-          "line": 3346,
-          "endLine": 3346,
-          "length": 1
-        },
-        {
-          "name": "_sbWeekOffset",
           "kind": "let",
           "line": 3347,
           "endLine": 3347,
           "length": 1
         },
         {
-          "name": "_sbSearch",
+          "name": "_sbCollapsed",
           "kind": "let",
           "line": 3348,
           "endLine": 3348,
           "length": 1
         },
         {
-          "name": "_sbGridShown",
+          "name": "_sbShowAll",
           "kind": "let",
           "line": 3349,
           "endLine": 3349,
           "length": 1
         },
         {
+          "name": "_sbWeekOffset",
+          "kind": "let",
+          "line": 3350,
+          "endLine": 3350,
+          "length": 1
+        },
+        {
+          "name": "_sbSearch",
+          "kind": "let",
+          "line": 3351,
+          "endLine": 3351,
+          "length": 1
+        },
+        {
+          "name": "_sbGridShown",
+          "kind": "let",
+          "line": 3352,
+          "endLine": 3352,
+          "length": 1
+        },
+        {
           "name": "SB_CELL",
           "kind": "const",
-          "line": 3352,
-          "endLine": 3358,
+          "line": 3355,
+          "endLine": 3361,
           "length": 7
         },
         {
           "name": "SB_CELL.RSI",
-          "kind": "method",
-          "line": 3353,
-          "endLine": 3353,
-          "length": 1
-        },
-        {
-          "name": "SB_CELL.MC",
-          "kind": "method",
-          "line": 3354,
-          "endLine": 3354,
-          "length": 1
-        },
-        {
-          "name": "SB_CELL.LD",
-          "kind": "method",
-          "line": 3355,
-          "endLine": 3355,
-          "length": 1
-        },
-        {
-          "name": "SB_CELL.EX",
           "kind": "method",
           "line": 3356,
           "endLine": 3356,
           "length": 1
         },
         {
-          "name": "SB_CELL.WD",
+          "name": "SB_CELL.MC",
           "kind": "method",
           "line": 3357,
           "endLine": 3357,
           "length": 1
         },
         {
+          "name": "SB_CELL.LD",
+          "kind": "method",
+          "line": 3358,
+          "endLine": 3358,
+          "length": 1
+        },
+        {
+          "name": "SB_CELL.EX",
+          "kind": "method",
+          "line": 3359,
+          "endLine": 3359,
+          "length": 1
+        },
+        {
+          "name": "SB_CELL.WD",
+          "kind": "method",
+          "line": 3360,
+          "endLine": 3360,
+          "length": 1
+        },
+        {
           "name": "_sbKey",
           "kind": "function",
-          "line": 3359,
-          "endLine": 3373,
+          "line": 3362,
+          "endLine": 3376,
           "length": 15
         },
         {
           "name": "sbOrdered",
           "kind": "function",
-          "line": 3363,
-          "endLine": 3373,
+          "line": 3366,
+          "endLine": 3376,
           "length": 11
         },
         {
           "name": "sbRSCounts",
           "kind": "function",
-          "line": 3376,
-          "endLine": 3384,
+          "line": 3379,
+          "endLine": 3387,
           "length": 9
         },
         {
           "name": "renderStatusBoard",
           "kind": "function",
-          "line": 3386,
-          "endLine": 3401,
+          "line": 3389,
+          "endLine": 3404,
           "length": 16
         },
         {
           "name": "renderSBLeaderboard",
           "kind": "function",
-          "line": 3404,
-          "endLine": 3439,
+          "line": 3407,
+          "endLine": 3442,
           "length": 36
         },
         {
           "name": "sbSetSort",
           "kind": "function",
-          "line": 3440,
-          "endLine": 3440,
+          "line": 3443,
+          "endLine": 3443,
           "length": 1
         },
         {
           "name": "sbToggleCollapse",
           "kind": "function",
-          "line": 3441,
-          "endLine": 3441,
+          "line": 3444,
+          "endLine": 3444,
           "length": 1
         },
         {
           "name": "sbShowAllLeaderboard",
           "kind": "function",
-          "line": 3442,
-          "endLine": 3471,
+          "line": 3445,
+          "endLine": 3474,
           "length": 30
         },
         {
           "name": "exportScopeSlug",
           "kind": "function",
-          "line": 3468,
-          "endLine": 3471,
+          "line": 3471,
+          "endLine": 3474,
           "length": 4
         },
         {
           "name": "exportListFileName",
           "kind": "function",
-          "line": 3472,
-          "endLine": 3474,
+          "line": 3475,
+          "endLine": 3477,
           "length": 3
         },
         {
           "name": "exportPersonCols",
           "kind": "function",
-          "line": 3480,
-          "endLine": 3489,
+          "line": 3483,
+          "endLine": 3492,
           "length": 10
         },
         {
           "name": "exportStatusList",
           "kind": "function",
-          "line": 3494,
-          "endLine": 3519,
+          "line": 3497,
+          "endLine": 3522,
           "length": 26
         },
         {
           "name": "exportLeaveList",
           "kind": "function",
-          "line": 3524,
-          "endLine": 3540,
+          "line": 3527,
+          "endLine": 3543,
           "length": 17
         },
         {
           "name": "exportMCList",
           "kind": "function",
-          "line": 3552,
-          "endLine": 3576,
+          "line": 3555,
+          "endLine": 3579,
           "length": 25
         },
         {
           "name": "renderSBRosterList",
           "kind": "function",
-          "line": 3579,
-          "endLine": 3636,
+          "line": 3582,
+          "endLine": 3639,
           "length": 58
         },
         {
           "name": "sbSearchInput",
           "kind": "function",
-          "line": 3637,
-          "endLine": 3653,
+          "line": 3640,
+          "endLine": 3656,
           "length": 17
         },
         {
           "name": "sbWeeks",
           "kind": "function",
-          "line": 3640,
-          "endLine": 3653,
+          "line": 3643,
+          "endLine": 3656,
           "length": 14
         },
         {
           "name": "SB_GRID_DEFER_ROWS",
           "kind": "const",
-          "line": 3658,
-          "endLine": 3658,
+          "line": 3661,
+          "endLine": 3661,
           "length": 1
         },
         {
           "name": "renderSBGrid",
           "kind": "function",
-          "line": 3659,
-          "endLine": 3742,
+          "line": 3662,
+          "endLine": 3745,
           "length": 84
         },
         {
           "name": "sbGridClick",
           "kind": "function",
-          "line": 3746,
-          "endLine": 3752,
+          "line": 3749,
+          "endLine": 3755,
           "length": 7
         },
         {
           "name": "loadStatusGrid",
           "kind": "function",
-          "line": 3753,
-          "endLine": 3753,
+          "line": 3756,
+          "endLine": 3756,
           "length": 1
         },
         {
           "name": "sbGridNav",
           "kind": "function",
-          "line": 3754,
-          "endLine": 3775,
+          "line": 3757,
+          "endLine": 3778,
           "length": 22
         },
         {
           "name": "openSBCellDetail",
           "kind": "function",
-          "line": 3757,
-          "endLine": 3775,
+          "line": 3760,
+          "endLine": 3778,
           "length": 19
         },
         {
           "name": "closeSBPopover",
           "kind": "function",
-          "line": 3776,
-          "endLine": 3777,
+          "line": 3779,
+          "endLine": 3780,
           "length": 2
         }
       ]
@@ -7968,6 +8021,77 @@
     }
   ],
   "functions": {
+    "ACTIONS": {
+      "name": "ACTIONS",
+      "kind": "const",
+      "definedIn": "js/actions.js",
+      "definedAtLine": 40,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/actions.js"
+      ],
+      "fanIn": 0
+    },
+    "ACTION_ATTRS": {
+      "name": "ACTION_ATTRS",
+      "kind": "const",
+      "definedIn": "js/actions.js",
+      "definedAtLine": 46,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/actions.js"
+      ],
+      "fanIn": 0
+    },
+    "registerActions": {
+      "name": "registerActions",
+      "kind": "function",
+      "definedIn": "js/actions.js",
+      "definedAtLine": 56,
+      "directRefs": [
+        {
+          "file": "js/parade-tab.js",
+          "line": 632
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/actions.js",
+        "js/parade-tab.js"
+      ],
+      "fanIn": 1
+    },
+    "actionNames": {
+      "name": "actionNames",
+      "kind": "function",
+      "definedIn": "js/actions.js",
+      "definedAtLine": 70,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/actions.js"
+      ],
+      "fanIn": 0
+    },
+    "dispatchAction": {
+      "name": "dispatchAction",
+      "kind": "function",
+      "definedIn": "js/actions.js",
+      "definedAtLine": 74,
+      "directRefs": [
+        {
+          "file": "js/actions.js",
+          "line": 99
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/actions.js"
+      ],
+      "fanIn": 0
+    },
     "AuthError": {
       "name": "AuthError",
       "kind": "const",
@@ -8132,7 +8256,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1812
+          "line": 1815
         }
       ],
       "identRefFiles": [
@@ -8232,7 +8356,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1970
+          "line": 1973
         }
       ],
       "identRefFiles": [
@@ -8350,11 +8474,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 413
-        },
-        {
-          "file": "js/render.js",
-          "line": 450
+          "line": 416
         },
         {
           "file": "js/render.js",
@@ -8362,7 +8482,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 464
+          "line": 456
         },
         {
           "file": "js/render.js",
@@ -8370,7 +8490,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 474
+          "line": 470
+        },
+        {
+          "file": "js/render.js",
+          "line": 477
         },
         {
           "file": "js/sync.js",
@@ -8753,7 +8877,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 365
+          "line": 368
         }
       ],
       "stringRefs": [],
@@ -8915,39 +9039,39 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1556
+          "line": 1559
         },
         {
           "file": "js/render.js",
-          "line": 1781
+          "line": 1784
         },
         {
           "file": "js/render.js",
-          "line": 1812
+          "line": 1815
         },
         {
           "file": "js/render.js",
-          "line": 1959
+          "line": 1962
         },
         {
           "file": "js/render.js",
-          "line": 2089
+          "line": 2092
         },
         {
           "file": "js/render.js",
-          "line": 2307
+          "line": 2310
         },
         {
           "file": "js/render.js",
-          "line": 2641
+          "line": 2644
         },
         {
           "file": "js/render.js",
-          "line": 2720
+          "line": 2723
         },
         {
           "file": "js/render.js",
-          "line": 3101
+          "line": 3104
         }
       ],
       "identRefFiles": [
@@ -9602,7 +9726,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 3570
+          "line": 3573
         },
         {
           "file": "apps-script-Code.gs",
@@ -9711,7 +9835,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 3485
+          "line": 3488
         },
         {
           "file": "apps-script-Code.gs",
@@ -9927,7 +10051,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 3762
+          "line": 3765
         },
         {
           "file": "apps-script-Code.gs",
@@ -9971,15 +10095,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 3500
+          "line": 3503
         },
         {
           "file": "js/render.js",
-          "line": 3589
+          "line": 3592
         },
         {
           "file": "js/render.js",
-          "line": 3681
+          "line": 3684
         }
       ],
       "stringRefs": [],
@@ -10044,11 +10168,11 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3502
+          "line": 3505
         },
         {
           "file": "js/render.js",
-          "line": 3599
+          "line": 3602
         },
         {
           "file": "apps-script-Code.gs",
@@ -10070,7 +10194,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3703
+          "line": 3706
         },
         {
           "file": "apps-script-Code.gs",
@@ -10092,7 +10216,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 543
+          "line": 546
         }
       ],
       "stringRefs": [],
@@ -10171,23 +10295,23 @@
         },
         {
           "file": "js/render.js",
-          "line": 453
+          "line": 456
         },
         {
           "file": "js/render.js",
-          "line": 467
+          "line": 470
         },
         {
           "file": "js/render.js",
-          "line": 549
+          "line": 552
         },
         {
           "file": "js/render.js",
-          "line": 564
+          "line": 567
         },
         {
           "file": "js/render.js",
-          "line": 565
+          "line": 568
         },
         {
           "file": "apps-script-Code.gs",
@@ -10273,7 +10397,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1432
+          "line": 1435
         },
         {
           "file": "apps-script-Code.gs",
@@ -10674,15 +10798,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 1333
+          "line": 1336
         },
         {
           "file": "js/render.js",
-          "line": 2786
+          "line": 2789
         },
         {
           "file": "js/render.js",
-          "line": 2811
+          "line": 2814
         }
       ],
       "stringRefs": [],
@@ -10734,7 +10858,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2820
+          "line": 2823
         }
       ],
       "stringRefs": [],
@@ -10777,15 +10901,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 2888
+          "line": 2891
         },
         {
           "file": "js/render.js",
-          "line": 2903
+          "line": 2906
         },
         {
           "file": "js/render.js",
-          "line": 2917
+          "line": 2920
         }
       ],
       "stringRefs": [],
@@ -10817,7 +10941,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2875
+          "line": 2878
         }
       ],
       "stringRefs": [],
@@ -10835,11 +10959,11 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 532
+          "line": 535
         },
         {
           "file": "js/render.js",
-          "line": 2881
+          "line": 2884
         }
       ],
       "stringRefs": [],
@@ -10869,7 +10993,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2869
+          "line": 2872
         }
       ],
       "stringRefs": [],
@@ -10887,7 +11011,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2879
+          "line": 2882
         }
       ],
       "stringRefs": [],
@@ -10909,7 +11033,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2931
+          "line": 2934
         }
       ],
       "stringRefs": [],
@@ -10974,7 +11098,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2845
+          "line": 2848
         }
       ],
       "stringRefs": [],
@@ -10992,7 +11116,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2910
+          "line": 2913
         }
       ],
       "stringRefs": [],
@@ -11010,7 +11134,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2919
+          "line": 2922
         }
       ],
       "stringRefs": [],
@@ -11028,11 +11152,11 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2830
+          "line": 2833
         },
         {
           "file": "js/render.js",
-          "line": 3086
+          "line": 3089
         }
       ],
       "stringRefs": [],
@@ -11050,7 +11174,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2928
+          "line": 2931
         }
       ],
       "stringRefs": [],
@@ -11200,7 +11324,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 950
+          "line": 953
         }
       ],
       "stringRefs": [],
@@ -11495,8 +11619,12 @@
           "line": 48
         },
         {
+          "file": "js/parade-tab.js",
+          "line": 641
+        },
+        {
           "file": "js/render.js",
-          "line": 3749
+          "line": 3752
         }
       ],
       "stringRefs": [
@@ -11505,96 +11633,92 @@
           "line": 36
         },
         {
-          "file": "js/parade-tab.js",
-          "line": 462
+          "file": "js/render.js",
+          "line": 664
         },
         {
           "file": "js/render.js",
-          "line": 661
+          "line": 674
         },
         {
           "file": "js/render.js",
-          "line": 671
+          "line": 838
         },
         {
           "file": "js/render.js",
-          "line": 835
+          "line": 1116
         },
         {
           "file": "js/render.js",
-          "line": 1113
+          "line": 1133
         },
         {
           "file": "js/render.js",
-          "line": 1130
+          "line": 1525
         },
         {
           "file": "js/render.js",
-          "line": 1522
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1649
         },
         {
           "file": "js/render.js",
-          "line": 1646
+          "line": 1721
         },
         {
           "file": "js/render.js",
-          "line": 1718
+          "line": 1768
         },
         {
           "file": "js/render.js",
-          "line": 1765
+          "line": 1808
         },
         {
           "file": "js/render.js",
-          "line": 1805
+          "line": 1901
         },
         {
           "file": "js/render.js",
-          "line": 1898
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1998
         },
         {
           "file": "js/render.js",
-          "line": 1995
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2209
         },
         {
           "file": "js/render.js",
-          "line": 2206
+          "line": 2351
         },
         {
           "file": "js/render.js",
-          "line": 2348
+          "line": 2360
         },
         {
           "file": "js/render.js",
-          "line": 2357
+          "line": 2758
         },
         {
           "file": "js/render.js",
-          "line": 2755
+          "line": 2956
         },
         {
           "file": "js/render.js",
-          "line": 2953
+          "line": 3275
         },
         {
           "file": "js/render.js",
-          "line": 3272
-        },
-        {
-          "file": "js/render.js",
-          "line": 3422
+          "line": 3425
         }
       ],
       "identRefFiles": [
@@ -11756,23 +11880,23 @@
         },
         {
           "file": "js/render.js",
-          "line": 837
+          "line": 840
         },
         {
           "file": "js/render.js",
-          "line": 1700
+          "line": 1703
         },
         {
           "file": "js/render.js",
-          "line": 1716
+          "line": 1719
         },
         {
           "file": "js/render.js",
-          "line": 2098
+          "line": 2101
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         }
       ],
       "identRefFiles": [
@@ -11919,11 +12043,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2307
+          "line": 2310
         },
         {
           "file": "js/render.js",
-          "line": 2416
+          "line": 2419
         }
       ],
       "identRefFiles": [
@@ -11983,11 +12107,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2641
+          "line": 2644
         },
         {
           "file": "js/render.js",
-          "line": 2649
+          "line": 2652
         }
       ],
       "identRefFiles": [
@@ -12040,7 +12164,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2307
+          "line": 2310
         }
       ],
       "identRefFiles": [
@@ -12075,7 +12199,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2641
+          "line": 2644
         }
       ],
       "identRefFiles": [
@@ -12125,7 +12249,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2720
+          "line": 2723
         }
       ],
       "identRefFiles": [
@@ -12285,7 +12409,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1812
+          "line": 1815
         }
       ],
       "identRefFiles": [
@@ -12379,7 +12503,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1812
+          "line": 1815
         }
       ],
       "identRefFiles": [
@@ -12426,7 +12550,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2089
+          "line": 2092
         }
       ],
       "identRefFiles": [
@@ -12494,11 +12618,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1959
+          "line": 1962
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         }
       ],
       "identRefFiles": [
@@ -12532,7 +12656,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1717
+          "line": 1720
         }
       ],
       "identRefFiles": [
@@ -12566,7 +12690,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 840
+          "line": 843
         }
       ],
       "identRefFiles": [
@@ -12596,7 +12720,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 858
+          "line": 861
         }
       ],
       "identRefFiles": [
@@ -12630,15 +12754,15 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 823
+          "line": 826
         },
         {
           "file": "js/render.js",
-          "line": 937
+          "line": 940
         },
         {
           "file": "js/render.js",
-          "line": 1099
+          "line": 1102
         }
       ],
       "identRefFiles": [
@@ -12672,7 +12796,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1717
+          "line": 1720
         }
       ],
       "identRefFiles": [
@@ -12837,15 +12961,16 @@
       "kind": "function",
       "definedIn": "js/forms.js",
       "definedAtLine": 2548,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 477
-        },
+          "line": 646
+        }
+      ],
+      "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         }
       ],
       "identRefFiles": [
@@ -12867,19 +12992,19 @@
         },
         {
           "file": "js/render.js",
-          "line": 1514
+          "line": 1517
         },
         {
           "file": "js/render.js",
-          "line": 1526
+          "line": 1529
         },
         {
           "file": "js/render.js",
-          "line": 1556
+          "line": 1559
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1572
         }
       ],
       "identRefFiles": [
@@ -13141,11 +13266,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 3616
+          "line": 3619
         },
         {
           "file": "js/render.js",
-          "line": 3770
+          "line": 3773
         }
       ],
       "stringRefs": [],
@@ -13400,27 +13525,27 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         }
       ],
       "identRefFiles": [
@@ -13850,7 +13975,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 3100
+          "line": 3103
         }
       ],
       "stringRefs": [],
@@ -13903,7 +14028,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3100
+          "line": 3103
         }
       ],
       "identRefFiles": [
@@ -14063,7 +14188,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 3164
+          "line": 3167
         }
       ],
       "stringRefs": [],
@@ -14089,11 +14214,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 3101
+          "line": 3104
         },
         {
           "file": "js/render.js",
-          "line": 3101
+          "line": 3104
         }
       ],
       "stringRefs": [],
@@ -14112,7 +14237,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3101
+          "line": 3104
         }
       ],
       "identRefFiles": [
@@ -14145,7 +14270,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3173
+          "line": 3176
         }
       ],
       "stringRefs": [],
@@ -14163,7 +14288,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3143
+          "line": 3146
         }
       ],
       "identRefFiles": [
@@ -14180,7 +14305,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3125
+          "line": 3128
         }
       ],
       "identRefFiles": [
@@ -14218,7 +14343,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3130
+          "line": 3133
         }
       ],
       "identRefFiles": [
@@ -14235,7 +14360,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3130
+          "line": 3133
         }
       ],
       "identRefFiles": [
@@ -14277,7 +14402,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3146
+          "line": 3149
         }
       ],
       "identRefFiles": [
@@ -14301,11 +14426,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 3087
+          "line": 3090
         },
         {
           "file": "js/render.js",
-          "line": 3117
+          "line": 3120
         }
       ],
       "stringRefs": [],
@@ -14335,7 +14460,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2684
+          "line": 2687
         }
       ],
       "stringRefs": [],
@@ -14475,7 +14600,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1854
+          "line": 1857
         }
       ],
       "identRefFiles": [
@@ -14504,7 +14629,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1812
+          "line": 1815
         }
       ],
       "identRefFiles": [
@@ -14574,11 +14699,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1812
+          "line": 1815
         },
         {
           "file": "js/render.js",
-          "line": 1856
+          "line": 1859
         }
       ],
       "identRefFiles": [
@@ -15476,7 +15601,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1856
+          "line": 1859
         }
       ],
       "identRefFiles": [
@@ -15548,7 +15673,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2720
+          "line": 2723
         }
       ],
       "identRefFiles": [
@@ -15565,7 +15690,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2680
+          "line": 2683
         }
       ],
       "identRefFiles": [
@@ -15582,15 +15707,15 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2684
+          "line": 2687
         },
         {
           "file": "js/render.js",
-          "line": 2685
+          "line": 2688
         },
         {
           "file": "js/render.js",
-          "line": 2686
+          "line": 2689
         }
       ],
       "identRefFiles": [
@@ -15607,11 +15732,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2688
+          "line": 2691
         },
         {
           "file": "js/render.js",
-          "line": 2689
+          "line": 2692
         }
       ],
       "identRefFiles": [
@@ -15628,7 +15753,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2672
+          "line": 2675
         }
       ],
       "identRefFiles": [
@@ -15645,7 +15770,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2737
+          "line": 2740
         }
       ],
       "identRefFiles": [
@@ -15884,35 +16009,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 1996
+          "line": 1999
         },
         {
           "file": "js/render.js",
-          "line": 2157
+          "line": 2160
         },
         {
           "file": "js/render.js",
-          "line": 2179
+          "line": 2182
         },
         {
           "file": "js/render.js",
-          "line": 2273
+          "line": 2276
         },
         {
           "file": "js/render.js",
-          "line": 2379
+          "line": 2382
         },
         {
           "file": "js/render.js",
-          "line": 2380
+          "line": 2383
         },
         {
           "file": "js/render.js",
-          "line": 2649
+          "line": 2652
         },
         {
           "file": "apps-script-Code.gs",
@@ -16037,79 +16162,79 @@
         },
         {
           "file": "js/render.js",
-          "line": 534
+          "line": 537
         },
         {
           "file": "js/render.js",
-          "line": 606
+          "line": 609
         },
         {
           "file": "js/render.js",
-          "line": 606
+          "line": 609
         },
         {
           "file": "js/render.js",
-          "line": 1049
+          "line": 1052
         },
         {
           "file": "js/render.js",
-          "line": 1550
+          "line": 1553
         },
         {
           "file": "js/render.js",
-          "line": 1778
+          "line": 1781
         },
         {
           "file": "js/render.js",
-          "line": 1955
+          "line": 1958
         },
         {
           "file": "js/render.js",
-          "line": 1993
+          "line": 1996
         },
         {
           "file": "js/render.js",
-          "line": 2089
+          "line": 2092
         },
         {
           "file": "js/render.js",
-          "line": 2204
+          "line": 2207
         },
         {
           "file": "js/render.js",
-          "line": 2307
+          "line": 2310
         },
         {
           "file": "js/render.js",
-          "line": 2335
+          "line": 2338
         },
         {
           "file": "js/render.js",
-          "line": 2641
+          "line": 2644
         },
         {
           "file": "js/render.js",
-          "line": 2720
+          "line": 2723
         },
         {
           "file": "js/render.js",
-          "line": 2850
+          "line": 2853
         },
         {
           "file": "js/render.js",
-          "line": 2951
+          "line": 2954
         },
         {
           "file": "js/render.js",
-          "line": 2968
+          "line": 2971
         },
         {
           "file": "js/render.js",
-          "line": 3227
+          "line": 3230
         },
         {
           "file": "js/render.js",
-          "line": 3387
+          "line": 3390
         }
       ],
       "stringRefs": [],
@@ -16161,43 +16286,43 @@
         },
         {
           "file": "js/render.js",
-          "line": 1775
+          "line": 1778
         },
         {
           "file": "js/render.js",
-          "line": 1882
+          "line": 1885
         },
         {
           "file": "js/render.js",
-          "line": 2227
+          "line": 2230
         },
         {
           "file": "js/render.js",
-          "line": 2700
+          "line": 2703
         },
         {
           "file": "js/render.js",
-          "line": 2927
+          "line": 2930
         },
         {
           "file": "js/render.js",
-          "line": 3192
+          "line": 3195
         },
         {
           "file": "js/render.js",
-          "line": 3408
+          "line": 3411
         },
         {
           "file": "js/render.js",
-          "line": 3496
+          "line": 3499
         },
         {
           "file": "js/render.js",
-          "line": 3583
+          "line": 3586
         },
         {
           "file": "js/render.js",
-          "line": 3662
+          "line": 3665
         }
       ],
       "stringRefs": [],
@@ -16216,11 +16341,11 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 505
+          "line": 508
         },
         {
           "file": "js/render.js",
-          "line": 1314
+          "line": 1317
         }
       ],
       "stringRefs": [],
@@ -16253,55 +16378,55 @@
         },
         {
           "file": "js/render.js",
-          "line": 507
+          "line": 510
         },
         {
           "file": "js/render.js",
-          "line": 889
+          "line": 892
         },
         {
           "file": "js/render.js",
-          "line": 965
+          "line": 968
         },
         {
           "file": "js/render.js",
-          "line": 1538
+          "line": 1541
         },
         {
           "file": "js/render.js",
-          "line": 1904
+          "line": 1907
         },
         {
           "file": "js/render.js",
-          "line": 2040
+          "line": 2043
         },
         {
           "file": "js/render.js",
-          "line": 2146
+          "line": 2149
         },
         {
           "file": "js/render.js",
-          "line": 2216
+          "line": 2219
         },
         {
           "file": "js/render.js",
-          "line": 2637
+          "line": 2640
         },
         {
           "file": "js/render.js",
-          "line": 2662
+          "line": 2665
         },
         {
           "file": "js/render.js",
-          "line": 2849
+          "line": 2852
         },
         {
           "file": "js/render.js",
-          "line": 3525
+          "line": 3528
         },
         {
           "file": "js/render.js",
-          "line": 3554
+          "line": 3557
         }
       ],
       "stringRefs": [],
@@ -16323,75 +16448,75 @@
         },
         {
           "file": "js/render.js",
-          "line": 785
+          "line": 788
         },
         {
           "file": "js/render.js",
-          "line": 893
+          "line": 896
         },
         {
           "file": "js/render.js",
-          "line": 898
+          "line": 901
         },
         {
           "file": "js/render.js",
-          "line": 982
+          "line": 985
         },
         {
           "file": "js/render.js",
-          "line": 1001
+          "line": 1004
         },
         {
           "file": "js/render.js",
-          "line": 1504
+          "line": 1507
         },
         {
           "file": "js/render.js",
-          "line": 1541
+          "line": 1544
         },
         {
           "file": "js/render.js",
-          "line": 1676
+          "line": 1679
         },
         {
           "file": "js/render.js",
-          "line": 1689
+          "line": 1692
         },
         {
           "file": "js/render.js",
-          "line": 1905
+          "line": 1908
         },
         {
           "file": "js/render.js",
-          "line": 2041
+          "line": 2044
         },
         {
           "file": "js/render.js",
-          "line": 2147
+          "line": 2150
         },
         {
           "file": "js/render.js",
-          "line": 2217
+          "line": 2220
         },
         {
           "file": "js/render.js",
-          "line": 2638
+          "line": 2641
         },
         {
           "file": "js/render.js",
-          "line": 2663
+          "line": 2666
         },
         {
           "file": "js/render.js",
-          "line": 2866
+          "line": 2869
         },
         {
           "file": "js/render.js",
-          "line": 3527
+          "line": 3530
         },
         {
           "file": "js/render.js",
-          "line": 3556
+          "line": 3559
         }
       ],
       "stringRefs": [],
@@ -16425,55 +16550,51 @@
         },
         {
           "file": "js/render.js",
-          "line": 534
+          "line": 537
         },
         {
           "file": "js/render.js",
-          "line": 606
+          "line": 609
         },
         {
           "file": "js/render.js",
-          "line": 606
+          "line": 609
         },
         {
           "file": "js/render.js",
-          "line": 1049
+          "line": 1052
         },
         {
           "file": "js/render.js",
-          "line": 1446
+          "line": 1449
         },
         {
           "file": "js/render.js",
-          "line": 1550
+          "line": 1553
         },
         {
           "file": "js/render.js",
-          "line": 1570
+          "line": 1573
         },
         {
           "file": "js/render.js",
-          "line": 1778
+          "line": 1781
         },
         {
           "file": "js/render.js",
-          "line": 1808
+          "line": 1811
         },
         {
           "file": "js/render.js",
-          "line": 1955
+          "line": 1958
         },
         {
           "file": "js/render.js",
-          "line": 1993
+          "line": 1996
         },
         {
           "file": "js/render.js",
-          "line": 2089
-        },
-        {
-          "file": "js/render.js",
-          "line": 2201
+          "line": 2092
         },
         {
           "file": "js/render.js",
@@ -16481,47 +16602,51 @@
         },
         {
           "file": "js/render.js",
-          "line": 2307
+          "line": 2207
         },
         {
           "file": "js/render.js",
-          "line": 2335
+          "line": 2310
         },
         {
           "file": "js/render.js",
-          "line": 2641
+          "line": 2338
         },
         {
           "file": "js/render.js",
-          "line": 2650
+          "line": 2644
         },
         {
           "file": "js/render.js",
-          "line": 2720
+          "line": 2653
         },
         {
           "file": "js/render.js",
-          "line": 2764
+          "line": 2723
         },
         {
           "file": "js/render.js",
-          "line": 2951
+          "line": 2767
         },
         {
           "file": "js/render.js",
-          "line": 2969
+          "line": 2954
         },
         {
           "file": "js/render.js",
-          "line": 3227
+          "line": 2972
         },
         {
           "file": "js/render.js",
-          "line": 3387
+          "line": 3230
         },
         {
           "file": "js/render.js",
-          "line": 3469
+          "line": 3390
+        },
+        {
+          "file": "js/render.js",
+          "line": 3472
         }
       ],
       "stringRefs": [],
@@ -16604,39 +16729,39 @@
         },
         {
           "file": "js/render.js",
-          "line": 411
+          "line": 414
         },
         {
           "file": "js/render.js",
-          "line": 1802
+          "line": 1805
         },
         {
           "file": "js/render.js",
-          "line": 2855
+          "line": 2858
         },
         {
           "file": "js/render.js",
-          "line": 3275
+          "line": 3278
         },
         {
           "file": "js/render.js",
-          "line": 3367
+          "line": 3370
         },
         {
           "file": "js/render.js",
-          "line": 3367
+          "line": 3370
         },
         {
           "file": "js/render.js",
-          "line": 3372
+          "line": 3375
         },
         {
           "file": "js/render.js",
-          "line": 3486
+          "line": 3489
         },
         {
           "file": "js/render.js",
-          "line": 3617
+          "line": 3620
         },
         {
           "file": "apps-script-Code.gs",
@@ -16703,31 +16828,23 @@
         },
         {
           "file": "js/render.js",
-          "line": 461
+          "line": 464
         },
         {
           "file": "js/render.js",
-          "line": 1803
+          "line": 1806
         },
         {
           "file": "js/render.js",
-          "line": 2855
+          "line": 2858
         },
         {
           "file": "js/render.js",
-          "line": 3275
+          "line": 3278
         },
         {
           "file": "js/render.js",
-          "line": 3275
-        },
-        {
-          "file": "js/render.js",
-          "line": 3369
-        },
-        {
-          "file": "js/render.js",
-          "line": 3369
+          "line": 3278
         },
         {
           "file": "js/render.js",
@@ -16739,19 +16856,27 @@
         },
         {
           "file": "js/render.js",
-          "line": 3372
+          "line": 3375
         },
         {
           "file": "js/render.js",
-          "line": 3487
+          "line": 3375
         },
         {
           "file": "js/render.js",
-          "line": 3617
+          "line": 3375
         },
         {
           "file": "js/render.js",
-          "line": 3617
+          "line": 3490
+        },
+        {
+          "file": "js/render.js",
+          "line": 3620
+        },
+        {
+          "file": "js/render.js",
+          "line": 3620
         },
         {
           "file": "apps-script-Code.gs",
@@ -16783,7 +16908,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 448
+          "line": 451
         },
         {
           "file": "apps-script-Code.gs",
@@ -16859,7 +16984,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 418
+          "line": 421
         },
         {
           "file": "apps-script-Code.gs",
@@ -17008,11 +17133,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2061
-        },
-        {
-          "file": "js/render.js",
-          "line": 2062
+          "line": 2064
         },
         {
           "file": "js/render.js",
@@ -17020,23 +17141,27 @@
         },
         {
           "file": "js/render.js",
-          "line": 2066
+          "line": 2068
         },
         {
           "file": "js/render.js",
-          "line": 2070
+          "line": 2069
         },
         {
           "file": "js/render.js",
-          "line": 2071
+          "line": 2073
         },
         {
           "file": "js/render.js",
-          "line": 2083
+          "line": 2074
         },
         {
           "file": "js/render.js",
-          "line": 2084
+          "line": 2086
+        },
+        {
+          "file": "js/render.js",
+          "line": 2087
         }
       ],
       "stringRefs": [],
@@ -17095,99 +17220,99 @@
         },
         {
           "file": "js/render.js",
-          "line": 661
+          "line": 664
         },
         {
           "file": "js/render.js",
-          "line": 671
+          "line": 674
         },
         {
           "file": "js/render.js",
-          "line": 837
+          "line": 840
         },
         {
           "file": "js/render.js",
-          "line": 837
+          "line": 840
         },
         {
           "file": "js/render.js",
-          "line": 935
+          "line": 938
         },
         {
           "file": "js/render.js",
-          "line": 1100
+          "line": 1103
         },
         {
           "file": "js/render.js",
-          "line": 1115
+          "line": 1118
         },
         {
           "file": "js/render.js",
-          "line": 1131
+          "line": 1134
         },
         {
           "file": "js/render.js",
-          "line": 1719
+          "line": 1722
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2207
+          "line": 2210
         },
         {
           "file": "js/render.js",
-          "line": 2207
+          "line": 2210
         },
         {
           "file": "js/render.js",
-          "line": 2349
+          "line": 2352
         },
         {
           "file": "js/render.js",
-          "line": 2349
+          "line": 2352
         },
         {
           "file": "js/render.js",
-          "line": 2359
+          "line": 2362
         },
         {
           "file": "js/render.js",
-          "line": 2359
+          "line": 2362
         },
         {
           "file": "js/render.js",
-          "line": 2379
+          "line": 2382
         },
         {
           "file": "js/render.js",
-          "line": 2380
+          "line": 2383
         },
         {
           "file": "js/render.js",
-          "line": 2416
+          "line": 2419
         },
         {
           "file": "js/render.js",
-          "line": 2610
+          "line": 2613
         },
         {
           "file": "js/render.js",
-          "line": 2755
+          "line": 2758
         },
         {
           "file": "js/render.js",
-          "line": 2763
+          "line": 2766
         },
         {
           "file": "js/render.js",
-          "line": 2953
+          "line": 2956
         },
         {
           "file": "js/render.js",
-          "line": 3273
+          "line": 3276
         }
       ],
       "stringRefs": [],
@@ -17276,79 +17401,79 @@
         },
         {
           "file": "js/render.js",
-          "line": 661
+          "line": 664
         },
         {
           "file": "js/render.js",
-          "line": 671
+          "line": 674
         },
         {
           "file": "js/render.js",
-          "line": 837
+          "line": 840
         },
         {
           "file": "js/render.js",
-          "line": 936
+          "line": 939
         },
         {
           "file": "js/render.js",
-          "line": 1101
+          "line": 1104
         },
         {
           "file": "js/render.js",
-          "line": 1116
+          "line": 1119
         },
         {
           "file": "js/render.js",
-          "line": 1132
+          "line": 1135
         },
         {
           "file": "js/render.js",
-          "line": 1523
+          "line": 1526
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1646
+          "line": 1649
         },
         {
           "file": "js/render.js",
-          "line": 1720
+          "line": 1723
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2207
+          "line": 2210
         },
         {
           "file": "js/render.js",
-          "line": 2349
+          "line": 2352
         },
         {
           "file": "js/render.js",
-          "line": 2359
+          "line": 2362
         },
         {
           "file": "js/render.js",
-          "line": 2416
+          "line": 2419
         },
         {
           "file": "js/render.js",
-          "line": 2763
+          "line": 2766
         },
         {
           "file": "js/render.js",
-          "line": 2953
+          "line": 2956
         },
         {
           "file": "js/render.js",
-          "line": 3274
+          "line": 3277
         },
         {
           "file": "js/sync.js",
@@ -17668,7 +17793,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2568
+          "line": 2571
         }
       ],
       "stringRefs": [],
@@ -17805,35 +17930,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 710
+          "line": 713
         },
         {
           "file": "js/render.js",
-          "line": 1856
+          "line": 1859
         },
         {
           "file": "js/render.js",
-          "line": 1976
+          "line": 1979
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 2751
+          "line": 2754
         },
         {
           "file": "js/render.js",
-          "line": 2763
+          "line": 2766
         },
         {
           "file": "js/render.js",
-          "line": 2845
+          "line": 2848
         },
         {
           "file": "js/render.js",
-          "line": 3063
+          "line": 3066
         }
       ],
       "stringRefs": [],
@@ -17868,7 +17993,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 3159
+          "line": 3162
         }
       ],
       "stringRefs": [],
@@ -18051,35 +18176,35 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1527
+          "line": 1530
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1717
+          "line": 1720
         },
         {
           "file": "js/render.js",
-          "line": 1856
+          "line": 1859
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2416
+          "line": 2419
         },
         {
           "file": "js/render.js",
-          "line": 2649
+          "line": 2652
         }
       ],
       "identRefFiles": [
@@ -18279,7 +18404,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1290
+          "line": 1293
         }
       ],
       "stringRefs": [],
@@ -18406,23 +18531,23 @@
         },
         {
           "file": "js/render.js",
-          "line": 2045
+          "line": 2048
         },
         {
           "file": "js/render.js",
-          "line": 2149
+          "line": 2152
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 3506
+          "line": 3509
         },
         {
           "file": "js/render.js",
-          "line": 3604
+          "line": 3607
         }
       ],
       "stringRefs": [],
@@ -18465,11 +18590,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 522
+          "line": 525
         },
         {
           "file": "js/render.js",
-          "line": 522
+          "line": 525
         }
       ],
       "stringRefs": [],
@@ -18506,15 +18631,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 518
+          "line": 521
         },
         {
           "file": "js/render.js",
-          "line": 1334
+          "line": 1337
         },
         {
           "file": "js/render.js",
-          "line": 1793
+          "line": 1796
         }
       ],
       "stringRefs": [],
@@ -18561,7 +18686,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 654
+          "line": 657
         }
       ],
       "stringRefs": [],
@@ -18589,7 +18714,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 653
+          "line": 656
         }
       ],
       "stringRefs": [],
@@ -18612,11 +18737,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 1688
+          "line": 1691
         },
         {
           "file": "js/render.js",
-          "line": 2195
+          "line": 2198
         }
       ],
       "stringRefs": [],
@@ -18654,19 +18779,19 @@
         },
         {
           "file": "js/render.js",
-          "line": 656
+          "line": 659
         },
         {
           "file": "js/render.js",
-          "line": 668
+          "line": 671
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         }
       ],
       "stringRefs": [],
@@ -18693,7 +18818,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         }
       ],
       "stringRefs": [],
@@ -18719,7 +18844,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 659
+          "line": 662
         }
       ],
       "stringRefs": [],
@@ -18757,35 +18882,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 1524
+          "line": 1527
         },
         {
           "file": "js/render.js",
-          "line": 1524
+          "line": 1527
         },
         {
           "file": "js/render.js",
-          "line": 1524
+          "line": 1527
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 2649
+          "line": 2652
         }
       ],
       "stringRefs": [],
@@ -18849,7 +18974,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1805
+          "line": 1808
         }
       ],
       "stringRefs": [],
@@ -18901,7 +19026,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2361
+          "line": 2364
         }
       ],
       "stringRefs": [],
@@ -18920,31 +19045,31 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 705
+          "line": 708
         },
         {
           "file": "js/render.js",
-          "line": 1758
+          "line": 1761
         },
         {
           "file": "js/render.js",
-          "line": 1833
+          "line": 1836
         },
         {
           "file": "js/render.js",
-          "line": 1835
+          "line": 1838
         },
         {
           "file": "js/render.js",
-          "line": 2325
+          "line": 2328
         },
         {
           "file": "js/render.js",
-          "line": 2326
+          "line": 2329
         },
         {
           "file": "js/render.js",
-          "line": 2327
+          "line": 2330
         }
       ],
       "stringRefs": [],
@@ -19013,35 +19138,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 2228
+          "line": 2231
         },
         {
           "file": "js/render.js",
-          "line": 2233
+          "line": 2236
         },
         {
           "file": "js/render.js",
-          "line": 2242
+          "line": 2245
         },
         {
           "file": "js/render.js",
-          "line": 2274
+          "line": 2277
         },
         {
           "file": "js/render.js",
-          "line": 2280
+          "line": 2283
         },
         {
           "file": "js/render.js",
-          "line": 2294
+          "line": 2297
         },
         {
           "file": "js/render.js",
-          "line": 2416
+          "line": 2419
         },
         {
           "file": "js/render.js",
-          "line": 2566
+          "line": 2569
         }
       ],
       "stringRefs": [],
@@ -19060,7 +19185,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2416
+          "line": 2419
         }
       ],
       "stringRefs": [],
@@ -19085,7 +19210,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2566
+          "line": 2569
         }
       ],
       "stringRefs": [],
@@ -19103,7 +19228,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2330
+          "line": 2333
         }
       ],
       "stringRefs": [],
@@ -19120,11 +19245,11 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2222
+          "line": 2225
         },
         {
           "file": "js/render.js",
-          "line": 2292
+          "line": 2295
         }
       ],
       "stringRefs": [],
@@ -19141,7 +19266,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2256
+          "line": 2259
         }
       ],
       "stringRefs": [],
@@ -19158,7 +19283,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2598
+          "line": 2601
         }
       ],
       "stringRefs": [],
@@ -19175,7 +19300,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2528
+          "line": 2531
         }
       ],
       "stringRefs": [],
@@ -19192,7 +19317,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 341
+          "line": 344
         }
       ],
       "stringRefs": [],
@@ -19226,7 +19351,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1336
+          "line": 1339
         }
       ],
       "stringRefs": [],
@@ -19243,7 +19368,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2223
+          "line": 2226
         }
       ],
       "stringRefs": [],
@@ -19264,7 +19389,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1795
+          "line": 1798
         }
       ],
       "stringRefs": [],
@@ -19286,7 +19411,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1805
+          "line": 1808
         }
       ],
       "stringRefs": [],
@@ -19304,17 +19429,17 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2805
+          "line": 2808
         },
         {
           "file": "js/render.js",
-          "line": 3473
+          "line": 3476
         }
       ],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1781
+          "line": 1784
         },
         {
           "file": "js/sync.js",
@@ -19375,25 +19500,25 @@
         },
         {
           "file": "js/render.js",
-          "line": 389
+          "line": 392
         },
         {
           "file": "js/render.js",
-          "line": 3518
+          "line": 3521
         },
         {
           "file": "js/render.js",
-          "line": 3539
+          "line": 3542
         },
         {
           "file": "js/render.js",
-          "line": 3575
+          "line": 3578
         }
       ],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1781
+          "line": 1784
         },
         {
           "file": "js/sync.js",
@@ -19447,7 +19572,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2804
+          "line": 2807
         }
       ],
       "stringRefs": [],
@@ -19465,7 +19590,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2804
+          "line": 2807
         }
       ],
       "stringRefs": [],
@@ -19535,11 +19660,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 2155
+          "line": 2158
         },
         {
           "file": "js/render.js",
-          "line": 3203
+          "line": 3206
         }
       ],
       "stringRefs": [],
@@ -19569,7 +19694,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2111
+          "line": 2114
         }
       ],
       "stringRefs": [],
@@ -19620,19 +19745,19 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1982
+          "line": 1985
         },
         {
           "file": "js/render.js",
-          "line": 2094
+          "line": 2097
         },
         {
           "file": "js/render.js",
-          "line": 2407
+          "line": 2410
         },
         {
           "file": "js/render.js",
-          "line": 3228
+          "line": 3231
         }
       ],
       "stringRefs": [],
@@ -19649,11 +19774,11 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1930
+          "line": 1933
         },
         {
           "file": "js/render.js",
-          "line": 2271
+          "line": 2274
         }
       ],
       "stringRefs": [],
@@ -19670,63 +19795,63 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2199
+          "line": 2202
         },
         {
           "file": "js/render.js",
-          "line": 2199
+          "line": 2202
         },
         {
           "file": "js/render.js",
-          "line": 2199
+          "line": 2202
         },
         {
           "file": "js/render.js",
-          "line": 2199
+          "line": 2202
         },
         {
           "file": "js/render.js",
-          "line": 2415
+          "line": 2418
         },
         {
           "file": "js/render.js",
-          "line": 2415
+          "line": 2418
         },
         {
           "file": "js/render.js",
-          "line": 2415
+          "line": 2418
         },
         {
           "file": "js/render.js",
-          "line": 2415
+          "line": 2418
         },
         {
           "file": "js/render.js",
-          "line": 2415
+          "line": 2418
         },
         {
           "file": "js/render.js",
-          "line": 2415
+          "line": 2418
         },
         {
           "file": "js/render.js",
-          "line": 2415
+          "line": 2418
         },
         {
           "file": "js/render.js",
-          "line": 3251
+          "line": 3254
         },
         {
           "file": "js/render.js",
-          "line": 3251
+          "line": 3254
         },
         {
           "file": "js/render.js",
-          "line": 3251
+          "line": 3254
         },
         {
           "file": "js/render.js",
-          "line": 3252
+          "line": 3255
         }
       ],
       "stringRefs": [],
@@ -19743,15 +19868,15 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2176
+          "line": 2179
         },
         {
           "file": "js/render.js",
-          "line": 2272
+          "line": 2275
         },
         {
           "file": "js/render.js",
-          "line": 3207
+          "line": 3210
         }
       ],
       "stringRefs": [],
@@ -20471,11 +20596,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 876
+          "line": 879
         },
         {
           "file": "js/render.js",
-          "line": 877
+          "line": 880
         }
       ],
       "stringRefs": [],
@@ -20745,27 +20870,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 218
-        },
-        {
-          "file": "js/render.js",
-          "line": 218
-        },
-        {
-          "file": "js/render.js",
-          "line": 219
-        },
-        {
-          "file": "js/render.js",
-          "line": 219
-        },
-        {
-          "file": "js/render.js",
-          "line": 220
-        },
-        {
-          "file": "js/render.js",
-          "line": 220
+          "line": 221
         },
         {
           "file": "js/render.js",
@@ -20773,27 +20878,39 @@
         },
         {
           "file": "js/render.js",
-          "line": 305
+          "line": 222
         },
         {
           "file": "js/render.js",
-          "line": 624
+          "line": 222
         },
         {
           "file": "js/render.js",
-          "line": 628
+          "line": 223
         },
         {
           "file": "js/render.js",
-          "line": 657
+          "line": 223
         },
         {
           "file": "js/render.js",
-          "line": 658
+          "line": 224
         },
         {
           "file": "js/render.js",
-          "line": 659
+          "line": 308
+        },
+        {
+          "file": "js/render.js",
+          "line": 627
+        },
+        {
+          "file": "js/render.js",
+          "line": 631
+        },
+        {
+          "file": "js/render.js",
+          "line": 660
         },
         {
           "file": "js/render.js",
@@ -20801,95 +20918,99 @@
         },
         {
           "file": "js/render.js",
-          "line": 669
+          "line": 662
         },
         {
           "file": "js/render.js",
-          "line": 669
+          "line": 664
         },
         {
           "file": "js/render.js",
-          "line": 671
+          "line": 672
         },
         {
           "file": "js/render.js",
-          "line": 812
+          "line": 672
         },
         {
           "file": "js/render.js",
-          "line": 812
+          "line": 674
         },
         {
           "file": "js/render.js",
-          "line": 816
+          "line": 815
         },
         {
           "file": "js/render.js",
-          "line": 823
+          "line": 815
         },
         {
           "file": "js/render.js",
-          "line": 830
+          "line": 819
         },
         {
           "file": "js/render.js",
-          "line": 837
+          "line": 826
         },
         {
           "file": "js/render.js",
-          "line": 925
+          "line": 833
         },
         {
           "file": "js/render.js",
-          "line": 929
+          "line": 840
         },
         {
           "file": "js/render.js",
-          "line": 936
+          "line": 928
         },
         {
           "file": "js/render.js",
-          "line": 943
+          "line": 932
         },
         {
           "file": "js/render.js",
-          "line": 943
+          "line": 939
         },
         {
           "file": "js/render.js",
-          "line": 950
+          "line": 946
         },
         {
           "file": "js/render.js",
-          "line": 1044
+          "line": 946
         },
         {
           "file": "js/render.js",
-          "line": 1101
+          "line": 953
         },
         {
           "file": "js/render.js",
-          "line": 1102
+          "line": 1047
         },
         {
           "file": "js/render.js",
-          "line": 1116
+          "line": 1104
         },
         {
           "file": "js/render.js",
-          "line": 1132
+          "line": 1105
         },
         {
           "file": "js/render.js",
-          "line": 1436
+          "line": 1119
         },
         {
           "file": "js/render.js",
-          "line": 1446
+          "line": 1135
         },
         {
           "file": "js/render.js",
-          "line": 1523
+          "line": 1439
+        },
+        {
+          "file": "js/render.js",
+          "line": 1449
         },
         {
           "file": "js/render.js",
@@ -20897,31 +21018,31 @@
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1529
         },
         {
           "file": "js/render.js",
-          "line": 1569
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1640
+          "line": 1572
         },
         {
           "file": "js/render.js",
-          "line": 1640
+          "line": 1643
         },
         {
           "file": "js/render.js",
-          "line": 1646
+          "line": 1643
         },
         {
           "file": "js/render.js",
-          "line": 1720
+          "line": 1649
         },
         {
           "file": "js/render.js",
-          "line": 1721
+          "line": 1723
         },
         {
           "file": "js/render.js",
@@ -20929,131 +21050,131 @@
         },
         {
           "file": "js/render.js",
-          "line": 1758
+          "line": 1727
         },
         {
           "file": "js/render.js",
-          "line": 1763
+          "line": 1761
         },
         {
           "file": "js/render.js",
-          "line": 1765
+          "line": 1766
         },
         {
           "file": "js/render.js",
-          "line": 1765
+          "line": 1768
         },
         {
           "file": "js/render.js",
-          "line": 1797
+          "line": 1768
         },
         {
           "file": "js/render.js",
-          "line": 1797
+          "line": 1800
         },
         {
           "file": "js/render.js",
-          "line": 1797
+          "line": 1800
         },
         {
           "file": "js/render.js",
-          "line": 1856
+          "line": 1800
         },
         {
           "file": "js/render.js",
-          "line": 1856
+          "line": 1859
         },
         {
           "file": "js/render.js",
-          "line": 1976
+          "line": 1859
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1979
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 1996
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 1999
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2207
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2349
+          "line": 2210
         },
         {
           "file": "js/render.js",
-          "line": 2359
+          "line": 2352
         },
         {
           "file": "js/render.js",
-          "line": 2416
+          "line": 2362
         },
         {
           "file": "js/render.js",
-          "line": 2649
+          "line": 2419
         },
         {
           "file": "js/render.js",
-          "line": 2671
+          "line": 2652
         },
         {
           "file": "js/render.js",
-          "line": 2751
+          "line": 2674
         },
         {
           "file": "js/render.js",
-          "line": 2755
+          "line": 2754
         },
         {
           "file": "js/render.js",
-          "line": 2763
+          "line": 2758
         },
         {
           "file": "js/render.js",
-          "line": 2763
+          "line": 2766
         },
         {
           "file": "js/render.js",
-          "line": 2933
+          "line": 2766
         },
         {
           "file": "js/render.js",
-          "line": 2934
+          "line": 2936
         },
         {
           "file": "js/render.js",
-          "line": 2948
+          "line": 2937
         },
         {
           "file": "js/render.js",
-          "line": 2953
+          "line": 2951
         },
         {
           "file": "js/render.js",
-          "line": 2966
+          "line": 2956
         },
         {
           "file": "js/render.js",
@@ -21061,15 +21182,19 @@
         },
         {
           "file": "js/render.js",
-          "line": 2970
+          "line": 2972
         },
         {
           "file": "js/render.js",
-          "line": 3000
+          "line": 2973
         },
         {
           "file": "js/render.js",
-          "line": 3274
+          "line": 3003
+        },
+        {
+          "file": "js/render.js",
+          "line": 3277
         },
         {
           "file": "js/sync.js",
@@ -21599,11 +21724,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 222
-        },
-        {
-          "file": "js/render.js",
-          "line": 308
+          "line": 225
         },
         {
           "file": "js/render.js",
@@ -21611,91 +21732,91 @@
         },
         {
           "file": "js/render.js",
-          "line": 311
+          "line": 314
         },
         {
           "file": "js/render.js",
-          "line": 311
+          "line": 314
         },
         {
           "file": "js/render.js",
-          "line": 311
+          "line": 314
         },
         {
           "file": "js/render.js",
-          "line": 340
+          "line": 314
         },
         {
           "file": "js/render.js",
-          "line": 348
+          "line": 343
         },
         {
           "file": "js/render.js",
-          "line": 1054
+          "line": 351
         },
         {
           "file": "js/render.js",
-          "line": 1056
+          "line": 1057
         },
         {
           "file": "js/render.js",
-          "line": 1454
+          "line": 1059
         },
         {
           "file": "js/render.js",
-          "line": 1460
+          "line": 1457
         },
         {
           "file": "js/render.js",
-          "line": 1898
+          "line": 1463
         },
         {
           "file": "js/render.js",
-          "line": 1976
+          "line": 1901
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 1979
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2379
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2380
+          "line": 2382
         },
         {
           "file": "js/render.js",
-          "line": 2411
+          "line": 2383
         },
         {
           "file": "js/render.js",
-          "line": 2411
+          "line": 2414
         },
         {
           "file": "js/render.js",
-          "line": 2686
+          "line": 2414
         },
         {
           "file": "js/render.js",
-          "line": 2755
+          "line": 2689
         },
         {
           "file": "js/render.js",
-          "line": 2966
+          "line": 2758
         },
         {
           "file": "js/render.js",
-          "line": 3093
+          "line": 2969
         },
         {
           "file": "js/render.js",
-          "line": 3118
+          "line": 3096
         },
         {
           "file": "js/render.js",
@@ -21707,27 +21828,23 @@
         },
         {
           "file": "js/render.js",
-          "line": 3125
+          "line": 3127
         },
         {
           "file": "js/render.js",
-          "line": 3135
+          "line": 3128
         },
         {
           "file": "js/render.js",
-          "line": 3424
+          "line": 3138
         },
         {
           "file": "js/render.js",
-          "line": 3598
+          "line": 3427
         },
         {
           "file": "js/render.js",
-          "line": 3616
-        },
-        {
-          "file": "js/render.js",
-          "line": 3619
+          "line": 3601
         },
         {
           "file": "js/render.js",
@@ -21735,35 +21852,43 @@
         },
         {
           "file": "js/render.js",
-          "line": 3626
+          "line": 3622
         },
         {
           "file": "js/render.js",
-          "line": 3693
+          "line": 3622
         },
         {
           "file": "js/render.js",
-          "line": 3716
+          "line": 3629
         },
         {
           "file": "js/render.js",
-          "line": 3716
+          "line": 3696
         },
         {
           "file": "js/render.js",
-          "line": 3717
+          "line": 3719
         },
         {
           "file": "js/render.js",
-          "line": 3717
+          "line": 3719
         },
         {
           "file": "js/render.js",
-          "line": 3765
+          "line": 3720
         },
         {
           "file": "js/render.js",
-          "line": 3770
+          "line": 3720
+        },
+        {
+          "file": "js/render.js",
+          "line": 3768
+        },
+        {
+          "file": "js/render.js",
+          "line": 3773
         }
       ],
       "stringRefs": [],
@@ -21935,83 +22060,83 @@
         },
         {
           "file": "js/render.js",
-          "line": 508
+          "line": 511
         },
         {
           "file": "js/render.js",
-          "line": 809
+          "line": 812
         },
         {
           "file": "js/render.js",
-          "line": 955
+          "line": 958
         },
         {
           "file": "js/render.js",
-          "line": 1283
+          "line": 1286
         },
         {
           "file": "js/render.js",
-          "line": 1330
+          "line": 1333
         },
         {
           "file": "js/render.js",
-          "line": 1420
+          "line": 1423
         },
         {
           "file": "js/render.js",
-          "line": 1430
+          "line": 1433
         },
         {
           "file": "js/render.js",
-          "line": 1442
+          "line": 1445
         },
         {
           "file": "js/render.js",
-          "line": 1539
+          "line": 1542
         },
         {
           "file": "js/render.js",
-          "line": 1793
+          "line": 1796
         },
         {
           "file": "js/render.js",
-          "line": 2042
+          "line": 2045
         },
         {
           "file": "js/render.js",
-          "line": 2148
+          "line": 2151
         },
         {
           "file": "js/render.js",
-          "line": 2785
+          "line": 2788
         },
         {
           "file": "js/render.js",
-          "line": 2786
+          "line": 2789
         },
         {
           "file": "js/render.js",
-          "line": 2809
+          "line": 2812
         },
         {
           "file": "js/render.js",
-          "line": 3495
+          "line": 3498
         },
         {
           "file": "js/render.js",
-          "line": 3553
+          "line": 3556
         },
         {
           "file": "js/render.js",
-          "line": 3582
+          "line": 3585
         },
         {
           "file": "js/render.js",
-          "line": 3641
+          "line": 3644
         },
         {
           "file": "js/render.js",
-          "line": 3676
+          "line": 3679
         },
         {
           "file": "apps-script-Code.gs",
@@ -22188,35 +22313,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 2284
+          "line": 2287
         },
         {
           "file": "js/render.js",
-          "line": 3258
+          "line": 3261
         },
         {
           "file": "js/render.js",
-          "line": 3270
+          "line": 3273
         },
         {
           "file": "js/render.js",
-          "line": 3271
+          "line": 3274
         },
         {
           "file": "js/render.js",
-          "line": 3572
+          "line": 3575
         },
         {
           "file": "js/render.js",
-          "line": 3624
+          "line": 3627
         },
         {
           "file": "js/render.js",
-          "line": 3688
+          "line": 3691
         },
         {
           "file": "js/render.js",
-          "line": 3770
+          "line": 3773
         },
         {
           "file": "apps-script-Code.gs",
@@ -22649,175 +22774,175 @@
         },
         {
           "file": "js/render.js",
-          "line": 700
+          "line": 703
         },
         {
           "file": "js/render.js",
-          "line": 701
+          "line": 704
         },
         {
           "file": "js/render.js",
-          "line": 809
+          "line": 812
         },
         {
           "file": "js/render.js",
-          "line": 894
+          "line": 897
         },
         {
           "file": "js/render.js",
-          "line": 899
+          "line": 902
         },
         {
           "file": "js/render.js",
-          "line": 983
+          "line": 986
         },
         {
           "file": "js/render.js",
-          "line": 990
+          "line": 993
         },
         {
           "file": "js/render.js",
-          "line": 1002
+          "line": 1005
         },
         {
           "file": "js/render.js",
-          "line": 1286
+          "line": 1289
         },
         {
           "file": "js/render.js",
-          "line": 1505
+          "line": 1508
         },
         {
           "file": "js/render.js",
-          "line": 1505
+          "line": 1508
         },
         {
           "file": "js/render.js",
-          "line": 1542
+          "line": 1545
         },
         {
           "file": "js/render.js",
-          "line": 1542
+          "line": 1545
         },
         {
           "file": "js/render.js",
-          "line": 1674
+          "line": 1677
         },
         {
           "file": "js/render.js",
-          "line": 1693
+          "line": 1696
         },
         {
           "file": "js/render.js",
-          "line": 1694
+          "line": 1697
         },
         {
           "file": "js/render.js",
-          "line": 1710
+          "line": 1713
         },
         {
           "file": "js/render.js",
-          "line": 1828
+          "line": 1831
         },
         {
           "file": "js/render.js",
-          "line": 1829
+          "line": 1832
         },
         {
           "file": "js/render.js",
-          "line": 1915
+          "line": 1918
         },
         {
           "file": "js/render.js",
-          "line": 1916
+          "line": 1919
         },
         {
           "file": "js/render.js",
-          "line": 1924
+          "line": 1927
         },
         {
           "file": "js/render.js",
-          "line": 1925
+          "line": 1928
         },
         {
           "file": "js/render.js",
-          "line": 2034
+          "line": 2037
         },
         {
           "file": "js/render.js",
-          "line": 2048
+          "line": 2051
         },
         {
           "file": "js/render.js",
-          "line": 2049
+          "line": 2052
         },
         {
           "file": "js/render.js",
-          "line": 2151
+          "line": 2154
         },
         {
           "file": "js/render.js",
-          "line": 2152
+          "line": 2155
         },
         {
           "file": "js/render.js",
-          "line": 2169
+          "line": 2172
         },
         {
           "file": "js/render.js",
-          "line": 2169
+          "line": 2172
         },
         {
           "file": "js/render.js",
-          "line": 2177
+          "line": 2180
         },
         {
           "file": "js/render.js",
-          "line": 2265
+          "line": 2268
         },
         {
           "file": "js/render.js",
-          "line": 2265
+          "line": 2268
         },
         {
           "file": "js/render.js",
-          "line": 2274
+          "line": 2277
         },
         {
           "file": "js/render.js",
-          "line": 2280
+          "line": 2283
         },
         {
           "file": "js/render.js",
-          "line": 2713
+          "line": 2716
         },
         {
           "file": "js/render.js",
-          "line": 2714
+          "line": 2717
         },
         {
           "file": "js/render.js",
-          "line": 2814
+          "line": 2817
         },
         {
           "file": "js/render.js",
-          "line": 2862
+          "line": 2865
         },
         {
           "file": "js/render.js",
-          "line": 2878
+          "line": 2881
         },
         {
           "file": "js/render.js",
-          "line": 3528
+          "line": 3531
         },
         {
           "file": "js/render.js",
-          "line": 3559
+          "line": 3562
         },
         {
           "file": "js/render.js",
-          "line": 3560
+          "line": 3563
         },
         {
           "file": "apps-script-Code.gs",
@@ -23041,27 +23166,27 @@
         },
         {
           "file": "js/render.js",
-          "line": 812
+          "line": 815
         },
         {
           "file": "js/render.js",
-          "line": 1723
+          "line": 1726
         },
         {
           "file": "js/render.js",
-          "line": 1838
+          "line": 1841
         },
         {
           "file": "js/render.js",
-          "line": 1976
+          "line": 1979
         },
         {
           "file": "js/render.js",
-          "line": 1989
+          "line": 1992
         },
         {
           "file": "js/render.js",
-          "line": 2751
+          "line": 2754
         }
       ],
       "stringRefs": [],
@@ -23105,7 +23230,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2649
+          "line": 2652
         }
       ],
       "stringRefs": [],
@@ -23197,15 +23322,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 900
+          "line": 903
         },
         {
           "file": "js/render.js",
-          "line": 915
+          "line": 918
         },
         {
           "file": "js/render.js",
-          "line": 985
+          "line": 988
         }
       ],
       "stringRefs": [],
@@ -23227,27 +23352,27 @@
         },
         {
           "file": "js/render.js",
-          "line": 821
+          "line": 824
         },
         {
           "file": "js/render.js",
-          "line": 910
+          "line": 913
         },
         {
           "file": "js/render.js",
-          "line": 921
+          "line": 924
         },
         {
           "file": "js/render.js",
-          "line": 1019
+          "line": 1022
         },
         {
           "file": "js/render.js",
-          "line": 1041
+          "line": 1044
         },
         {
           "file": "js/render.js",
-          "line": 1098
+          "line": 1101
         }
       ],
       "stringRefs": [],
@@ -23287,7 +23412,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1849
+          "line": 1852
         }
       ],
       "stringRefs": [],
@@ -23384,7 +23509,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1849
+          "line": 1852
         }
       ],
       "stringRefs": [],
@@ -23812,7 +23937,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 3193
+          "line": 3196
         }
       ],
       "stringRefs": [],
@@ -24024,7 +24149,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 2297
+          "line": 2300
         }
       ],
       "stringRefs": [],
@@ -24143,7 +24268,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         }
       ],
       "identRefFiles": [
@@ -24160,27 +24285,27 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         }
       ],
       "identRefFiles": [
@@ -24313,7 +24438,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 372
+          "line": 375
         },
         {
           "file": "js/sync.js",
@@ -24622,13 +24747,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 88,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 165
+          "line": 633
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -24639,13 +24764,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 89,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 177
+          "line": 634
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -24656,13 +24781,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 90,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 177
+          "line": 635
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -24673,13 +24798,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 91,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 188
+          "line": 636
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -24690,13 +24815,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 92,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 195
+          "line": 637
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -24751,7 +24876,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1434
+          "line": 1437
         }
       ],
       "stringRefs": [],
@@ -24777,15 +24902,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 1422
+          "line": 1425
         },
         {
           "file": "js/render.js",
-          "line": 1431
+          "line": 1434
         },
         {
           "file": "js/render.js",
-          "line": 1443
+          "line": 1446
         }
       ],
       "stringRefs": [],
@@ -24945,7 +25070,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1483
+          "line": 1486
         }
       ],
       "stringRefs": [],
@@ -24960,17 +25085,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 272,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 242
-        },
-        {
-          "file": "js/parade-tab.js",
-          "line": 502
+          "line": 638
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -24988,7 +25109,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1484
+          "line": 1487
         }
       ],
       "stringRefs": [],
@@ -25003,13 +25124,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 313,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 236
+          "line": 639
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -25054,13 +25175,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 515,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 446
+          "line": 640
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -25088,13 +25209,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 528,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 540
+          "line": 648
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -25122,13 +25243,13 @@
       "kind": "function",
       "definedIn": "js/parade-tab.js",
       "definedAtLine": 545,
-      "directRefs": [],
-      "stringRefs": [
+      "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 538
+          "line": 647
         }
       ],
+      "stringRefs": [],
       "identRefFiles": [
         "js/parade-tab.js"
       ],
@@ -25357,39 +25478,27 @@
         },
         {
           "file": "js/render.js",
-          "line": 761
+          "line": 764
         },
         {
           "file": "js/render.js",
-          "line": 774
+          "line": 777
         },
         {
           "file": "js/render.js",
-          "line": 878
+          "line": 881
         },
         {
           "file": "js/render.js",
-          "line": 1395
+          "line": 1398
         },
         {
           "file": "js/render.js",
-          "line": 1396
+          "line": 1399
         },
         {
           "file": "js/render.js",
-          "line": 1408
-        },
-        {
-          "file": "js/render.js",
-          "line": 1867
-        },
-        {
-          "file": "js/render.js",
-          "line": 1868
-        },
-        {
-          "file": "js/render.js",
-          "line": 1869
+          "line": 1411
         },
         {
           "file": "js/render.js",
@@ -25397,23 +25506,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 2440
+          "line": 1871
         },
         {
           "file": "js/render.js",
-          "line": 2444
+          "line": 1872
         },
         {
           "file": "js/render.js",
-          "line": 2787
+          "line": 1873
         },
         {
           "file": "js/render.js",
-          "line": 2793
+          "line": 2443
         },
         {
           "file": "js/render.js",
-          "line": 3165
+          "line": 2447
+        },
+        {
+          "file": "js/render.js",
+          "line": 2790
+        },
+        {
+          "file": "js/render.js",
+          "line": 2796
+        },
+        {
+          "file": "js/render.js",
+          "line": 3168
         },
         {
           "file": "js/sync.js",
@@ -25443,15 +25564,15 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2318
+          "line": 2321
         },
         {
           "file": "js/render.js",
-          "line": 2319
+          "line": 2322
         },
         {
           "file": "js/render.js",
-          "line": 2740
+          "line": 2743
         }
       ],
       "identRefFiles": [
@@ -25628,11 +25749,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 350
+          "line": 353
         },
         {
           "file": "js/render.js",
-          "line": 352
+          "line": 355
         }
       ],
       "identRefFiles": [
@@ -25681,7 +25802,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 370
+          "line": 373
         }
       ],
       "stringRefs": [],
@@ -25723,7 +25844,7 @@
       "name": "setArchiveDrawerOpen",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 247,
+      "definedAtLine": 250,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -25731,15 +25852,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 231
+          "line": 234
         },
         {
           "file": "js/render.js",
-          "line": 315
+          "line": 318
         },
         {
           "file": "js/render.js",
-          "line": 324
+          "line": 327
         }
       ],
       "stringRefs": [],
@@ -25752,7 +25873,7 @@
       "name": "_arcEscBound",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 255,
+      "definedAtLine": 258,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -25764,11 +25885,11 @@
       "name": "bindArchiveDrawerEsc",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 256,
+      "definedAtLine": 259,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 297
+          "line": 300
         }
       ],
       "stringRefs": [],
@@ -25781,15 +25902,15 @@
       "name": "arcRowKey",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 272,
+      "definedAtLine": 275,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 237
+          "line": 240
         },
         {
           "file": "js/render.js",
-          "line": 298
+          "line": 301
         }
       ],
       "stringRefs": [],
@@ -25802,11 +25923,11 @@
       "name": "archiveFilteredRows",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 280,
+      "definedAtLine": 283,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 293
+          "line": 296
         }
       ],
       "stringRefs": [],
@@ -25819,17 +25940,17 @@
       "name": "openArchiveDrawer",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 292,
+      "definedAtLine": 295,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 238
+          "line": 241
         }
       ],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 222
+          "line": 225
         }
       ],
       "identRefFiles": [
@@ -25841,25 +25962,25 @@
       "name": "closeArchiveDrawer",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 318,
+      "definedAtLine": 321,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 266
+          "line": 269
         }
       ],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 225
+          "line": 228
         },
         {
           "file": "js/render.js",
-          "line": 305
+          "line": 308
         },
         {
           "file": "js/render.js",
-          "line": 311
+          "line": 314
         }
       ],
       "identRefFiles": [
@@ -25871,7 +25992,7 @@
       "name": "renderArchiveCompare",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 330,
+      "definedAtLine": 333,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -25888,12 +26009,12 @@
       "name": "deleteArchiveEntry",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 362,
+      "definedAtLine": 365,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 311
+          "line": 314
         }
       ],
       "identRefFiles": [
@@ -25905,7 +26026,7 @@
       "name": "exportArchiveCSV",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 378,
+      "definedAtLine": 381,
       "directRefs": [],
       "stringRefs": [
         {
@@ -25922,11 +26043,11 @@
       "name": "sectionStrengthBreakdown",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 408,
+      "definedAtLine": 411,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 617
+          "line": 620
         }
       ],
       "stringRefs": [],
@@ -25939,7 +26060,7 @@
       "name": "renderDashboard",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 480,
+      "definedAtLine": 483,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -25956,7 +26077,7 @@
       "name": "_deferredBuilders",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 739,
+      "definedAtLine": 742,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -25968,7 +26089,7 @@
       "name": "_lastRenderedNav",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 744,
+      "definedAtLine": 747,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -25980,15 +26101,15 @@
       "name": "chartGateMarkup",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 745,
+      "definedAtLine": 748,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 686
+          "line": 689
         },
         {
           "file": "js/render.js",
-          "line": 2999
+          "line": 3002
         }
       ],
       "stringRefs": [],
@@ -26001,15 +26122,15 @@
       "name": "runDeferred",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 752,
+      "definedAtLine": 755,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 758
+          "line": 761
         },
         {
           "file": "js/render.js",
-          "line": 759
+          "line": 762
         }
       ],
       "stringRefs": [],
@@ -26022,12 +26143,12 @@
       "name": "loadDashboardCharts",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 758,
+      "definedAtLine": 761,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 686
+          "line": 689
         }
       ],
       "identRefFiles": [
@@ -26039,12 +26160,12 @@
       "name": "loadConductDashCharts",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 759,
+      "definedAtLine": 762,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2999
+          "line": 3002
         }
       ],
       "identRefFiles": [
@@ -26056,20 +26177,20 @@
       "name": "setChartPref",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 761,
+      "definedAtLine": 764,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 748
+          "line": 751
         },
         {
           "file": "js/render.js",
-          "line": 2979
+          "line": 2982
         },
         {
           "file": "js/render.js",
-          "line": 3670
+          "line": 3673
         },
         {
           "file": "js/sync.js",
@@ -26086,11 +26207,11 @@
       "name": "renderDashMSKCases",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 784,
+      "definedAtLine": 787,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 688
+          "line": 691
         }
       ],
       "stringRefs": [],
@@ -26103,7 +26224,7 @@
       "name": "_mskAnalyticsStart",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 871,
+      "definedAtLine": 874,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26115,7 +26236,7 @@
       "name": "_mskAnalyticsEnd",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 872,
+      "definedAtLine": 875,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26127,7 +26248,7 @@
       "name": "_mskAnalyticsCharts",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 873,
+      "definedAtLine": 876,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26139,16 +26260,16 @@
       "name": "setMSKAnalyticsRange",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 875,
+      "definedAtLine": 878,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1054
+          "line": 1057
         },
         {
           "file": "js/render.js",
-          "line": 1056
+          "line": 1059
         }
       ],
       "identRefFiles": [
@@ -26160,11 +26281,11 @@
       "name": "viewMSKRegion",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 886,
+      "definedAtLine": 889,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1196
+          "line": 1199
         }
       ],
       "stringRefs": [],
@@ -26177,7 +26298,7 @@
       "name": "renderMSKAnalytics",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 954,
+      "definedAtLine": 957,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -26194,7 +26315,7 @@
       "name": "_statusTrendDays",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 1257,
+      "definedAtLine": 1260,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26206,7 +26327,7 @@
       "name": "STATUS_TREND_RANGES",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 1258,
+      "definedAtLine": 1261,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26218,7 +26339,7 @@
       "name": "STATUS_TREND_MAX_DAYS",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 1269,
+      "definedAtLine": 1272,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26230,15 +26351,15 @@
       "name": "statusTrendWindowDays",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1277,
+      "definedAtLine": 1280,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1294
+          "line": 1297
         },
         {
           "file": "js/render.js",
-          "line": 1329
+          "line": 1332
         }
       ],
       "stringRefs": [],
@@ -26251,19 +26372,19 @@
       "name": "statusTrendFullSpanDays",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1282,
+      "definedAtLine": 1285,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1279
+          "line": 1282
         },
         {
           "file": "js/render.js",
-          "line": 1295
+          "line": 1298
         },
         {
           "file": "js/render.js",
-          "line": 1296
+          "line": 1299
         }
       ],
       "stringRefs": [],
@@ -26276,15 +26397,15 @@
       "name": "statusTrendRangeLabel",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1292,
+      "definedAtLine": 1295,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 679
+          "line": 682
         },
         {
           "file": "js/render.js",
-          "line": 1316
+          "line": 1319
         }
       ],
       "stringRefs": [],
@@ -26297,15 +26418,15 @@
       "name": "statusTrendRangePillsHtml",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1299,
+      "definedAtLine": 1302,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 680
+          "line": 683
         },
         {
           "file": "js/render.js",
-          "line": 1318
+          "line": 1321
         }
       ],
       "stringRefs": [],
@@ -26318,12 +26439,12 @@
       "name": "setStatusTrendDays",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1311,
+      "definedAtLine": 1314,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1302
+          "line": 1305
         }
       ],
       "identRefFiles": [
@@ -26335,15 +26456,15 @@
       "name": "buildStatusTrendChart",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1321,
+      "definedAtLine": 1324,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 691
+          "line": 694
         },
         {
           "file": "js/render.js",
-          "line": 1314
+          "line": 1317
         }
       ],
       "stringRefs": [],
@@ -26356,7 +26477,7 @@
       "name": "_dashParadeDate",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 1393,
+      "definedAtLine": 1396,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26368,7 +26489,7 @@
       "name": "_dashParadeLookahead",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 1394,
+      "definedAtLine": 1397,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26380,12 +26501,12 @@
       "name": "setDashParadeDate",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1395,
+      "definedAtLine": 1398,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1454
+          "line": 1457
         }
       ],
       "identRefFiles": [
@@ -26397,12 +26518,12 @@
       "name": "setDashParadeType",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1396,
+      "definedAtLine": 1399,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1454
+          "line": 1457
         }
       ],
       "identRefFiles": [
@@ -26414,12 +26535,12 @@
       "name": "setDashParadeTime",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1403,
+      "definedAtLine": 1406,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1460
+          "line": 1463
         }
       ],
       "identRefFiles": [
@@ -26431,11 +26552,11 @@
       "name": "refreshDashParade",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1404,
+      "definedAtLine": 1407,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1403
+          "line": 1406
         }
       ],
       "stringRefs": [],
@@ -26448,12 +26569,12 @@
       "name": "setDashParadeLookahead",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1408,
+      "definedAtLine": 1411,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1467
+          "line": 1470
         }
       ],
       "identRefFiles": [
@@ -26465,19 +26586,19 @@
       "name": "dashParadeScope",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1413,
+      "definedAtLine": 1416,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1418
+          "line": 1421
         },
         {
           "file": "js/render.js",
-          "line": 1432
+          "line": 1435
         },
         {
           "file": "js/render.js",
-          "line": 1444
+          "line": 1447
         }
       ],
       "stringRefs": [],
@@ -26490,11 +26611,11 @@
       "name": "dashParadeMeta",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1417,
+      "definedAtLine": 1420,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1484
+          "line": 1487
         }
       ],
       "stringRefs": [],
@@ -26507,15 +26628,15 @@
       "name": "dashParadeBodyHtml",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1429,
+      "definedAtLine": 1432,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1406
+          "line": 1409
         },
         {
           "file": "js/render.js",
-          "line": 1472
+          "line": 1475
         }
       ],
       "stringRefs": [],
@@ -26528,11 +26649,11 @@
       "name": "renderDashParade",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1441,
+      "definedAtLine": 1444,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 675
+          "line": 678
         }
       ],
       "stringRefs": [],
@@ -26545,12 +26666,12 @@
       "name": "copyDashParadeText",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1480,
+      "definedAtLine": 1483,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1436
+          "line": 1439
         }
       ],
       "identRefFiles": [
@@ -26562,11 +26683,11 @@
       "name": "renderDashLeaveOut",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1497,
+      "definedAtLine": 1500,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 674
+          "line": 677
         }
       ],
       "stringRefs": [],
@@ -26579,7 +26700,7 @@
       "name": "renderLeave",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1537,
+      "definedAtLine": 1540,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -26596,12 +26717,12 @@
       "name": "toggleLeaveTimeline",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1579,
+      "definedAtLine": 1582,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1650
+          "line": 1653
         }
       ],
       "identRefFiles": [
@@ -26613,11 +26734,11 @@
       "name": "renderLeaveTimeline",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1589,
+      "definedAtLine": 1592,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1567
+          "line": 1570
         }
       ],
       "stringRefs": [],
@@ -26630,11 +26751,11 @@
       "name": "renderDashAppointments",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1670,
+      "definedAtLine": 1673,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 636
+          "line": 639
         }
       ],
       "stringRefs": [],
@@ -26647,11 +26768,11 @@
       "name": "renderDashProfileCards",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1732,
+      "definedAtLine": 1735,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 687
+          "line": 690
         }
       ],
       "stringRefs": [],
@@ -26664,7 +26785,7 @@
       "name": "renderRoster",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1772,
+      "definedAtLine": 1775,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -26681,7 +26802,7 @@
       "name": "renderAttendance",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1811,
+      "definedAtLine": 1814,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -26698,7 +26819,7 @@
       "name": "_detailFilterConduct",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 1864,
+      "definedAtLine": 1867,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26710,7 +26831,7 @@
       "name": "_detailFilterType",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 1865,
+      "definedAtLine": 1868,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26722,7 +26843,7 @@
       "name": "_showParticipants",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 1866,
+      "definedAtLine": 1869,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26734,12 +26855,12 @@
       "name": "setDetailFilterConduct",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1867,
+      "definedAtLine": 1870,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1970
+          "line": 1973
         }
       ],
       "identRefFiles": [
@@ -26751,12 +26872,12 @@
       "name": "setDetailFilterType",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1868,
+      "definedAtLine": 1871,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1976
+          "line": 1979
         }
       ],
       "identRefFiles": [
@@ -26768,12 +26889,12 @@
       "name": "clearDetailFilters",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1869,
+      "definedAtLine": 1872,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1983
+          "line": 1986
         }
       ],
       "identRefFiles": [
@@ -26785,12 +26906,12 @@
       "name": "toggleParticipants",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1870,
+      "definedAtLine": 1873,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1893
+          "line": 1896
         }
       ],
       "identRefFiles": [
@@ -26802,11 +26923,11 @@
       "name": "renderDetailParticipantsSummary",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1875,
+      "definedAtLine": 1878,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 1985
+          "line": 1988
         }
       ],
       "stringRefs": [],
@@ -26819,7 +26940,7 @@
       "name": "renderConductDetail",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 1903,
+      "definedAtLine": 1906,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -26836,7 +26957,7 @@
       "name": "_medDateFrom",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 2007,
+      "definedAtLine": 2010,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26848,19 +26969,19 @@
       "name": "medDatesActive",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2008,
+      "definedAtLine": 2011,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2017
+          "line": 2020
         },
         {
           "file": "js/render.js",
-          "line": 2095
+          "line": 2098
         },
         {
           "file": "js/render.js",
-          "line": 2095
+          "line": 2098
         }
       ],
       "stringRefs": [],
@@ -26873,19 +26994,19 @@
       "name": "medSyncDateFilterUI",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2014,
+      "definedAtLine": 2017,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2021
+          "line": 2024
         },
         {
           "file": "js/render.js",
-          "line": 2022
+          "line": 2025
         },
         {
           "file": "js/render.js",
-          "line": 2028
+          "line": 2031
         }
       ],
       "stringRefs": [],
@@ -26898,12 +27019,12 @@
       "name": "medSetDateFrom",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2021,
+      "definedAtLine": 2024,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2096
+          "line": 2099
         }
       ],
       "identRefFiles": [
@@ -26915,12 +27036,12 @@
       "name": "medSetDateTo",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2022,
+      "definedAtLine": 2025,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2098
+          "line": 2101
         }
       ],
       "identRefFiles": [
@@ -26932,12 +27053,12 @@
       "name": "medClearDates",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2023,
+      "definedAtLine": 2026,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2098
+          "line": 2101
         }
       ],
       "identRefFiles": [
@@ -26949,7 +27070,7 @@
       "name": "_DOW_SHORT",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 2032,
+      "definedAtLine": 2035,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -26961,11 +27082,11 @@
       "name": "medDayOfWeek",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2033,
+      "definedAtLine": 2036,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         }
       ],
       "stringRefs": [],
@@ -26978,7 +27099,7 @@
       "name": "renderMedical",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2039,
+      "definedAtLine": 2042,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -26995,27 +27116,27 @@
       "name": "medStack",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2133,
+      "definedAtLine": 2136,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         }
       ],
       "stringRefs": [],
@@ -27028,15 +27149,15 @@
       "name": "medNoDur",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2141,
+      "definedAtLine": 2144,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         },
         {
           "file": "js/render.js",
-          "line": 2200
+          "line": 2203
         }
       ],
       "stringRefs": [],
@@ -27049,23 +27170,23 @@
       "name": "renderMedicalRows",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2143,
+      "definedAtLine": 2146,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2021
+          "line": 2024
         },
         {
           "file": "js/render.js",
-          "line": 2022
+          "line": 2025
         },
         {
           "file": "js/render.js",
-          "line": 2027
+          "line": 2030
         },
         {
           "file": "js/render.js",
-          "line": 2112
+          "line": 2115
         }
       ],
       "stringRefs": [],
@@ -27078,7 +27199,7 @@
       "name": "renderIPPT",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2215,
+      "definedAtLine": 2218,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27095,7 +27216,7 @@
       "name": "_ipptView",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 2439,
+      "definedAtLine": 2442,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27107,12 +27228,12 @@
       "name": "setIpptView",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2440,
+      "definedAtLine": 2443,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2407
+          "line": 2410
         }
       ],
       "identRefFiles": [
@@ -27124,7 +27245,7 @@
       "name": "_ipptCmpA",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 2443,
+      "definedAtLine": 2446,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27136,11 +27257,11 @@
       "name": "setIpptCompare",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2444,
+      "definedAtLine": 2447,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2447
+          "line": 2450
         }
       ],
       "stringRefs": [],
@@ -27153,16 +27274,16 @@
       "name": "ipptComparePick",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2445,
+      "definedAtLine": 2448,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2385
+          "line": 2388
         },
         {
           "file": "js/render.js",
-          "line": 2398
+          "line": 2401
         }
       ],
       "identRefFiles": [
@@ -27174,75 +27295,7 @@
       "name": "buildIPPTTrendChart",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2450,
-      "directRefs": [
-        {
-          "file": "js/render.js",
-          "line": 2432
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "js/render.js"
-      ],
-      "fanIn": 0
-    },
-    "buildIPPTAwardsChart": {
-      "name": "buildIPPTAwardsChart",
-      "kind": "function",
-      "definedIn": "js/render.js",
-      "definedAtLine": 2472,
-      "directRefs": [
-        {
-          "file": "js/render.js",
-          "line": 2430
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "js/render.js"
-      ],
-      "fanIn": 0
-    },
-    "buildIPPTDistributionChart": {
-      "name": "buildIPPTDistributionChart",
-      "kind": "function",
-      "definedIn": "js/render.js",
-      "definedAtLine": 2493,
-      "directRefs": [
-        {
-          "file": "js/render.js",
-          "line": 2431
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "js/render.js"
-      ],
-      "fanIn": 0
-    },
-    "buildIPPTProgressChart": {
-      "name": "buildIPPTProgressChart",
-      "kind": "function",
-      "definedIn": "js/render.js",
-      "definedAtLine": 2521,
-      "directRefs": [
-        {
-          "file": "js/render.js",
-          "line": 2434
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "js/render.js"
-      ],
-      "fanIn": 0
-    },
-    "buildIPPTAwardMixChart": {
-      "name": "buildIPPTAwardMixChart",
-      "kind": "function",
-      "definedIn": "js/render.js",
-      "definedAtLine": 2556,
+      "definedAtLine": 2453,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27255,15 +27308,83 @@
       ],
       "fanIn": 0
     },
+    "buildIPPTAwardsChart": {
+      "name": "buildIPPTAwardsChart",
+      "kind": "function",
+      "definedIn": "js/render.js",
+      "definedAtLine": 2475,
+      "directRefs": [
+        {
+          "file": "js/render.js",
+          "line": 2433
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/render.js"
+      ],
+      "fanIn": 0
+    },
+    "buildIPPTDistributionChart": {
+      "name": "buildIPPTDistributionChart",
+      "kind": "function",
+      "definedIn": "js/render.js",
+      "definedAtLine": 2496,
+      "directRefs": [
+        {
+          "file": "js/render.js",
+          "line": 2434
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/render.js"
+      ],
+      "fanIn": 0
+    },
+    "buildIPPTProgressChart": {
+      "name": "buildIPPTProgressChart",
+      "kind": "function",
+      "definedIn": "js/render.js",
+      "definedAtLine": 2524,
+      "directRefs": [
+        {
+          "file": "js/render.js",
+          "line": 2437
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/render.js"
+      ],
+      "fanIn": 0
+    },
+    "buildIPPTAwardMixChart": {
+      "name": "buildIPPTAwardMixChart",
+      "kind": "function",
+      "definedIn": "js/render.js",
+      "definedAtLine": 2559,
+      "directRefs": [
+        {
+          "file": "js/render.js",
+          "line": 2438
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/render.js"
+      ],
+      "fanIn": 0
+    },
     "buildIPPTCompareChart": {
       "name": "buildIPPTCompareChart",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2595,
+      "definedAtLine": 2598,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 2436
+          "line": 2439
         }
       ],
       "stringRefs": [],
@@ -27276,7 +27397,7 @@
       "name": "renderSOC",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2636,
+      "definedAtLine": 2639,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27293,7 +27414,7 @@
       "name": "renderPolar",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2661,
+      "definedAtLine": 2664,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27310,7 +27431,7 @@
       "name": "_conductDashStart",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 2776,
+      "definedAtLine": 2779,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27322,7 +27443,7 @@
       "name": "_conductDashEnd",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 2777,
+      "definedAtLine": 2780,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27334,7 +27455,7 @@
       "name": "_conductSeries",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 2778,
+      "definedAtLine": 2781,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27346,7 +27467,7 @@
       "name": "CONDUCT_TYPE_COLORS",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 2779,
+      "definedAtLine": 2782,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27358,7 +27479,7 @@
       "name": "CONDUCT_TYPE_LABELS",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 2780,
+      "definedAtLine": 2783,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27370,7 +27491,7 @@
       "name": "CONDUCT_GROUP_PALETTE",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 2781,
+      "definedAtLine": 2784,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27382,12 +27503,12 @@
       "name": "setConductWindow",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2784,
+      "definedAtLine": 2787,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2962
+          "line": 2965
         }
       ],
       "identRefFiles": [
@@ -27399,12 +27520,12 @@
       "name": "setConductSeries",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2793,
+      "definedAtLine": 2796,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2964
+          "line": 2967
         }
       ],
       "identRefFiles": [
@@ -27416,7 +27537,7 @@
       "name": "_conductExportData",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 2799,
+      "definedAtLine": 2802,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27428,12 +27549,12 @@
       "name": "exportConductProgression",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2800,
+      "definedAtLine": 2803,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2948
+          "line": 2951
         }
       ],
       "identRefFiles": [
@@ -27445,7 +27566,7 @@
       "name": "renderConductDashboard",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 2808,
+      "definedAtLine": 2811,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27462,7 +27583,7 @@
       "name": "renderConducts",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3079,
+      "definedAtLine": 3082,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27479,12 +27600,12 @@
       "name": "promptCreateConduct",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3156,
+      "definedAtLine": 3159,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3101
+          "line": 3104
         }
       ],
       "identRefFiles": [
@@ -27496,12 +27617,12 @@
       "name": "promptRenameConduct",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3168,
+      "definedAtLine": 3171,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3141
+          "line": 3144
         }
       ],
       "identRefFiles": [
@@ -27513,7 +27634,7 @@
       "name": "haStatusColor",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3179,
+      "definedAtLine": 3182,
       "directRefs": [
         {
           "file": "js/forms.js",
@@ -27521,19 +27642,19 @@
         },
         {
           "file": "js/render.js",
-          "line": 3233
+          "line": 3236
         },
         {
           "file": "js/render.js",
-          "line": 3233
+          "line": 3236
         },
         {
           "file": "js/render.js",
-          "line": 3257
+          "line": 3260
         },
         {
           "file": "js/render.js",
-          "line": 3321
+          "line": 3324
         }
       ],
       "stringRefs": [],
@@ -27547,7 +27668,7 @@
       "name": "HA_STATUSES",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 3189,
+      "definedAtLine": 3192,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27559,7 +27680,7 @@
       "name": "renderHA",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3191,
+      "definedAtLine": 3194,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27576,11 +27697,11 @@
       "name": "buildHADistributionChart",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3293,
+      "definedAtLine": 3296,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3289
+          "line": 3292
         }
       ],
       "stringRefs": [],
@@ -27593,11 +27714,11 @@
       "name": "buildHAStreaksChart",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3315,
+      "definedAtLine": 3318,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3290
+          "line": 3293
         }
       ],
       "stringRefs": [],
@@ -27610,7 +27731,7 @@
       "name": "_sbSort",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 3344,
+      "definedAtLine": 3347,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27622,7 +27743,7 @@
       "name": "_sbCollapsed",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 3345,
+      "definedAtLine": 3348,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27634,7 +27755,7 @@
       "name": "_sbShowAll",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 3346,
+      "definedAtLine": 3349,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27646,7 +27767,7 @@
       "name": "_sbWeekOffset",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 3347,
+      "definedAtLine": 3350,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27658,7 +27779,7 @@
       "name": "_sbSearch",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 3348,
+      "definedAtLine": 3351,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27670,7 +27791,7 @@
       "name": "_sbGridShown",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 3349,
+      "definedAtLine": 3352,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27682,7 +27803,7 @@
       "name": "SB_CELL",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 3352,
+      "definedAtLine": 3355,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27694,7 +27815,7 @@
       "name": "SB_CELL.RSI",
       "kind": "method",
       "definedIn": "js/render.js",
-      "definedAtLine": 3353,
+      "definedAtLine": 3356,
       "directRefs": [],
       "stringRefs": [
         {
@@ -27703,7 +27824,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1966
+          "line": 1969
         }
       ],
       "identRefFiles": [
@@ -27721,7 +27842,7 @@
       "name": "SB_CELL.MC",
       "kind": "method",
       "definedIn": "js/render.js",
-      "definedAtLine": 3354,
+      "definedAtLine": 3357,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27739,7 +27860,7 @@
       "name": "SB_CELL.LD",
       "kind": "method",
       "definedIn": "js/render.js",
-      "definedAtLine": 3355,
+      "definedAtLine": 3358,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27756,7 +27877,7 @@
       "name": "SB_CELL.EX",
       "kind": "method",
       "definedIn": "js/render.js",
-      "definedAtLine": 3356,
+      "definedAtLine": 3359,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27770,7 +27891,7 @@
       "name": "SB_CELL.WD",
       "kind": "method",
       "definedIn": "js/render.js",
-      "definedAtLine": 3357,
+      "definedAtLine": 3360,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -27784,15 +27905,15 @@
       "name": "_sbKey",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3359,
+      "definedAtLine": 3362,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3649
+          "line": 3652
         },
         {
           "file": "js/render.js",
-          "line": 3650
+          "line": 3653
         }
       ],
       "stringRefs": [],
@@ -27805,19 +27926,19 @@
       "name": "sbOrdered",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3363,
+      "definedAtLine": 3366,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3501
+          "line": 3504
         },
         {
           "file": "js/render.js",
-          "line": 3586
+          "line": 3589
         },
         {
           "file": "js/render.js",
-          "line": 3678
+          "line": 3681
         }
       ],
       "stringRefs": [],
@@ -27830,15 +27951,15 @@
       "name": "sbRSCounts",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3376,
+      "definedAtLine": 3379,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3407
+          "line": 3410
         },
         {
           "file": "js/render.js",
-          "line": 3677
+          "line": 3680
         }
       ],
       "stringRefs": [],
@@ -27851,7 +27972,7 @@
       "name": "renderStatusBoard",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3386,
+      "definedAtLine": 3389,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -27868,23 +27989,23 @@
       "name": "renderSBLeaderboard",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3404,
+      "definedAtLine": 3407,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3398
+          "line": 3401
         },
         {
           "file": "js/render.js",
-          "line": 3440
+          "line": 3443
         },
         {
           "file": "js/render.js",
-          "line": 3441
+          "line": 3444
         },
         {
           "file": "js/render.js",
-          "line": 3442
+          "line": 3445
         }
       ],
       "stringRefs": [],
@@ -27897,12 +28018,12 @@
       "name": "sbSetSort",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3440,
+      "definedAtLine": 3443,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3421
+          "line": 3424
         }
       ],
       "identRefFiles": [
@@ -27914,12 +28035,12 @@
       "name": "sbToggleCollapse",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3441,
+      "definedAtLine": 3444,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3429
+          "line": 3432
         }
       ],
       "identRefFiles": [
@@ -27931,12 +28052,12 @@
       "name": "sbShowAllLeaderboard",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3442,
+      "definedAtLine": 3445,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3436
+          "line": 3439
         }
       ],
       "identRefFiles": [
@@ -27948,11 +28069,11 @@
       "name": "exportScopeSlug",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3468,
+      "definedAtLine": 3471,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3473
+          "line": 3476
         }
       ],
       "stringRefs": [],
@@ -27965,19 +28086,19 @@
       "name": "exportListFileName",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3472,
+      "definedAtLine": 3475,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3518
+          "line": 3521
         },
         {
           "file": "js/render.js",
-          "line": 3539
+          "line": 3542
         },
         {
           "file": "js/render.js",
-          "line": 3575
+          "line": 3578
         }
       ],
       "stringRefs": [],
@@ -27990,19 +28111,19 @@
       "name": "exportPersonCols",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3480,
+      "definedAtLine": 3483,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3509
+          "line": 3512
         },
         {
           "file": "js/render.js",
-          "line": 3530
+          "line": 3533
         },
         {
           "file": "js/render.js",
-          "line": 3566
+          "line": 3569
         }
       ],
       "stringRefs": [],
@@ -28015,12 +28136,12 @@
       "name": "exportStatusList",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3494,
+      "definedAtLine": 3497,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3626
+          "line": 3629
         }
       ],
       "identRefFiles": [
@@ -28032,12 +28153,12 @@
       "name": "exportLeaveList",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3524,
+      "definedAtLine": 3527,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1556
+          "line": 1559
         }
       ],
       "identRefFiles": [
@@ -28049,12 +28170,12 @@
       "name": "exportMCList",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3552,
+      "definedAtLine": 3555,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2089
+          "line": 2092
         }
       ],
       "identRefFiles": [
@@ -28066,15 +28187,15 @@
       "name": "renderSBRosterList",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3579,
+      "definedAtLine": 3582,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3399
+          "line": 3402
         },
         {
           "file": "js/render.js",
-          "line": 3637
+          "line": 3640
         }
       ],
       "stringRefs": [],
@@ -28087,12 +28208,12 @@
       "name": "sbSearchInput",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3637,
+      "definedAtLine": 3640,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3626
+          "line": 3629
         }
       ],
       "identRefFiles": [
@@ -28104,11 +28225,11 @@
       "name": "sbWeeks",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3640,
+      "definedAtLine": 3643,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3675
+          "line": 3678
         }
       ],
       "stringRefs": [],
@@ -28121,7 +28242,7 @@
       "name": "SB_GRID_DEFER_ROWS",
       "kind": "const",
       "definedIn": "js/render.js",
-      "definedAtLine": 3658,
+      "definedAtLine": 3661,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -28133,19 +28254,19 @@
       "name": "renderSBGrid",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3659,
+      "definedAtLine": 3662,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3400
+          "line": 3403
         },
         {
           "file": "js/render.js",
-          "line": 3753
+          "line": 3756
         },
         {
           "file": "js/render.js",
-          "line": 3754
+          "line": 3757
         }
       ],
       "stringRefs": [],
@@ -28158,12 +28279,12 @@
       "name": "sbGridClick",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3746,
+      "definedAtLine": 3749,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3733
+          "line": 3736
         }
       ],
       "identRefFiles": [
@@ -28175,12 +28296,12 @@
       "name": "loadStatusGrid",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3753,
+      "definedAtLine": 3756,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3664
+          "line": 3667
         }
       ],
       "identRefFiles": [
@@ -28192,20 +28313,20 @@
       "name": "sbGridNav",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3754,
+      "definedAtLine": 3757,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3723
+          "line": 3726
         },
         {
           "file": "js/render.js",
-          "line": 3723
+          "line": 3726
         },
         {
           "file": "js/render.js",
-          "line": 3723
+          "line": 3726
         }
       ],
       "identRefFiles": [
@@ -28217,17 +28338,17 @@
       "name": "openSBCellDetail",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3757,
+      "definedAtLine": 3760,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 3751
+          "line": 3754
         }
       ],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3615
+          "line": 3618
         }
       ],
       "identRefFiles": [
@@ -28239,16 +28360,16 @@
       "name": "closeSBPopover",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 3776,
+      "definedAtLine": 3779,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 3766
+          "line": 3769
         },
         {
           "file": "js/render.js",
-          "line": 3770
+          "line": 3773
         }
       ],
       "identRefFiles": [
@@ -29047,15 +29168,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 1847
+          "line": 1850
         },
         {
           "file": "js/render.js",
-          "line": 3424
+          "line": 3427
         },
         {
           "file": "js/render.js",
-          "line": 3716
+          "line": 3719
         },
         {
           "file": "apps-script-Code.gs",
@@ -29568,7 +29689,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 1970
+          "line": 1973
         }
       ],
       "identRefFiles": [
@@ -29736,11 +29857,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 2318
+          "line": 2321
         },
         {
           "file": "js/render.js",
-          "line": 2319
+          "line": 2322
         }
       ],
       "identRefFiles": [
@@ -29756,7 +29877,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 761
+          "line": 764
         }
       ],
       "stringRefs": [],
@@ -29773,23 +29894,23 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 575
+          "line": 578
         },
         {
           "file": "js/render.js",
-          "line": 769
+          "line": 772
         },
         {
           "file": "js/render.js",
-          "line": 773
+          "line": 776
         },
         {
           "file": "js/render.js",
-          "line": 2959
+          "line": 2962
         },
         {
           "file": "js/render.js",
-          "line": 3663
+          "line": 3666
         }
       ],
       "stringRefs": [],
@@ -30560,7 +30681,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 585
+          "line": 588
         },
         {
           "file": "js/sync.js",
@@ -30623,11 +30744,11 @@
         },
         {
           "file": "js/render.js",
-          "line": 311
+          "line": 314
         },
         {
           "file": "js/render.js",
-          "line": 3080
+          "line": 3083
         },
         {
           "file": "js/sync.js",
@@ -31866,7 +31987,7 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 488
+          "line": 491
         },
         {
           "file": "js/sync.js",
@@ -31922,39 +32043,39 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 1556
+          "line": 1559
         },
         {
           "file": "js/render.js",
-          "line": 1781
+          "line": 1784
         },
         {
           "file": "js/render.js",
-          "line": 1812
+          "line": 1815
         },
         {
           "file": "js/render.js",
-          "line": 1959
+          "line": 1962
         },
         {
           "file": "js/render.js",
-          "line": 2089
+          "line": 2092
         },
         {
           "file": "js/render.js",
-          "line": 2307
+          "line": 2310
         },
         {
           "file": "js/render.js",
-          "line": 2641
+          "line": 2644
         },
         {
           "file": "js/render.js",
-          "line": 2720
+          "line": 2723
         },
         {
           "file": "js/render.js",
-          "line": 3101
+          "line": 3104
         }
       ],
       "identRefFiles": [
@@ -34838,6 +34959,18 @@
     }
   },
   "testRefs": {
+    "dispatchAction": [
+      "test/actions.test.js"
+    ],
+    "registerActions": [
+      "test/actions.test.js",
+      "test/parade-grid-multistatus.test.js"
+    ],
+    "openPerson": [
+      "test/actions.test.js",
+      "test/leave-timeline.test.js",
+      "test/person-card-status.test.js"
+    ],
     "render": [
       "test/archive-list.test.js",
       "test/conduct-class-seq.test.js",
@@ -34940,13 +35073,13 @@
       "test/leave-bulk.test.js",
       "test/leave-timeline.test.js"
     ],
+    "renderArchiveList": [
+      "test/archive-list.test.js"
+    ],
     "openArchiveDrawer": [
       "test/archive-list.test.js"
     ],
     "setArchiveDrawerOpen": [
-      "test/archive-list.test.js"
-    ],
-    "renderArchiveList": [
       "test/archive-list.test.js"
     ],
     "bindArchiveDrawerEsc": [
@@ -36121,10 +36254,6 @@
     "renderLeaveTimeline": [
       "test/leave-timeline.test.js"
     ],
-    "openPerson": [
-      "test/leave-timeline.test.js",
-      "test/person-card-status.test.js"
-    ],
     "downloadCSVText": [
       "test/list-exports.test.js"
     ],
@@ -36879,6 +37008,18 @@
       }
     ],
     "untested": [
+      {
+        "name": "ACTIONS",
+        "file": "js/actions.js"
+      },
+      {
+        "name": "ACTION_ATTRS",
+        "file": "js/actions.js"
+      },
+      {
+        "name": "actionNames",
+        "file": "js/actions.js"
+      },
       {
         "name": "STATE_KEY_TO_TAB",
         "file": "js/api.js"
@@ -39452,7 +39593,7 @@
       {
         "name": "renderMSKAnalytics",
         "file": "js/render.js",
-        "line": 954,
+        "line": 957,
         "length": 286
       },
       {
@@ -39464,7 +39605,7 @@
       {
         "name": "renderConductDashboard",
         "file": "js/render.js",
-        "line": 2808,
+        "line": 2811,
         "length": 266
       },
       {
@@ -39476,7 +39617,7 @@
       {
         "name": "renderDashboard",
         "file": "js/render.js",
-        "line": 480,
+        "line": 483,
         "length": 251
       },
       {
@@ -39488,7 +39629,7 @@
       {
         "name": "renderIPPT",
         "file": "js/render.js",
-        "line": 2215,
+        "line": 2218,
         "length": 224
       },
       {
@@ -39560,13 +39701,13 @@
       {
         "name": "renderPolar",
         "file": "js/render.js",
-        "line": 2661,
+        "line": 2664,
         "length": 105
       },
       {
         "name": "renderHA",
         "file": "js/render.js",
-        "line": 3191,
+        "line": 3194,
         "length": 101
       }
     ],
@@ -39753,7 +39894,7 @@
       },
       {
         "src": "js/render.js",
-        "version": 174,
+        "version": 175,
         "order": 10
       },
       {
@@ -39767,28 +39908,27 @@
         "order": 12
       },
       {
-        "src": "js/parade-tab.js",
-        "version": 24,
+        "src": "js/actions.js",
+        "version": 1,
         "order": 13
+      },
+      {
+        "src": "js/parade-tab.js",
+        "version": 25,
+        "order": 14
       },
       {
         "src": "js/sync.js",
         "version": 126,
-        "order": 14
+        "order": 15
       },
       {
         "src": "js/main.js",
         "version": 123,
-        "order": 15
+        "order": 16
       }
     ],
     "staleVersions": [
-      {
-        "src": "js/render.js",
-        "version": 174,
-        "srcTouched": "2026-08-02T13:52:40+08:00",
-        "versionBumpedAt": "2026-08-02T13:52:21+08:00"
-      },
       {
         "src": "js/forms.js",
         "version": 178,

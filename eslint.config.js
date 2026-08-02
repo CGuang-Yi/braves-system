@@ -41,7 +41,7 @@ const ROOT = __dirname;
 const FRONTEND_FILES = [
   "js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js", "js/helpers.js",
   "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js",
-  "js/parade-tab.js", "js/sync.js", "js/main.js"
+  "js/actions.js", "js/parade-tab.js", "js/sync.js", "js/main.js"
 ];
 
 // Top-level declarations of the given files, as a readonly ESLint globals map.
@@ -134,11 +134,11 @@ module.exports = [
     rules: { "no-restricted-syntax": ["error", NO_ARRAY_FROM] }
   },
 
-  // js/calc.js is loaded BOTH as a browser <script> and as a CommonJS module by
-  // test/calc.test.js, so it ends with a `typeof module !== "undefined"` export
-  // tail. `module` is genuinely ambient in one of its two homes.
+  // Loaded BOTH as a browser <script> and as a CommonJS module by their unit
+  // tests, so they end with a `typeof module !== "undefined"` export tail.
+  // `module` is genuinely ambient in one of their two homes.
   {
-    files: ["js/calc.js"],
+    files: ["js/calc.js", "js/actions.js"],
     languageOptions: { globals: { module: "readonly" } }
   },
 
