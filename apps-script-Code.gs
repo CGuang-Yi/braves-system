@@ -1630,7 +1630,45 @@ function readAllTabs(ctx) {
 // several forms.js call sites (findConductDetailMatch-style (date,time,conductId)
 // lookups) — losing its leading zero on the very next pull silently breaks those
 // matches the same way #69 did, so it needs the same "@" protection.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"] };
+// Roster's KEY column is the same trap with the worst consequence. Every other
+// tab keys rows on the numeric nextId() counter (no leading zeros, so coercion
+// is harmless), but Roster keys on the 4D — and commanders are 0001–0099 while
+// recruits include ids like "0110"/"0023". Coerced to 7/110/23, the row-match in
+// upsertRow/deleteRowById can never equal the client's padded "0007", so an
+// update silently APPENDS a duplicate person instead. Both header spellings are
+// listed because the sheet may name the column "4d" or "id" (see SHEET TABS at
+// the top of this file); forceTextColsForRange_ skips the ones that don't exist.
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"] };
+
+// Which sheet column holds a tab's row key, in preference order. Default is the
+// literal "id" column that nextId()-keyed tabs use. Roster is the exception: the
+// live sheet's header for the 4D is "4d" (see readTab's normalizer comment —
+// "the Roster id column (named 4d on the sheet)"), so looking only for "id" made
+// ensureColumnsForKeys mint a brand-new EMPTY "id" column, match nothing, and
+// append a duplicate roster row on every single write.
+var KEY_ALIASES_BY_TAB = { Roster: ["id", "4d", "4D"] };
+
+// Resolves a tab's key column against the headers ALREADY on the sheet — this
+// must run BEFORE ensureColumnsForKeys, or the column it is looking for gets
+// created empty and the lookup succeeds on a column no existing row has filled.
+// Returns null when the sheet has none of the aliases (caller falls back to the
+// historical "id" behaviour).
+function resolveKeyCol_(tabName, trimmedHeaders) {
+  var aliases = KEY_ALIASES_BY_TAB[tabName] || ["id"];
+  for (var i = 0; i < aliases.length; i++) {
+    if (trimmedHeaders.indexOf(aliases[i]) !== -1) return aliases[i];
+  }
+  return null;
+}
+
+// How to compare a stored key cell against the client's row id. Roster keys are
+// 4Ds that Sheets may have stored numerically, so they compare padded; every
+// other tab compares verbatim. bravesPadD4_ is the same normalizer the read
+// boundary uses, so both sides agree on what "0007" means.
+function keyMatches_(tabName, cellValue, rowId) {
+  if (tabName === "Roster") return bravesPadD4_(cellValue) === bravesPadD4_(rowId);
+  return String(cellValue) === String(rowId);
+}
 
 function writeTab(tabName, data) {
   if (!Array.isArray(data)) {
@@ -1908,7 +1946,8 @@ function replaceConductRows(tabName, match, rows) {
   return { ok: true, tab: tabName, replaced: rows.length, timestamp: new Date().toISOString() };
 }
 
-// ID-based upsert. Finds the row whose `id` column matches `rowData.id`,
+// ID-based upsert. Finds the row whose KEY column matches `rowData.id` (the key
+// column is "id" on every tab but Roster — see KEY_ALIASES_BY_TAB) and
 // overwrites that row in place. If no such row exists, appends a new one.
 // This is the cross-device-safe write primitive — two devices editing
 // different rows of the same tab won't clobber each other (no full-table
@@ -1920,23 +1959,38 @@ function upsertRow(tabName, rowData) {
   if (!rowData || rowData.id === undefined || rowData.id === null || rowData.id === "") {
     return { error: "upsertRow requires a non-empty id field on the row" };
   }
-  if (!sheet.getLastColumn()) return { error: "Tab '" + tabName + "' has no header row" };
-  // Auto-create columns for any new fields so they persist instead of dropping.
-  var trimmed = ensureColumnsForKeys(sheet, Object.keys(rowData));
-  var idCol = trimmed.indexOf("id");
-  if (idCol === -1) return { error: "No 'id' column in tab " + tabName };
+  var lastCol0 = sheet.getLastColumn();
+  if (!lastCol0) return { error: "Tab '" + tabName + "' has no header row" };
+  // Resolve the key column against the EXISTING headers first — see resolveKeyCol_.
+  var existing = sheet.getRange(1, 1, 1, lastCol0).getValues()[0]
+    .map(function (h) { return String(h).trim(); });
+  var keyName = resolveKeyCol_(tabName, existing) || "id";
+  // Auto-create columns for any new fields so they persist instead of dropping —
+  // but never mint a redundant "id" beside a sheet whose key column is "4d",
+  // which would leave two competing identity columns on the Roster.
+  var writeKeys = Object.keys(rowData).filter(function (k) {
+    return !(keyName !== "id" && k === "id");
+  });
+  var trimmed = ensureColumnsForKeys(sheet, writeKeys);
+  var idCol = trimmed.indexOf(keyName);
+  if (idCol === -1) return { error: "No '" + keyName + "' column in tab " + tabName };
+  // The key cell is written from rowData.id regardless of the column's name, so a
+  // Roster row keyed on "4d" gets the padded "0007" back (as text, per
+  // WRITE_TEXT_COLS_BY_TAB) instead of the coerced 7 it was read as.
+  var rowFor = function (headers) {
+    return headers.map(function (h) {
+      var val = (h === keyName) ? rowData.id : rowData[h];
+      return val !== undefined && val !== null ? val : "";
+    });
+  };
 
   var lastRow = sheet.getLastRow();
   if (lastRow >= 2) {
     var idCells = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
-    var target = String(rowData.id);
     for (var i = 0; i < idCells.length; i++) {
-      if (String(idCells[i][0]) === target) {
+      if (keyMatches_(tabName, idCells[i][0], rowData.id)) {
         var sheetRow = i + 2;
-        var updatedRow = trimmed.map(function (h) {
-          var val = rowData[h];
-          return val !== undefined && val !== null ? val : "";
-        });
+        var updatedRow = rowFor(trimmed);
         forceTextColsForRange_(sheet, tabName, trimmed, sheetRow, 1);
         sheet.getRange(sheetRow, 1, 1, trimmed.length).setValues([updatedRow]);
         return {
@@ -1951,10 +2005,7 @@ function upsertRow(tabName, rowData) {
   }
   // Not found — append a new row. Explicit range write (not sheet.appendRow) so the
   // coercion-prone columns can be forced to "@" before the value lands.
-  var newRow = trimmed.map(function (h) {
-    var val = rowData[h];
-    return val !== undefined && val !== null ? val : "";
-  });
+  var newRow = rowFor(trimmed);
   var targetRow = sheet.getLastRow() + 1;
   forceTextColsForRange_(sheet, tabName, trimmed, targetRow, 1);
   sheet.getRange(targetRow, 1, 1, trimmed.length).setValues([newRow]);
@@ -1978,14 +2029,17 @@ function deleteRowById(tabName, rowId) {
   if (!lastCol) return { error: "Tab '" + tabName + "' has no header row" };
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var trimmed = headers.map(function (h) { return String(h).trim(); });
-  var idCol = trimmed.indexOf("id");
-  if (idCol === -1) return { error: "No 'id' column in tab " + tabName };
+  // Same key resolution as upsertRow — a Roster delete keyed on a "4d"-headed
+  // sheet must find the row the matching upsert would have updated, or the two
+  // halves of a replace disagree about which row is which.
+  var keyName = resolveKeyCol_(tabName, trimmed) || "id";
+  var idCol = trimmed.indexOf(keyName);
+  if (idCol === -1) return { error: "No '" + keyName + "' column in tab " + tabName };
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return { ok: true, action: "noop", note: "tab empty" };
   var idCells = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
-  var target = String(rowId);
   for (var i = 0; i < idCells.length; i++) {
-    if (String(idCells[i][0]) === target) {
+    if (keyMatches_(tabName, idCells[i][0], rowId)) {
       sheet.deleteRow(i + 2);
       return {
         ok: true,

@@ -2450,14 +2450,21 @@ function submitCommander() {
     plt: "",
     sect: ""
   };
+  let row = entry;
   if (editId) {
     const idx = STATE.roster.findIndex(r => r.id === editId);
-    if (idx >= 0) STATE.roster[idx] = { ...STATE.roster[idx], ...entry };
+    if (idx >= 0) { STATE.roster[idx] = { ...STATE.roster[idx], ...entry }; row = STATE.roster[idx]; }
   } else {
     STATE.roster.push(entry);
   }
   saveLocal(); closeModal(); render();
-  if (STATE.apiUrl) autoSync("Roster", { type: "upsert", row: entry });
+  // Push the MERGED row, not the bare `entry` this form collects. upsertRow
+  // rewrites every sheet column from the row it is given (`trimmed.map(h =>
+  // rowData[h] ?? "")`), so pushing `entry` on an edit blanked every roster
+  // column this form has no input for — notes (now editable in-app via
+  // personNotesSave), age, email, ration, allergies, msk, height, weight,
+  // education and licence. Same reasoning as the comment in personNotesSave.
+  if (STATE.apiUrl) autoSync("Roster", { type: "upsert", row });
 }
 
 // Mirrors the legacy §8 heuristic (bpIsAlOilType / bpOthersNotInCamp in
