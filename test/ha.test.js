@@ -275,6 +275,30 @@ module.exports = async function run() {
     eq(ha.expanded.currentWindowPeriods, 3);        // expanded track also reflects the recent run
   });
 
+  await test("a lapsed Double-eligible member's Double bar shows the re-qual window too", () => {
+    H.todayISO = () => iso(2026, 7, 9);
+    // Daily code review 2026-08-02: PR #103 stopped gating the Double track on
+    // `singleStatus !== "Lapsed"` (so a Double re-qualification can recover a
+    // lapsed currency), which made doubleTrack non-null for lapsed people for the
+    // first time. renderHA swaps Single/Expanded to currentWindowPeriods when
+    // lapsed, so without the same field on doubleTrack the HA roster read
+    // "Lapsed · Single 3/10 · Expanded 3/14 · Double 13/13" — two live re-qual
+    // bars beside a completion from two months ago.
+    // Single May 1-10, Double May 11-17 (7 days x 2 periods = 14 ≥ 13), long gap,
+    // then 3 recent active days Jul 6-8.
+    seed(
+      daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1))
+        .concat(daySeq(iso(2026, 5, 11), 7).map(k => att(k, 2)))
+        .concat(daySeq(iso(2026, 7, 6), 3).map(k => att(k, 2))),
+      [{ id: "0001", rank: "3SG" }]
+    );
+    const ha = H.computeHA("0001");
+    eq(ha.overallStatus, "Lapsed");
+    eq(ha.doubleStatus, "Double HA Complete");        // historical attainment stands
+    eq(ha.doubleTrack.periods, 14);                   // ...and .periods still records it
+    eq(ha.doubleTrack.currentWindowPeriods, 6);       // 3 recent days x 2 periods
+  });
+
   await test("currentWindowPeriods resets after a break longer than maxBreak (no carry-over)", () => {
     H.todayISO = () => iso(2026, 7, 13);
     // Qualify May 1-10, lapse. Then a 2-day run (Jul 6-7), a 4-day break

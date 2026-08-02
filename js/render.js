@@ -1256,14 +1256,30 @@ function renderMSKAnalytics(el) {
 // statusTrendWindowDays() at build time.
 let _statusTrendDays = 14;
 const STATUS_TREND_RANGES = [["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]];
+// Hard ceiling on the "All" window. buildStatusTrendChart recomputes the WHOLE
+// effective medical layer once per day in the window (currentMedicalEffectiveAll
+// walks every medical record, each through a Date-allocating displayDateToISO),
+// so the work is days × records — and it runs synchronously on the main thread
+// straight out of the pill's onclick, with no spinner and nothing to cancel. An
+// uncapped span over a sheet that has been running for a couple of years is
+// millions of Date allocations and a visibly frozen tab. 400 days keeps the
+// worst case around a year of history while staying an order of magnitude below
+// that. The label reports the real number, and says so when the cap bit, so a
+// capped chart never silently claims to be showing everything.
+const STATUS_TREND_MAX_DAYS = 400;
 
-// Resolve "All" to a real day count: today back to the earliest medical record.
-// Medical is the only layer this chart reads, so a window wider than the oldest
-// record can only prepend zero-columns. Floored at 14 so an empty/one-day sheet
-// still draws a line rather than a single point, and guarded against a record
-// dated in the future (a pre-booked MC) producing a negative span.
+// Resolve "All" to a real day count: today back to the earliest medical record,
+// clamped to STATUS_TREND_MAX_DAYS. Medical is the only layer this chart reads,
+// so a window wider than the oldest record can only prepend zero-columns.
+// Floored at 14 so an empty/one-day sheet still draws a line rather than a
+// single point, and guarded against a record dated in the future (a pre-booked
+// MC) producing a negative span.
 function statusTrendWindowDays() {
   if (_statusTrendDays !== Infinity) return _statusTrendDays;
+  return Math.min(STATUS_TREND_MAX_DAYS, statusTrendFullSpanDays());
+}
+// The UNCAPPED span, so the label can tell whether the cap actually bit.
+function statusTrendFullSpanDays() {
   const end = todayISO();
   let earliest = "";
   (STATE.medical || []).forEach(m => {
@@ -1274,7 +1290,11 @@ function statusTrendWindowDays() {
   return Math.max(14, daysBetween(earliest, end) + 1);
 }
 function statusTrendRangeLabel() {
-  return _statusTrendDays === Infinity ? `all time · ${statusTrendWindowDays()} days` : `${_statusTrendDays} days`;
+  if (_statusTrendDays !== Infinity) return `${_statusTrendDays} days`;
+  const days = statusTrendWindowDays();
+  return statusTrendFullSpanDays() > days
+    ? `latest ${days} days of ${statusTrendFullSpanDays()}`
+    : `all time · ${days} days`;
 }
 function statusTrendRangePillsHtml() {
   return STATUS_TREND_RANGES.map(([v, l]) => {
@@ -3235,15 +3255,17 @@ function renderHA(el) {
         <tbody>
           ${haRows.map(({ recruit: r, ha }) => {
             const c = haStatusColor(ha.overallStatus);
-            const dbl = !ha.doubleEligible
-              ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
-              : cell(ha.doubleTrack?.periods || 0, 13, "#388BFD");
             const last = ha.lastActivity ? isoToDisplayDate(ha.lastActivity) : '<span style="color:var(--muted)">—</span>';
-            // A lapsed recruit's Single/Expanded bars show live re-qualification
-            // progress (the fresh open window) instead of the historical completion
-            // still sitting in .periods; everyone else shows .periods as normal.
+            // A lapsed recruit's bars show live re-qualification progress (the
+            // fresh open window) instead of the historical completion still
+            // sitting in .periods; everyone else shows .periods as normal. This
+            // applies to Double as well — it is no longer gated off for lapsed
+            // people, so it has to agree with the Single/Expanded columns beside it.
             const lapsed = ha.overallStatus === "Lapsed";
             const barVal = t => lapsed ? (t?.currentWindowPeriods || 0) : (t?.periods || 0);
+            const dbl = !ha.doubleEligible
+              ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
+              : cell(barVal(ha.doubleTrack), 13, "#388BFD");
             const curr = ha.currency && ha.currency.lapsed
               ? `<span style="color:var(--red)">lapsed ${ha.currency.lapseDateIso ? isoToDisplayDate(ha.currency.lapseDateIso) : ""}</span>`
               : (ha.currency && ha.currency.deadlineIso ? `<span style="color:var(--muted)">by ${isoToDisplayDate(ha.currency.deadlineIso)}</span>` : "—");

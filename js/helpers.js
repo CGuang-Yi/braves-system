@@ -1855,6 +1855,16 @@ function computeHA(d4) {
   if (singleStatus === "Lapsed") {
     single.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
     expanded.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
+    // Double needs the same treatment now that it is computed for lapsed people
+    // too (it used to be gated off entirely, so renderHA's Double column showed
+    // "locked" and never had to agree with the other two bars). Without this the
+    // HA roster reads "Lapsed · Single 0/10 · Expanded 0/14 · Double 13/13" —
+    // the first two showing the live re-qual window, the third still showing a
+    // completion from months ago.
+    if (doubleTrack) {
+      doubleTrack.currentWindowPeriods = haBestOpenWindowPeriods(
+        dayMap, _haAddDays(firstQual, 1), endIso, { target: 13, maxBreak: 2, maxActiveDays: 7, mode: "time" });
+    }
   }
 
   let overallStatus;
