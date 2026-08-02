@@ -18,7 +18,7 @@ npm run map
 ```
 
 <!-- GENERATED:meta:start -->
-_Generated from `a8f437e` by `npm run map`. 24 source files, 1026 declarations._
+_Generated from `6f7c0e8` by `npm run map`. 24 source files, 1026 declarations._
 <!-- GENERATED:meta:end -->
 
 ## How much to trust each part
@@ -124,7 +124,7 @@ reference it. Per-declaration callers live in `codebase-map.json` → `functions
 | `js/render-dashboard.js` | 1373 | 43 | `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms-records.js` `js/forms-reports.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-statusboard.js` `js/render.js` `js/state.js` `js/sync.js` | `js/render-conducts.js` `js/render-statusboard.js` `js/render.js` `js/sync.js` | 5 |
 | `js/render-records.js` | 898 | 36 | `js/api.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/ippt-scoring.js` `js/render-statusboard.js` `js/render.js` `js/state.js` `js/sync.js` | `js/render.js` | 0 |
 | `js/render-statusboard.js` | 446 | 36 | `js/braves-parade.js` `js/forms-reports.js` `js/forms.js` `js/helpers.js` `js/render-dashboard.js` `js/state.js` | `js/forms-records.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` | 24 |
-| `js/render.js` | 419 | 26 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` `js/state.js` `js/sync.js` | `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/sync.js` | 25 |
+| `js/render.js` | 424 | 26 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` `js/state.js` `js/sync.js` | `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/sync.js` | 25 |
 | `js/sick-history-import.js` | 275 | 26 | — | `js/forms-records.js` | 23 |
 | `js/state.js` | 719 | 91 | — | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` `js/render.js` `js/sync.js` | 41 |
 | `js/sync.js` | 1066 | 72 | `apps-script-Code.gs` `js/api.js` `js/forms-admin.js` `js/forms-reports.js` `js/helpers.js` `js/main.js` `js/render-dashboard.js` `js/render.js` `js/state.js` | `js/api.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` | 14 |
@@ -230,7 +230,7 @@ checks are the only safety net they have.
 8. `js/calc.js` — `?v=8`
 9. `js/helpers.js` — `?v=147`
 10. `js/sick-history-import.js` — `?v=114`
-11. `js/render.js` — `?v=176`
+11. `js/render.js` — `?v=177`
 12. `js/render-dashboard.js` — `?v=1`
 13. `js/render-records.js` — `?v=1`
 14. `js/render-conducts.js` — `?v=1`
@@ -250,7 +250,7 @@ checks are the only safety net they have.
 
 **Cache-bust drift** — source committed more recently than its `?v=` was bumped
 
-- `js/forms.js` (`?v=179`) — source touched 2026-08-02T14:42:08+08:00, version last bumped 2026-08-02T14:41:38+08:00
+_none_
 
 **Dead CSS candidates** — 3 of 114 classes
 
