@@ -105,4 +105,63 @@ module.exports = async function run() {
     const r = run1(c, [day("2026-07-01", [tag("Active"), tag("MC+1", 1), tag("LD+1", 1)])]);
     eq(r.series.length, 0, "got: " + r.series.map(s => s.label).join(","));
   });
+
+  // ── the range selector's window resolution (render.js) ─────────────────────
+  // buildStatusTrendChart recomputes the WHOLE effective medical layer once per
+  // day in the window, synchronously, straight out of the pill's onclick. The
+  // 7/14/30 pills are bounded by construction; "All" is derived from the data
+  // and so needs an explicit ceiling or a long-running sheet freezes the tab.
+  suite("dashboard: status trend range selector");
+
+  function loadRender(medical, todayIso) {
+    const target = {
+      console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
+      RegExp, isNaN, parseInt, parseFloat, Symbol
+    };
+    const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
+    vm.createContext(ctx);
+    for (const f of ["helpers.js", "render.js"]) {
+      vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", f), "utf8"), ctx, { filename: f });
+    }
+    target.STATE = { medical, roster: [], charts: {} };
+    target.todayISO = () => todayIso;
+    // No canvas ⇒ buildStatusTrendChart early-returns, so setStatusTrendDays
+    // exercises the window/label logic without needing Chart.js. strengthRoster
+    // is stubbed for the same reason — the scope derivation is covered by
+    // dashboard-strength.test.js and is not what these assertions are about.
+    target.document = { getElementById: () => null };
+    target.strengthRoster = () => [];
+    return target;
+  }
+  // startDate is what statusTrendWindowDays scans; display format, as stored.
+  const med = display => ({ id: 1, d4: "0101", status: "MC", startDate: display, endDate: display });
+
+  await test('"All" is capped, and the label says so instead of overclaiming', () => {
+    const R = loadRender([med("01 Jan 2024")], "2026-08-02");
+    R.setStatusTrendDays("all");
+    ok(R.statusTrendFullSpanDays() > 900, "fixture should span years: " + R.statusTrendFullSpanDays());
+    eq(R.statusTrendWindowDays(), 400, "the uncapped span would be computed per-day over every medical row");
+    ok(/^latest 400 days of \d+$/.test(R.statusTrendRangeLabel()),
+      'a capped window must not read as "all time": ' + R.statusTrendRangeLabel());
+  });
+
+  await test('"All" within the cap still reports the true full span', () => {
+    const R = loadRender([med("01 Jul 2026")], "2026-08-02");
+    R.setStatusTrendDays("all");
+    eq(R.statusTrendWindowDays(), 33, "01 Jul -> 02 Aug inclusive");
+    eq(R.statusTrendRangeLabel(), "all time · 33 days");
+  });
+
+  await test("the fixed pills are unaffected by the cap", () => {
+    const R = loadRender([med("01 Jan 2024")], "2026-08-02");
+    R.setStatusTrendDays("30");
+    eq(R.statusTrendWindowDays(), 30);
+    eq(R.statusTrendRangeLabel(), "30 days");
+  });
+
+  await test("an empty medical layer floors at 14 days rather than collapsing", () => {
+    const R = loadRender([], "2026-08-02");
+    R.setStatusTrendDays("all");
+    eq(R.statusTrendWindowDays(), 14);
+  });
 };
