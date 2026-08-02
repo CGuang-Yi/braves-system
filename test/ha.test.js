@@ -219,6 +219,46 @@ module.exports = async function run() {
     eq(ha.currency.lapsed, false);
   });
 
+  await test("Double re-qualification after a lapse recovers currency", () => {
+    H.todayISO = () => iso(2026, 7, 20);
+    // Qualify Single May 1-10 (deadline May 24), go quiet, then a genuine Double
+    // burst Jul 1-7 (7 active days x 2 periods = 14 periods, clears the 13-period
+    // /≤7-day/≤2-break target) — well past the currency deadline, so this is
+    // exactly the "re-qualify via Double" case HA.md describes.
+    seed(daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1)).concat(daySeq(iso(2026, 7, 1), 7).map(k => att(k, 2))),
+      [{ id: "0001", rank: "3SG" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.currency.lapsed, false);
+    eq(ha.doubleStatus, "Double HA Complete");
+    eq(ha.overallStatus, "Double HA Complete");
+  });
+
+  await test("a non-Double-eligible member has no such recovery path", () => {
+    H.todayISO = () => iso(2026, 7, 20);
+    // Same shape as above, but enlistee rank + no VocFit ⇒ not Double-eligible —
+    // must stay Lapsed (guards against accidentally widening eligibility).
+    seed(daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1)).concat(daySeq(iso(2026, 7, 1), 7).map(k => att(k, 2))),
+      [{ id: "0001", rank: "REC" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.doubleEligible, false);
+    eq(ha.overallStatus, "Lapsed");
+    eq(ha.currency.lapsed, true);
+  });
+
+  await test("a partial Double burst does not falsely recover currency", () => {
+    H.todayISO = () => iso(2026, 7, 7);
+    // Qualify Single May 1-10, lapse, then only 5 of 7 days at 2 periods = 10
+    // periods — short of Double's 13-period target. Currency must stay lapsed.
+    // "Today" stays close on the burst's heels (2 days after, within maxBreak)
+    // so the window is still open rather than breached by trailing inactivity.
+    seed(daySeq(iso(2026, 5, 1), 10).map(k => att(k, 1)).concat(daySeq(iso(2026, 7, 1), 5).map(k => att(k, 2))),
+      [{ id: "0001", rank: "3SG" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.currency.lapsed, true);
+    eq(ha.doubleStatus, "In Progress");
+    eq(ha.overallStatus, "Lapsed");
+  });
+
   await test("lapsed recruit's Single bar shows current re-qual window, not the historical 10", () => {
     H.todayISO = () => iso(2026, 7, 9);
     // Qualify Single May 1-10 (10 active days). Then a long gap (currency lapses,

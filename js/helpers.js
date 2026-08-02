@@ -1813,14 +1813,35 @@ function computeHA(d4) {
     singleStatus = (single.status === "In Progress" || expanded.status === "In Progress") ? "In Progress" : "Not Started";
   }
 
-  // Currency / lapse — only meaningful once qualified. Pass EVERY qualification date
-  // (all Single + Expanded completions) so a programme re-completed after a lapse can
-  // recover currency (HA.md lapse-recovery). firstQual gates the Double window below.
-  let currency = { lapsed: false, deadlineIso: null };
+  // Double track (gated on a live Single qualification + eligibility). Counted ONLY
+  // from the day after Single qualification — Double is a distinct programme done by
+  // those who have ALREADY completed Single (HA.md §3), so its 13 periods / 7-day
+  // window must not reuse the sessions that earned Single. Computed BEFORE currency,
+  // NOT gated on lapse state, so a Double re-qualification can itself recover a
+  // lapsed currency (HA.md lapse-recovery: "re-qualifies by completing any
+  // programme again — Single, Expanded Single, or Double").
   let firstQual = null;
+  let doubleEligible = false, doubleStatus = null, doubleTrack = null;
   if (singleComplete) {
-    const comps = [...new Set([...(single.completions || []), ...(expanded.completions || [])])].sort();
-    firstQual = comps[0];
+    const singleComps = [...new Set([...(single.completions || []), ...(expanded.completions || [])])].sort();
+    firstQual = singleComps[0];
+    const r = STATE.roster.find(x => x.id == d4);
+    doubleEligible = hasVocFit(d4) || (r && rankQualifiesDoubleHA(r));
+    if (doubleEligible) {
+      const dblStart = _haAddDays(firstQual, 1);
+      doubleTrack = runHAStateMachine(dayMap, dblStart, endIso, { target: 13, maxBreak: 2, maxActiveDays: 7, mode: "time" });
+      doubleStatus = doubleTrack.status === "Completed" ? "Double HA Complete" : doubleTrack.status;
+    }
+  }
+
+  // Currency / lapse — only meaningful once qualified. Pass EVERY qualification date
+  // (all Single + Expanded + Double completions) so a programme re-completed after a
+  // lapse can recover currency (HA.md lapse-recovery).
+  let currency = { lapsed: false, deadlineIso: null };
+  if (singleComplete) {
+    const comps = [...new Set([
+      ...(single.completions || []), ...(expanded.completions || []), ...(doubleTrack ? doubleTrack.completions || [] : [])
+    ])].sort();
     currency = computeHACurrency(keys, comps);
     if (currency.lapsed) singleStatus = "Lapsed";
   }
@@ -1832,21 +1853,6 @@ function computeHA(d4) {
   if (singleStatus === "Lapsed") {
     single.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 10, maxBreak: 2, mode: "day" });
     expanded.currentWindowPeriods = haBestOpenWindowPeriods(dayMap, start, endIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" });
-  }
-
-  // Double track (gated on a live Single qualification + eligibility). Counted ONLY
-  // from the day after Single qualification — Double is a distinct programme done by
-  // those who have ALREADY completed Single (HA.md §3), so its 13 periods / 7-day
-  // window must not reuse the sessions that earned Single.
-  let doubleEligible = false, doubleStatus = null, doubleTrack = null;
-  if (singleComplete && singleStatus !== "Lapsed") {
-    const r = STATE.roster.find(x => x.id == d4);
-    doubleEligible = hasVocFit(d4) || (r && rankQualifiesDoubleHA(r));
-    if (doubleEligible) {
-      const dblStart = _haAddDays(firstQual, 1);
-      doubleTrack = runHAStateMachine(dayMap, dblStart, endIso, { target: 13, maxBreak: 2, maxActiveDays: 7, mode: "time" });
-      doubleStatus = doubleTrack.status === "Completed" ? "Double HA Complete" : doubleTrack.status;
-    }
   }
 
   let overallStatus;
