@@ -315,13 +315,24 @@ function openPerson(d4) {
     // "PXP" not "PX" so the legacy PX→Status read migration never clobbers it.)
     const missedCount = cd.filter(d => d.type !== "PXP").length;
     html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${missedCount} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("Status")} Status · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick${cdCount("PXP") ? ` · ${cdCount("PXP")} PX` : ""})</span></h4>`;
-    html += `<div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
-        <tbody>
-          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + fmtHrs(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${escapeHTML(conductName(d.conductId))}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${escapeHTML(d.reason || '')}</td></tr>`).join("")}
-        </tbody>
-      </table>
+    // A grid, not a <table>. Four columns of wildly different natural widths
+    // inside a 520px modal left the auto table layout no good option, and on a
+    // phone it compressed TYPE to ~49px — which, with the modal's inherited
+    // word-break:break-word, shattered "REPORTSICK" into "REPO / RTSI / CK".
+    // The grid gives each column a floor, and below ~440px of CONTAINER width
+    // (.pc-cph in styles.css) the row restacks into a block: when + type on the
+    // first line, conduct, then reason. Nothing is ever squeezed narrower than
+    // its content. The <th> row survives as .pc-cph__head — sticky on the wide
+    // layout, hidden once stacked, where per-row labels would be noise.
+    const cphRow = (cls, when, what, type, why) =>
+      `<div class="pc-cph__row${cls}"><div class="pc-cph__when">${when}</div><div class="pc-cph__what">${what}</div><div class="pc-cph__type">${type}</div><div class="pc-cph__why">${why}</div></div>`;
+    html += `<div class="pc-cph">
+      ${cphRow(" pc-cph__head", "Date", "Conduct", "Type", "Reason")}
+      ${cd.map(d => cphRow("",
+        `${d.date}${d.time ? ` <span class="mono pc-cph__time">${fmtHrs(d.time)}</span>` : ""}`,
+        escapeHTML(conductName(d.conductId)),
+        badge(d.type, cdTypeColor(d.type)),
+        escapeHTML(d.reason || ""))).join("")}
     </div>`;
   }
 
@@ -3107,9 +3118,11 @@ function openReportModal(type) {
   const isRSIP = type === "RSIP";
 
   // RS Format AND RSI Personnel offer an "omit personnel already on status"
-  // toggle: people already on a prior active MC/LD/Warded/Excuse who report sick
-  // again are suppressed, so the message lists only the day's NEW cases (RS Format
-  // — 2026-07-20; extended to RSI Personnel — PR feat/rsip-omit-on-status).
+  // toggle: anyone carrying an unexpired MC/LD/Warded/Excuse is suppressed, so the
+  // message lists only the cases still open. That covers a status carried in from
+  // an earlier visit AND one the MO issued at this morning's report sick — see
+  // bpHasCoveringStatus. (RS Format — 2026-07-20; extended to RSI Personnel —
+  // PR feat/rsip-omit-on-status; widened to same-visit statuses 2026-08-02.)
   const showOmitToggle = type === "RS" || type === "RSIP";
 
   openModal("Generate " + titleLabel, `
@@ -3139,7 +3152,7 @@ function openReportModal(type) {
         </div>` : ""}
         ${showOmitToggle ? `<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
           <input type="checkbox" id="rep-omit-status" onchange="regenerateReport('${type}')" style="width:15px;height:15px;cursor:pointer">
-          <span>Omit personnel already on status <span style="color:var(--muted)">(hide those on a prior active MC/LD/status — show only new cases)</span></span>
+          <span>Omit personnel already on status <span style="color:var(--muted)">(hide anyone on an unexpired MC/LD/status, including one issued at today's visit — leaves only the cases still awaiting an outcome)</span></span>
         </label>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
         ${isMR ? `<div id="rep-mr-dates" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px"></div>` : ""}

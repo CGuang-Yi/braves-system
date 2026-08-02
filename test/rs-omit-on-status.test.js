@@ -3,9 +3,9 @@
 //   • generateRSFormat  — the RS Format (URTI / NON-URTI) message.
 //   • generateRSIPersonnel — the RSI-Personnel-by-platoon message (PR 1 adds the
 //     option here; it already existed on generateRSFormat since PR #71).
-// The option filters out report-sick rows for personnel who ALREADY carry an
-// unexpired medical status, via bpHasOtherStatus — so the message lists only the
-// day's new cases and the TOTAL / per-platoon PAX counts follow the filtered set.
+// The option filters out report-sick rows for personnel who carry an unexpired
+// medical status, via bpHasCoveringStatus — so the message lists only the cases
+// still open and the TOTAL / per-platoon PAX counts follow the filtered set.
 //
 // This file is the feature's FIRST direct coverage (PR #71 shipped it untested).
 // Loaded in a vm sandbox (parade-classifier.test.js pattern) with faithful stubs
@@ -25,7 +25,7 @@ function displayDateToISO(s) {
   const m = String(s == null ? "" : s).match(/^\d{4}-\d{2}-\d{2}/);
   return m ? m[0] : "";
 }
-// Faithful copy of helpers.js medStatusActive. The widened bpHasOtherStatus no
+// Faithful copy of helpers.js medStatusActive. The widened bpHasCoveringStatus no
 // longer calls it, but other braves-parade.js internals loaded into the sandbox
 // reference it, so it stays stubbed defensively.
 function medStatusActive(record, todayIso) {
@@ -131,7 +131,7 @@ module.exports = async function run() {
     ok(/NON-URTI: 02/.test(on), "filtered drops B");
   });
 
-  // ── Widened predicate (bpHasOtherStatus) ────────────────────────────────────
+  // ── Widened predicate (bpHasCoveringStatus) ─────────────────────────────────
   // The omit toggle originally suppressed only personnel whose other status
   // STARTED before the report date. It now suppresses anyone carrying an unexpired
   // other status regardless of when it starts — so an MC handed out as the outcome
@@ -185,6 +185,63 @@ module.exports = async function run() {
     const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
     ok(/NON-URTI: 04/.test(off), "all four listed unfiltered");
     ok(/NON-URTI: 02/.test(on), "Delta + Echo omitted; Foxtrot + Golf remain");
+  });
+
+  // ── The report-sick row's OWN status counts ─────────────────────────────────
+  // The predicate used to skip `x === m`, so it only ever found statuses on a
+  // DIFFERENT medical row. But submitMedical writes the MO outcome onto the
+  // visit's FIRST row — the very row bpSickReports returns — so the overwhelmingly
+  // common case (report sick in the morning, walk out with an Excuse/MC that
+  // afternoon) produced no second row and slipped through the filter entirely.
+  // On a day where every report sick had been resolved the toggle was a no-op.
+  suite("RS Format: the report-sick row's own MO outcome suppresses it");
+
+  const oRoster = ["0008", "0009", "0010", "0011", "0012"].map((id, i) => (
+    { id, name: `Own ${id}`, fourD: id, plt: "PLT1", role: "Recruit" }));
+  // Every row here IS the report sick — no second medical record anywhere.
+  const oMedical = () => [
+    rsiRow("0008", { status: "Excuse Uniform", endDate: "2026-07-06" }),  // resolved, unexpired
+    rsiRow("0009", { status: "MC", endDate: TODAY }),                     // ends exactly today
+    rsiRow("0010"),                                                        // still Pending
+    rsiRow("0011", { status: "NIL", endDate: "2026-07-06" }),             // cleared by the MO
+    rsiRow("0012", { status: "Excuse Uniform", endDate: "" })             // no end date recorded
+  ];
+
+  await test("an Excuse issued at this very visit omits the entry", () => {
+    const on = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(!/Own 0008/.test(on), "the status on the report row itself must account for them");
+  });
+
+  await test("a status ending exactly on the report date still omits", () => {
+    const on = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(!/Own 0009/.test(on), "end >= dateIso is inclusive of the report day");
+  });
+
+  await test("a still-Pending report sick is NOT omitted — that is the open case", () => {
+    const on = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(/Own 0010/.test(on), "awaiting the MO is exactly what the filtered message is for");
+  });
+
+  await test("NIL (seen and cleared) is not a status and stays listed", () => {
+    const on = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(/Own 0011/.test(on), "NIL means no status was issued — they are still a case of the day");
+  });
+
+  await test("own status with a BLANK end date stays listed, as for any other row", () => {
+    const on = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
+    ok(/Own 0012/.test(on), "end-less records are inactive everywhere else; do not special-case them here");
+  });
+
+  await test("omit OFF still lists all five, so the default message is untouched", () => {
+    const off = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700");
+    ok(/NON-URTI: 05/.test(off), "the toggle, not the predicate, is what filters");
+  });
+
+  await test("RSI Personnel applies the same rule to its PAX counts", () => {
+    const sb = loadParade(oRoster, oMedical());
+    ok(/TOTAL: 05 PAX/.test(sb.generateRSIPersonnel(TODAY, "0700")), "unfiltered");
+    ok(/TOTAL: 03 PAX/.test(sb.generateRSIPersonnel(TODAY, "0700", "", { omitOnStatus: true })),
+      "0008 + 0009 drop; 0010 (Pending), 0011 (NIL) and 0012 (no end date) remain");
   });
 
   // ── forms.js UI wiring ───────────────────────────────────────────────────────
