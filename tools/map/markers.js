@@ -5,14 +5,20 @@
 // review the same way.
 const ENTRY = require("./entry-points");
 
-function exemptReason(name) {
-  if (Object.prototype.hasOwnProperty.call(ENTRY.exact, name)) return ENTRY.exact[name];
-  for (const p of Object.keys(ENTRY.prefixes)) {
-    // Require an uppercase letter after the prefix so `tg` exempts tgSendMessage
-    // but not an unrelated word that merely starts with those letters.
+// `entry` is injectable so the exemption RULES can be tested against a fixture
+// allowlist rather than against whatever happens to be in entry-points.js today.
+// Testing the mechanism through the live config makes the tests fail whenever an
+// exemption is legitimately retired — which is how the prefix tests broke when
+// the `tg` (Telegram bot) family was removed.
+function exemptReason(name, entry) {
+  const E = entry || ENTRY;
+  if (Object.prototype.hasOwnProperty.call(E.exact, name)) return E.exact[name];
+  for (const p of Object.keys(E.prefixes)) {
+    // Require an uppercase letter after the prefix so a `tg` prefix would exempt
+    // tgSendMessage but not an unrelated word that merely starts with those letters.
     const next = name.charAt(p.length);
     if (name.indexOf(p) === 0 && next && next === next.toUpperCase() && next !== next.toLowerCase()) {
-      return ENTRY.prefixes[p];
+      return E.prefixes[p];
     }
   }
   return null;
@@ -30,7 +36,7 @@ function buildMarkers(byName, files, testRefs, opts) {
     .filter(n => byName[n].directRefs.length === 0
               && byName[n].stringRefs.length === 0
               && (byName[n].identRefFiles || []).length === 0)
-    .filter(n => !exemptReason(n))
+    .filter(n => !exemptReason(n, opts && opts.entry))
     .map(n => ({ name: n, file: byName[n].definedIn, kind: byName[n].kind }));
 
   const untested = names

@@ -1,3 +1,8 @@
+// @ts-check
+// Type-checked by `npm run typecheck` (tsconfig.json). Nothing is compiled — tsc
+// runs with noEmit purely as a checker over plain JS + JSDoc. This file is on the
+// opt-in list because it is pure and DOM-free; see tsconfig.json before adding
+// another. Annotate new functions with JSDoc types rather than reaching for `any`.
 // ============================================================================
 // SICK-HISTORY xlsx IMPORT — pure parser (Item 5)
 // ============================================================================

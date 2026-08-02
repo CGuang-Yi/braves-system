@@ -467,10 +467,10 @@ function normalizeMSK(records) {
 // Config tab arrives as key/value rows ([{key, value}, ...]); collapse to a
 // plain object keyed by `key`. Tolerant of header casing (key/Key, value/Value)
 // and ignores blank keys. Returns {} when there's nothing usable.
-// Accepts BOTH Config-tab shapes (the sheet can be either, and the Telegram bot
-// owns the same "Config" tab as a single columns-as-keys row):
+// Accepts BOTH Config-tab shapes (the sheet can be either — readAllTabs concats
+// the key/value "BravesConfig" tab with the columns-as-keys "Config" tab):
 //   • key/value rows  → {key:"companyName", value:"…"}            (Braves spec §4)
-//   • columns-as-keys → {companyName:"…", archiveParadeTimes:"…"}  (bot/COS layout)
+//   • columns-as-keys → {companyName:"…", archiveParadeTimes:"…"}  (Config tab)
 // A row is treated as key/value only when it actually has a `key` column; otherwise
 // every column on the row is taken as a setting. Both can coexist on one tab, so the
 // bot's columns (botGroupChatId, …) and Braves settings live side by side.

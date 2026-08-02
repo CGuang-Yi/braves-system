@@ -21,6 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 // helpers.js's displayDateToISO, re-implemented for the "DD Mon YYYY" sheet
 // format these fixtures use. rebuildLogConductStatus needs it (it compares the
@@ -42,7 +43,7 @@ function loadCtx() {
   };
   const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+  vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
   target.isCommander = () => false;
   target.statusParticipates = () => false;   // LD/MC/Excuse are restrictive ⇒ defaultNP true
   target.displayDateToISO = sheetDateToIso;
@@ -87,7 +88,7 @@ function loadGroupCtx() {
   };
   const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+  vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
   target.isCommander = d4 => target.STATE.roster.find(r => r.id === d4)?.role === "Commander";
   target.personPlatoon = r => r.platoon || "";
   target.displayId = d4 => d4;
@@ -285,7 +286,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
     target.isCommander = d4 => d4 === "0001";
     target.statusParticipates = () => false;
     target.currentMedicalEffectiveAll = () => [
@@ -330,7 +331,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
     target.isCommander = () => false;
     target.statusParticipates = () => false;
     target.getName = d4 => "Name" + d4;
@@ -396,7 +397,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
     target.isCommander = () => false;
     target.statusParticipates = () => true;
     target.currentMedicalEffectiveAll = () => [];
@@ -598,7 +599,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
     let idCounter = 0;
     target.nextId = () => `id${++idCounter}`;
     target.isoToDisplayDate = iso => iso;
@@ -747,7 +748,7 @@ module.exports = async function run() {
   });
 
   suite("log-conduct wizard: Enter-to-save wiring");
-  const formsSrc = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const formsSrc = sourceText("forms");
 
   await test("personSearchEnter stops propagation so a modal Enter handler can't also fire", () => {
     const m = formsSrc.match(/function personSearchEnter\([^)]*\)\s*{[\s\S]*?\n}/);
@@ -790,7 +791,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
     // A single header-checkbox object that the wizard code mutates; the test reads
     // its checked/indeterminate after each in-context call. All other ids resolve to
     // null so recomputeLogConductFooter's `if (el)`-guarded writes are safe no-ops.
@@ -891,7 +892,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
     target.renderLogConductWizard = () => {}; // no-op — state mutation is what's under test
     ctx._sl = statusList;
     vm.runInContext("_logConduct = { status: _sl };", ctx);
@@ -957,7 +958,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+    vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
     const toIso = sheetDateToIso;
     target.isCommander = () => false;
     target.getName = d4 => "Name" + d4;

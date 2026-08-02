@@ -1,31 +1,53 @@
+// @ts-check
+// Type-checked by `npm run typecheck` (tsconfig.json). Nothing is compiled — tsc
+// runs with noEmit purely as a checker over plain JS + JSDoc. This file is on the
+// opt-in list because it is pure and DOM-free; see tsconfig.json before adding
+// another. Annotate new functions with JSDoc types rather than reaching for `any`.
 // Pure, dependency-free date + aggregation helpers. No browser globals, no STATE
 // references — so they are unit-testable in isolation (test/calc.test.js) and safe
 // to load before helpers.js. Dates are ISO yyyy-mm-dd; arithmetic is tz-safe
 // (anchored at local midnight, never toISOString()).
+/** @param {Date} d @returns {string} `YYYY-MM-DD` in LOCAL time (never UTC — see file header). */
 function _isoKey(d) {
   return d.getFullYear() + "-" +
     String(d.getMonth() + 1).padStart(2, "0") + "-" +
     String(d.getDate()).padStart(2, "0");
 }
+/**
+ * Shift an ISO date by whole days, tz-safely.
+ * @param {string} iso `YYYY-MM-DD`; anything else returns "".
+ * @param {number|string} n days to add; may be negative. Non-numeric counts as 0.
+ * @returns {string} the shifted `YYYY-MM-DD`, or "" if `iso` was unusable.
+ */
 function addDaysISO(iso, n) {
   if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
   const d = new Date(iso + "T00:00:00");
-  if (isNaN(d)) return "";
+  if (isNaN(d.getTime())) return "";
   d.setDate(d.getDate() + (Number(n) || 0));
   return _isoKey(d);
 }
-// Inclusive / day-1: Start is Day 1, so End = Start + (Days - 1).
+/**
+ * Inclusive / day-1 arithmetic: Start is Day 1, so End = Start + (Days - 1).
+ * @param {string} startIso `YYYY-MM-DD`
+ * @param {number|string} days total days INCLUDING the start day; < 1 returns "".
+ * @returns {string}
+ */
 function endDateFromStartAndDays(startIso, days) {
   const n = Number(days);
   if (!startIso || !n || n < 1) return "";
   return addDaysISO(startIso, n - 1);
 }
-// Inverse: inclusive day count between two ISO dates (>=1), else 0.
+/**
+ * Inverse of endDateFromStartAndDays: inclusive day count between two dates.
+ * @param {string} startIso `YYYY-MM-DD`
+ * @param {string} endIso `YYYY-MM-DD`
+ * @returns {number} >= 1 for a valid ordered range, else 0.
+ */
 function daysFromStartEndInclusive(startIso, endIso) {
   if (!startIso || !endIso) return 0;
   const s = new Date(startIso + "T00:00:00"), e = new Date(endIso + "T00:00:00");
-  if (isNaN(s) || isNaN(e)) return 0;
-  const diff = Math.round((e - s) / 86400000) + 1;
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+  const diff = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
   return diff > 0 ? diff : 0;
 }
 

@@ -21,7 +21,7 @@
 //     recruit whose MC has ENDED keeps showing as MC (out of camp) through the
 //     MC+1/MC+2 grace window — that persistence lives in the shared §8 classifier
 //     (bpClassifyPerson's ended-MC tail, gated on the record NOT being booked in),
-//     so the grid, the copy-paste message and the Telegram bot all agree. MR
+//     so the grid, the copy-paste message and the archiver all agree. MR
 //     (Medical Review) is its own code / MR section.
 //
 // All per-person classification and strength math is reused from braves-parade.js
@@ -43,7 +43,7 @@ let _paradeTime = "";              // free-text HHMM for the company header
 //
 // This is the ONLY place the horizon lives. bpClassifyPerson defaults it off, so
 // every other consumer of the classifier — the Status Board grid, the Dashboard
-// tables, the sick-report generators, the archiver, the Telegram bot — keeps
+// tables, the sick-report generators, the archiver — keeps
 // strict today-only semantics without knowing this variable exists.
 let _paradeLookahead = 7;          // days; Infinity = "All"
 
@@ -170,29 +170,29 @@ function renderParade(el) {
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="margin:0">
           <label style="font-size:11px;color:var(--muted)">Scope</label><br>
-          <select onchange="setParadeScope(this.value)" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;min-width:220px">${scopeOptions}</select>
+          <select data-action-change="paradeScope" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;min-width:220px">${scopeOptions}</select>
         </div>
         <div class="form-group" style="margin:0">
           <label style="font-size:11px;color:var(--muted)">Date</label><br>
-          <input type="date" value="${escapeAttr(dateIso)}" onchange="setParadeDate(this.value)" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+          <input type="date" value="${escapeAttr(dateIso)}" data-action-change="paradeDate" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
         </div>
         <div class="form-group" style="margin:0">
           <label style="font-size:11px;color:var(--muted)">Parade</label><br>
-          <select onchange="setParadeType(this.value)" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+          <select data-action-change="paradeType" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
             <option value="FP"${_paradeType === "FP" ? " selected" : ""}>First Parade</option>
             <option value="LP"${_paradeType === "LP" ? " selected" : ""}>Last Parade</option>
           </select>
         </div>
         <div class="form-group" style="margin:0">
           <label style="font-size:11px;color:var(--muted)">Time (company header)</label><br>
-          <input type="text" value="${escapeAttr(_paradeTime)}" placeholder="e.g. 0730" maxlength="9" oninput="setParadeTime(this.value)" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:110px">
+          <input type="text" value="${escapeAttr(_paradeTime)}" placeholder="e.g. 0730" maxlength="9" data-action-input="paradeTime" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;width:110px">
         </div>
         <div class="form-group" style="margin:0">
           <label style="font-size:11px;color:var(--muted)" title="How far ahead to list absences that have not started yet">Lookahead</label><br>
           <div class="filter-role-group">
             ${[["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
               const on = (v === "all") ? _paradeLookahead === Infinity : Number(v) === _paradeLookahead;
-              return `<button type="button" class="role-btn${on ? " active" : ""}" onclick="setParadeLookahead('${v}')">${l}</button>`;
+              return `<button type="button" class="role-btn${on ? " active" : ""}" data-action="paradeLookahead" data-value="${v}">${l}</button>`;
             }).join("")}
           </div>
         </div>
@@ -234,13 +234,13 @@ function renderParadeCompany(host) {
   const text = generateBravesParadeState({ level: "company" }, _paradeType, dateIso, _paradeTime, paradeLookaheadOpts());
   const blockBtns = paradeCompanyBlocks().map((b, i) =>
     `<button type="button" id="parade-copy-${i}" class="btn" style="font-size:12px"
-       onclick="copyParadeBlock('${escapeAttr(b.code)}','parade-copy-${i}')">📋 ${escapeHTML(b.label)}</button>`
+       data-action="paradeCopyBlock" data-code="${escapeAttr(b.code)}" data-btn="parade-copy-${i}">📋 ${escapeHTML(b.label)}</button>`
   ).join("");
   host.innerHTML = paradeUpcomingBanner(text) + `
     <div class="card" style="padding:14px">
       <textarea id="parade-text" rows="26" spellcheck="false"
         style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(text)}</textarea>
-      <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" onclick="copyParadeText()">📋 Copy to Clipboard</button>
+      <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" data-action="paradeCopyText">📋 Copy to Clipboard</button>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <span style="font-size:11px;color:var(--muted)">Copy per platoon:</span>
         ${blockBtns}
@@ -443,7 +443,7 @@ function renderParadePlatoon(host, code) {
         const label = (cc.upcoming ? "→ " : "") + cc.code + (cc.suffix || "");
         const tip = cc.upcoming ? ' title="Not started yet — listed and counted, but still present today"' : "";
         return cc.editable
-          ? `<span class="ps-select-wrap"><select class="ps-select" onchange="onParadeCodeChange('${escapeAttr(x.r.id)}', this.value)"
+          ? `<span class="ps-select-wrap"><select class="ps-select" data-action-change="paradeCode" data-id="${escapeAttr(x.r.id)}"
               style="background:${hex}22;border-color:${hex}55;color:${hex}"><option value="${escapeHTML(cc.code)}" selected>${escapeHTML(label)}</option><option value="Present">Present</option></select></span>`
           : hex
             ? `<span class="ps-badge"${tip} style="${dim}background:${hex}22;border-color:${hex}55;color:${hex}">${escapeHTML(label)}</span>`
@@ -459,7 +459,7 @@ function renderParadePlatoon(host, code) {
     // select stays the sole action there. .parade-name-btn styles it as an accent
     // link (transparent button chrome) — see styles.css.
     const cardBtn = (inner, extra) =>
-      `<button type="button" class="parade-name-btn"${extra || ""} onclick="openPerson('${escapeAttr(x.r.id)}')" title="Open ${escapeAttr(displayPersonLabel(x.r.id))} card">${inner}</button>`;
+      `<button type="button" class="parade-name-btn"${extra || ""} data-action="paradeOpenPerson" data-id="${escapeAttr(x.r.id)}" title="Open ${escapeAttr(displayPersonLabel(x.r.id))} card">${inner}</button>`;
     return `<tr>
       <td class="mono">${cardBtn(escapeHTML(x.r.id), ' style="font-weight:700"')}</td>
       <td>${cardBtn(escapeHTML(displayPersonLabel(x.r.id)))}</td>
@@ -475,7 +475,7 @@ function renderParadePlatoon(host, code) {
            lines up either way. -->
       ${canWrite() ? `<td style="width:44px;text-align:center"><button type="button" class="btn btn-icon"
         title="Log medical or leave for ${escapeAttr(displayPersonLabel(x.r.id))}"
-        onclick="event.stopPropagation(); openQuickLogMenu('${escapeAttr(x.r.id)}')">＋</button></td>` : ""}
+        data-action="paradeQuickLog" data-id="${escapeAttr(x.r.id)}">＋</button></td>` : ""}
     </tr>`;
   }).join("");
 
@@ -500,7 +500,7 @@ function renderParadePlatoon(host, code) {
     <div class="card" style="padding:14px;margin-bottom:14px">
       <textarea id="parade-text" rows="20" spellcheck="false"
         style="width:100%;padding:10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;resize:vertical;white-space:pre">${escapeHTML(msg)}</textarea>
-      <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" onclick="copyParadeText()">📋 Copy to Clipboard</button>
+      <button type="button" id="parade-copy-btn" class="btn btn-success" style="margin-top:10px" data-action="paradeCopyText">📋 Copy to Clipboard</button>
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th style="width:70px">4D</th><th>Name</th><th style="width:120px">Attendance Code</th><th>Remarks</th>${canWrite() ? "<th></th>" : ""}</tr></thead>
@@ -537,8 +537,8 @@ function openParadeClearConfirm(d4) {
   openModal(`Mark Present — ${name}`, `
     <div style="font-size:13px;margin-bottom:14px">Mark <strong>${escapeHTML(name)}</strong> present from <strong>${escapeHTML(iso)}</strong>? Their MC / status / leave records are kept on file with their real dates (record dates kept) — they simply read Present from this date onward.</div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" onclick="paradeClearPerson('${escapeAttr(d4)}')">Mark Present</button>
-      <button class="btn" onclick="closeParadeEditor()">Cancel</button>
+      <button class="btn btn-primary" data-action="paradeMarkPresent" data-d4="${escapeAttr(d4)}">Mark Present</button>
+      <button class="btn" data-action="paradeCancelEditor">Cancel</button>
     </div>`);
 }
 
@@ -618,3 +618,32 @@ function upsertLocal(key, rec) {
   const i = arr.findIndex(x => x.id === rec.id);
   if (i >= 0) arr[i] = rec; else arr.push(rec);
 }
+
+// ── Action registry (see js/actions.js) ──────────────────────────────────────
+// This tab is the pilot for moving handlers out of HTML strings. Every name here
+// appears in the markup above as data-action="…" / data-action-change="…", and
+// every value is a real identifier — so `no-undef` and editor "find references"
+// now cover these edges, which an onclick= string never exposed.
+//
+// Handlers take (el, event) and read their parameters off el.dataset rather than
+// from interpolated string arguments. That is what retires the escapeAttr-on-
+// every-value discipline the old markup needed: a name containing an apostrophe
+// used to break the generated onclick, and dataset values are never parsed.
+registerActions({
+  paradeScope:      el => setParadeScope(el.value),
+  paradeDate:       el => setParadeDate(el.value),
+  paradeType:       el => setParadeType(el.value),
+  paradeTime:       el => setParadeTime(el.value),
+  paradeLookahead:  el => setParadeLookahead(el.dataset.value),
+  paradeCopyText:   () => copyParadeText(),
+  paradeCopyBlock:  el => copyParadeBlock(el.dataset.code, el.dataset.btn),
+  paradeCode:       el => onParadeCodeChange(el.dataset.id, el.value),
+  paradeOpenPerson: el => openPerson(el.dataset.id),
+  // The inline version called event.stopPropagation() first. The parade row has
+  // no click handler of its own (see the tap-target comment above), so nothing
+  // depends on it today — kept because delegation would not reproduce it if a
+  // row handler were ever added, and losing it silently would be a bug.
+  paradeQuickLog:   (el, event) => { event.stopPropagation(); openQuickLogMenu(el.dataset.id); },
+  paradeMarkPresent: el => paradeClearPerson(el.dataset.d4),
+  paradeCancelEditor: () => closeParadeEditor()
+});

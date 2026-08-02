@@ -1,0 +1,32 @@
+{
+  // Type-checking ONLY — `noEmit` is not negotiable. Nothing here is compiled and
+  // nothing is shipped: index.html loads the same plain .js files it always has.
+  // This is a checker bolted onto vanilla JS via JSDoc, not a TypeScript migration.
+  //
+  // `files` is an OPT-IN list, deliberately short. These are the pure, DOM-free,
+  // dependency-free modules where the annotation cost is lowest and the payoff is
+  // highest (they are also the ones unit-tested in isolation). Adding render.js or
+  // forms.js would produce thousands of errors about globals defined in other
+  // <script> tags — tsc has no more idea about the shared global scope than ESLint
+  // did, and unlike ESLint there is no cheap way to inject the surface. Grow this
+  // list one file at a time, only when someone is willing to annotate that file.
+  //
+  // `lib` deliberately OMITS "DOM". Every file listed here is DOM-free by design,
+  // so leaving DOM out makes tsc enforce that property rather than just document it.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "moduleDetection": "force",
+    "module": "commonjs",
+    "strict": false,
+    "types": ["node"]
+  },
+  "files": [
+    "js/calc.js",
+    "js/ippt-scoring.js",
+    "js/sick-history-import.js"
+  ]
+}

@@ -78,8 +78,8 @@ function makeClient(backend, opts) {
     } else {
       const body = JSON.parse(init.body);
       rec = { method: "POST", action: body.action, tab: body.tab };
-      // parameter:{} → e.parameter.tgsecret is undefined, so doPost skips the
-      // Telegram-webhook branch and routes to the normal authed POST handler.
+      // doPost reads only postData; parameter:{} stands in for the query string
+      // the real Apps Script runtime always supplies.
       out = backend.doPost({ parameter: {}, postData: { contents: init.body } });
     }
     fetchSpy.push(rec);

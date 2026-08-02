@@ -717,7 +717,7 @@ function bpBuildBlock(people, dateIso, type, opts) {
 // scope: { level: "company" } | { level: "platoon", platoon: "PLT1" | "HQ" }
 // type: "FP" | "LP". Returns the full message text.
 // opts (optional): { lookaheadDays } — Fix 18, forwarded to every block. Omitted
-// by the archiver and the Telegram bot, so their output is unchanged.
+// by the archiver, so its output is unchanged.
 function generateBravesParadeState(scope, type, dateIso, time, opts) {
   scope = scope || { level: "company" };
   const lookaheadDays = (opts && opts.lookaheadDays) || 0;

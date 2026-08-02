@@ -21,6 +21,7 @@ const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
 const { ROOT } = require("./harness");
 const { makeBrowser } = require("./mocks/browser");
+const { sourceText } = require("./sources");
 
 const FILES = ["js/state.js", "js/helpers.js", "js/braves-parade.js"];
 
@@ -131,7 +132,7 @@ module.exports = async function run() {
 
   suite("person card wiring: the header uses the live helper, not p.status");
 
-  const forms = fs.readFileSync(path.join(ROOT, "js", "forms.js"), "utf8");
+  const forms = sourceText("forms");
 
   await test("openPerson's header badges rosterDisplayStatusAll and no longer badges p.status", () => {
     // Comment lines are stripped before matching: the code carries a comment

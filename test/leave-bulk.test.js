@@ -8,6 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 function extractFunction(src, name) {
   const start = src.indexOf("function " + name);
@@ -61,7 +62,7 @@ function loadSubmit(values, roster, selectedD4s) {
   };
   vm.createContext(sandbox);
   const helpers = fs.readFileSync(path.join(__dirname, "..", "js", "helpers.js"), "utf8");
-  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const forms = sourceText("forms");
   const src = `let _leaveSelectedD4s = ${JSON.stringify(selectedD4s || [])};\n`
     + ["getPlt", "getSect", "personPlatoon", "personSection", "scopeRecruits"]
       .map(n => extractFunction(helpers, n)).join("\n")
@@ -72,7 +73,7 @@ function loadSubmit(values, roster, selectedD4s) {
 }
 
 function loadSelectedPicker() {
-  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const forms = sourceText("forms");
   const names = ["renderLeaveSelectedPeople", "leavePickSelectedPerson", "leaveRemoveSelectedPerson"];
   if (names.some(name => !forms.includes("function " + name))) return { missing: true };
 
@@ -160,7 +161,7 @@ module.exports = async function run() {
   });
 
   await test("leave form wires Selected people to the reusable full-roster typeahead", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     const openSrc = extractFunction(forms, "openLeaveForm");
     const scopeSrc = extractFunction(forms, "onLeaveScopeChange");
 

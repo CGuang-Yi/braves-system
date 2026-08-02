@@ -7,10 +7,11 @@
 const fs = require("fs");
 const path = require("path");
 const { suite, test, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 module.exports = async function run() {
   suite("render wiring: scoped participation");
-  const render = fs.readFileSync(path.join(__dirname, "..", "js", "render.js"), "utf8");
+  const render = sourceText("render");
   const helpers = fs.readFileSync(path.join(__dirname, "..", "js", "helpers.js"), "utf8");
   const parade = fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8");
 
@@ -125,10 +126,17 @@ module.exports = async function run() {
 
   suite("parade lookahead wiring: the control reaches every parade-side surface (Fix 18)");
 
-  await test("setParadeLookahead is declared — the toolbar buttons call it from an onclick", () => {
+  await test("setParadeLookahead is declared and reachable from the toolbar buttons", () => {
     ok(/function setParadeLookahead\(/.test(paradeTab), "setParadeLookahead is not defined");
-    ok(/onclick="setParadeLookahead\('\$\{v\}'\)"/.test(paradeTab),
-      "the Lookahead button group no longer wires setParadeLookahead");
+    // Two halves, because parade-tab.js is a data-action pilot (js/actions.js):
+    // the markup names an action, and the registry binds that action to the
+    // function. Asserting only one half would pass while the button is dead.
+    // The registry half is additionally covered by no-undef and by
+    // test/actions.test.js's "every data-action has a registered handler".
+    ok(/data-action="paradeLookahead" data-value="\$\{v\}"/.test(paradeTab),
+      "the Lookahead button group no longer carries the paradeLookahead action");
+    ok(/paradeLookahead:\s*el => setParadeLookahead\(el\.dataset\.value\)/.test(paradeTab),
+      "the paradeLookahead action no longer reaches setParadeLookahead");
     ok(/function paradeLookaheadOpts\(/.test(paradeTab), "paradeLookaheadOpts is not defined");
   });
 
@@ -169,7 +177,7 @@ module.exports = async function run() {
   suite("visit suffix wiring: one builder, three surfaces (Feature 30.1)");
 
   await test("all three consumers go through the shared builder, none rolls its own", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     ok(/function visitSuffix\(/.test(helpers), "visitSuffix is not defined in helpers.js");
     ok(/function visitForDay\(/.test(helpers), "visitForDay is not defined in helpers.js");
     [["parade grid", paradeTab], ["Dashboard Non-Active", render], ["conduct wizard", forms]]
@@ -180,7 +188,7 @@ module.exports = async function run() {
   });
 
   await test("the suffix is same-day only, and the wizard uses ITS date not today", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     // The date argument is what makes this same-day. The wizard routinely
     // back-dates, so binding it to todayISO() would stamp today's visit time
     // onto a status from last Tuesday.
@@ -208,7 +216,7 @@ module.exports = async function run() {
   });
 
   await test("the wizard appends only the TIME — its statusTag already names the type", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     // rebuildLogConductStatus folds the day's visit types into statusTag
     // ("MC + RSO"), so emitting the full TYPE+time there printed the type twice.
     ok(forms.includes('...(visit ? visit.tags : [])].join(" + ")'),
@@ -220,7 +228,7 @@ module.exports = async function run() {
   suite("quick-log wiring: gated, and never inside the Attendance Code cell (Feature 22)");
 
   await test("both entry points go through the one gated opener", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     const state = fs.readFileSync(path.join(__dirname, "..", "js", "state.js"), "utf8");
     ok(/function openQuickLogMenu\(/.test(forms), "openQuickLogMenu is not defined in forms.js");
     ok(/const canWrite = /.test(state), "canWrite is not defined in state.js");
@@ -228,8 +236,13 @@ module.exports = async function run() {
     // and a hidden button is not a permission check.
     ok(/function openQuickLogMenu\(d4\) \{\s*\n\s*if \(!canWrite\(\)\) return;/.test(forms),
       "openQuickLogMenu no longer enforces canWrite() itself");
-    ok(/openQuickLogMenu\('\$\{escapeAttr\(x\.r\.id\)\}'\)/.test(paradeTab),
-      "the parade grid no longer passes the row's person to the quick-log menu");
+    // parade-tab.js is a data-action pilot: the row carries the person on a
+    // data attribute and the registry reads it back off el.dataset. Both halves
+    // are asserted — the markup alone would pass with a dead button.
+    ok(/data-action="paradeQuickLog" data-id="\$\{escapeAttr\(x\.r\.id\)\}"/.test(paradeTab),
+      "the parade grid row no longer carries the person on the quick-log trigger");
+    ok(/paradeQuickLog:\s*\(el, event\) => \{[^}]*openQuickLogMenu\(el\.dataset\.id\)/.test(paradeTab),
+      "the paradeQuickLog action no longer passes the row's person to the quick-log menu");
     ok(/openQuickLogMenu\(''\)/.test(render),
       "the Dashboard no longer opens the quick-log menu with no person context");
   });
@@ -252,7 +265,7 @@ module.exports = async function run() {
   });
 
   await test("both forms honour a prefill, and only when creating", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     // openLeaveForm had no prefill parameter at all; adding one meant every
     // "is this an edit" test inside it had to stop keying off the truthiness of
     // `e`, or a prefill would hide the bulk scope selector and flip the submit
@@ -270,7 +283,7 @@ module.exports = async function run() {
   suite("visit grouping wiring: display only, and it must not disturb the suffix (Feature 29)");
 
   await test("the Medical table and the person card both go through groupByVisit", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     ok(/function groupByVisit\(/.test(helpers), "groupByVisit is not defined in helpers.js");
     ok(/groupByVisit\(medRows\.map\(x => x\.m\)\)/.test(render),
       "the Medical table no longer groups, or groups before the search/date filter and sort");
@@ -298,7 +311,7 @@ module.exports = async function run() {
   });
 
   await test("Edit acts on the visit, Delete acts on the single status", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     // openMedicalForm on the first sibling reconstructs the extra-status rows,
     // so editing the visit as a whole needs no new code — but only if Edit is
     // wired to grp.first and Delete is wired to the per-row id.
@@ -311,7 +324,7 @@ module.exports = async function run() {
   });
 
   await test("editing a grouped visit loads AND saves every sibling", () => {
-    const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const forms = sourceText("forms");
     // The plan assumed openMedicalForm already reconstructed the extra-status
     // rows. It did not — it loads a single record by id. Left alone, the single
     // Edit button on a grouped row opened one status and silently stranded the

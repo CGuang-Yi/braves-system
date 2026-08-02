@@ -29,6 +29,7 @@ const vm = require("vm");
 const { suite, test, ok, eq } = require("./_tap");
 const { loadBackend, VALID_TOKEN, ROOT } = require("./harness");
 const { makeBrowser } = require("./mocks/browser");
+const { expandFiles } = require("./sources");
 
 module.exports = async function run() {
   suite("Roster row writes: key column resolution (backend)");
@@ -117,8 +118,8 @@ module.exports = async function run() {
 
   suite("Roster row writes: submitCommander pushes the whole row");
 
-  const FILES = ["js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js",
-    "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"];
+  const FILES = expandFiles(["js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js",
+    "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"]);
 
   function loadFrontend(fx) {
     const browser = makeBrowser();

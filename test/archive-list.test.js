@@ -8,6 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 function loadCtx(rows, tab) {
   const target = {
@@ -16,7 +17,7 @@ function loadCtx(rows, tab) {
   };
   const ctx = vm.createContext(new Proxy(target, { has: () => true, get: (t, k) => t[k] }));
   vm.runInContext(
-    fs.readFileSync(path.join(__dirname, "..", "js", "render.js"), "utf8"),
+    sourceText("render"),
     ctx, { filename: "render.js" }
   );
   // Collaborators from other bundles.
@@ -24,7 +25,10 @@ function loadCtx(rows, tab) {
   target.isAdminRole = () => true;
   target.escapeAttr = s => String(s == null ? "" : s);
   target.escapeHTML = s => String(s == null ? "" : s);
-  target.platoonDisplayName = code => code;
+  // NOTE: this file used to stub a `platoonDisplayName` global here. No such
+  // function exists anywhere in the app — the stub made the test exercise a
+  // branch production could never reach. renderArchiveList now uses the raw
+  // platoon code directly, which is what it always did at runtime.
   // Minimal DOM: one element whose innerHTML we can read back.
   let html = "";
   // The drawer elements only need enough surface for openArchiveDrawer to fill

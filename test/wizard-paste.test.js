@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 function loadCtx() {
   const target = {
@@ -12,7 +13,7 @@ function loadCtx() {
     RegExp, isNaN, parseInt, parseFloat, Symbol
   };
   const ctx = vm.createContext(new Proxy(target, { has: () => true, get: (t, k) => t[k] }));
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"),
+  vm.runInContext(sourceText("forms"),
     ctx, { filename: "forms.js" });
   return ctx;
 }
@@ -171,7 +172,7 @@ module.exports = async function run() {
   suite("wizard paste: the confirm step is not optional");
 
   await test("Apply is reachable only from the preview panel, and only when something matched", () => {
-    const src = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const src = sourceText("forms");
     // The whole safety of a strict parser is that the user SEES the match result
     // first. If the paste modal ever grew a direct Apply button, a paste that was
     // entirely typos would confirm into a silent no-op read as success.
@@ -186,7 +187,7 @@ module.exports = async function run() {
   });
 
   await test("Apply re-parses the textarea instead of trusting the preview", () => {
-    const src = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+    const src = sourceText("forms");
     // Editing the textarea after previewing must not apply the stale match list.
     ok(/function wizPasteApply[\s\S]{0,400}parsePastedD4s\(text, STATE\.roster\)/.test(src),
       "wizPasteApply no longer re-parses — a post-preview edit would apply stale matches");
