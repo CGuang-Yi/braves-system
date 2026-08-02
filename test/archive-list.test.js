@@ -10,7 +10,7 @@ const vm = require("vm");
 const { suite, test, ok } = require("./_tap");
 const { sourceText } = require("./sources");
 
-function loadCtx(rows, tab) {
+function loadCtx(rows, tab, platoons) {
   const target = {
     console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
     RegExp, isNaN, parseInt, parseFloat, Symbol
@@ -21,14 +21,18 @@ function loadCtx(rows, tab) {
     ctx, { filename: "render.js" }
   );
   // Collaborators from other bundles.
-  target.STATE = { paradeArchive: tab === "parade" ? rows : [], sickArchive: tab === "sick" ? rows : [] };
+  // Platoons are supplied as DATA, not as a stubbed resolver function: an
+  // earlier version of this file stubbed a `platoonDisplayName` global that
+  // exists nowhere in the app, so the test passed against its own stub while
+  // production rendered the raw code. renderArchiveList reads STATE.platoons
+  // itself, so these rows exercise the real lookup.
+  target.STATE = {
+    paradeArchive: tab === "parade" ? rows : [], sickArchive: tab === "sick" ? rows : [],
+    platoons: platoons || []
+  };
   target.isAdminRole = () => true;
   target.escapeAttr = s => String(s == null ? "" : s);
   target.escapeHTML = s => String(s == null ? "" : s);
-  // NOTE: this file used to stub a `platoonDisplayName` global here. No such
-  // function exists anywhere in the app — the stub made the test exercise a
-  // branch production could never reach. renderArchiveList now uses the raw
-  // platoon code directly, which is what it always did at runtime.
   // Minimal DOM: one element whose innerHTML we can read back.
   let html = "";
   // The drawer elements only need enough surface for openArchiveDrawer to fill
@@ -68,8 +72,8 @@ function loadCtx(rows, tab) {
   return { ctx, target, getHtml: () => html, drawer, backdrop, body };
 }
 
-function renderWith(rows, tab, scope) {
-  const { ctx, getHtml } = loadCtx(rows, tab);
+function renderWith(rows, tab, scope, platoons) {
+  const { ctx, getHtml } = loadCtx(rows, tab, platoons);
   vm.runInContext(
     `_archiveTab = ${JSON.stringify(tab)}; _archiveQuery = ""; _archiveCompare = false; ` +
     `_archiveScope = ${JSON.stringify(scope || "")}; renderArchiveList();`, ctx);
@@ -95,6 +99,26 @@ module.exports = async function run() {
       { timestamp: "2026-07-20T07:30:00Z", date: "20 Jul 2026", slot: "0730", type: "FP", message: "x" }
     ], "parade");
     ok(html.includes("Company"), "missing scope treated as company (pre-scope default)");
+  });
+
+  // A platoon-scoped archive is read alongside the parade tab and the fitness
+  // reports, which both label scopes by display name. Showing "PLT1" here while
+  // the rest of the app says "1st Platoon" reads as a different platoon.
+  await test("a platoon-scoped row renders the platoon's display name", () => {
+    const html = renderWith(
+      [{ timestamp: "2026-07-20T07:30:00Z", date: "20 Jul 2026", slot: "0730", type: "FP", scope: "platoon:PLT1", message: "x" }],
+      "parade", "", [{ code: "PLT1", displayName: "1st Platoon", active: true }]);
+    ok(html.includes("1st Platoon"), "display name rendered");
+    ok(!html.includes(">PLT1<"), "raw code rendered instead of the display name");
+  });
+
+  await test("an unknown platoon code falls back to the raw code", () => {
+    // Covers both an empty Platoons tab and a platoon archived under a code
+    // that no longer appears in it — the row must still say something.
+    const html = renderWith(
+      [{ timestamp: "2026-07-20T07:30:00Z", date: "20 Jul 2026", slot: "0730", type: "FP", scope: "platoon:PLT9", message: "x" }],
+      "parade", "", [{ code: "PLT1", displayName: "1st Platoon", active: true }]);
+    ok(html.includes("PLT9"), "unknown code should fall back to itself, not blank out");
   });
 
   await test("sick rows expose format and omit the FP/LP and scope columns", () => {

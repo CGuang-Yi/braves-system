@@ -176,7 +176,7 @@ function renderArchive(el) {
         style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
         <option value="" ${_archiveScope === "" ? "selected" : ""}>All scopes</option>
         <option value="company" ${_archiveScope === "company" ? "selected" : ""}>Company</option>
-        ${(typeof activePlatoons === "function" ? activePlatoons() : []).map(p => `<option value="platoon:${p.code}" ${_archiveScope === `platoon:${p.code}` ? "selected" : ""}>${escapeAttr(p.code)}</option>`).join("")}
+        ${(typeof activePlatoons === "function" ? activePlatoons() : []).map(p => `<option value="platoon:${p.code}" ${_archiveScope === `platoon:${p.code}` ? "selected" : ""}>${escapeAttr(p.displayName || p.code)}</option>`).join("")}
       </select>` : ""}
       <input id="archive-search" placeholder="Filter by date / slot / text…" value="${escapeAttr(_archiveQuery)}" oninput="setArchiveQuery(this.value)"
         style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
@@ -216,11 +216,16 @@ function renderArchiveList() {
   const scopeLabel = r => {
     const s = r.scope || "company";   // pre-scope rows default to company
     if (s === "company") return "Company";
-    // Raw code ("PLT1"), not the platoon's display name. `platoonDisplayName`
-    // was never written — the guard that used to stand here always fell through,
-    // so this is the behaviour that has always shipped, now stated plainly rather
-    // than hidden behind a typeof check for a function that does not exist.
-    return String(s).replace(/^platoon:/, "");
+    const code = String(s).replace(/^platoon:/, "");
+    // Show the platoon's display name, like every other scope surface does
+    // (the parade-tab scope selector, the fitness-report scope picker, the
+    // dashboard's section-strength headings). Resolved against STATE.platoons
+    // rather than activePlatoons() on purpose: an archive is a historical row,
+    // so a platoon that has since been deactivated should still render by name.
+    // When the Platoons tab is empty, activePlatoons() derives displayName ===
+    // code anyway, so falling back to the raw code here matches it exactly.
+    const hit = (STATE.platoons || []).find(p => p.code === code);
+    return (hit && hit.displayName) || code;
   };
   const head = isParade
     ? `<tr><th>Date</th><th>Slot</th><th>FP/LP</th><th style="text-align:left">Type</th></tr>`
