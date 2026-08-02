@@ -1140,28 +1140,47 @@ function submitMedical() {
 
   // First status reuses the edited row's id; each extra status becomes a new
   // sibling row. type/urtiType/visitId are per-visit (shared across siblings).
-  const records = statuses.map((st, i) => ({
-    id: (i === 0 && editId) ? editId : nextId(),
-    d4, date, reason, location,
-    status: st.status,
-    startDate: isoToDisplayDate(st.startIso),
-    endDate: st.endIso ? isoToDisplayDate(st.endIso) : "",
-    type, urtiType, visitId,
-    // Written as "" and never populated again — see the comment on `time` above
-    // for why the KEY has to survive even though the value never will.
-    mrTiming: "",
-    // Item 17: visit-level (shared across sibling status rows), like type/urtiType.
-    time, outOfCamp,
-    // Preserve provenance on edit (don't silently flip a conduct-log row to
-    // "manual"); new sibling rows are manual.
-    origin: (i === 0 && prev) ? (prev.origin || "manual") : "manual",
-    // bookInDate is immutable once stamped by "Mark Present" (PR #65) — it must
-    // survive an edit of this row's other fields (reason/location/dates), or a
-    // routine correction silently un-books someone who is already Present and
-    // resurrects them under ATT C in the parade state / Status exports. New
-    // sibling rows (i > 0) were never booked in, so they start blank.
-    bookInDate: (i === 0 && prev) ? (prev.bookInDate || "") : ""
-  }));
+  //
+  // bookInDate must survive per STATUS, not just for the edited (i===0) row.
+  // Every sibling below i===0 gets a brand-new id on every save (Feature 29,
+  // above) — its OLD row is one of staleSiblings and is about to be deleted —
+  // so without matching it back to that old row, editing ANY shared visit
+  // field (even just fixing a typo in the reason) would silently un-book a
+  // sibling status that had been Mark-Present'd on its own. That's exactly the
+  // openMedicalForm doc-comment's own example: "2D LD + 4D Excuse RMJ" — if the
+  // Excuse RMJ half was already booked in, correcting the LD status's dates
+  // must not clear it. Matched by status label against staleSiblings (captured
+  // above, before this save); each stale sibling is consumed at most once so
+  // two identically-named statuses in one visit don't both claim the same
+  // bookInDate.
+  const siblingPool = staleSiblings.slice();
+  const takeSibling = status => {
+    const i = siblingPool.findIndex(s => s.status === status);
+    return i < 0 ? null : siblingPool.splice(i, 1)[0];
+  };
+  const records = statuses.map((st, i) => {
+    const priorRow = i === 0 ? prev : takeSibling(st.status);
+    return {
+      id: (i === 0 && editId) ? editId : nextId(),
+      d4, date, reason, location,
+      status: st.status,
+      startDate: isoToDisplayDate(st.startIso),
+      endDate: st.endIso ? isoToDisplayDate(st.endIso) : "",
+      type, urtiType, visitId,
+      // Written as "" and never populated again — see the comment on `time` above
+      // for why the KEY has to survive even though the value never will.
+      mrTiming: "",
+      // Item 17: visit-level (shared across sibling status rows), like type/urtiType.
+      time, outOfCamp,
+      // Preserve provenance on edit (don't silently flip a conduct-log row to
+      // "manual"); new sibling rows are manual.
+      origin: (i === 0 && prev) ? (prev.origin || "manual") : "manual",
+      // bookInDate is immutable once stamped by "Mark Present" (PR #65) — see
+      // the comment above this block for why priorRow can be a matched sibling,
+      // not just prev.
+      bookInDate: priorRow ? (priorRow.bookInDate || "") : ""
+    };
+  });
 
   records.forEach((rec, i) => {
     if (i === 0 && editId) {
