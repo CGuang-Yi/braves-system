@@ -2673,8 +2673,8 @@ function toDDMMYY(iso) {
 // R/N formatting (spec §7). Delegates to the Braves implementation in
 // braves-parade.js (loaded after this file, so the global is resolved by the
 // time any UI calls paradeRN). Kept under the old name because the medical-
-// status report + the borderline/appointment checklists still call paradeRN;
-// they now get Braves-format R/N ("MARTIN TAN B1411" / "LCP CALVIN LEE").
+// status report still calls paradeRN; it gets Braves-format R/N
+// ("MARTIN TAN B1411" / "LCP CALVIN LEE").
 function paradeRN(d4) {
   return bravesParadeRN(d4);
 }
@@ -2699,52 +2699,15 @@ function paradeStatusLabel(record) {
   return days > 0 ? `${days}D ${record.status}` : record.status;
 }
 
-// Group medical entries by d4 so a person with multiple active statuses
-// appears under one S/N with stacked sub-entries (matches the BENJAMIN
-// C4110 sample in the chat).
-// ── Borderline MC returnees ──────────────────────────────
-// When an MC ends on day N, on day N+1 the system says the recruit is back
-// (medStatusActive returns false), but they might not have booked back in
-// before parade time. The PDS opts each one in/out via checkboxes in the
-// FP/LP report modal. Map of d4 → true means "still ATTC despite the
-// medical record having ended". Cleared on modal open and on date change.
-let _paradeOverrides = {};
-
-// Per-parade in/out-of-camp overrides for appointments, keyed by appointment id.
-// A present key wins over the appointment's stored outOfCamp flag, letting the
-// PDS flip an appointment in/out for THIS parade without editing the record.
-// Cleared on modal open and on date change.
-let _apptCampOverrides = {};
-
 // Per-person Medical Appointment dates for the MR (Medical Review) generator, keyed by
 // 4D: { recent: "<iso>"|"", next: "<iso>"|"" }. Reset when the MR modal opens; a blank
 // value renders as the literal NIL in the message.
 let _mrDates = {};
 
-function findBorderlineReturnees(dateIso) {
-  if (!dateIso) return [];
-  const y = new Date(dateIso); y.setDate(y.getDate() - 1);
-  const yIso = y.toISOString().slice(0, 10);
-  const away = m => (m.status === "MC" || m.status === "Warded");
-  return STATE.medical.filter(m =>
-    away(m) && displayDateToISO(m.endDate || "") === yIso &&
-    // An extended MC is logged as a SECOND report-sick record (endDate yesterday
-    // on the first, a fresh record covering today on the second). If any OTHER
-    // away MC/Warded for this 4D is still active on the parade date, the recruit
-    // hasn't actually returned — they're out on the extension — so they are not
-    // a borderline candidate (they already surface in ATTC as an active record).
-    !STATE.medical.some(o => o !== m && o.d4 === m.d4 && away(o) && medStatusActive(o, dateIso))
-  );
-}
-
-function toggleBorderline(d4, checked, type) {
-  if (checked) _paradeOverrides[d4] = true;
-  else delete _paradeOverrides[d4];
-  regenerateReport(type);
-}
-
 // statusFilter is either an allowlist array (status ∈ list) or a predicate
 // (status => boolean) — the latter lets MEDICAL STATUS act as a catch-all.
+// Groups medical entries by d4 so a person with multiple active statuses
+// appears under one S/N with stacked sub-entries.
 function buildMedicalSection(label, dateIso, statusFilter) {
   const matchStatus = typeof statusFilter === "function"
     ? statusFilter
@@ -2753,15 +2716,6 @@ function buildMedicalSection(label, dateIso, statusFilter) {
     medStatusActive(m, dateIso) && matchStatus(m.status)
   );
 
-  // ATTC gets the PDS-confirmed borderline returnees folded in so they
-  // render with the same Reason/Status/Duration block as everyone else.
-  // Other sections aren't affected by overrides.
-  if (label === "ATTC") {
-    const existingD4s = new Set(matches.map(m => m.d4));
-    findBorderlineReturnees(dateIso)
-      .filter(m => _paradeOverrides[m.d4] && !existingD4s.has(m.d4))
-      .forEach(m => matches.push(m));
-  }
   const byD4 = {};
   matches.forEach(m => { (byD4[m.d4] = byD4[m.d4] || []).push(m); });
   // Collapse same-status duplicates per recruit (a re-issued MC) to the most
@@ -2829,7 +2783,15 @@ function paradeTimeMinutes(timeStr) {
 // future dates. The time-of-day cutoff only applies on the parade day itself —
 // a same-day appt that's already passed is dropped, but a future-dated one
 // always shows regardless of its time. Sorted chronologically (date, then time).
-// Shared by the report generator and the in/out-of-camp tick checklist.
+//
+// ORPHAN (2026-07-29): currently has zero callers. The comment here used to claim
+// it was "shared by the report generator and the in/out-of-camp tick checklist" —
+// the checklist was deleted as dead code, and the Braves §8–9 generator
+// (js/braves-parade.js) does not call this. Deliberately kept rather than deleted
+// with that cleanup: unlike the checklist cluster this looks like a newer helper
+// that was never wired up, not leftover-from-retirement, so it needs its intended
+// caller traced before it's removed. Don't add callers without checking that the
+// generator doesn't already derive the same list.
 function upcomingParadeAppointments(dateIso, paradeTime) {
   const paradeMins = paradeTimeMinutes(paradeTime);
   return STATE.appointments
@@ -2848,35 +2810,23 @@ function upcomingParadeAppointments(dateIso, paradeTime) {
     });
 }
 
-// Outside-camp appointments (a.outOfCamp) on the parade date — the WHOLE day,
-// regardless of parade time. Presence (has the recruit LEFT for / RETURNED from
-// the appointment) is tracked via ticks in the report modal, so an early appt
-// must still show at last parade to confirm they've come back. paradeTime is
-// kept for signature parity with the other parade builders.
-function outsideApptsForParade(dateIso, paradeTime) {
-  return STATE.appointments.filter(a =>
-    !a.resolved && a.outOfCamp &&
-    displayDateToISO(a.date) === dateIso
-  );
-}
-
-// Whether a recruit on an outside appt is currently OUT of camp at this parade.
-// Tracked per-parade via a tick; default (no tick) = in camp / not yet left or
-// already returned.
-function apptCurrentlyOut(a) { return _apptCampOverrides[a.id] === true; }
-
-// Outside appts whose recruit is currently out of camp — folded into the OTHERS
-// roll and removed from CURRENT STRENGTH.
-function outOfCampApptsForParade(dateIso, paradeTime) {
-  return outsideApptsForParade(dateIso, paradeTime).filter(apptCurrentlyOut);
-}
-
 // NOTE: the legacy Cougar parade-state builders (buildAppointmentSection,
 // buildOthersSection, buildStrengthBlock, generateParadeStateText) lived here.
 // They were retired in Step 3 — FP/LP now use the Braves §7–9 generator in
 // js/braves-parade.js (generateBravesParadeState, routed from regenerateReport).
-// See DECISIONS #36/#37. The medical-status report (below) and the borderline/
-// appointment helpers above are unaffected and remain in use.
+// See DECISIONS #36/#37.
+//
+// The manual borderline/out-of-camp tick checklists that fed those builders
+// (findBorderlineReturnees, outsideApptsForParade, apptCurrentlyOut,
+// outOfCampApptsForParade, their _paradeOverrides/_apptCampOverrides maps, and
+// the render/toggle/onchange handlers) were retired at the same time but only
+// deleted on 2026-07-29 — an earlier revision of this NOTE wrongly claimed they
+// "remain in use", which is how ~150 lines of unreachable code survived review.
+// They are NOT to be reinstated: the §8–9 generator derives both facts from
+// stored data (bookInDate/bookedInBy for returnees, the appointment records'
+// own fields for out-of-camp), so a manual tick UI would reintroduce a parallel
+// unsynced source of truth for exactly the state Step 3 automated away.
+// The medical-status report below is unaffected and remains in use.
 
 function generateMedicalStatusText(dateIso, time) {
   const dateStr = toDDMMYY(dateIso);
@@ -3000,11 +2950,6 @@ function openReportModal(type) {
     : type === "MR" ? "MR (Medical Review)"
     : "Medical Status List";
 
-  // Borderline + appointment-camp overrides are scoped to a single modal
-  // session — clearing here avoids stale ticks leaking from a previous open.
-  _paradeOverrides = {};
-  _apptCampOverrides = {};
-
   // FP/LP now use the Braves §8–9 generator (js/braves-parade.js), which derives
   // every category from stored data — so the parade modal just re-runs the
   // generator on any date/time/scope change (no live checklists to re-render).
@@ -3122,7 +3067,7 @@ function renderConductPicker() {
 
 // Renders one row per pending-MR person for the modal date, each with two optional
 // Medical-Appointment date inputs (most recent / next). Blank stays blank → NIL in the
-// message. Parallels renderConductPicker/renderApptCampSection.
+// message. Parallels renderConductPicker.
 function renderMRDateFields() {
   const host = document.getElementById("rep-mr-dates");
   if (!host) return;
@@ -3148,74 +3093,6 @@ function setMRDate(d4, which, iso) {
   if (!_mrDates[d4]) _mrDates[d4] = { recent: "", next: "" };
   _mrDates[d4][which] = iso || "";
   regenerateReport("MR");
-}
-
-// Wipes overrides when the date input changes, re-renders the checklist
-// for the new date, then regenerates the textarea.
-function onParadeDateChange(type) {
-  _paradeOverrides = {};
-  _apptCampOverrides = {};
-  renderBorderlineSection(gv("rep-date"), type);
-  renderApptCampSection(gv("rep-date"), gv("rep-time") || "0700", type);
-  regenerateReport(type);
-}
-
-// Time change only affects the appointment checklist's parade-time cutoff — the
-// borderline list is date-only. Ticks are KEPT (overrides not cleared) so a
-// time tweak doesn't wipe who's already marked out.
-function onParadeTimeChange(type) {
-  renderApptCampSection(gv("rep-date"), gv("rep-time") || "0700", type);
-  regenerateReport(type);
-}
-
-function toggleApptCamp(id, checked, type) {
-  _apptCampOverrides[id] = checked;   // checked = currently OUT of camp (has left)
-  regenerateReport(type);
-}
-
-// Renders the presence checklist for today's OUTSIDE appointments. Tick a recruit
-// once they've LEFT camp for the appointment; untick when they're back. Ticked
-// recruits drop to the OTHERS roll and out of current strength. Empty section
-// when there are no outside appointments today (no noise).
-function renderApptCampSection(dateIso, paradeTime, type) {
-  const section = document.getElementById("appt-camp-section");
-  if (!section) return;
-  const appts = outsideApptsForParade(dateIso, paradeTime);
-  if (!appts.length) { section.innerHTML = ""; return; }
-  const rows = appts.map(a => {
-    const checked = apptCurrentlyOut(a) ? "checked" : "";
-    return `<label style="display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-      <input type="checkbox" ${checked} onchange="toggleApptCamp(${a.id}, this.checked, '${type}')" style="width:14px;height:14px;cursor:pointer">
-      <span>${escapeHTML(paradeRN(a.d4))} — ${escapeAttr(a.reason || "")} (${fmtHrs(a.time)})</span>
-    </label>`;
-  }).join("");
-  section.innerHTML = `<div style="font-size:11px;background:#58A6FF11;border:1px solid #58A6FF44;border-radius:6px;padding:8px 10px">
-    <div style="color:var(--accent);font-weight:600;margin-bottom:4px">📅 Outside appointments today (${appts.length}) — tick if OUT of camp now</div>
-    <div style="color:var(--muted);margin-bottom:6px">Tick once the recruit has LEFT camp for the appointment; untick when they return. Out = added to OTHERS + removed from current strength.</div>
-    ${rows}
-  </div>`;
-}
-
-// Renders the borderline checklist for the given date. Empty section when
-// no recently-ended MCs exist (no noise on normal days).
-function renderBorderlineSection(dateIso, type) {
-  const section = document.getElementById("borderline-section");
-  if (!section) return;
-  const candidates = findBorderlineReturnees(dateIso);
-  if (!candidates.length) { section.innerHTML = ""; return; }
-  const rows = candidates.map(m => {
-    const checked = _paradeOverrides[m.d4] ? "checked" : "";
-    const endShort = toDDMMYY(displayDateToISO(m.endDate || "")) || m.endDate || "";
-    return `<label style="display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 6px;cursor:pointer;border-radius:4px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-      <input type="checkbox" ${checked} onchange="toggleBorderline('${m.d4}', this.checked, '${type}')" style="width:14px;height:14px;cursor:pointer">
-      <span>${escapeHTML(paradeRN(m.d4))} — ${m.status} ended ${endShort}</span>
-    </label>`;
-  }).join("");
-  section.innerHTML = `<div style="font-size:11px;background:#D2992211;border:1px solid #D2992244;border-radius:6px;padding:8px 10px">
-    <div style="color:var(--orange);font-weight:600;margin-bottom:4px">⚠ Borderline returnees (${candidates.length}) — MC/Warded ended yesterday</div>
-    <div style="color:var(--muted);margin-bottom:6px">Tick anyone who hasn't actually booked back in yet. They'll be added to ATTC.</div>
-    ${rows}
-  </div>`;
 }
 
 function regenerateReport(type) {
