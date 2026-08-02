@@ -85,6 +85,52 @@ module.exports = async function run() {
     eq(row.bookInDate, "", "a fresh entry should not fabricate a bookInDate");
   });
 
+  // Daily code review 2026-08-02: editing a MULTI-STATUS visit (e.g. the
+  // openMedicalForm doc-comment's own "2D LD + 4D Excuse RMJ" example) used to
+  // rebuild every sibling row (i>0 in submitMedical's records.map) with a
+  // hard-coded blank bookInDate, no matter what the OLD sibling carried — so
+  // correcting a typo shared across the visit (reason/date) silently un-booked
+  // a status that had been Mark-Present'd on its own, resurrecting it under
+  // ATT C. This is the same immutability contract as the two tests above, just
+  // on a sibling row instead of the primary one; document.querySelectorAll is
+  // monkey-patched here (the shared mock always returns []) to feed
+  // submitMedical's #f-extra-statuses reader one extra status row.
+  await test("editing one status of a multi-status visit keeps a booked-in SIBLING status's bookInDate", () => {
+    const sb = load({
+      roster: medFixture().roster,
+      medical: [
+        { id: 1, d4: "1411", type: "RSI", status: "LD", date: "01 Jul 2026",
+          startDate: "01 Jul 2026", endDate: "05 Jul 2026", reason: "fever",
+          bookInDate: "", visitId: "v1" },
+        { id: 2, d4: "1411", type: "RSI", status: "Excuse RMJ", date: "01 Jul 2026",
+          startDate: "01 Jul 2026", endDate: "10 Jul 2026", reason: "fever",
+          bookInDate: "03 Jul 2026", visitId: "v1" }
+      ],
+      leave: [], attendance: [], appointments: [], config: [], msk: []
+    });
+    vm.runInContext(`
+      document.querySelectorAll = (sel) => sel === "#f-extra-statuses .med-extra-row" ? [{
+        querySelector: s => ({
+          ".f-extra-status": { value: "Excuse RMJ" },
+          ".f-extra-start": { value: "2026-07-01" },
+          ".f-extra-end": { value: "2026-07-10" }
+        }[s])
+      }] : [];
+    `, sb, { filename: "stub-extra-status-rows.js" });
+    submit(sb, "submitMedical", {
+      "f-entry-id": "1", "f-status": "LD", "f-type": "RSI", "f-urti": "", "f-time": "",
+      "f-d4": "1411", "f-date": "2026-07-01", "f-reason": "fever, corrected spelling",
+      "f-location": "PTMC", "f-start": "2026-07-01", "f-end": "2026-07-05"
+    });
+    const meds = vm.runInContext("STATE.medical", sb);
+    eq(meds.length, 2, "both statuses of the visit should still be present");
+    const rmj = meds.find(m => m.status === "Excuse RMJ");
+    eq(!!rmj, true, "the sibling status row should survive the edit");
+    eq(rmj.bookInDate, "03 Jul 2026", "the sibling's bookInDate was cleared by an edit to the OTHER status");
+    const ld = meds.find(m => m.status === "LD");
+    eq(ld.reason, "fever, corrected spelling", "the edit itself did not apply");
+  });
+
   suite("edit preserves bookInDate: Leave (submitLeave)");
 
   const leaveFixture = () => ({
