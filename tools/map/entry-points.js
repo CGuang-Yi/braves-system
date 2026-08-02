@@ -11,7 +11,7 @@ module.exports = {
   exact: {
     // ── Google Apps Script web-app runtime ──────────────────────────────
     doGet:  "Google Apps Script runtime — HTTP GET entry point of the deployed web app.",
-    doPost: "Google Apps Script runtime — HTTP POST entry point; also receives the Telegram webhook.",
+    doPost: "Google Apps Script runtime — HTTP POST entry point of the deployed web app.",
 
     // ── Run by hand from the Apps Script editor ─────────────────────────
     bravesMigrateSchema: "Run manually from the Apps Script editor when a tab gains a column (CLAUDE.md, Sheet schema).",
@@ -23,9 +23,14 @@ module.exports = {
   },
 
   // Name prefixes exempted wholesale, with the reason for the whole family.
-  // A prefix matches only when the next character is uppercase, so `tgSend`
-  // is exempt but a function merely starting with the letters "tg" is not.
-  prefixes: {
-    tg: "Telegram bot integration in apps-script-Code.gs — dispatched by doPost's webhook branch through a name table rather than by direct call."
-  }
+  // A prefix matches only when the next character is uppercase, so a `tg` prefix
+  // would exempt `tgSend` but not a function merely starting with those letters.
+  //
+  // Currently EMPTY, and that is the healthy state. The only family that ever
+  // lived here was `tg` (the Telegram bot, dispatched through a name table rather
+  // than by direct call); it went when the bot was removed. A whole-family
+  // exemption hides every future orphan in that family, so prefer an `exact`
+  // entry naming one function and its one caller unless a genuine name-table
+  // dispatch makes that impossible.
+  prefixes: {}
 };

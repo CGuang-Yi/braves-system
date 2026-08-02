@@ -83,14 +83,14 @@ module.exports = async function run() {
     eq(b.db.rowsOf("Medical").map(x => x.id), ["2"], "row 1 deleted");
   });
 
-  await test("untracked tab (ReportSick) still writes, just no rev", () => {
-    // Braves' withRevLock returns fn() directly for non-REV_TABS — bot tabs like
-    // ReportSick must keep working even though they carry no revision.
+  await test("untracked tab (SickArchive) still writes, just no rev", () => {
+    // Braves' withRevLock returns fn() directly for non-REV_TABS — untracked tabs
+    // like the archives must keep working even though they carry no revision.
     const b = loadBackend();
-    b.db.seed("ReportSick", ["id", "state"], []);
-    const r = post(b, { action: "upsertRow", tab: "ReportSick", row: { id: 1, state: "Requested" } });
+    b.db.seed("SickArchive", ["id", "state"], []);
+    const r = post(b, { action: "upsertRow", tab: "SickArchive", row: { id: 1, state: "Requested" } });
     ok(r.ok && !r.conflict, "untracked-tab write applies");
-    eq(b.db.rowsOf("ReportSick").length, 1, "row written");
+    eq(b.db.rowsOf("SickArchive").length, 1, "row written");
   });
 
   suite("backend: revCheck + readAll carry revisions");

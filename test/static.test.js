@@ -47,9 +47,9 @@ module.exports = async function run() {
   // (c) Heuristic lint: any DIRECT write primitive called with a tracked-tab
   // STRING LITERAL (i.e. bypassing routeAuthedPost's withRevLock, which passes
   // `tab` as a variable) must have a bumpRev("<sameTab>") within a few lines —
-  // otherwise the change silently misses every client's revCheck (the Telegram
-  // leak class). Calls with a variable tab (the web-app dispatch) are wrapped in
-  // withRevLock and so are exempt.
+  // otherwise the change silently misses every client's revCheck (the
+  // server-side-write leak class). Calls with a variable tab (the web-app
+  // dispatch) are wrapped in withRevLock and so are exempt.
   await test("direct tracked-tab writes are followed by a bumpRev", () => {
     const gs = fs.readFileSync(path.join(ROOT, "apps-script-Code.gs"), "utf8").split("\n");
     const callRe = /\b(appendRow|appendMany|upsertRow|writeTab|deleteRowById|updateRow)\(\s*"([A-Za-z]+)"/;

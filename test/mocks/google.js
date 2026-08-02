@@ -106,7 +106,7 @@ function makeGoogle() {
   };
 
   // One shared no-op lock object. Braves' getDataLock() prefers getDocumentLock()
-  // (so data writes don't block on the Telegram poller's script lock); provide
+  // (so data writes don't block on a time-driven trigger's script lock); provide
   // both so the REAL withRevLock / onEditBumpRev run unmodified.
   const lock = { waitLock: () => true, tryLock: () => true, releaseLock: () => {} };
 

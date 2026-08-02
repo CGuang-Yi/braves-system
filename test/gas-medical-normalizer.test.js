@@ -10,8 +10,8 @@
 // both were added to the classifier in BOTH copies, and parade-port-parity.test.js
 // passed — because that suite feeds its fixtures STRAIGHT into bpClassifyPerson
 // on both sides, bypassing this normalizer entirely. So the client (whose
-// normalizeMedical did carry them) worked, while the Telegram bot and the cron
-// archiver silently dropped MR timings and treated every out-of-camp medical
+// normalizeMedical did carry them) worked, while the cron archiver silently
+// dropped MR timings and treated every out-of-camp medical
 // appointment as in-camp — the one failure mode nobody looks at, since it only
 // shows up in a message a human reads and assumes is right.
 //

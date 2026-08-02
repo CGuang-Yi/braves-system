@@ -156,8 +156,8 @@ module.exports = async function run() {
     backend.db.seed("Medical", MED_HEADERS, []);
     const A = makeClient(backend);
     await A.sb.API.pullAll();
-    // Mirrors tgCompleteMC after the fix: append + bumpRev("Medical").
-    backend.appendRow("Medical", { id: 77, d4: "1177", reason: "bot sick", status: "" });
+    // Mirrors a server-side write: append + bumpRev("Medical").
+    backend.appendRow("Medical", { id: 77, d4: "1177", reason: "server sick", status: "" });
     backend.bumpRev("Medical");
     A.fetchSpy.length = 0;
     await A.sb.autoRefreshTick("interval");

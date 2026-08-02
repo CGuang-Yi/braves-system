@@ -21,7 +21,7 @@
 //     recruit whose MC has ENDED keeps showing as MC (out of camp) through the
 //     MC+1/MC+2 grace window — that persistence lives in the shared §8 classifier
 //     (bpClassifyPerson's ended-MC tail, gated on the record NOT being booked in),
-//     so the grid, the copy-paste message and the Telegram bot all agree. MR
+//     so the grid, the copy-paste message and the archiver all agree. MR
 //     (Medical Review) is its own code / MR section.
 //
 // All per-person classification and strength math is reused from braves-parade.js
@@ -43,7 +43,7 @@ let _paradeTime = "";              // free-text HHMM for the company header
 //
 // This is the ONLY place the horizon lives. bpClassifyPerson defaults it off, so
 // every other consumer of the classifier — the Status Board grid, the Dashboard
-// tables, the sick-report generators, the archiver, the Telegram bot — keeps
+// tables, the sick-report generators, the archiver — keeps
 // strict today-only semantics without knowing this variable exists.
 let _paradeLookahead = 7;          // days; Infinity = "All"
 

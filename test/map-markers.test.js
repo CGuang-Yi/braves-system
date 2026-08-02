@@ -21,18 +21,25 @@ module.exports = async function () {
     eq(r.orphans, [], "doGet exempt");
   });
 
+  // The prefix rule is tested against a FIXTURE allowlist, not the live one.
+  // entry-points.js currently has no prefix families at all (the `tg` Telegram
+  // family was the only one, and it went with the bot), so testing through the
+  // real config would leave the mechanism silently uncovered — and would have
+  // failed the moment that exemption was legitimately retired.
+  const withPrefix = { ...OPTS, entry: { exact: {}, prefixes: { zz: "fixture family" } } };
+
   await test("a prefix-allowlisted family is never an orphan", () => {
-    const byName = { tgSendMessage: { name: "tgSendMessage", definedIn: "apps-script-Code.gs", directRefs: [], stringRefs: [], fanIn: 0 } };
-    const r = buildMarkers(byName, [], {}, OPTS);
-    eq(r.orphans, [], "tg* exempt");
+    const byName = { zzSendMessage: { name: "zzSendMessage", definedIn: "a.js", directRefs: [], stringRefs: [], fanIn: 0 } };
+    const r = buildMarkers(byName, [], {}, withPrefix);
+    eq(r.orphans, [], "zz* exempt");
   });
 
   await test("the prefix rule does not exempt an unrelated lowercase name", () => {
-    // `tg` must be followed by an uppercase letter — otherwise a function called
-    // `tgether` (or any word starting with those letters) silently escapes review.
-    const byName = { tgether: { name: "tgether", definedIn: "a.js", directRefs: [], stringRefs: [], fanIn: 0 } };
-    const r = buildMarkers(byName, [], {}, OPTS);
-    eq(r.orphans.map(o => o.name), ["tgether"], "not exempt");
+    // `zz` must be followed by an uppercase letter — otherwise a function called
+    // `zzebra` (or any word starting with those letters) silently escapes review.
+    const byName = { zzebra: { name: "zzebra", definedIn: "a.js", directRefs: [], stringRefs: [], fanIn: 0 } };
+    const r = buildMarkers(byName, [], {}, withPrefix);
+    eq(r.orphans.map(o => o.name), ["zzebra"], "not exempt");
   });
 
   await test("a function reachable only from an HTML string is NOT an orphan", () => {
