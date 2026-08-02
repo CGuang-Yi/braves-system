@@ -674,7 +674,13 @@ function renderDashboard(el) {
     ${renderDashLeaveOut(visible, today)}
     ${renderDashParade()}
     <div class="grid-2" id="dash-charts"${deferActive ? ' style="display:none"' : ''}>
-      <div class="card"><h3>Status Trend (14 days)</h3><div class="chart-box trend"><canvas id="chart-status"></canvas></div></div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <h3 id="status-trend-title" style="margin:0">Status Trend (${statusTrendRangeLabel()})</h3>
+          <div class="filter-role-group" id="status-trend-range">${statusTrendRangePillsHtml()}</div>
+        </div>
+        <div class="chart-box trend"><canvas id="chart-status"></canvas></div>
+      </div>
       <div class="card"><h3>Participation Trend</h3><canvas id="chart-participation" height="200"></canvas></div>
     </div>
     ${deferActive ? chartGateMarkup("loadDashboardCharts()", "dash-chart-gate") : ""}
@@ -1243,13 +1249,64 @@ function renderMSKAnalytics(el) {
 //
 // See statusTrendSeries (helpers.js) for the exclusion rules; they are decisions,
 // not omissions.
+// Window for the trend, in days. Session-scoped module state (not persisted and
+// not on STATE) — the same treatment the Parade card's Lookahead pills get, and
+// for the same reason: it is a way of LOOKING at the dashboard, not data.
+// Infinity means "All" and is resolved to a concrete count by
+// statusTrendWindowDays() at build time.
+let _statusTrendDays = 14;
+const STATUS_TREND_RANGES = [["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]];
+
+// Resolve "All" to a real day count: today back to the earliest medical record.
+// Medical is the only layer this chart reads, so a window wider than the oldest
+// record can only prepend zero-columns. Floored at 14 so an empty/one-day sheet
+// still draws a line rather than a single point, and guarded against a record
+// dated in the future (a pre-booked MC) producing a negative span.
+function statusTrendWindowDays() {
+  if (_statusTrendDays !== Infinity) return _statusTrendDays;
+  const end = todayISO();
+  let earliest = "";
+  (STATE.medical || []).forEach(m => {
+    const s = displayDateToISO(m.startDate || m.date || "");
+    if (s && (!earliest || s < earliest)) earliest = s;
+  });
+  if (!earliest || earliest >= end) return 14;
+  return Math.max(14, daysBetween(earliest, end) + 1);
+}
+function statusTrendRangeLabel() {
+  return _statusTrendDays === Infinity ? `all time · ${statusTrendWindowDays()} days` : `${_statusTrendDays} days`;
+}
+function statusTrendRangePillsHtml() {
+  return STATUS_TREND_RANGES.map(([v, l]) => {
+    const on = (v === "all") ? _statusTrendDays === Infinity : Number(v) === _statusTrendDays;
+    return `<button type="button" class="role-btn${on ? " active" : ""}" onclick="setStatusTrendDays('${v}')">${l}</button>`;
+  }).join("");
+}
+// Deliberately NOT a render() — this card can sit behind the mobile defer gate,
+// and a full re-render would re-arm that gate and hide the chart the user just
+// asked to re-scale. So we rebuild only this chart and repaint its own header.
+// scopedIds is recomputed rather than stashed: strengthRoster() is the same
+// derivation renderDashboard uses, so the rebuilt chart cannot drift out of
+// sync with the topbar scope.
+function setStatusTrendDays(v) {
+  _statusTrendDays = (v === "all") ? Infinity : (Number(v) || 14);
+  if (STATE.charts.status) { STATE.charts.status.destroy(); STATE.charts.status = null; }
+  buildStatusTrendChart(new Set(strengthRoster().map(r => r.id)));
+  const title = document.getElementById("status-trend-title");
+  if (title) title.textContent = `Status Trend (${statusTrendRangeLabel()})`;
+  const pills = document.getElementById("status-trend-range");
+  if (pills) pills.innerHTML = statusTrendRangePillsHtml();
+}
+
 function buildStatusTrendChart(scopedIds) {
   const canvas = document.getElementById("chart-status");
   if (!canvas) return;
-  // 14 days ending today. This recomputes the effective medical layer once per
-  // day, so it is 14x the single-day work the old doughnut did — which is exactly
-  // why this chart lives inside #dash-charts and inherits the defer gate.
-  const DAYS = 14;
+  // The window ends today and runs back _statusTrendDays (see above). This
+  // recomputes the effective medical layer once PER DAY, so the cost scales
+  // linearly with the selected range — which is exactly why this chart lives
+  // inside #dash-charts and inherits the defer gate, and why "All" is opt-in
+  // rather than the default.
+  const DAYS = statusTrendWindowDays();
   const end = todayISO();
   const byDay = [];
   for (let i = DAYS - 1; i >= 0; i--) {
@@ -1258,15 +1315,23 @@ function buildStatusTrendChart(scopedIds) {
   }
   const { labels, series } = statusTrendSeries(byDay, DAYS, 8);
   const palette = ["#F85149", "#D29922", "#58A6FF", "#3FB950", "#BC8CFF", "#E3B341", "#43C59E", "#8B949E", "#484F58"];
+  // Past ~6 weeks the per-day dots stop being readable and turn the line into a
+  // dotted band, so they are dropped — hover still works (interaction.mode is
+  // "index", which doesn't need a visible point to hit). Beyond a year MM/DD
+  // wraps around, so the label carries the year.
+  const dense = DAYS > 45;
+  const spansYears = DAYS > 365;
   STATE.charts.status = new Chart(canvas, {
     type: "line",
     data: {
-      labels: labels.map(iso => iso.slice(5).replace("-", "/")),   // MM/DD
+      labels: labels.map(iso => spansYears
+        ? `${iso.slice(5).replace("-", "/")}/${iso.slice(2, 4)}`   // MM/DD/YY
+        : iso.slice(5).replace("-", "/")),                          // MM/DD
       datasets: series.map((s, i) => ({
         label: s.label, data: s.data,
         borderColor: palette[i % palette.length],
         backgroundColor: palette[i % palette.length] + "22",
-        tension: 0.3, pointRadius: 2, pointHoverRadius: 5, fill: false
+        tension: 0.3, pointRadius: dense ? 0 : 2, pointHoverRadius: 5, fill: false
       }))
     },
     options: {
@@ -1287,7 +1352,7 @@ function buildStatusTrendChart(scopedIds) {
       },
       scales: {
         y: { beginAtZero: true, grid: { color: "#30363D" }, ticks: { color: "#8B949E", precision: 0 } },
-        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 } } }
+        x: { grid: { display: false }, ticks: { color: "#8B949E", font: { size: 10 }, autoSkip: true, maxTicksLimit: dense ? 10 : 14, maxRotation: 0 } }
       }
     }
   });

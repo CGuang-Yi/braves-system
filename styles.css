@@ -62,7 +62,11 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
    the wizard's group chips, cards, inputs) and the .sb-cell/.ha-grid-cell
    calendar squares deliberately keep their smaller radii — 999px on a wide or
    multi-line box reads as a lozenge, and on a 22×18 grid square as an oval. */
-.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+/* text-align:center matters only when a pill is WIDER than its text — i.e. when
+   it wraps to a second line (a long status like "Excuse Prolonged Standing") or
+   sits in a fixed-width track. Left-aligned wrapped text inside a 999px pill
+   reads as ragged and, in a narrow column, as a vertical stack of words. */
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;text-align:center}
 .badge-green{background:#3FB95022;color:var(--green);border:1px solid #3FB95044}
 .badge-red{background:#F8514922;color:var(--red);border:1px solid #F8514944}
 .badge-orange{background:#D2992222;color:var(--orange);border:1px solid #D2992244}
@@ -70,7 +74,7 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
 .badge-purple{background:#BC8CFF22;color:var(--purple);border:1px solid #BC8CFF44}
 /* Parade-state code pill (parade tab grid). Layout only — each status supplies
    its own translucent bg / border / text colour inline from the --ps-* palette. */
-.ps-badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;border:1px solid;white-space:nowrap}
+.ps-badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.5;border:1px solid;white-space:nowrap;text-align:center}
 /* Parade-grid book-in dropdown (Fix 14). The font-size MUST stay >= 16px or iOS
    auto-zooms the whole page when the select is tapped, so matching .ps-badge's
    11px directly is not an option — we keep 16px and scale by 11/16 = 0.6875.
@@ -84,6 +88,10 @@ body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--tex
    .ps-badge's 24.5px / 0.6875 — i.e. exactly 24.5px once scaled. */
 .ps-select-wrap{display:inline-flex;line-height:0}
 .ps-select{font-size:16px;transform:scale(0.6875);transform-origin:left top;box-sizing:border-box;height:2.22727em;padding:0 0.81818em;border:0.09091em solid;border-radius:999px;font-weight:600;line-height:1.5;white-space:nowrap;font-family:inherit;cursor:pointer;
+  /* Matches .ps-badge — the select and the badge sit in the same grid column and
+     must read as the same pill. Purely paint: text-align changes no box metric,
+     so the scale/height math above is untouched. */
+  text-align:center;
   /* transform does not shrink the LAYOUT box — the select still reserves the
      full 2.22727em, which would make a select row ~3px taller than a badge row.
      Reclaim exactly the 31.25% the scale removed: 0.3125 × 2.22727em = 0.696em,
