@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-02T11:21:29.677Z",
-  "commit": "a8f437e",
+  "generatedAt": "2026-08-02T17:46:07.822Z",
+  "commit": "6f7c0e8",
   "thresholds": {
     "maxFunctionLines": 100,
     "fanInTop": 25
@@ -25,7 +25,7 @@
     "js/render-dashboard.js": "12c06ec00ce9ff1ace75b340b0e8fa41e35d4305e9711555c15dca2ee4cf5407",
     "js/render-records.js": "979f37f18dec121d50265005584607d4cc891ce4988e31a8d57822fefb7eb234",
     "js/render-statusboard.js": "b7345787ca8afa5f1253a7f8a3fc702e34cff963ec4649e14b6445a38bf6f7bd",
-    "js/render.js": "39a659b39fa5315b47e4a0988acfd0afb3c4529f8b6c0c15c979f99d07f490dd",
+    "js/render.js": "3017cd191f6e56ef003c3910556ed20be5e37c31e6db46030ed37c5e62dc4c19",
     "js/sick-history-import.js": "3ff53b4a89cc298357748f6dee01b95ff39f27296c95dce483114ef779a56f70",
     "js/state.js": "1aeb919b31f4a9be4f0523e150d9937a005701cf57aa2f68da1615e5f85041c2",
     "js/sync.js": "07e89583a3f3290d5f8e91f5372f0c18b28c84cd0672ddfc4444036358df1c8d",
@@ -5461,7 +5461,7 @@
     },
     {
       "file": "js/render.js",
-      "lines": 419,
+      "lines": 424,
       "declCount": 26,
       "callsInto": [
         "js/api.js",
@@ -5605,77 +5605,77 @@
           "name": "renderArchiveList",
           "kind": "function",
           "line": 189,
-          "endLine": 253,
-          "length": 65
+          "endLine": 258,
+          "length": 70
         },
         {
           "name": "setArchiveDrawerOpen",
           "kind": "function",
-          "line": 259,
-          "endLine": 261,
+          "line": 264,
+          "endLine": 266,
           "length": 3
         },
         {
           "name": "_arcEscBound",
           "kind": "let",
-          "line": 267,
-          "endLine": 267,
+          "line": 272,
+          "endLine": 272,
           "length": 1
         },
         {
           "name": "bindArchiveDrawerEsc",
           "kind": "function",
-          "line": 268,
-          "endLine": 280,
+          "line": 273,
+          "endLine": 285,
           "length": 13
         },
         {
           "name": "arcRowKey",
           "kind": "function",
-          "line": 284,
-          "endLine": 286,
+          "line": 289,
+          "endLine": 291,
           "length": 3
         },
         {
           "name": "archiveFilteredRows",
           "kind": "function",
-          "line": 292,
-          "endLine": 302,
+          "line": 297,
+          "endLine": 307,
           "length": 11
         },
         {
           "name": "openArchiveDrawer",
           "kind": "function",
-          "line": 304,
-          "endLine": 328,
+          "line": 309,
+          "endLine": 333,
           "length": 25
         },
         {
           "name": "closeArchiveDrawer",
           "kind": "function",
-          "line": 330,
-          "endLine": 337,
+          "line": 335,
+          "endLine": 342,
           "length": 8
         },
         {
           "name": "renderArchiveCompare",
           "kind": "function",
-          "line": 342,
-          "endLine": 370,
+          "line": 347,
+          "endLine": 375,
           "length": 29
         },
         {
           "name": "deleteArchiveEntry",
           "kind": "function",
-          "line": 374,
-          "endLine": 387,
+          "line": 379,
+          "endLine": 392,
           "length": 14
         },
         {
           "name": "exportArchiveCSV",
           "kind": "function",
-          "line": 390,
-          "endLine": 402,
+          "line": 395,
+          "endLine": 407,
           "length": 13
         }
       ]
@@ -9297,7 +9297,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 377
+          "line": 382
         }
       ],
       "stringRefs": [],
@@ -19873,7 +19873,7 @@
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 353
+          "line": 358
         }
       ],
       "stringRefs": [],
@@ -20070,7 +20070,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 401
+          "line": 406
         }
       ],
       "stringRefs": [
@@ -21736,35 +21736,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 230
+          "line": 235
         },
         {
           "file": "js/render.js",
-          "line": 230
+          "line": 235
         },
         {
           "file": "js/render.js",
-          "line": 231
+          "line": 236
         },
         {
           "file": "js/render.js",
-          "line": 231
+          "line": 236
         },
         {
           "file": "js/render.js",
-          "line": 232
+          "line": 237
         },
         {
           "file": "js/render.js",
-          "line": 232
+          "line": 237
         },
         {
           "file": "js/render.js",
-          "line": 233
+          "line": 238
         },
         {
           "file": "js/render.js",
-          "line": 317
+          "line": 322
         },
         {
           "file": "js/sync.js",
@@ -22438,35 +22438,35 @@
         },
         {
           "file": "js/render.js",
-          "line": 234
+          "line": 239
         },
         {
           "file": "js/render.js",
-          "line": 320
+          "line": 325
         },
         {
           "file": "js/render.js",
-          "line": 323
+          "line": 328
         },
         {
           "file": "js/render.js",
-          "line": 323
+          "line": 328
         },
         {
           "file": "js/render.js",
-          "line": 323
+          "line": 328
         },
         {
           "file": "js/render.js",
-          "line": 323
+          "line": 328
         },
         {
           "file": "js/render.js",
-          "line": 352
+          "line": 357
         },
         {
           "file": "js/render.js",
-          "line": 360
+          "line": 365
         }
       ],
       "stringRefs": [],
@@ -25068,7 +25068,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 384
+          "line": 389
         },
         {
           "file": "js/sync.js",
@@ -28746,11 +28746,11 @@
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 362
+          "line": 367
         },
         {
           "file": "js/render.js",
-          "line": 364
+          "line": 369
         }
       ],
       "identRefFiles": [
@@ -28799,7 +28799,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 382
+          "line": 387
         }
       ],
       "stringRefs": [],
@@ -28841,7 +28841,7 @@
       "name": "setArchiveDrawerOpen",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 259,
+      "definedAtLine": 264,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -28849,15 +28849,15 @@
         },
         {
           "file": "js/render.js",
-          "line": 243
+          "line": 248
         },
         {
           "file": "js/render.js",
-          "line": 327
+          "line": 332
         },
         {
           "file": "js/render.js",
-          "line": 336
+          "line": 341
         }
       ],
       "stringRefs": [],
@@ -28870,7 +28870,7 @@
       "name": "_arcEscBound",
       "kind": "let",
       "definedIn": "js/render.js",
-      "definedAtLine": 267,
+      "definedAtLine": 272,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -28882,11 +28882,11 @@
       "name": "bindArchiveDrawerEsc",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 268,
+      "definedAtLine": 273,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 309
+          "line": 314
         }
       ],
       "stringRefs": [],
@@ -28899,15 +28899,15 @@
       "name": "arcRowKey",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 284,
+      "definedAtLine": 289,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 249
+          "line": 254
         },
         {
           "file": "js/render.js",
-          "line": 310
+          "line": 315
         }
       ],
       "stringRefs": [],
@@ -28920,11 +28920,11 @@
       "name": "archiveFilteredRows",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 292,
+      "definedAtLine": 297,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 305
+          "line": 310
         }
       ],
       "stringRefs": [],
@@ -28937,17 +28937,17 @@
       "name": "openArchiveDrawer",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 304,
+      "definedAtLine": 309,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 250
+          "line": 255
         }
       ],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 234
+          "line": 239
         }
       ],
       "identRefFiles": [
@@ -28959,25 +28959,25 @@
       "name": "closeArchiveDrawer",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 330,
+      "definedAtLine": 335,
       "directRefs": [
         {
           "file": "js/render.js",
-          "line": 278
+          "line": 283
         }
       ],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 237
+          "line": 242
         },
         {
           "file": "js/render.js",
-          "line": 317
+          "line": 322
         },
         {
           "file": "js/render.js",
-          "line": 323
+          "line": 328
         }
       ],
       "identRefFiles": [
@@ -28989,7 +28989,7 @@
       "name": "renderArchiveCompare",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 342,
+      "definedAtLine": 347,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -29006,12 +29006,12 @@
       "name": "deleteArchiveEntry",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 374,
+      "definedAtLine": 379,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render.js",
-          "line": 323
+          "line": 328
         }
       ],
       "identRefFiles": [
@@ -29023,7 +29023,7 @@
       "name": "exportArchiveCSV",
       "kind": "function",
       "definedIn": "js/render.js",
-      "definedAtLine": 390,
+      "definedAtLine": 395,
       "directRefs": [],
       "stringRefs": [
         {
@@ -30388,6 +30388,7 @@
         "js/forms-reports.js",
         "js/helpers.js",
         "js/main.js",
+        "js/render.js",
         "js/state.js",
         "apps-script-Code.gs"
       ],
@@ -31489,7 +31490,7 @@
         },
         {
           "file": "js/render.js",
-          "line": 323
+          "line": 328
         },
         {
           "file": "js/sync.js",
@@ -35753,6 +35754,15 @@
       "test/wizard-paste.test.js",
       "test/wizard-save-e2e.test.js"
     ],
+    "STATE.platoons": [
+      "test/archive-list.test.js",
+      "test/gas-medical-normalizer.test.js",
+      "test/launch-bootstrap.test.js",
+      "test/list-exports.test.js",
+      "test/parade-port-parity.test.js",
+      "test/person-card-status.test.js",
+      "test/sync.test.js"
+    ],
     "API.get": [
       "test/archive-list.test.js",
       "test/conduct-class-seq.test.js",
@@ -35775,6 +35785,9 @@
       "test/visit-suffix.test.js",
       "test/wizard-paste.test.js",
       "test/wizard-save-e2e.test.js"
+    ],
+    "renderArchiveList": [
+      "test/archive-list.test.js"
     ],
     "STATE": [
       "test/archive-list.test.js",
@@ -35827,9 +35840,6 @@
       "test/archive-list.test.js",
       "test/leave-bulk.test.js",
       "test/leave-timeline.test.js"
-    ],
-    "renderArchiveList": [
-      "test/archive-list.test.js"
     ],
     "openArchiveDrawer": [
       "test/archive-list.test.js"
@@ -36724,14 +36734,6 @@
       "test/parade-rn.test.js",
       "test/person-card-status.test.js",
       "test/rs-omit-on-status.test.js"
-    ],
-    "STATE.platoons": [
-      "test/gas-medical-normalizer.test.js",
-      "test/launch-bootstrap.test.js",
-      "test/list-exports.test.js",
-      "test/parade-port-parity.test.js",
-      "test/person-card-status.test.js",
-      "test/sync.test.js"
     ],
     "BP_SECTION_LABELS.mr": [
       "test/gas-medical-normalizer.test.js",
@@ -40649,7 +40651,7 @@
       },
       {
         "src": "js/render.js",
-        "version": 176,
+        "version": 177,
         "order": 10
       },
       {
@@ -40733,14 +40735,7 @@
         "order": 26
       }
     ],
-    "staleVersions": [
-      {
-        "src": "js/forms.js",
-        "version": 179,
-        "srcTouched": "2026-08-02T14:42:08+08:00",
-        "versionBumpedAt": "2026-08-02T14:41:38+08:00"
-      }
-    ],
+    "staleVersions": [],
     "cssClasses": [
       {
         "cls": "mono",
