@@ -1885,26 +1885,45 @@ function computeHA(d4) {
 
 // Minimum remaining training days to attain Single HA (the base §12
 // qualification), plus the ISO days that plan lands on. "Minimum" assumes the
-// recruit trains every day from tomorrow with no further breaks — Single (10
-// consecutive days) is always the fastest of the parallel paths, so days are
-// measured against it (10 − current Single periods) regardless of the Expanded
-// track. Someone already qualified (or lapsed — they DID attain it once; the
-// lapse is a separate currency concern) returns attained:true, days 0. The
-// person card renders `days` as a figure and `projectedDates` as tentative
-// grid cells (HA_GRID_CELL.projected). Pure — takes a computeHA() result.
+// recruit trains every day from tomorrow with no further breaks. Someone already
+// qualified (or lapsed — they DID attain it once; the lapse is a separate
+// currency concern) returns attained:true, days 0. The person card renders
+// `days` as a figure and `projectedDates` as tentative grid cells
+// (HA_GRID_CELL.projected). Pure — takes a computeHA() result.
+//
+// BOTH day-mode tracks are simulated and the sooner one wins. "Single HA
+// Complete" is attained by Single OR Expanded (computeHA's `singleComplete`),
+// and the Expanded track can genuinely be closer: it tolerates 5 break days to
+// Single's 2, so a broken-up run kills every Single window while Expanded's
+// keeps banking days. This used to read `10 − ha.single.periods` on the premise
+// that Single is always the fastest path — false, and it over-stated the figure
+// by up to 5 days in randomized cross-checks (e.g. Single 3/10 with the best
+// surviving window vs Expanded 12/14: reported 7 days, actual 2). It never
+// under-stated, so the old number was always safe to plan against — just wrong.
+//
+// Simulated through haSimulateCompletion (the same machine haProjectDouble
+// uses) rather than by arithmetic on `.periods`: the state machine owns the
+// break limits and the start-date optimiser, and a formula beside it drifts —
+// which is exactly how this bug arose. `startIso` must be a real lower bound on
+// the scan, so an at-or-before-today date is passed even when nothing is logged
+// yet (runHAStateMachine filters candidate starts to `>= startIso`, so passing a
+// future day would exclude every synthetic day but the last and never complete).
+// 14 days is a sufficient horizon: a from-scratch Single is 10.
 function haProjection(ha) {
   if (!ha) return { attained: false, days: 0, projectedDates: [], double: null };
-  const single = (ha.singleStatus === "Single HA Complete" || ha.singleStatus === "Lapsed")
-    ? { attained: true, days: 0, projectedDates: [] }
-    : (() => {
-        const p = ha.single ? ha.single.periods : 0;
-        const days = Math.max(0, 10 - p);
-        const start = todayISO();
-        const projectedDates = [];
-        for (let i = 1; i <= days; i++) projectedDates.push(_haAddDays(start, i));
-        return { attained: false, days, projectedDates };
-      })();
-  return { ...single, double: haProjectDouble(ha) };
+  if (ha.singleStatus === "Single HA Complete" || ha.singleStatus === "Lapsed") {
+    return { attained: true, days: 0, projectedDates: [], double: haProjectDouble(ha) };
+  }
+  const dayMap = ha.dayMap || {};
+  const startIso = (ha.activeDays && ha.activeDays[0]) || todayISO();
+  const sims = [
+    haSimulateCompletion(dayMap, startIso, { target: 10, maxBreak: 2, mode: "day" }, 1, 14),
+    haSimulateCompletion(dayMap, startIso, { target: 14, maxBreak: 5, maxConsec: 3, mode: "day" }, 1, 14)
+  ].filter(Boolean);
+  const best = sims.sort((a, b) => a.days - b.days)[0];
+  return best
+    ? { attained: false, days: best.days, projectedDates: best.projectedDates, double: haProjectDouble(ha) }
+    : { attained: false, days: 0, projectedDates: [], double: haProjectDouble(ha) };
 }
 
 // Forward-simulate one HA track under "trained every day from tomorrow" to find the

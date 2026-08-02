@@ -563,6 +563,25 @@ module.exports = async function run() {
     eq(proj.days, 0);
   });
 
+  await test("the EXPANDED track is projected when it is the closer path to Single HA", () => {
+    // Two active days, then a break, repeated — the shape that separates the two
+    // parallel paths. Single (maxBreak 2) has every window killed by the third
+    // gap and its best survivor holds only 6/10; Expanded (maxBreak 5, maxConsec
+    // 3) rides all six gaps and sits at 12/14. Attainment is "Single OR Expanded"
+    // (computeHA's singleComplete), so the honest answer is Expanded's 2 days.
+    // The old `10 − single.periods` arithmetic answered 4.
+    H.todayISO = () => iso(2026, 6, 20);
+    const active = [1, 2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 17, 19, 20].map(d => iso(2026, 6, d));
+    seed(active.map(k => att(k, 1)), [{ id: "0001", rank: "REC" }]);
+    const ha = H.computeHA("0001");
+    eq(ha.singleStatus, "In Progress");
+    eq(ha.single.periods, 6);                                    // best surviving Single window
+    eq(ha.expanded.periods, 12);                                 // Expanded is further along
+    const proj = H.haProjection(ha);
+    eq(proj.days, 2, "Expanded needs 2 more days; Single would need 4");
+    eq(proj.projectedDates.join(","), [iso(2026, 6, 21), iso(2026, 6, 22)].join(","));
+  });
+
   // ── haProjection.double — earliest projected Double HA completion ─────────────
   // Seeded from the live state machine (post-Single-qual periods + 7-active-day
   // window), assuming the standard 2-period Double session daily from tomorrow.
