@@ -3118,9 +3118,11 @@ function openReportModal(type) {
   const isRSIP = type === "RSIP";
 
   // RS Format AND RSI Personnel offer an "omit personnel already on status"
-  // toggle: people already on a prior active MC/LD/Warded/Excuse who report sick
-  // again are suppressed, so the message lists only the day's NEW cases (RS Format
-  // — 2026-07-20; extended to RSI Personnel — PR feat/rsip-omit-on-status).
+  // toggle: anyone carrying an unexpired MC/LD/Warded/Excuse is suppressed, so the
+  // message lists only the cases still open. That covers a status carried in from
+  // an earlier visit AND one the MO issued at this morning's report sick — see
+  // bpHasCoveringStatus. (RS Format — 2026-07-20; extended to RSI Personnel —
+  // PR feat/rsip-omit-on-status; widened to same-visit statuses 2026-08-02.)
   const showOmitToggle = type === "RS" || type === "RSIP";
 
   openModal("Generate " + titleLabel, `
@@ -3150,7 +3152,7 @@ function openReportModal(type) {
         </div>` : ""}
         ${showOmitToggle ? `<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
           <input type="checkbox" id="rep-omit-status" onchange="regenerateReport('${type}')" style="width:15px;height:15px;cursor:pointer">
-          <span>Omit personnel already on status <span style="color:var(--muted)">(hide those on a prior active MC/LD/status — show only new cases)</span></span>
+          <span>Omit personnel already on status <span style="color:var(--muted)">(hide anyone on an unexpired MC/LD/status, including one issued at today's visit — leaves only the cases still awaiting an outcome)</span></span>
         </label>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
         ${isMR ? `<div id="rep-mr-dates" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px"></div>` : ""}
