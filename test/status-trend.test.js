@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
+const { expandFiles } = require("./sources");
 
 function loadCtx() {
   const target = {
@@ -120,7 +121,7 @@ module.exports = async function run() {
     };
     const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     vm.createContext(ctx);
-    for (const f of ["helpers.js", "render.js"]) {
+    for (const f of expandFiles(["helpers.js", "render.js"])) {
       vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", f), "utf8"), ctx, { filename: f });
     }
     target.STATE = { medical, roster: [], charts: {} };

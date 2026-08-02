@@ -15,6 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, ok, eq } = require("./_tap");
+const { sourceText } = require("./sources");
 
 const TODAY = "2026-07-25";
 const BUNDLE = ["js/state.js", "js/calc.js", "js/helpers.js", "js/braves-parade.js"];
@@ -104,7 +105,7 @@ module.exports = async function run() {
 
   suite("dashboard strength: wiring");
 
-  const render = fs.readFileSync(path.join(__dirname, "..", "js", "render.js"), "utf8");
+  const render = sourceText("render");
   const helpers = fs.readFileSync(path.join(__dirname, "..", "js", "helpers.js"), "utf8");
 
   await test("render.js counts strength over strengthRoster(), not filteredRoster()", () => {

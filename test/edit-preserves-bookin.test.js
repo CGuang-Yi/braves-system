@@ -16,9 +16,10 @@ const vm = require("vm");
 const { suite, test, eq } = require("./_tap");
 const { ROOT } = require("./harness");
 const { makeBrowser } = require("./mocks/browser");
+const { expandFiles } = require("./sources");
 
-const FILES = ["js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js",
-  "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"];
+const FILES = expandFiles(["js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js",
+  "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"]);
 
 function load(fx) {
   const browser = makeBrowser();

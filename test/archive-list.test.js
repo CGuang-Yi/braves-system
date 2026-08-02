@@ -8,6 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 function loadCtx(rows, tab) {
   const target = {
@@ -16,7 +17,7 @@ function loadCtx(rows, tab) {
   };
   const ctx = vm.createContext(new Proxy(target, { has: () => true, get: (t, k) => t[k] }));
   vm.runInContext(
-    fs.readFileSync(path.join(__dirname, "..", "js", "render.js"), "utf8"),
+    sourceText("render"),
     ctx, { filename: "render.js" }
   );
   // Collaborators from other bundles.

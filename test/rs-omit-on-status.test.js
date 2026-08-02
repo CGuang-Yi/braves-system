@@ -17,6 +17,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, ok, eq } = require("./_tap");
+const { sourceText } = require("./sources");
 
 const TODAY = "2026-06-29";
 
@@ -251,7 +252,7 @@ module.exports = async function run() {
   // dispatch to the actual report type (not a hardcoded "RS"), and the RSIP
   // branch must forward the checkbox state into generateRSIPersonnel.
   suite("forms wiring: omit toggle reaches the RSI Personnel report");
-  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const forms = sourceText("forms");
 
   await test("the omit checkbox is gated on RS OR RSIP, not RS alone", () => {
     ok(/showOmitToggle\s*=\s*type === "RS" \|\| type === "RSIP"/.test(forms),

@@ -40,8 +40,10 @@ const ROOT = __dirname;
 // this list changes roughly twice a year.
 const FRONTEND_FILES = [
   "js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js", "js/helpers.js",
-  "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js",
-  "js/actions.js", "js/parade-tab.js", "js/sync.js", "js/main.js"
+  "js/sick-history-import.js",
+  "js/render.js", "js/render-dashboard.js", "js/render-records.js", "js/render-conducts.js", "js/render-statusboard.js",
+  "js/forms.js", "js/forms-import.js", "js/forms-records.js", "js/forms-reports.js", "js/forms-conducts.js", "js/forms-wizard.js", "js/forms-admin.js",
+  "js/braves-parade.js", "js/actions.js", "js/parade-tab.js", "js/sync.js", "js/main.js"
 ];
 
 // Top-level declarations of the given files, as a readonly ESLint globals map.

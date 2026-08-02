@@ -14,10 +14,11 @@
 const fs = require("fs");
 const path = require("path");
 const { suite, test, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 module.exports = async function run() {
   suite("forms wiring: Log Conduct wizard pushes the merged row (PR #24 follow-up)");
-  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const forms = sourceText("forms");
 
   await test("saveLogConductWizard's Attendance upsert does NOT push the bare attendanceEntry", () => {
     ok(!/autoSync\(\s*"Attendance"\s*,\s*\{\s*type:\s*"upsert"\s*,\s*row:\s*attendanceEntry\s*\}/.test(forms),

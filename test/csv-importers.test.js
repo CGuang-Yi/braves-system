@@ -17,6 +17,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
+const { expandFiles } = require("./sources");
 
 function loadCtx(roster, existingIppt, existingSoc) {
   const target = {
@@ -27,7 +28,9 @@ function loadCtx(roster, existingIppt, existingSoc) {
   const load = f => vm.runInContext(
     fs.readFileSync(path.join(__dirname, "..", "js", f), "utf8"), ctx, { filename: f });
   load("helpers.js");   // real col / colNum / checkCols / nextId
-  load("forms.js");
+  // forms.js is split across several files (test/sources.js); load every part in
+  // order, exactly as index.html's tags do.
+  expandFiles(["forms.js"]).forEach(load);
   // padD4 lives in state.js, which we can't load here (localStorage side effects
   // at import time). Mirrored verbatim from js/state.js instead.
   target.padD4 = d4 => {

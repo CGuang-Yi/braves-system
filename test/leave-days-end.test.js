@@ -13,6 +13,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq } = require("./_tap");
+const { sourceText } = require("./sources");
 
 // Faithful copy of calc.js endDateFromStartAndDays (+ its addDaysISO core).
 function endDateFromStartAndDays(startIso, days) {
@@ -48,7 +49,7 @@ function makeDoc(start, days, end) {
 }
 
 function load(doc) {
-  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const forms = sourceText("forms");
   const src = [
     sliceFn(forms, "recalcLeaveDays"),
     sliceFn(forms, "recalcLeaveEndFromDays"),
@@ -113,7 +114,7 @@ module.exports = async function run() {
   // form's HTML actually wires the fields to them (openLeaveForm is too DOM-heavy
   // to render in the vm harness — the forms-wiring.test.js pattern).
   suite("Leave form: field wiring");
-  const forms = fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8");
+  const forms = sourceText("forms");
   const leaveForm = forms.slice(forms.indexOf("function openLeaveForm"), forms.indexOf("function onLeaveScopeChange"));
 
   // Each field is emitted by a single-line formField("f-…", …) call, so anchor on

@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq, ok } = require("./_tap");
+const { sourceText } = require("./sources");
 
 function extractFunction(src, name) {
   const start = src.indexOf("function " + name);
@@ -24,7 +25,7 @@ function load() {
     displayPersonLabel: d4 => d4
   };
   vm.createContext(sandbox);
-  const render = fs.readFileSync(path.join(__dirname, "..", "js", "render.js"), "utf8");
+  const render = sourceText("render");
   const src = ["toggleLeaveTimeline", "renderLeaveTimeline"]
     .map(name => extractFunction(render, name)).join("\n")
     + "\n;this.toggleLeaveTimeline = toggleLeaveTimeline; this.renderLeaveTimeline = renderLeaveTimeline;";

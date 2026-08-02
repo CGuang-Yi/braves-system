@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, eq } = require("./_tap");
+const { sourceText } = require("./sources");
 
 function loadCtx() {
   const target = {
@@ -17,7 +18,7 @@ function loadCtx() {
   };
   const ctx = new Proxy(target, { has: () => true, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "render.js"), "utf8"), ctx, { filename: "render.js" });
+  vm.runInContext(sourceText("render"), ctx, { filename: "render.js" });
   // Real-shaped stubs. personPlatoon/personSection read plain row fields; bpStrength
   // counts in-camp via a per-person `inCamp` flag so the test controls cur exactly.
   target.personPlatoon = r => r.platoon || "";

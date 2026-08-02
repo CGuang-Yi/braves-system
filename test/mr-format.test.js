@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, ok, eq } = require("./_tap");
+const { sourceText } = require("./sources");
 
 function loadForms(STATE, mrDates) {
   const target = {
@@ -18,7 +19,7 @@ function loadForms(STATE, mrDates) {
   target.displayDateToISO = s => { const m = String(s == null ? "" : s).match(/^\d{4}-\d{2}-\d{2}/); return m ? m[0] : ""; };
   target.toDDMMYY = iso => { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + m[2] + m[1].slice(2) : ""; };
   target.personPlatoon = r => (r ? r.plt : "");
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "js", "forms.js"), "utf8"), ctx, { filename: "forms.js" });
+  vm.runInContext(sourceText("forms"), ctx, { filename: "forms.js" });
   // The REAL braves-parade.js, in index.html's order (it loads after forms.js).
   // mrRankName calls bpDisplayRank from there for the blank-rank → REC default;
   // stubbing that would let the MR message drift away from the parade state and
