@@ -207,8 +207,11 @@ function renderArchiveList() {
   const scopeLabel = r => {
     const s = r.scope || "company";   // pre-scope rows default to company
     if (s === "company") return "Company";
-    const code = String(s).replace(/^platoon:/, "");
-    return typeof platoonDisplayName === "function" ? platoonDisplayName(code) : code;
+    // Raw code ("PLT1"), not the platoon's display name. `platoonDisplayName`
+    // was never written — the guard that used to stand here always fell through,
+    // so this is the behaviour that has always shipped, now stated plainly rather
+    // than hidden behind a typeof check for a function that does not exist.
+    return String(s).replace(/^platoon:/, "");
   };
   const head = isParade
     ? `<tr><th>Date</th><th>Slot</th><th>FP/LP</th><th style="text-align:left">Type</th></tr>`

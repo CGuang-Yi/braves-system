@@ -5,6 +5,12 @@
   "description": "40 SAR Braves Company data system — tests for the multi-device sync layer.",
   "scripts": {
     "test": "node test/run.js",
-    "map": "node tools/map/generate.js"
+    "map": "node tools/map/generate.js",
+    "lint": "eslint .",
+    "lint:errors": "eslint . --quiet"
+  },
+  "devDependencies": {
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0"
   }
 }

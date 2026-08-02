@@ -29,7 +29,7 @@ _Generated from `73d8e78` by `npm run map`. 13 source files, 1021 declarations._
 | `function` / `var` top-level definitions | **exact** — scanner, cross-checked against a `vm` load |
 | `const` / `let` / `class` definitions and object-literal methods | **high** — scanner only. `vm.runInContext` exposes `function` and `var` as context properties but never `const`/`let`/`class`, which are lexical bindings, so these cannot be verified by that route. `js/api.js` has zero top-level `function` declarations — its whole surface is `const API = {…}` — so any vm-only approach would report it as empty. |
 | direct call sites, fan-in | **high** — comment/string-aware, and `${…}` interpolations count as real code. Misses `window[name]`-style dynamic dispatch. |
-| string-literal references (`onclick=` inside HTML strings) | **high** — this is the bucket no linter, test, or editor "find references" catches |
+| string-literal references (`onclick=` inside HTML strings) | **high** — this is the bucket the linter, the tests, and editor "find references" all miss. ESLint's `no-undef` covers plain-code call sites only; these are the remainder |
 | reference counts for **object members** (`API.pullAll`) | **approximate** — matched on the bare member name, so any `pullAll(` anywhere counts. Inflates member counts, but only ever keeps things *out* of the orphan list; it cannot invent a false orphan. |
 | orphan candidates | **leads, not verdicts** — dynamic dispatch and external entry points cause false positives. See `tools/map/entry-points.js` for what is exempt and why. |
 | dead CSS | **leads only** — cannot follow classes built by concatenation (`"badge badge-" + kind`) |
@@ -44,7 +44,7 @@ incomplete. Treat that as a defect in the map, not a finding about the codebase.
 Read `docs/ARCHITECTURE.md` for how the app works. What follows is only the part that changes
 how you *review* it rather than how you *use* it.
 
-**There is no module system.** Plain `<script>` tags, no bundler, no build step, no imports —
+**There is no module system.** Plain `<script>` tags, no bundler, no build step, no imports (ESLint runs in script mode over the derived global surface, which covers plain-code references but not HTML-string ones) —
 every function is a bare global sharing one scope. Three consequences for review:
 
 1. The tag order in `index.html` **is** the dependency graph. It is the only thing enforcing that
