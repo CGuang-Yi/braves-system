@@ -3255,15 +3255,17 @@ function renderHA(el) {
         <tbody>
           ${haRows.map(({ recruit: r, ha }) => {
             const c = haStatusColor(ha.overallStatus);
-            const dbl = !ha.doubleEligible
-              ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
-              : cell(ha.doubleTrack?.periods || 0, 13, "#388BFD");
             const last = ha.lastActivity ? isoToDisplayDate(ha.lastActivity) : '<span style="color:var(--muted)">—</span>';
-            // A lapsed recruit's Single/Expanded bars show live re-qualification
-            // progress (the fresh open window) instead of the historical completion
-            // still sitting in .periods; everyone else shows .periods as normal.
+            // A lapsed recruit's bars show live re-qualification progress (the
+            // fresh open window) instead of the historical completion still
+            // sitting in .periods; everyone else shows .periods as normal. This
+            // applies to Double as well — it is no longer gated off for lapsed
+            // people, so it has to agree with the Single/Expanded columns beside it.
             const lapsed = ha.overallStatus === "Lapsed";
             const barVal = t => lapsed ? (t?.currentWindowPeriods || 0) : (t?.periods || 0);
+            const dbl = !ha.doubleEligible
+              ? `<span style="font-size:10px;color:var(--muted)">🔒 ${ha.singleStatus === "Single HA Complete" || ha.overallStatus.includes("Double") ? "ineligible" : "locked"}</span>`
+              : cell(barVal(ha.doubleTrack), 13, "#388BFD");
             const curr = ha.currency && ha.currency.lapsed
               ? `<span style="color:var(--red)">lapsed ${ha.currency.lapseDateIso ? isoToDisplayDate(ha.currency.lapseDateIso) : ""}</span>`
               : (ha.currency && ha.currency.deadlineIso ? `<span style="color:var(--muted)">by ${isoToDisplayDate(ha.currency.deadlineIso)}</span>` : "—");
