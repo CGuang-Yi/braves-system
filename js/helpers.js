@@ -712,8 +712,11 @@ function medTagBadge(tag) {
   // Fix 17: full-pill radius, matching .badge / .ps-badge. This is an inline
   // clone of .badge (it needs a per-status palette), so it has to track it —
   // including text-align:center, which is what keeps a wrapped long status
-  // ("Excuse Prolonged Standing") centred rather than ragged-left.
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;text-align:center;background:${p.bg};color:${p.fg};border:1px solid ${p.bd}">${tag}</span>`;
+  // ("Excuse Prolonged Standing") centred rather than ragged-left, and
+  // word-break:normal, which stops an ancestor's inherited word-break:break-word
+  // (styles.css `.modal table`) from splitting the label mid-word into a vertical
+  // column of letters. See the .badge rule for the full rationale.
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;text-align:center;word-break:normal;overflow-wrap:normal;background:${p.bg};color:${p.fg};border:1px solid ${p.bd}">${tag}</span>`;
 }
 
 // Small grey pill for a medical record's VISIT type (RSI/RSO/MR/…), shown before

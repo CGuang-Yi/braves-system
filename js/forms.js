@@ -315,13 +315,24 @@ function openPerson(d4) {
     // "PXP" not "PX" so the legacy PX→Status read migration never clobbers it.)
     const missedCount = cd.filter(d => d.type !== "PXP").length;
     html += `<h4 style="font-size:12px;color:var(--muted);margin:16px 0 8px">Conduct Participation History — <span style="color:var(--red)">${missedCount} missed</span> <span style="color:var(--dim);font-weight:400">(${cdCount("Status")} Status · ${cdCount("RSI")} RSI · ${cdCount("Fallout")} Fallout · ${cdCount("ReportSick")} ReportSick${cdCount("PXP") ? ` · ${cdCount("PXP")} PX` : ""})</span></h4>`;
-    html += `<div style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Date</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Conduct</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Type</th><th style="position:sticky;top:0;background:var(--surface2);padding:6px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left">Reason</th></tr></thead>
-        <tbody>
-          ${cd.map(d => `<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${d.date}${d.time ? ' <span class="mono" style="color:var(--dim)">' + fmtHrs(d.time) + '</span>' : ''}</td><td style="padding:6px 8px;font-size:11px">${escapeHTML(conductName(d.conductId))}</td><td style="padding:6px 8px;text-align:center">${badge(d.type, cdTypeColor(d.type))}</td><td style="padding:6px 8px;font-size:11px;color:var(--text)">${escapeHTML(d.reason || '')}</td></tr>`).join("")}
-        </tbody>
-      </table>
+    // A grid, not a <table>. Four columns of wildly different natural widths
+    // inside a 520px modal left the auto table layout no good option, and on a
+    // phone it compressed TYPE to ~49px — which, with the modal's inherited
+    // word-break:break-word, shattered "REPORTSICK" into "REPO / RTSI / CK".
+    // The grid gives each column a floor, and below ~440px of CONTAINER width
+    // (.pc-cph in styles.css) the row restacks into a block: when + type on the
+    // first line, conduct, then reason. Nothing is ever squeezed narrower than
+    // its content. The <th> row survives as .pc-cph__head — sticky on the wide
+    // layout, hidden once stacked, where per-row labels would be noise.
+    const cphRow = (cls, when, what, type, why) =>
+      `<div class="pc-cph__row${cls}"><div class="pc-cph__when">${when}</div><div class="pc-cph__what">${what}</div><div class="pc-cph__type">${type}</div><div class="pc-cph__why">${why}</div></div>`;
+    html += `<div class="pc-cph">
+      ${cphRow(" pc-cph__head", "Date", "Conduct", "Type", "Reason")}
+      ${cd.map(d => cphRow("",
+        `${d.date}${d.time ? ` <span class="mono pc-cph__time">${fmtHrs(d.time)}</span>` : ""}`,
+        escapeHTML(conductName(d.conductId)),
+        badge(d.type, cdTypeColor(d.type)),
+        escapeHTML(d.reason || ""))).join("")}
     </div>`;
   }
 
