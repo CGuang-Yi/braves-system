@@ -2605,10 +2605,21 @@ function bpClassifyPerson(r, dateIso, opts) {
     // status:"" with an active date range, which would otherwise emit a blank
     // "RN - " STATUS line (and double-list someone already in REPORTING SICK).
     // Every status here gets the same "{days}D {status}" duration prefix.
+    //
+    // NO bookedInFor GUARD HERE, unlike every branch around it. `bookInDate`
+    // means "back in camp", which is only meaningful for a status that put the
+    // person OUT of camp — MC, Warded, AL/OIL, an out-of-camp appointment. What
+    // reaches this branch is by construction the in-camp restricted set (not MC,
+    // not Warded, not Pending/NIL): LD, RIB, Excuse-*. The recruit was never
+    // away, so booking them in cannot end their light duty.
+    //
+    // Honouring the guard here erased live restrictions: marking someone Present
+    // on return from a 2-day MC stamped bookInDate on EVERY active medical row
+    // (paradeEndActiveContributors), so an 84-day LD running to September went
+    // silent from that day on and the recruit read Present with no status.
     const stUpcoming = !medStatusActive(m, dateIso) && bpUpcomingStatus(m);
     if (m.status && (medStatusActive(m, dateIso) || stUpcoming) && m.status !== "MC" && m.status !== "Warded"
-        && m.status !== "Pending" && m.status !== "NIL"
-        && !bookedInFor(m, stUpcoming, displayDateToISO(m.startDate || m.date || ""))) {
+        && m.status !== "Pending" && m.status !== "NIL") {
       const days = bpInclusiveDays(m);
       const label = days ? `${days}D ${m.status}` : m.status;
       pushS("status", `${rn} - ${label} ${bpRange(m, true)}`.trim(), { supKey: supPool(stUpcoming) + String(m.status).trim(), supEnd: displayDateToISO(m.endDate || "") }, stUpcoming);
