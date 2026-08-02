@@ -4,6 +4,7 @@
 *.md.bak
 *.csv
 *.md
+*.obsidian
 
 # Spreadsheet data exports (sanitised sample sick-history sheets, etc.) — like the
 # CSVs above, these are local test fixtures, kept out of the repo.
