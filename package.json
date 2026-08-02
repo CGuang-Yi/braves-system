@@ -7,10 +7,13 @@
     "test": "node test/run.js",
     "map": "node tools/map/generate.js",
     "lint": "eslint .",
-    "lint:errors": "eslint . --quiet"
+    "lint:errors": "eslint . --quiet",
+    "typecheck": "tsc"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "eslint": "^10.8.0",
-    "globals": "^17.8.0"
+    "globals": "^17.8.0",
+    "typescript": "^7.0.2"
   }
 }
