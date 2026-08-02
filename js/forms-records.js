@@ -108,9 +108,18 @@ function confirmSickHistoryImport() {
   const { medical, leave } = p.rows;
 
   // Dedup against what's already stored so a re-import doesn't double up. Key by
-  // (d4 | startDate | type | status) — the natural identity of an episode.
-  const medKey = m => `${m.d4}|${m.startDate}|${m.type}|${m.status}`;
-  const lvKey = l => `${l.d4}|${l.startDate}|${l.type}`;
+  // (d4 | startDate | endDate | type | status) — the natural identity of an episode.
+  //
+  // The END DATE is load-bearing and was missing here until it caused a silent
+  // data loss: a 2-day MC and an 8-day MC starting the same morning shared a key,
+  // so a re-import that CORRECTED a duration was discarded — and counted into the
+  // "N duplicate(s) skipped" line below, which is why it read as working. When the
+  // row that survived had already elapsed, the person then showed no status at all
+  // in the parade state. Two rows that overlap are fine downstream: the parade
+  // classifier's bpSupersedeSameType collapses same-label entries to the one
+  // ending last, so the corrected episode wins where it matters.
+  const medKey = m => `${m.d4}|${m.startDate}|${m.endDate}|${m.type}|${m.status}`;
+  const lvKey = l => `${l.d4}|${l.startDate}|${l.endDate}|${l.type}`;
   const existingMed = new Set(STATE.medical.map(medKey));
   const existingLv = new Set((STATE.leave || []).map(lvKey));
 

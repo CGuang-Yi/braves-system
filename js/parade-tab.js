@@ -576,24 +576,38 @@ function paradeClearPerson(d4) {
   refreshParade();
 }
 
-// Book every ACTIVE parade-contributing record for a person IN as of the parade
-// date — WITHOUT rewriting the record's real dates (item 4c). An active Medical
-// status (MC/Warded/LD/Excuse/…) gets `bookInDate = parade date` instead of
-// endDate → yesterday: the record keeps its true range (correct for HA / history
-// / viewing past parade dates) while the classifier reads the person Present
-// on/after bookInDate (bookedInBy). Pending Medical has no range to preserve, so
-// it still resolves to NIL. Active Leave (AL/OIL or OTHERS-from-leave) is booked
-// in the same way. Same-day out-of-camp Appointments are single-day events with
-// no range to keep, so they still resolve. Mutated rows are appended to `changed`
+// Book every ACTIVE AWAY record for a person IN as of the parade date — WITHOUT
+// rewriting the record's real dates (item 4c). An active away Medical status
+// (MC/Warded) gets `bookInDate = parade date` instead of endDate → yesterday:
+// the record keeps its true range (correct for HA / history / viewing past
+// parade dates) while the classifier reads the person Present on/after
+// bookInDate (bookedInBy). Pending Medical has no range to preserve, so it still
+// resolves to NIL. Active Leave (AL/OIL or OTHERS-from-leave) is booked in the
+// same way. Same-day out-of-camp Appointments are single-day events with no
+// range to keep, so they still resolve. Mutated rows are appended to `changed`
 // as [tab, row]. Only reached from Mark-Present (paradeClearPerson) now.
+//
+// IN-CAMP STATUSES ARE LEFT ALONE. Booking a person in says "they are back in
+// camp", which an LD / RIB / Excuse-* never contradicted — they were in camp the
+// whole time. This used to stamp every active row regardless, so marking someone
+// Present on return from a 2-day MC also booked in the 84-day LD they are still
+// on, and the classifier then dropped it from STATUS for the rest of its run.
+// The classifier no longer reads bookInDate for in-camp statuses either, so old
+// rows already carrying a stray stamp recover on their own. To end an in-camp
+// status early, edit its end date — that is what the Medical form is for.
 function paradeEndActiveContributors(d4, changed) {
   const iso = paradeCurrentDateISO();
   (STATE.medical || []).forEach(m => {
     if (m.d4 !== d4 || m.status === "NIL") return;
     if (!medStatusActive(m, iso)) return;
-    // Pending has no date range → resolve to NIL. Everything else keeps its
-    // dates and is simply marked booked-in from the parade date.
-    if (m.status === "Pending") m.status = "NIL"; else m.bookInDate = isoToDisplayDate(iso);
+    // Pending has no date range → resolve to NIL. Away records keep their dates
+    // and are simply marked booked-in from the parade date: MC and Warded, plus
+    // type MA — an appointment is a discrete event whose own classifier branch
+    // still honours bookInDate, so book-in legitimately closes it. Everything
+    // else reaching here is an in-camp status and is left untouched.
+    if (m.status === "Pending") m.status = "NIL";
+    else if (m.status === "MC" || m.status === "Warded" || m.type === "MA") m.bookInDate = isoToDisplayDate(iso);
+    else return;
     changed.push(["Medical", m]);
   });
   (STATE.leave || []).forEach(l => {
