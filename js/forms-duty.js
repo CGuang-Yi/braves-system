@@ -173,6 +173,137 @@ function clearDutyAssignment() {
   if (STATE.apiUrl) autoSync("Duty", { type: "delete", id });
 }
 
+// ── Auto-scheduler (spec §11) ────────────────────────────────────────────────
+//
+// The proposal is held here, uncommitted, until the planner presses Save. That
+// is the whole design: the scheduler proposes and the planner decides. Nothing
+// reaches the Duty tab without a deliberate click, and what does carries
+// source: "auto" so an auto-generated assignment stays identifiable later.
+
+let _dutyProposal = null;
+
+function openDutySchedulerForm(anchorISO) {
+  if (!canPlanDuty()) return;
+  const cfg = dutyConfig();
+  const range = dutyRangeFor("month", anchorISO || dutyMonthAnchor(), cfg);
+  openModal("Auto-plan duties", `
+    <form onsubmit="event.preventDefault(); runDutyScheduler(); return false">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <p style="font-size:12px;color:var(--muted);margin:0">
+          Plans <strong>${escapeHTML(range.from)} → ${escapeHTML(range.to)}</strong>.
+          This only proposes — nothing is saved until you review it and press Save.
+        </p>
+        <label class="form-label" style="flex-direction:row;align-items:center;gap:8px">
+          <input type="checkbox" id="f-sched-regen"> Re-plan slots that are already filled
+        </label>
+        <p style="font-size:11px;color:var(--muted);margin:-4px 0 0">
+          Off by default: anything you placed by hand is usually placed for a reason
+          the scheduler cannot see.
+        </p>
+        <button type="submit" class="btn btn-primary">Generate proposal</button>
+      </div>
+    </form>`);
+}
+
+function runDutyScheduler() {
+  if (!canPlanDuty()) return;
+  const cfg = dutyConfig();
+  const range = dutyRangeFor("month", dutyMonthAnchor(), cfg);
+  const regenerate = !!document.getElementById("f-sched-regen")?.checked;
+
+  const result = proposeDutySchedule(
+    range, STATE.duty, STATE.roster, activePlatoons().map(p => p.code),
+    cfg, indexHolidays(STATE.holidays),
+    {
+      // The two impure lookups the pure module deliberately does not do itself.
+      isAway: (d4, iso) => !!dutyAwayFor(d4, iso),
+      leaveSpansFor: dutyLeaveSpansFor,
+      corrections: STATE.dutyCorrection,
+      regenerate
+    }
+  );
+  _dutyProposal = result;
+  showDutyProposal();
+}
+
+function showDutyProposal() {
+  const r = _dutyProposal;
+  if (!r) return;
+  const cfg = dutyConfig();
+
+  const rows = r.proposals.map((p, i) => `
+    <tr>
+      <td class="duty-date">${escapeHTML(p.date)}</td>
+      <td>${escapeHTML(p.dutyType + (p.platoon ? " " + p.platoon.replace(/^PLT/, "") : ""))}</td>
+      <td>${dutyNameChip(p.d4, cfg)}</td>
+      <td style="font-size:11px;color:var(--muted)">${escapeHTML(p.rationale)}</td>
+      <td><button type="button" class="btn btn-danger" style="font-size:10px"
+        onclick="dropDutyProposal(${i})">Drop</button></td>
+    </tr>`).join("");
+
+  // Unfilled slots are shown, not hidden. A gap the planner cannot see is a gap
+  // that reaches the duty board on the day.
+  const gaps = r.unfilled.length
+    ? `<p style="color:var(--orange);font-size:12px;margin:10px 0 4px">
+         ${r.unfilled.length} slot(s) could not be filled:</p>
+       <ul style="font-size:11px;color:var(--muted);margin:0;padding-left:18px">
+         ${r.unfilled.slice(0, 12).map(u =>
+           `<li>${escapeHTML(u.date)} ${escapeHTML(u.dutyType + (u.platoon ? " " + u.platoon.replace(/^PLT/, "") : ""))} — ${escapeHTML(u.reason)}</li>`).join("")}
+         ${r.unfilled.length > 12 ? `<li>…and ${r.unfilled.length - 12} more</li>` : ""}
+       </ul>`
+    : "";
+
+  const f = (x) => `spread ${x.spread} (${x.min}–${x.max}, median ${x.median})`;
+  openModal("Proposed duties", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <p style="font-size:12px;margin:0">
+        Fairness before: ${escapeHTML(f(r.fairnessBefore))}<br>
+        Fairness after: <strong>${escapeHTML(f(r.fairnessAfter))}</strong>
+      </p>
+      <p style="font-size:11px;color:var(--muted);margin:0">
+        If the spread got worse, reject this. Drop anything you disagree with, then Save
+        the rest — dropped rows are simply not written.
+      </p>
+      ${gaps}
+      ${r.proposals.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Date</th><th>Duty</th><th>Assignee</th><th>Why</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`
+        : `<p style="color:var(--muted)">Nothing could be proposed.</p>`}
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn btn-primary" onclick="commitDutyProposal()"
+          ${r.proposals.length ? "" : "disabled"}>Save ${r.proposals.length} assignment(s)</button>
+        <button type="button" class="btn" onclick="closeModal()">Discard</button>
+      </div>
+    </div>`);
+}
+
+function dropDutyProposal(i) {
+  if (!_dutyProposal) return;
+  _dutyProposal.proposals.splice(i, 1);
+  showDutyProposal();
+}
+
+function commitDutyProposal() {
+  if (!canPlanDuty() || !_dutyProposal) return;
+  const list = _dutyProposal.proposals;
+  if (!list.length) { closeModal(); return; }
+
+  const rows = list.map(p => ({
+    id: nextId(), date: p.date, dutyType: p.dutyType, platoon: p.platoon, d4: p.d4,
+    assignedBy: STATE.email || "", assignedAt: new Date().toISOString(),
+    // Provenance survives the save — six months on, "did a human pick this?"
+    // is answerable from the sheet.
+    source: "auto"
+  }));
+  STATE.duty = (STATE.duty || []).concat(rows);
+  _dutyProposal = null;
+
+  saveLocal(); closeModal(); render();
+  // appendMany rather than N upserts: these are all brand-new rows, and one
+  // request is one OCC-guarded write instead of N racing through the queue.
+  if (STATE.apiUrl) autoSync("Duty", { type: "appendMany", rows });
+}
+
 // ── Corrections ──────────────────────────────────────────────────────────────
 
 function openDutyCorrectionForm(d4, isoDate, presetReason, editId) {

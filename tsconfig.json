@@ -36,6 +36,7 @@
     "js/duty-points.js",
     "js/duty-eligibility.js",
     "js/duty-conflicts.js",
-    "js/duty-import.js"
+    "js/duty-import.js",
+    "js/duty-schedule.js"
   ]
 }

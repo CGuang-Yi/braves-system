@@ -183,6 +183,7 @@ function dutyGridHTML(cfg) {
       <button type="button" class="btn" data-action="dutyMonthStep" data-value="-1">‹ Prev</button>
       <strong>${escapeHTML(anchor.slice(0, 7))}</strong>
       <button type="button" class="btn" data-action="dutyMonthStep" data-value="1">Next ›</button>
+      ${canPlan ? `<button type="button" class="btn btn-primary" data-action="dutyAutoPlan">✨ Auto-plan month</button>` : ""}
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th>Date</th>${head}</tr></thead>
@@ -310,5 +311,6 @@ registerActions({
   dutyHoliday: el => openDutyHolidayForm(el.dataset.date),
   dutyCorrectionNew: () => openDutyCorrectionForm("", todayISO(), ""),
   dutyCorrectionEdit: el => openDutyCorrectionForm(el.dataset.d4, el.dataset.date, "", el.dataset.id),
-  dutyCorrectionDelete: el => deleteDutyCorrection(el.dataset.id)
+  dutyCorrectionDelete: el => deleteDutyCorrection(el.dataset.id),
+  dutyAutoPlan: () => openDutySchedulerForm(dutyMonthAnchor())
 });
