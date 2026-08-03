@@ -77,6 +77,32 @@ module.exports = async function run() {
     ok(out.indexOf("Date of next MA: 150826") !== -1, "next MA formatted");
   });
 
+  // Diagnosis/Issue is the MR row's "Reason / Purpose" (the Medical form's field) —
+  // it is what the MO is reviewing, so re-typing it by hand was pure duplication.
+  await test("Diagnosis/Issue is prefilled from the MR record's reason", () => {
+    const STATE = { roster, medical: [
+      { d4: "1110", type: "MR", date: "2026-07-22", status: "Pending", reason: "Right knee pain review" },
+      { d4: "2111", type: "MR", date: "2026-07-22", status: "" }  // no reason recorded
+    ] };
+    const out = loadForms(STATE, {}).generateMRFormat("2026-07-22", "0700");
+    ok(out.indexOf("Diagnosis/Issue: Right knee pain review") !== -1,
+      "reason should fill Diagnosis/Issue:\n" + out);
+    ok(out.indexOf("Diagnosis/Issue: \n") !== -1,
+      "a reason-less MR should still leave the field blank:\n" + out);
+  });
+
+  // A resolved/other-date MR is not the row the message lists, so its reason must not
+  // leak into the listed person's block via a looser lookup than mrPeopleForDate's.
+  await test("the reason comes from the pending row for THIS date", () => {
+    const STATE = { roster, medical: [
+      { d4: "1110", type: "MR", date: "2026-07-21", status: "Pending", reason: "Old review" },
+      { d4: "1110", type: "MR", date: "2026-07-22", status: "Pending", reason: "Today's review" }
+    ] };
+    const out = loadForms(STATE, {}).generateMRFormat("2026-07-22", "0700");
+    ok(out.indexOf("Diagnosis/Issue: Today's review") !== -1, "picks the dated row:\n" + out);
+    ok(out.indexOf("Old review") === -1, "must not use the other date's reason:\n" + out);
+  });
+
   // DECISIONS #122: the blank-rank → REC default is shared with the parade state
   // and sick message via bpDisplayRank. A bare "JASON GOH" here would contradict
   // the "REC Jason Goh B1110" in a parade state sent the same morning.
