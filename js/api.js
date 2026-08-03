@@ -25,7 +25,13 @@ const PULL_ASSIGN = {
   appointments:  d => STATE.appointments = padD4OnLayer(d),
   leave:         d => STATE.leave = normalizeLeave(d),
   msk:           d => STATE.msk = normalizeMSK(d),
-  conducts:      d => STATE.conducts = normalizeConducts(d)
+  conducts:      d => STATE.conducts = normalizeConducts(d),
+  // Duty list (DUTY_LIST_SPEC.md §3). Ordinary row tabs, so they belong here
+  // rather than in pullAll's reference-tab special cases — that also means they
+  // inherit the dirty-tab skip that stops a launch pull clobbering local edits.
+  duty:           d => STATE.duty = normalizeDuty(d),
+  dutyCorrection: d => STATE.dutyCorrection = normalizeDutyCorrection(d),
+  holidays:       d => STATE.holidays = normalizeHolidays(d)
 };
 
 // Reverse of TAB_TO_STATE (STATE-array-key → sheet name), used by pullAll to test
