@@ -1033,7 +1033,11 @@ function exportCSV(data, filename) { downloadCSVText(Papa.unparse(data), filenam
 // names and its semicolon-separated list cells — round-tripping that through
 // Papa.unparse would only re-derive what it already has.
 function downloadCSVText(csv, filename) {
-  const blob = new Blob([csv], { type: "text/csv" });
+  // Excel on Windows opens a BOM-less .csv using the system ANSI codepage, not
+  // UTF-8 — so every multi-byte character in an export mojibakes. Exports here
+  // really do carry them: "·"/"—" in platoon·section groupings, "★" in Gold★,
+  // "–" in leave date ranges. The BOM is what tells Excel to decode as UTF-8.
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
@@ -1084,7 +1088,11 @@ function conductProgressionCSV(rows, held, partByD4, seriesName) {
   return lines.join("\n");
 }
 function exportJSON(data, filename) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  // charset only — deliberately NO BOM, unlike the CSV path above. importBackup
+  // (js/forms-admin.js) restores with a bare JSON.parse, which throws on a
+  // leading U+FEFF; a BOM here would mean backups this app can write and never
+  // read back. Nothing opens a .json backup in Excel, so it gains nothing.
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);

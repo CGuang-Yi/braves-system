@@ -38,6 +38,10 @@ function makeBrowser() {
         toggle(c, on) { if (on) this._s.add(c); else this._s.delete(c); }
       },
       appendChild() {}, querySelector() { return null; },
+      // The exporters build an <a>, set href/download and call .click() to
+      // trigger the browser download. A no-op is right: the test asserts on
+      // what reached Blob(), not on a navigation that can't happen in Node.
+      click() {},
       // Needed once js/main.js is loaded into the vm sandbox (launch-bootstrap
       // tests): its top-level wiring calls addEventListener on several
       // getElementById() results. No-op is fine — those tests drive behaviour
