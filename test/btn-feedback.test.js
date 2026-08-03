@@ -73,4 +73,16 @@ module.exports = async function run() {
     vm.runInContext('btnDone(null, "✓"); var __r = btnBusy(null, "…"); __r();', sb);
     ok(true, "no exception");
   });
+
+  // De-duplication guard: the transient tick existed twice by hand before
+  // btnDone. If a future edit re-inlines a setTimeout label swap, that is the
+  // start of a third copy — catch it here rather than in review.
+  await test("the copy paths use btnDone, not a hand-rolled label swap", () => {
+    for (const f of ["js/parade-tab.js", "js/forms-reports.js"]) {
+      const src = fs.readFileSync(path.join(ROOT, f), "utf8");
+      ok(src.indexOf("btnDone") !== -1, f + " should use btnDone");
+      ok(!/textContent\s*=\s*"✓ Copied!"/.test(src),
+        f + " still hand-rolls the transient tick — use btnDone");
+    }
+  });
 };

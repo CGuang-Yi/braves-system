@@ -260,7 +260,7 @@ async function paradeCopyString(text, btnId, taId) {
   const btn = btnId ? document.getElementById(btnId) : null;
   try {
     await navigator.clipboard.writeText(text);
-    if (btn) { const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => { btn.textContent = o; }, 1800); }
+    if (btn) btnDone(btn, "✓ Copied!");
   } catch {
     const ta = document.getElementById(taId || "parade-text");
     if (ta) { ta.value = text; ta.focus(); ta.select(); }
