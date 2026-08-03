@@ -35,6 +35,130 @@ const DIRTY_KEY = "cougar-dirty-tabs";
 const CUSTOM_STATUS_KEY = "cougar-custom-statuses";
 const DEFER_CHARTS_KEY = "braves-defer-charts"; // chart lazy-load pref: auto|defer|eager
 
+// ── Offline data grant (BACKEND_MIGRATION_REVIEW.md §4.6 item 3 / §4.7.5a) ──
+//
+// The single largest privacy exposure in this system is not which cloud holds
+// the sheet — it is that ~30 devices, many of them personal phones, each held a
+// complete plaintext mirror of the company's medical data FOREVER, invisibly,
+// with no way to bound it. The offline grant converts that permanent, universal
+// condition into a bounded, visible, expiring one.
+//
+// The model:
+//   • Caching to localStorage is OPT-IN per device and per account.
+//   • The grant carries a hard expiry stamped into the client. That expiry is
+//     the real enforcement, because it needs NO network contact — which is
+//     exactly the lost-phone / ORD'd-member case. Server-side revocation only
+//     lands when the device next checks in, i.e. when it is least dangerous.
+//   • Switching it off (or letting it lapse) wipes the cached copy.
+//
+// Deliberately NOT attempted: defending against a determined holder of the
+// device. Someone who wants to keep the data can copy it out at any point while
+// the grant is on, and clock-tampering is a non-threat for the same reason
+// (§4.7.5a). The threat model here is the cooperative case — handover, loss,
+// departure — which is the one that actually occurs.
+const OFFLINE_GRANT_KEY = "braves-offline-grant";   // {deviceId,email,grantedAt,expiresAt,auto?}
+const DEVICE_ID_KEY = "braves-device-id";           // opaque per-device id (see below)
+// Selectable grant lengths, in days. Kept short deliberately: expiry, not
+// revocation, is the primary control, so the ceiling is what actually bounds
+// the exposure window. 30 would re-create the status quo under a nicer name.
+const OFFLINE_GRANT_DAY_OPTIONS = [1, 7, 14];
+const OFFLINE_GRANT_MAX_DAYS = 14;
+const OFFLINE_GRANT_DEFAULT_DAYS = 7;
+
+// An OPAQUE id, not a device name (§4.7.5a: the admin-review list is itself new
+// personal data and should be minimised). Nothing derives it from hardware; it
+// is a random value minted on first use and it dies with the browser profile.
+function offlineDeviceId() {
+  let id = "";
+  try { id = localStorage.getItem(DEVICE_ID_KEY) || ""; } catch { /* storage blocked */ }
+  if (!id) {
+    id = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "dev-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { localStorage.setItem(DEVICE_ID_KEY, id); } catch { /* storage blocked */ }
+  }
+  return id;
+}
+
+function loadOfflineGrant() {
+  try {
+    const raw = localStorage.getItem(OFFLINE_GRANT_KEY);
+    if (!raw) return null;
+    const g = JSON.parse(raw);
+    if (!g || !g.expiresAt) return null;
+    return g;
+  } catch { return null; }
+}
+
+// Pure so it is unit-testable without localStorage: given a grant object and a
+// clock, say what it is worth. `email` is the account currently signed in — a
+// grant issued to a different account on this device is treated as absent,
+// which is what makes a handover between two people on one phone safe.
+function offlineGrantStatus(grant, nowMs, email) {
+  if (!grant || !grant.expiresAt) return { state: "off", daysLeft: 0 };
+  if (grant.revoked) return { state: "revoked", daysLeft: 0, expiresAt: grant.expiresAt };
+  if (email && grant.email && String(grant.email).toLowerCase() !== String(email).toLowerCase()) {
+    return { state: "off", daysLeft: 0 };
+  }
+  const exp = new Date(grant.expiresAt).getTime();
+  if (!Number.isFinite(exp)) return { state: "off", daysLeft: 0 };
+  if (exp <= nowMs) return { state: "expired", daysLeft: 0, expiresAt: grant.expiresAt };
+  return {
+    state: "active",
+    expiresAt: grant.expiresAt,
+    daysLeft: Math.ceil((exp - nowMs) / 86400000)
+  };
+}
+
+function currentOfflineGrantStatus() {
+  return offlineGrantStatus(loadOfflineGrant(), Date.now(), STATE.email);
+}
+function hasOfflineGrant() { return currentOfflineGrantStatus().state === "active"; }
+
+// Issue (or renew) a grant on this device for the signed-in account. Capped at
+// OFFLINE_GRANT_MAX_DAYS server-side too — this is the UI-side clamp.
+function grantOffline(days, opts) {
+  const d = Math.min(Math.max(+days || OFFLINE_GRANT_DEFAULT_DAYS, 1), OFFLINE_GRANT_MAX_DAYS);
+  const now = Date.now();
+  const grant = {
+    deviceId: offlineDeviceId(),
+    email: STATE.email || "",
+    grantedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + d * 86400000).toISOString(),
+    days: d,
+    auto: !!(opts && opts.auto)
+  };
+  try { localStorage.setItem(OFFLINE_GRANT_KEY, JSON.stringify(grant)); } catch { /* storage blocked */ }
+  return grant;
+}
+
+// Mark the local grant revoked (server said so on check-in). Kept as a record
+// rather than deleted so the UI can explain why the cache vanished.
+function markOfflineGrantRevoked() {
+  const g = loadOfflineGrant();
+  if (!g) return;
+  g.revoked = true;
+  try { localStorage.setItem(OFFLINE_GRANT_KEY, JSON.stringify(g)); } catch { /* storage blocked */ }
+}
+
+function clearOfflineGrant() {
+  try { localStorage.removeItem(OFFLINE_GRANT_KEY); } catch { /* storage blocked */ }
+}
+
+// Every localStorage key that holds personnel data, driven from one list so a
+// new cache key cannot silently escape the wipe (§4.7.5a). Session/auth keys
+// are NOT here — signing out is a separate action with its own teardown — and
+// neither is DIRTY_KEY, which is the crash-safe record of what still needs
+// pushing and must outlive a cache wipe.
+const OFFLINE_DATA_KEYS = [STORAGE_KEY, STORAGE_KEY_LEGACY, FITNESS_SENT_KEY];
+
+// Drop the on-disk mirror. Does NOT touch in-memory STATE: the app stays usable
+// for the rest of the session (it is online, it has the data in RAM); what
+// changes is that nothing survives to the next launch.
+function wipeLocalDataCache() {
+  OFFLINE_DATA_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
+}
+
 // Sheet-tab-name → STATE-array-key lookup. The autoSync coalesce path uses
 // this when flushing a queued replace push: by the time the flush runs the
 // caller's `data` snapshot is stale, so we re-read the latest STATE[arrayKey]
@@ -337,6 +461,9 @@ const STATE = {
   accounts: [],   // [{email, personId, role, addedBy, addedAt}] — no secrets
   tokens: [],     // active sessions [{token, tokenPrefix, email, role, issuedAt, expired}]
   auditLog: [],   // audit rows — only populated for admin pulls
+  // Devices currently holding an offline copy (§4.7.5a admin review). Admin-only,
+  // fetched by refreshAdminData; never cached to disk.
+  offlineGrants: [],
   paradeArchive: [], sickArchive: [], // archived parade/sick messages — admin-only pulls (Item 1)
   roster: [], medical: [], attendance: [], ippt: [], rm: [], soc: [], polar: [], conductDetail: [], appointments: [], leave: [], msk: [],
   // Braves reference data (spec §4/§12/A6). config is an object keyed by Config
@@ -768,14 +895,22 @@ function mergeAttendanceEdit(existing, entry) {
 }
 
 // CodeQL js/clear-text-storage-of-sensitive-data (alert #20): medical/appointments
-// data is cached here unencrypted. Accepted risk, not fixed — this is an offline
-// mirror of the authenticated user's own data for a device they already control;
-// any encryption key derivable client-side (e.g. from authToken, itself in
-// localStorage — see AUTH_KEY) would sit right next to the ciphertext, so it
-// blocks nothing an XSS or local-device attacker couldn't already read. Real
-// defense is XSS prevention (escapeHTML at render) and treating the browser
-// profile as sensitive, not encrypting data against an attacker who already
-// has same-origin JS execution or disk access.
+// data is cached here unencrypted. Encryption is still NOT the fix, for the
+// original reason — any key derivable client-side (e.g. from authToken, itself
+// in localStorage — see AUTH_KEY) sits right next to the ciphertext, so it
+// blocks nothing an XSS or local-device attacker couldn't already read, and a
+// key that is NOT derivable client-side (one wrapped by the password at login)
+// would have to be re-supplied on every cold start, which destroys the offline
+// tolerance this cache exists for. Real defense is XSS prevention (escapeHTML at
+// render) plus bounding the copy itself.
+//
+// What DID change (BACKEND_MIGRATION_REVIEW.md §4.6 item 3, §4.7.5a): the answer
+// to "should we encrypt it?" was always going to be no, but the prior question —
+// "should this device hold the whole company's medical data at all, forever?" —
+// now has an answer. Caching is opt-in, time-limited and revocable (the offline
+// grant above), the write below is gated on it, and sign-out wipes it. That is a
+// bound on scope and lifetime rather than a lock, and it is the control that
+// actually reduces the exposure.
 // SYNC_PERF_IMPROVEMENTS_SPEC.md P3-2: saveLocal() used to JSON.stringify the
 // ENTIRE dataset (16 STATE keys, MB-scale for a real company) SYNCHRONOUSLY on
 // every call — 29 form-edit call sites in forms.js, every successful write ack
@@ -805,6 +940,12 @@ let _saveLocalPending = false;
 function _saveLocalFlush() {
   _saveLocalTimer = null;
   _saveLocalPending = false;
+  // §4.7.5a: the grant has to gate the WRITE boundary, not just the read path —
+  // otherwise the cache keeps being repopulated by ordinary edits after the
+  // toggle went off and the wipe becomes decorative. Belt-and-braces: also drop
+  // anything a previous grant left behind, so a lapse mid-session cleans up at
+  // the next save rather than waiting for the next launch.
+  if (!hasOfflineGrant()) { wipeLocalDataCache(); return; }
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
@@ -850,6 +991,44 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") saveLocalNow();
   });
+}
+
+// Enforce the offline grant BEFORE any cached data reaches memory or the DOM.
+// Must run ahead of loadLocal() in the bootstrap, since that is the one code
+// path guaranteed to execute before the first render (§4.7.5a).
+//
+// Returns a short verdict the UI can explain to the user rather than silently
+// emptying the app:
+//   "none"            → nothing cached anyway; nothing to do
+//   "ok"              → live grant, cache stands
+//   "wiped"           → grant lapsed/revoked/absent; cached copy deleted
+//   "held"            → grant lapsed BUT this device has unpushed edits, so the
+//                       wipe is deferred. Discarding them would turn a privacy
+//                       feature into data loss, which is how such features get
+//                       switched off permanently (§4.7.5a).
+//   "auto-granted"    → upgrade path, see below
+function enforceOfflineGrant() {
+  let cached = false;
+  try { cached = !!localStorage.getItem(STORAGE_KEY); } catch { /* storage blocked */ }
+  const st = currentOfflineGrantStatus();
+  if (st.state === "active") return "ok";
+
+  // Upgrade path. Devices cached under the old always-on behaviour would
+  // otherwise be wiped by a deploy — a commander who took a phone outfield with
+  // a warm cache would find an empty app and no way to refill it. So the first
+  // launch after this ships converts an existing cache into an explicit,
+  // expiring grant instead of deleting it, and the Settings card says it was
+  // auto-issued. The exposure is bounded from that moment on, which is the
+  // point; nothing is silently grandfathered forever.
+  if (cached && st.state === "off" && STATE.authToken) {
+    grantOffline(OFFLINE_GRANT_DEFAULT_DAYS, { auto: true });
+    return "auto-granted";
+  }
+
+  if (!cached) return "none";
+  if (STATE.dirty && STATE.dirty.size) return "held";
+  wipeLocalDataCache();
+  return "wiped";
 }
 
 function loadLocal() {
@@ -907,7 +1086,7 @@ function setSession(token, role, personId, email, caps) {
 }
 function clearSession() {
   setSession("", "", "", "");
-  STATE.accounts = []; STATE.tokens = []; STATE.auditLog = [];
+  STATE.accounts = []; STATE.tokens = []; STATE.auditLog = []; STATE.offlineGrants = [];
 }
 // Permission helpers used by the UI. The SERVER is the authoritative gate; these
 // only drive what the read-only viewer sees (soft disabling) and the admin panel.

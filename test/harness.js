@@ -113,6 +113,15 @@ function makeClient(backend, opts) {
   // client a writer (admin) so the read-only viewer guard in autoSync doesn't
   // intercept; pass opts.role to simulate a viewer (read-only) device instead.
   sandbox.STATE.role = opts.role || "admin";
+  // Offline data grant (BACKEND_MIGRATION_REVIEW.md §4.7.5a): since it landed,
+  // saveLocal() only writes to localStorage while this device holds an unexpired
+  // grant. A test client stands for a device someone is actually using, so it
+  // gets one by default — otherwise every cache assertion in the suite would be
+  // testing the wiped-cache path by accident. `opts.noOfflineGrant` opts out to
+  // exercise the ungranted device deliberately.
+  if (!opts.noOfflineGrant && typeof sandbox.grantOffline === "function") {
+    sandbox.grantOffline(7);
+  }
 
   return { sb: sandbox, fetchSpy, ctl: browser.ctl, db: backend.db };
 }

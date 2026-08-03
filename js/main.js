@@ -267,6 +267,9 @@ function afterLaunchSyncSettles() {
   if (!STATE.authToken) return;
   maybeRunConductMigration();
   maybeRestoreDirty();
+  // Honour an admin's offline-grant revocation now that we're demonstrably
+  // online (§4.7.5a: revoke-on-next-contact — never advertised as a remote wipe).
+  if (typeof checkOfflineGrantRevocation === "function") checkOfflineGrantRevocation();
   // Keep this tab fresh: poll the cheap revCheck endpoint (~20s while visible +
   // on focus/visibility/online) and pull only changed tabs. STATE.rev was just
   // baselined by the pull above. Guarded so login + bootstrap don't double-wire.
@@ -305,7 +308,16 @@ async function pullAndRender() {
   }
 }
 
+// Set by the bootstrap so the Settings tab can explain what happened to a cache
+// that vanished. "held" in particular must be surfaced, not swallowed: it means
+// the grant lapsed but unpushed edits are keeping the copy alive.
+let _offlineGrantVerdict = "none";
+
 (async function bootstrap() {
+  // BEFORE loadLocal(): an expired/absent offline grant means the cached mirror
+  // must never reach memory, let alone the DOM (§4.7.5a). This is the only code
+  // path guaranteed to run ahead of the first render.
+  _offlineGrantVerdict = enforceOfflineGrant();
   loadLocal();
   loadFilter();
   initFilterControls();

@@ -39,6 +39,12 @@ function makeGoogle() {
           v instanceof Date ? "DISP(" + v.getTime() + ")" : (v === "" || v == null ? "" : String(v))
         ));
       },
+      // Single-cell write. The password paths (changePassword,
+      // adminResetPassword, and the login-time KDF upgrade) all write one cell
+      // at a time via getRange(r,c).setValue(v), so without this they silently
+      // no-op'd in tests — which is how the KDF upgrade could look like it had
+      // run when it hadn't.
+      setValue(v) { return this.setValues([[v]]); },
       setValues(vals) {
         for (let i = 0; i < vals.length; i++) {
           const ri = r - 1 + i;
@@ -122,8 +128,19 @@ function makeGoogle() {
     Utilities: {
       formatDate: (d, tz, fmt) => (fmt === "HH:mm" ? "07:30" : "01 Jan 2026"),
       getUuid: () => "uuid-" + Math.random().toString(36).slice(2),
-      newBlob: () => ({}),
+      // Real UTF-8 bytes: the PBKDF2 password KDF builds its salt block as
+      // newBlob(s).getBytes().concat([0,0,0,1]), so a stub returning {} breaks
+      // every login test. Node Buffers are unsigned (0-255) where Apps Script's
+      // are signed, which is fine for the same reason computeDigest's stub is —
+      // the code masks with & 0xFF and only needs internal consistency.
+      newBlob: (s) => ({ getBytes: () => [...Buffer.from(String(s), "utf8")] }),
       base64Decode: () => [],
+      // PBKDF2 rounds. Byte-array in, byte-array out, matching the overload the
+      // KDF uses.
+      computeHmacSha256Signature: (value, key) => [...require("crypto")
+        .createHmac("sha256", Buffer.from(key))
+        .update(Buffer.from(value))
+        .digest()],
       // hashPassword()/handleLogin (P2-3 tests need real login round trips) call
       // Utilities.computeDigest(SHA_256, salt+password) and mask each byte with
       // `& 0xFF` — a real (unsigned 0-255) Node sha256 digest satisfies that

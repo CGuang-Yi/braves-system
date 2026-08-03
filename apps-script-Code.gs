@@ -613,10 +613,20 @@ function revokeAllAuthTokens() {
 //                  Legacy invite tokens (no `role`) are treated as invalid so every
 //                  device is forced through the new login.
 //
-// No bcrypt in Apps Script → SHA-256(salt + password) with a per-account UUID salt.
-// Adequate for a small, trusted user base behind an MFA-protected Sheet owner.
+// Password hashing: PBKDF2-HMAC-SHA256, per-account UUID salt (see hashPassword).
+// This replaced a single unsalted-iteration SHA-256(salt + password) — see the
+// KDF block below for why, and for the transparent upgrade path that rewrites
+// legacy hashes the next time each account logs in.
 
-var SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30-day session expiry
+// Session lifetime. Cut from 30 days to 7 (BACKEND_MIGRATION_REVIEW.md §4.6
+// item 5, §4.7.7). This is not cosmetic: the bearer token, not the account row,
+// is what actually bounds access, so at 30 days a departed member kept working
+// access for up to a month AFTER their account was removed — which made the ORD
+// deprovisioning link (§4.7.7) unenforceable and put the system outside IM8
+// ac-3's "disabled within a defined window of last authorised use". Seven days
+// is the trade: a week of re-logins against a month-long hole. Anything longer
+// re-opens it; much shorter and people start writing the password down.
+var SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;   // 7-day session expiry
 var LOCKOUT_THRESHOLD = 5;                       // failed attempts before lockout
 var LOCKOUT_WINDOW_MS = 15 * 60 * 1000;          // 15-minute lockout
 
@@ -628,14 +638,98 @@ var LOCKOUT_WINDOW_MS = 15 * 60 * 1000;          // 15-minute lockout
 // below). N=500 chosen as the admin-facing in-app window (spec §7 Q1).
 var AUDIT_READALL_MAX_ROWS = 500;
 
-function hashPassword(plaintext, salt) {
+// ── Password KDF (BACKEND_MIGRATION_REVIEW.md §4.6 item 5) ───────
+//
+// Was: SHA-256(salt + password), one pass. The per-account salt defeats rainbow
+// tables, but SHA-256 is a *fast* hash — a leaked Accounts tab is brute-forceable
+// at billions of guesses/sec on a commodity GPU, which for the 6–12 character
+// human passwords this system actually holds means hours, not centuries.
+//
+// Now: PBKDF2-HMAC-SHA256. Apps Script has no bcrypt/scrypt/argon2 and no way to
+// call one, so genuinely memory-hard is off the table here; iteration count is
+// the only cost knob available. That is a weaker answer than the review asked
+// for and it is worth naming: PBKDF2 raises the attacker's cost by the iteration
+// factor, no more. It is still 4–5 orders of magnitude better than one SHA-256.
+//
+// Iteration count is a SERVER-SIDE latency budget: every login pays it, inside
+// Apps Script's execution limits, on their CPU not ours — and each round is a
+// separate Utilities.* bridge call, far more expensive than a native HMAC, so
+// the usable ceiling here is well below the 600k+ you would pick on an ordinary
+// server. 10k lands around a second per login on a typical project.
+// **Run bravesBenchmarkKdf() in the Apps Script editor after deploying** and tune
+// this to taste: the count is stored inside each hash, so raising or lowering it
+// invalidates nothing.
+var PBKDF2_ITERATIONS = 10000;
+var PBKDF2_PREFIX = "pbkdf2$sha256$";   // pbkdf2$sha256$<iters>$<hex>
+
+// PBKDF2 with dkLen == hLen, i.e. exactly one block (T_1), which is all we need
+// for a 256-bit derived key. Written out rather than pulled from a library
+// because Apps Script has no crypto module beyond Utilities.
+// Byte-array overloads throughout: U_1 = HMAC(P, S || INT32BE(1)) per RFC 8018
+// §5.2, and that trailing 0x00000001 cannot be expressed via the string overload.
+function pbkdf2Sha256_(password, salt, iterations) {
+  var pwBytes = Utilities.newBlob(String(password)).getBytes();
+  var saltBytes = Utilities.newBlob(String(salt)).getBytes().concat([0, 0, 0, 1]);
+  var u = Utilities.computeHmacSha256Signature(saltBytes, pwBytes);
+  var acc = u.slice();
+  for (var i = 1; i < iterations; i++) {
+    u = Utilities.computeHmacSha256Signature(u, pwBytes);
+    for (var j = 0; j < acc.length; j++) acc[j] = acc[j] ^ u[j];
+  }
+  // GAS bytes are signed (-128..127); mask before hexing.
+  return acc.map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+}
+
+// Legacy scheme, kept ONLY so existing accounts can still be verified (and then
+// upgraded). Never called to create a new hash.
+function hashPasswordLegacySha256_(plaintext, salt) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + plaintext)
     .map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); })
     .join('');
 }
-function verifyPassword(plaintext, salt, storedHash) {
-  return hashPassword(plaintext, salt) === storedHash;
+
+function hashPassword(plaintext, salt) {
+  return PBKDF2_PREFIX + PBKDF2_ITERATIONS + "$" + pbkdf2Sha256_(plaintext, salt, PBKDF2_ITERATIONS);
 }
+
+// Accepts both schemes. The stored hash names its own algorithm and iteration
+// count, so an old row verifies against the old code path and a re-hash at a
+// different cost still verifies — that is what makes tuning PBKDF2_ITERATIONS
+// safe after the fact.
+function verifyPassword(plaintext, salt, storedHash) {
+  var stored = String(storedHash || "");
+  if (stored.indexOf(PBKDF2_PREFIX) === 0) {
+    var parts = stored.split("$");            // ["pbkdf2","sha256",iters,hex]
+    var iters = parseInt(parts[2], 10);
+    if (!(iters > 0)) return false;
+    return pbkdf2Sha256_(plaintext, salt, iters) === parts[3];
+  }
+  return hashPasswordLegacySha256_(plaintext, salt) === stored;
+}
+
+// True when the stored hash is not at the current scheme/cost, i.e. it should be
+// rewritten. Only ever acted on right after a SUCCESSFUL verify, which is the
+// one moment the plaintext is legitimately in hand.
+function passwordHashNeedsUpgrade(storedHash) {
+  var stored = String(storedHash || "");
+  if (stored.indexOf(PBKDF2_PREFIX) !== 0) return true;
+  return parseInt(stored.split("$")[2], 10) !== PBKDF2_ITERATIONS;
+}
+
+// Run this from the Apps Script editor after deploying, to size PBKDF2_ITERATIONS
+// against the live project's actual CPU. Prints the per-login cost.
+function bravesBenchmarkKdf() {
+  var salt = generateSalt();
+  var t0 = new Date().getTime();
+  pbkdf2Sha256_("benchmark-password", salt, PBKDF2_ITERATIONS);
+  var ms = new Date().getTime() - t0;
+  Logger.log("PBKDF2 " + PBKDF2_ITERATIONS + " iterations took " + ms + " ms per login.");
+  Logger.log(ms > 5000
+    ? "→ Too slow. Lower PBKDF2_ITERATIONS (existing hashes keep working; they carry their own count)."
+    : "→ Acceptable. Raise it if you want more margin.");
+  return ms;
+}
+
 function generateSalt() { return Utilities.getUuid(); }
 
 // Find an Accounts row by email (case-insensitive). Returns the row object
@@ -707,6 +801,19 @@ function handleLogin(body) {
     return logFailedAttempt(email, "Wrong password");
   }
   clearFailedAttempts(email);
+
+  // Transparent KDF upgrade. A successful verify is the only moment the
+  // plaintext is legitimately in hand, so it is the only moment the stored hash
+  // can be re-derived under the current scheme. Every account migrates off the
+  // legacy fast SHA-256 the first time its owner signs in — no reset, no admin
+  // action, nothing for the user to notice. Wrapped because a write failure here
+  // must not cost a valid login: the next sign-in simply tries again.
+  if (passwordHashNeedsUpgrade(account.passwordHash)) {
+    try {
+      var upgradedSalt = generateSalt();   // new scheme, new salt
+      updateAccountPassword(account.email, hashPassword(password, upgradedSalt), upgradedSalt);
+    } catch (e) { /* keep the login; retry on the next one */ }
+  }
 
   var token = Utilities.getUuid();
   var ctx = {
@@ -884,6 +991,15 @@ function routeAuthedPost(action, tab, body, ctx) {
   if (action === "logout")          return handleLogout(body, ctx);
   if (action === "changePassword")  return handleChangePassword(body, ctx);
   if (action === "rowCount" && tab) return rowCount(tab);  // read-only staleness probe
+  // Offline data grants (§4.7.5a). Register/check are per-device and available
+  // to every role INCLUDING viewers — a viewer's device caches the same data, so
+  // gating these behind canWrite would leave exactly those devices unbounded and
+  // invisible. revoke self-authorises (own device) or requires admin, inside the
+  // handler; the list is admin-only.
+  if (action === "registerOfflineGrant") return handleRegisterOfflineGrant(body, ctx);
+  if (action === "checkOfflineGrant")    return handleCheckOfflineGrant(body, ctx);
+  if (action === "revokeOfflineGrant")   return handleRevokeOfflineGrant(body, ctx);
+  if (action === "listOfflineGrants")    return handleListOfflineGrants(body, ctx);
 
   // Admin-only account & token management:
   if (action === "listAccounts")      return handleListAccounts(body, ctx);
@@ -1248,6 +1364,127 @@ function revokeAllTokensForEmail(email) {
     } catch (e) { /* skip */ }
   });
   return count;
+}
+
+// ── Offline data grants (BACKEND_MIGRATION_REVIEW.md §4.7.5a) ────
+//
+// A device may keep a local copy of the company's data only while it holds an
+// unexpired grant. **The enforcement is client-side**, because it has to be: a
+// device that never comes back online cannot be reached, so a client-stamped
+// expiry is the only control that works in the case that actually matters (lost
+// phone, ORD'd member who stopped coming in). What lives here is the other two
+// thirds of the feature:
+//
+//   • **Visibility** — an admin can see which devices hold a copy and until when.
+//     Turns an invisible exposure into an auditable one.
+//   • **Revoke-on-next-contact** — an admin marks a grant revoked; the device
+//     learns it the next time it talks to this endpoint and wipes. This is NOT a
+//     remote wipe and the UI must never call it one (§4.7.5a).
+//
+// Stored in ScriptProperties rather than a sheet tab: it is small, per-device,
+// self-expiring operational state, and keeping it out of the sheet avoids a
+// schema migration and keeps it out of every backup export.
+//
+// The device id is OPAQUE — a random value minted in the browser, never a device
+// name — because this list is itself new personal data and should be minimal.
+var OFFLINE_GRANT_MAX_MS = 14 * 24 * 60 * 60 * 1000;   // mirrors OFFLINE_GRANT_MAX_DAYS in js/state.js
+
+function offlineGrantKey_(deviceId) { return "ogrant:" + String(deviceId || "").slice(0, 80); }
+
+// Any signed-in role. The caller is registering a grant for ITS OWN session —
+// the email is taken from the token context, never from the request body, so a
+// device cannot register a grant in someone else's name.
+function handleRegisterOfflineGrant(body, ctx) {
+  var deviceId = body && body.deviceId ? String(body.deviceId).slice(0, 80) : "";
+  if (!deviceId) return { error: "deviceId required" };
+  var now = new Date().getTime();
+  var requested = body && body.expiresAt ? new Date(body.expiresAt).getTime() : NaN;
+  // Clamp server-side as well as in the client. The client-side expiry is what
+  // enforces, so this cannot stop a modified client from keeping data longer —
+  // it stops the ADMIN LIST from displaying a reassuring lie about how long a
+  // cooperative device intends to hold it.
+  if (!isFinite(requested) || requested <= now) requested = now + OFFLINE_GRANT_MAX_MS;
+  var expiresAt = new Date(Math.min(requested, now + OFFLINE_GRANT_MAX_MS)).toISOString();
+
+  PropertiesService.getScriptProperties().setProperty(offlineGrantKey_(deviceId), JSON.stringify({
+    deviceId: deviceId,
+    email: ctx.email,
+    personId: ctx.personId || "",
+    registeredAt: new Date(now).toISOString(),
+    expiresAt: expiresAt
+  }));
+  writeAuditLog(ctx.email, ctx.personId, "offlineGrant", deviceId, "expires " + expiresAt, null, ctx.role);
+  return { ok: true, expiresAt: expiresAt };
+}
+
+// The device's own check-in. Returns revoked:true once an admin has pulled the
+// grant (or when the server has no record of it at all and it has lapsed).
+function handleCheckOfflineGrant(body, ctx) {
+  var deviceId = body && body.deviceId ? String(body.deviceId) : "";
+  if (!deviceId) return { error: "deviceId required" };
+  var raw = PropertiesService.getScriptProperties().getProperty(offlineGrantKey_(deviceId));
+  // No server record is NOT treated as revoked: registration is best-effort (it
+  // can fail while the local grant succeeds), and inferring revocation from a
+  // missing row would wipe a device because of a dropped request.
+  if (!raw) return { ok: true, revoked: false, known: false };
+  var g;
+  try { g = JSON.parse(raw); } catch (e) { return { ok: true, revoked: false, known: false }; }
+  return { ok: true, known: true, revoked: !!g.revoked, expiresAt: g.expiresAt || "" };
+}
+
+// Admins revoke any device; anyone may revoke their own (that is the "turn it
+// off here" button clearing its own server record).
+function handleRevokeOfflineGrant(body, ctx) {
+  var deviceId = body && body.deviceId ? String(body.deviceId) : "";
+  if (!deviceId) return { error: "deviceId required" };
+  var props = PropertiesService.getScriptProperties();
+  var key = offlineGrantKey_(deviceId);
+  var raw = props.getProperty(key);
+  if (!raw) return { ok: true, revoked: 0 };
+  var g;
+  try { g = JSON.parse(raw); } catch (e) { props.deleteProperty(key); return { ok: true, revoked: 1 }; }
+  var mine = String(g.email || "").toLowerCase() === String(ctx.email || "").toLowerCase();
+  if (!mine && !isAdmin(ctx)) return { error: "Admin only.", code: 403 };
+  if (mine) {
+    // The device is telling us it has already wiped — nothing left to signal.
+    props.deleteProperty(key);
+  } else {
+    g.revoked = true;
+    g.revokedAt = new Date().toISOString();
+    g.revokedBy = ctx.email;
+    props.setProperty(key, JSON.stringify(g));
+  }
+  writeAuditLog(ctx.email, ctx.personId, "offlineGrantRevoke", deviceId, g.email || "", null, ctx.role);
+  return { ok: true, revoked: 1 };
+}
+
+// Admin review list. `state` is deliberately three-valued and the middle one is
+// the honest one: a revoked grant is "pending device check-in", NOT "wiped".
+// Displaying it as wiped would let an admin believe data was destroyed when it
+// is still sitting on a phone that has not been online since (§4.7.5a).
+function handleListOfflineGrants(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Admin only.", code: 403 };
+  var props = PropertiesService.getScriptProperties();
+  var now = new Date().getTime();
+  var out = [];
+  props.getKeys().forEach(function (k) {
+    if (k.indexOf("ogrant:") !== 0) return;
+    var g;
+    try { g = JSON.parse(props.getProperty(k)); } catch (e) { return; }
+    if (!g) return;
+    var expired = !g.expiresAt || new Date(g.expiresAt).getTime() <= now;
+    // Housekeeping: an expired grant has done its job (the device wiped itself
+    // on schedule, with or without contact) so the record stops being useful.
+    if (expired && !g.revoked) { props.deleteProperty(k); return; }
+    out.push({
+      deviceId: g.deviceId, email: g.email, personId: g.personId || "",
+      registeredAt: g.registeredAt || "", expiresAt: g.expiresAt || "",
+      state: g.revoked ? (expired ? "expired" : "revoked") : "active",
+      revokedAt: g.revokedAt || "", revokedBy: g.revokedBy || ""
+    });
+  });
+  out.sort(function (a, b) { return String(a.expiresAt).localeCompare(String(b.expiresAt)); });
+  return { ok: true, grants: out };
 }
 
 // ── Audit log (A2) ───────────────────────────────────────
