@@ -53,3 +53,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 bench-sandbox.html
+
+# FreeFileSync sync databases (MD_Docs is synced out-of-band)
+.sync.ffs_db
