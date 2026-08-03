@@ -85,4 +85,44 @@ module.exports = async function run() {
         f + " still hand-rolls the transient tick — use btnDone");
     }
   });
+
+  // The exporters acknowledge via the delegated capture — one edit covering all
+  // 14 CSV call sites, so this asserts the helper is reached with NO explicit
+  // button rather than that some specific call site was edited.
+  await test("exporters call btnDone with no explicit button", () => {
+    const src = fs.readFileSync(path.join(ROOT, "js/helpers.js"), "utf8");
+    for (const fn of ["function downloadCSVText", "function exportJSON"]) {
+      const body = src.slice(src.indexOf(fn));
+      ok(/btnDone\(\s*null\s*,/.test(body.slice(0, body.indexOf("\n}"))),
+        fn + " should call btnDone(null, …) so the delegated capture resolves the button");
+    }
+  });
+
+  await test("network handlers take a busy state", () => {
+    const targets = [
+      ["js/sync.js", "async function retryAllDirty"],
+      ["js/forms-wizard.js", "function saveLogConductWizard"]
+    ];
+    for (const [f, sig] of targets) {
+      const src = fs.readFileSync(path.join(ROOT, f), "utf8");
+      const at = src.indexOf(sig);
+      ok(at !== -1, "could not find " + sig + " in " + f);
+      ok(src.slice(at, at + 2000).indexOf("btnBusy") !== -1,
+        sig + " should show a busy state while it awaits the network");
+    }
+  });
+
+  // doArchiveNow has five exit paths, so its restore lives in a `finally` —
+  // a per-path restoreBtn() would be five chances to miss one, and a missed
+  // path leaves the button permanently disabled: a worse bug than the one
+  // this whole layer is fixing.
+  await test("doArchiveNow restores its button in a finally", () => {
+    const src = fs.readFileSync(path.join(ROOT, "js/render.js"), "utf8");
+    const at = src.indexOf("async function doArchiveNow");
+    ok(at !== -1, "could not find doArchiveNow in js/render.js");
+    const body = src.slice(at, at + 2000);
+    ok(body.indexOf("btnBusy") !== -1, "doArchiveNow should show a busy state");
+    ok(/finally\s*\{[^}]*restoreBtn\(\)/.test(body),
+      "doArchiveNow must restore in a finally, not per-path");
+  });
 };

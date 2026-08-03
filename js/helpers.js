@@ -1041,6 +1041,9 @@ function downloadCSVText(csv, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+  // No explicit button: the delegated capture in btnFeedback resolves whichever
+  // .btn is mid-click, so this one line acknowledges all 14 export call sites.
+  btnDone(null, "✓ Exported");
 }
 
 // Feature 20 — Class Progression export. `rows` arrives ALREADY filtered by the
@@ -1096,6 +1099,7 @@ function exportJSON(data, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+  btnDone(null, "✓ Exported");
 }
 
 // ── Reusable per-tab list search + sort (Medical / IPPT / HA / Conduct) ───────

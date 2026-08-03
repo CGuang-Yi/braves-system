@@ -578,6 +578,10 @@ function reapplyMode(arrKey, mode) {
 // the sidebar warning click and the launch dirty-restore prompt.
 async function retryAllDirty() {
   if (!STATE.dirty || STATE.dirty.size === 0) return;
+  // A retry is one Apps Script round trip per dirty tab — easily several
+  // seconds — and it is reached from the sync pill, which is a small target
+  // people re-tap when nothing appears to happen.
+  const restoreBtn = btnBusy(null, "Retrying…");
   const tabs = [...STATE.dirty];
   for (const tab of tabs) {
     const ops = _dirtyOps.get(tab);
@@ -599,6 +603,9 @@ async function retryAllDirty() {
   if (STATE.dirty && STATE.dirty.size > 0 && _lastSyncError) {
     syncLog(`Still unsaved (${[...STATE.dirty].join(", ")}): ${_lastSyncError}`, "var(--red)");
   }
+  // Outside the `if` deliberately: that branch is the still-failing case, and
+  // the button must come back whether the retry succeeded or not.
+  restoreBtn();
 }
 
 // Escape hatch for a device stuck showing "unsaved" that a normal retry can't

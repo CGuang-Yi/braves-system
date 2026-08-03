@@ -98,6 +98,7 @@ function makeClient(backend, opts) {
     render: () => {},                 // stub (render.js not loaded); sync guards most calls
     showLogin: () => {},              // stub (main.js not loaded); sync.js's signOut() calls this unconditionally
     escapeHTML: s => String(s == null ? "" : s),   // helpers.js not bundled; syncLog uses it
+    btnBusy: () => () => {},          // ditto; retryAllDirty shows a busy state, returns restore()
   }, browser.globals);
   vm.createContext(sandbox);
 
