@@ -76,6 +76,7 @@ function render() {
     case "mskAnalytics": renderMSKAnalytics(el); break;
     case "conducts": renderConducts(el); break;
     case "conductdash": renderConductDashboard(el); break;
+    case "duty": renderDuty(el); break;
     case "archive": renderArchive(el); break;
     case "sync": renderSync(el); break;
     default: el.innerHTML = "";

@@ -42,6 +42,29 @@ module.exports = async function run() {
     ok(missing.length === 0, "scripts missing a ?v= version: " + JSON.stringify(missing));
   });
 
+  // (c) Duty-list load order (DUTY_LIST_SPEC.md §12). ESLint sees a flat
+  // namespace, not a load sequence, so it cannot catch either of these; they
+  // fail at runtime in the browser and nowhere else.
+  const at = src => scripts.findIndex(s => s.src === src);
+
+  await test("the pure duty modules load before the view that consumes them", () => {
+    const view = at("js/render-duty.js");
+    ok(view !== -1, "js/render-duty.js is not in index.html");
+    ["js/duty-points.js", "js/duty-eligibility.js", "js/duty-import.js"].forEach(src => {
+      const i = at(src);
+      ok(i !== -1, src + " is not in index.html");
+      ok(i < view, src + " must load before js/render-duty.js");
+    });
+  });
+
+  await test("render-duty loads after actions, because it calls registerActions()", () => {
+    // This is why render-duty sits beside parade-tab rather than with the other
+    // render-* files: registerActions is defined in js/actions.js and called at
+    // the top level of render-duty, so loading it earlier throws on page load.
+    ok(at("js/actions.js") < at("js/render-duty.js"),
+       "js/render-duty.js must load after js/actions.js");
+  });
+
   suite("static: no unbumped tracked-tab writes (heuristic)");
 
   // (c) Heuristic lint: any DIRECT write primitive called with a tracked-tab
