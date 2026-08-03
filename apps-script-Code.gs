@@ -7,13 +7,15 @@
  * Per-account email + password login. State lives in the Accounts/AuditLog tabs
  * and in PropertiesService:
  *
- *   Accounts tab    →  email | personId | role | passwordHash | salt | addedBy | addedAt
+ *   Accounts tab    →  email | personId | role | passwordHash | salt | addedBy | addedAt | caps
  *     • role ∈ {admin, commander, viewer}. Passwords are SHA-256(salt+password)
+ *     • caps is a comma-separated capability list ("duty" today) that sits
+ *       ALONGSIDE the role ladder rather than on it — see hasCap() below.
  *       with a per-account UUID salt. Bootstrap the first admin from the editor
  *       with seedFirstAdmin(email, password); run setupAuthTabs() once to create
  *       the Accounts + AuditLog tabs.
  *
- *   auth:<token>    →  {email, personId, role, issuedAt}  (in ScriptProperties)
+ *   auth:<token>    →  {email, personId, role, caps, issuedAt}  (in ScriptProperties)
  *     • Issued by the `login` action, stored in the browser, sent with every
  *       request. 30-day expiry (isTokenExpired). Role gates every write: viewers
  *       are read-only; account/token management is admin-only. Revoke from the
@@ -602,7 +604,7 @@ function revokeAllAuthTokens() {
 //
 // The auth model: per-account email+password login (it replaced the removed
 // invite-token flow).
-//   Accounts tab : email | personId | role | passwordHash | salt | addedBy | addedAt
+//   Accounts tab : email | personId | role | passwordHash | salt | addedBy | addedAt | caps
 //                  role ∈ {admin, commander, viewer}. personId → Roster id (4D);
 //                  stored + returned but the Roster link is soft (not required to
 //                  log in) — name/platoon/etc. are derived downstream (Step 2/3).
@@ -670,6 +672,25 @@ function isTokenExpired(context) {
 function canWrite(ctx) { return !!ctx && (ctx.role === "commander" || ctx.role === "admin"); }
 function isAdmin(ctx) { return !!ctx && ctx.role === "admin"; }
 
+// Capability check (DUTY_LIST_SPEC.md §9.2). Capabilities are orthogonal to the
+// role ladder: `canWrite` still has to pass first, so a viewer with caps="duty"
+// gets nothing. Admins implicitly hold every capability, which keeps the "admin
+// can always fix it" property the rest of the file relies on.
+//
+// Tokens minted before this column existed carry no `caps`, so they simply hold
+// no capabilities — an old session degrades to "cannot plan duties" rather than
+// to an error, and re-logging in picks the caps up.
+function parseCaps(raw) {
+  return String(raw == null ? "" : raw).split(",")
+    .map(function (s) { return s.trim().toLowerCase(); })
+    .filter(function (s) { return !!s; });
+}
+function hasCap(ctx, cap) {
+  if (!ctx) return false;
+  if (isAdmin(ctx)) return true;
+  return parseCaps(ctx.caps).indexOf(String(cap).toLowerCase()) !== -1;
+}
+
 // ── Login + failed-attempt throttling ────────────────────
 
 function handleLogin(body) {
@@ -692,13 +713,18 @@ function handleLogin(body) {
     email: account.email,
     personId: account.personId || "",
     role: account.role || "viewer",
+    // Snapshotted onto the token, like `role` already is. An account whose caps
+    // change mid-session keeps the old set until it re-logs in or an admin
+    // revokes its tokens — the same trade-off the role column already makes.
+    caps: parseCaps(account.caps).join(","),
     issuedAt: new Date().toISOString()
   };
   PropertiesService.getScriptProperties().setProperty("auth:" + token, JSON.stringify(ctx));
   // `ctx.role` here is exactly what getAuthContext(token) would return (we just
   // wrote this same JSON to the property above) — pass it directly, no lookup.
   writeAuditLog(account.email, account.personId, "login", null, null, token, ctx.role);
-  return { ok: true, authToken: token, role: ctx.role, personId: ctx.personId, email: ctx.email };
+  return { ok: true, authToken: token, role: ctx.role, personId: ctx.personId,
+           email: ctx.email, caps: parseCaps(ctx.caps) };
 }
 
 function logFailedAttempt(email, reason) {
@@ -864,6 +890,7 @@ function routeAuthedPost(action, tab, body, ctx) {
   if (action === "addAccount")        return handleAddAccount(body, ctx);
   if (action === "removeAccount")     return handleRemoveAccount(body, ctx);
   if (action === "adminResetPassword")return handleAdminResetPassword(body, ctx);
+  if (action === "setAccountCaps")    return handleSetAccountCaps(body, ctx);
   if (action === "listTokens")        return handleListTokens(body, ctx);
   if (action === "revokeToken")       return handleRevokeToken(body, ctx);
   if (action === "revokeAllForEmail") return handleRevokeAllForEmail(body, ctx);
@@ -883,6 +910,20 @@ function routeAuthedPost(action, tab, body, ctx) {
   }
   if (body && body.imported && !isAdmin(ctx)) {
     return { error: "Admin only — data import is restricted to admin accounts.", code: 403 };
+  }
+
+  // Duty planning (DUTY_LIST_SPEC.md §9.2). The third narrow gate in the same
+  // style as the two above: `canWrite` has already passed, and this restricts a
+  // subset of tabs further. READS are deliberately untouched — everyone can see
+  // who is on duty and how the points fall; only planning is restricted, which
+  // is exactly how the spreadsheet it replaces worked.
+  //
+  // This is the enforcement point. `canPlanDuty()` on the client only hides UI;
+  // a hand-rolled POST has to come through here.
+  if (tab === "Duty" || tab === "DutyCorrection" || tab === "Holidays") {
+    if (!hasCap(ctx, "duty")) {
+      return { error: "Duty planning is restricted to duty planners.", code: 403 };
+    }
   }
 
   // Mass-deletion safety net (Misc B1): commanders are capped at N single-row
@@ -988,6 +1029,53 @@ function handleAdminResetPassword(body, ctx) {
   return { ok: true };
 }
 
+// Grant or revoke a capability on a target account (DUTY_LIST_SPEC.md §9.2).
+// Admin-only, like every other Accounts mutation.
+//
+// Live tokens are NOT rewritten — caps are snapshotted onto the token at login,
+// same as role. Revoking therefore takes effect on the target's next login, so
+// revokeAllForEmail is the way to make it immediate. Said plainly in the
+// response rather than left for an admin to discover.
+function handleSetAccountCaps(body, ctx) {
+  if (!isAdmin(ctx)) return { error: "Not authorised", code: 403 };
+  var email = body.targetEmail ? String(body.targetEmail).trim() : "";
+  if (!email) return { error: "targetEmail required." };
+  if (!findAccountByEmail(email)) return { error: "Target account not found." };
+
+  var caps = parseCaps(body.caps);
+  for (var i = 0; i < caps.length; i++) {
+    if (KNOWN_CAPS.indexOf(caps[i]) === -1) return { error: "Unknown capability '" + caps[i] + "'." };
+  }
+  var written = writeAccountCaps(email, caps.join(","));
+  if (written && written.error) return written;
+  // Mutates a TARGET account, never the caller's own token — ctx.role safe.
+  writeAuditLog(ctx.email, ctx.personId, "set_account_caps", email, caps.join(",") || "(none)", body.auth, ctx.role);
+  return { ok: true, caps: caps,
+           note: "Takes effect on that account's next login; revoke its tokens to apply immediately." };
+}
+
+// The allowlist exists so a typo ("dutty") fails loudly at the point of granting
+// rather than silently producing an account that can never plan anything.
+var KNOWN_CAPS = ["duty"];
+
+function writeAccountCaps(email, capsCsv) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Accounts");
+  if (!sheet) return { error: "Accounts tab not found" };
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0].map(function (h) { return String(h).trim(); });
+  var emailCol = headers.indexOf("email"), capsCol = headers.indexOf("caps");
+  if (emailCol < 0) return { error: "Accounts tab missing columns" };
+  if (capsCol < 0) return { error: "Accounts tab has no `caps` column — run bravesMigrateSchema() first." };
+  var target = String(email).trim().toLowerCase();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][emailCol]).trim().toLowerCase() === target) {
+      sheet.getRange(i + 1, capsCol + 1).setValues([[capsCsv]]);
+      return { ok: true };
+    }
+  }
+  return { error: "Account row not found" };
+}
+
 // Surgically rewrite one account's passwordHash + salt cells in place.
 function updateAccountPassword(email, newHash, newSalt) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Accounts");
@@ -1016,7 +1104,7 @@ function handleListAccounts(body, ctx) {
   // Never return passwordHash / salt to the client.
   var accounts = rows.map(function (r) {
     return { email: r.email || "", personId: r.personId || "", role: r.role || "",
-             addedBy: r.addedBy || "", addedAt: r.addedAt || "" };
+             caps: parseCaps(r.caps), addedBy: r.addedBy || "", addedAt: r.addedAt || "" };
   });
   return { ok: true, accounts: accounts };
 }
@@ -1039,7 +1127,8 @@ function handleAddAccount(body, ctx) {
   appendRow("Accounts", {
     email: email, personId: personId, role: role,
     passwordHash: hashPassword(password, salt), salt: salt,
-    addedBy: ctx.email, addedAt: new Date().toISOString()
+    addedBy: ctx.email, addedAt: new Date().toISOString(),
+    caps: parseCaps(body.newCaps).join(",")
   });
   // Adding a new account never touches the caller's own token — ctx.role safe.
   writeAuditLog(ctx.email, ctx.personId, "add_account", email, role, body.auth, ctx.role);
@@ -1215,7 +1304,7 @@ function getEmailInfoHelper() {
 // headers non-destructively if the tabs already exist. Safe to re-run.
 function setupAuthTabs() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  ensureTabWithHeaders_(ss, "Accounts", ["email", "personId", "role", "passwordHash", "salt", "addedBy", "addedAt"]);
+  ensureTabWithHeaders_(ss, "Accounts", ["email", "personId", "role", "passwordHash", "salt", "addedBy", "addedAt", "caps"]);
   ensureTabWithHeaders_(ss, "AuditLog", ["timestamp", "email", "personId", "role", "action", "target", "detail", "tokenPrefix"]);
   Logger.log("Accounts and AuditLog tabs are ready.");
 }
@@ -1351,6 +1440,14 @@ function bravesMigrateSchema() {
     ["id", "date", "d4", "reason", "delta", "note", "enteredBy", "enteredAt"]);
   ensureTabWithHeaders_(ss, "Holidays",
     ["date", "name", "tentative"]);
+
+  // Duty-planning capability (DUTY_LIST_SPEC.md §9.2). A comma-separated `caps`
+  // column on Accounts, NOT a fourth role: a duty planner also needs ordinary
+  // commander powers, so it is a capability, not a rung on the viewer <
+  // commander < admin ladder. It is here rather than in Config because Config is
+  // a commander-writable tab — an allowlist there would be self-service
+  // privilege escalation.
+  ensureTabWithHeaders_(ss, "Accounts", ["caps"]);
 
   // BravesConfig (key|value) — create + seed the company-identity settings the
   // frontend's DEFAULT_CONFIG defines. Only seeds keys that aren't already present

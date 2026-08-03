@@ -1,10 +1,10 @@
 // ============================================================================
 // DUTY LIST TAB (js/render-duty.js) — MD_Docs/DUTY_LIST_SPEC.md §8
 // ----------------------------------------------------------------------------
-// Phase 1 is READ-ONLY. There is no assignment UI here and no write path: the
-// only thing that puts rows in the Duty tab at this stage is the one-off
-// workbook import. Editing, conflict warnings and the `duty` capability gate all
-// arrive in phase 2 (js/forms-duty.js).
+// The views. Everything that WRITES lives in js/forms-duty.js — this file
+// decides what to draw and hands the click over. Grid cells and date cells
+// become click targets only for a planner (canPlanDuty), which is presentation:
+// the handlers re-check, and the server's tab gate is what enforces.
 //
 // Three views, chosen by a local tab control:
 //
@@ -127,8 +127,9 @@ function renderDuty(el) {
     <div class="card">
       <h2>Duty List</h2>
       <p style="color:var(--muted);margin:4px 0 10px">
-        Read-only. Duty planning arrives in a later release — until then this reflects
-        what has been imported from the duty sheet.
+        ${showLog
+          ? "Click any grid cell to assign a duty, or a date to mark it a public holiday."
+          : "Read-only — duty planning is restricted to duty planners."}
       </p>
       <div id="duty-tabs" class="filter-role-group" style="margin-bottom:12px">${tabs}</div>
       ${body}
@@ -141,6 +142,7 @@ function dutyGridHTML(cfg) {
   const cols = dutyGridColumns(cfg);
   const idx = dutyIndexByDate(STATE.duty);
   const holidays = indexHolidays(STATE.holidays);
+  const canPlan = canPlanDuty();
 
   const head = cols.map(c => `<th>${escapeHTML(c.label)}</th>`).join("");
   const rows = dutyDatesInMonth(anchor).map(iso => {
@@ -155,10 +157,24 @@ function dutyGridHTML(cfg) {
       : "";
     const cells = cols.map(c => {
       const d4 = idx[iso] && idx[iso][c.dutyType + "|" + c.platoon];
-      return `<td>${d4 ? dutyNameChip(d4, cfg) : "<span style=\"color:var(--muted)\">—</span>"}</td>`;
+      const inner = d4 ? dutyNameChip(d4, cfg) : '<span style="color:var(--muted)">—</span>';
+      // A planner gets the whole cell as a target — including the empty ones,
+      // since filling a blank slot is the commonest action on this screen and
+      // an empty cell is exactly where the click needs to land.
+      if (!canPlan) return `<td>${inner}</td>`;
+      return `<td class="duty-cell" data-action="dutyAssign" data-date="${escapeAttr(iso)}"
+        data-type="${escapeAttr(c.dutyType)}" data-platoon="${escapeAttr(c.platoon)}"
+        title="Assign ${escapeAttr(c.label)}">${inner}</td>`;
     }).join("");
     const wknd = (dow === 0 || dow === 6 || hol) ? ' class="duty-weekend"' : "";
-    return `<tr${wknd}><td class="duty-date">${iso.slice(8)} ${DUTY_DOW_LABELS[dow] || ""}${holTag}
+    // The date cell doubles as the holiday control for planners. Marking a
+    // public holiday is a per-date fact and this is the only place in the app
+    // where dates are already laid out one per row, so it belongs here rather
+    // than behind a separate screen.
+    const dateAttrs = canPlan
+      ? ` class="duty-date duty-cell" data-action="dutyHoliday" data-date="${escapeAttr(iso)}" title="${hol ? "Edit" : "Mark"} public holiday"`
+      : ' class="duty-date"';
+    return `<tr${wknd}><td${dateAttrs}>${iso.slice(8)} ${DUTY_DOW_LABELS[dow] || ""}${holTag}
       <span style="color:var(--muted)" title="Day weight">·${weight}</span></td>${cells}</tr>`;
   }).join("");
 
@@ -167,6 +183,7 @@ function dutyGridHTML(cfg) {
       <button type="button" class="btn" data-action="dutyMonthStep" data-value="-1">‹ Prev</button>
       <strong>${escapeHTML(anchor.slice(0, 7))}</strong>
       <button type="button" class="btn" data-action="dutyMonthStep" data-value="1">Next ›</button>
+      ${canPlan ? `<button type="button" class="btn btn-primary" data-action="dutyAutoPlan">✨ Auto-plan month</button>` : ""}
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th>Date</th>${head}</tr></thead>
@@ -230,12 +247,22 @@ function dutyLogHTML(cfg) {
     `<tr><td>${escapeHTML(c.date)}</td><td>${dutyNameChip(c.d4, cfg)}</td>` +
     `<td>${c.reason ? escapeHTML(c.reason) : '<span class="badge badge-orange">no reason</span>'}</td>` +
     `<td>${c.delta > 0 ? "+" : ""}${c.delta}</td><td>${escapeHTML(c.note || "")}</td>` +
-    `<td style="color:var(--muted)">${escapeHTML(c.enteredBy || "")}</td></tr>`
+    `<td style="color:var(--muted)">${escapeHTML(c.enteredBy || "")}</td>` +
+    `<td style="text-align:right;white-space:nowrap">
+       <button type="button" class="btn" style="font-size:10px" data-action="dutyCorrectionEdit"
+         data-id="${escapeAttr(c.id)}" data-d4="${escapeAttr(c.d4)}" data-date="${escapeAttr(c.date)}">Edit</button>
+       <button type="button" class="btn btn-danger" style="font-size:10px" data-action="dutyCorrectionDelete"
+         data-id="${escapeAttr(c.id)}">Delete</button>
+     </td></tr>`
   ).join("");
 
-  return dutyRangePicker(range) + (rows.length
+  // Only planners ever reach this view, so the New button needs no further
+  // guard here — dutyLogHTML is unreachable otherwise (see renderDuty).
+  const newBtn = `<button type="button" class="btn btn-primary" style="margin-bottom:10px" data-action="dutyCorrectionNew">Log a correction</button>`;
+
+  return dutyRangePicker(range) + newBtn + (rows.length
     ? `<div class="table-wrap"><table>
-         <thead><tr><th>Date</th><th>Person</th><th>Reason</th><th>Delta</th><th>Note</th><th>By</th></tr></thead>
+         <thead><tr><th>Date</th><th>Person</th><th>Reason</th><th>Delta</th><th>Note</th><th>By</th><th></th></tr></thead>
          <tbody>${body}</tbody></table></div>`
     : `<p style="color:var(--muted)">No corrections recorded in this period.</p>`);
 }
@@ -276,5 +303,14 @@ registerActions({
   dutyView: el => setDutyView(el.dataset.value),
   dutyRange: el => setDutyRange(el.dataset.value),
   dutySort: el => setDutySort(el.dataset.value),
-  dutyMonthStep: el => stepDutyMonth(el.dataset.value)
+  dutyMonthStep: el => stepDutyMonth(el.dataset.value),
+  // The write actions (js/forms-duty.js). They are only ever rendered for a
+  // planner, and each handler re-checks canPlanDuty() anyway — the markup being
+  // absent is a convenience, not the guard.
+  dutyAssign: el => openDutyAssignForm(el.dataset.date, el.dataset.type, el.dataset.platoon),
+  dutyHoliday: el => openDutyHolidayForm(el.dataset.date),
+  dutyCorrectionNew: () => openDutyCorrectionForm("", todayISO(), ""),
+  dutyCorrectionEdit: el => openDutyCorrectionForm(el.dataset.d4, el.dataset.date, "", el.dataset.id),
+  dutyCorrectionDelete: el => deleteDutyCorrection(el.dataset.id),
+  dutyAutoPlan: () => openDutySchedulerForm(dutyMonthAnchor())
 });

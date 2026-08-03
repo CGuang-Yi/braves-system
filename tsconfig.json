@@ -25,11 +25,18 @@
     "types": ["node"]
   },
   "files": [
+    // Ambient declarations for the few globals a checked module reaches across
+    // file boundaries for. `moduleDetection: "force"` makes every .js here a
+    // module, so their top-level declarations are not visible to each other the
+    // way they are in the browser. See the file's own header.
+    "types/frontend-globals.d.ts",
     "js/calc.js",
     "js/ippt-scoring.js",
     "js/sick-history-import.js",
     "js/duty-points.js",
     "js/duty-eligibility.js",
-    "js/duty-import.js"
+    "js/duty-conflicts.js",
+    "js/duty-import.js",
+    "js/duty-schedule.js"
   ]
 }

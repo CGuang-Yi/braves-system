@@ -111,10 +111,18 @@ function renderAdminPanel() {
   const accountsRows = (STATE.accounts || []).map(a => `
     <tr>
       <td>${escapeHTML(a.email || "")}</td>
-      <td><span class="badge badge-accent">${escapeHTML(a.role || "")}</span></td>
+      <td><span class="badge badge-accent">${escapeHTML(a.role || "")}</span>${
+        // Admins hold every capability implicitly (hasCap in the backend), so
+        // showing a grantable "duty" chip on an admin row would imply the
+        // toggle below does something for them. It doesn't.
+        (a.role !== "admin" && (a.caps || []).indexOf("duty") !== -1)
+          ? ' <span class="badge badge-orange" title="Can plan duties">duty</span>' : ""}</td>
       <td class="mono" style="font-size:10px">${escapeHTML(a.personId || "—")}</td>
       <td style="font-size:10px;color:var(--muted)">${escapeHTML(a.addedBy || "")}</td>
       <td style="text-align:right;white-space:nowrap">
+        ${a.role === "admin" ? "" :
+          `<button class="btn" style="font-size:10px" onclick="doToggleDutyCap('${encodeURIComponent(a.email)}',${(a.caps || []).indexOf("duty") !== -1})">${
+            (a.caps || []).indexOf("duty") !== -1 ? "Revoke duty" : "Grant duty"}</button>`}
         <button class="btn" style="font-size:10px" onclick="openResetPasswordForm('${encodeURIComponent(a.email)}')">Reset PW</button>
         <button class="btn btn-danger" style="font-size:10px" onclick="doRemoveAccount('${encodeURIComponent(a.email)}')">Remove</button>
       </td>

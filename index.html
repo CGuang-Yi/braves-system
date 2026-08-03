@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Braves Company Data System</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=134">
+<link rel="stylesheet" href="styles.css?v=135">
 <!-- Third-party libs are VENDORED locally under vendor/ (pinned exact versions)
      rather than loaded from a CDN. This removes the supply-chain risk flagged by
      code scanning ("inclusion of functionality from an untrusted source" — a CDN
@@ -119,7 +119,8 @@
 <!--
   Plain scripts (not modules) so this works under file:// too.
   Load order matters: state → api → ippt-scoring → calc → helpers →
-  sick-history-import → duty-points → duty-eligibility → duty-import →
+  sick-history-import → duty-points → duty-eligibility → duty-conflicts → duty-import →
+  duty-schedule →
   render* → forms* → braves-parade → actions → parade-tab → render-duty →
   sync → main. The render-* and forms-* files are SPLITS of two former monoliths,
   not independent modules: they share the one global scope, and their tags must
@@ -129,38 +130,44 @@
   tab view; it calls bp* globals from braves-parade at runtime, so load it after
   braves-parade. actions is the delegated event dispatcher; any file calling
   registerActions() must load after it.
-  duty-points/duty-eligibility/duty-import are DOM-free pure modules (the duty
-  list's arithmetic, eligibility rules and workbook parser); they depend on
-  nothing and are loaded before the views that use them. render-duty is the Duty
+  duty-points/duty-eligibility/duty-conflicts/duty-import are DOM-free pure modules (the duty
+  list's arithmetic, eligibility rules, conflict detection and workbook parser).
+  Only duty-conflicts has a dependency — addDaysISO from calc.js — so all four
+  load after calc and before the views that use them. render-duty is the Duty
   List tab view — it sits with parade-tab rather than the other render-* files
-  because it calls registerActions(), so it must load after actions.
+  because it calls registerActions(), so it must load after actions. forms-duty
+  is the duty list's write half; like render-duty it is a NEW file rather than a
+  split of the forms monolith, so it is NOT part of test/sources.js PARTS.forms.
 -->
-<script src="js/state.js?v=130"></script>
-<script src="js/api.js?v=128"></script>
+<script src="js/state.js?v=134"></script>
+<script src="js/api.js?v=129"></script>
 <script src="js/ippt-scoring.js?v=113"></script>
 <script src="js/calc.js?v=8"></script>
 <script src="js/helpers.js?v=148"></script>
 <script src="js/sick-history-import.js?v=114"></script>
 <script src="js/duty-points.js?v=1"></script>
 <script src="js/duty-eligibility.js?v=2"></script>
+<script src="js/duty-conflicts.js?v=1"></script>
 <script src="js/duty-import.js?v=1"></script>
+<script src="js/duty-schedule.js?v=3"></script>
 <script src="js/render.js?v=178"></script>
-<script src="js/render-dashboard.js?v=1"></script>
+<script src="js/render-dashboard.js?v=2"></script>
 <script src="js/render-records.js?v=1"></script>
 <script src="js/render-conducts.js?v=1"></script>
 <script src="js/render-statusboard.js?v=1"></script>
 <script src="js/forms.js?v=179"></script>
 <script src="js/forms-import.js?v=1"></script>
 <script src="js/forms-records.js?v=2"></script>
-<script src="js/forms-reports.js?v=2"></script>
+<script src="js/forms-reports.js?v=4"></script>
 <script src="js/forms-conducts.js?v=1"></script>
 <script src="js/forms-wizard.js?v=1"></script>
-<script src="js/forms-admin.js?v=1"></script>
+<script src="js/forms-admin.js?v=2"></script>
+<script src="js/forms-duty.js?v=3"></script>
 <script src="js/braves-parade.js?v=140"></script>
 <script src="js/actions.js?v=1"></script>
 <script src="js/parade-tab.js?v=26"></script>
-<script src="js/render-duty.js?v=2"></script>
-<script src="js/sync.js?v=126"></script>
-<script src="js/main.js?v=123"></script>
+<script src="js/render-duty.js?v=5"></script>
+<script src="js/sync.js?v=127"></script>
+<script src="js/main.js?v=124"></script>
 </body>
 </html>
