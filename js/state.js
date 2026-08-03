@@ -17,6 +17,17 @@ const AUTH_KEY = "cougar-auth";           // per-device auth token (now from log
 const ROLE_KEY = "braves-role";
 const PERSONID_KEY = "braves-personid";
 const EMAIL_KEY = "braves-email";
+const CAPS_KEY = "braves-caps";
+
+// Capabilities travel as a comma-separated string (that is the Accounts column's
+// shape) and are held as a lowercased array. Mirrors parseCaps() in
+// apps-script-Code.gs — the two must agree on normalisation or a cap granted as
+// "Duty" would hide the UI from someone the server happily lets write.
+function parseCapsCSV(raw) {
+  return String(raw == null ? "" : raw).split(",")
+    .map(s => s.trim().toLowerCase())
+    .filter(s => !!s);
+}
 const FILTER_KEY = "cougar-filter";
 const IPPT_AGG_KEY = "cougar-ippt-agg";
 const FITNESS_SENT_KEY = "cougar-fitness-sent";
@@ -300,8 +311,10 @@ const STATE = {
   // a successful login.
   role: localStorage.getItem(ROLE_KEY) || "",
   // Per-account capabilities beyond the role ladder (DUTY_LIST_SPEC.md §9).
-  // Populated from the login response in phase 2; empty until then.
-  caps: [],
+  // Persisted alongside `role` so a launch off the cache — which renders before
+  // any network call — doesn't briefly hide the planner UI from a planner.
+  // Purely cosmetic either way: the server gate is the enforcement.
+  caps: parseCapsCSV(localStorage.getItem(CAPS_KEY)),
   personId: localStorage.getItem(PERSONID_KEY) || "",
   email: localStorage.getItem(EMAIL_KEY) || "",
   // Admin-panel data, loaded on demand from the backend (never cached to disk):
@@ -862,15 +875,19 @@ function setAuthToken(token) {
 // Persist the full account session after a successful login (or clear it on
 // logout / auth failure). The token still lives in AUTH_KEY via setAuthToken so
 // the API layer keeps reading from one place.
-function setSession(token, role, personId, email) {
+function setSession(token, role, personId, email, caps) {
   setAuthToken(token);
   STATE.role = role || "";
   STATE.personId = personId || "";
   STATE.email = email || "";
+  // Accepts either the array the login response returns or a raw CSV string, so
+  // a caller that has one shape doesn't have to convert.
+  STATE.caps = Array.isArray(caps) ? parseCapsCSV(caps.join(",")) : parseCapsCSV(caps);
   const put = (k, v) => v ? localStorage.setItem(k, v) : localStorage.removeItem(k);
   put(ROLE_KEY, STATE.role);
   put(PERSONID_KEY, STATE.personId);
   put(EMAIL_KEY, STATE.email);
+  put(CAPS_KEY, STATE.caps.join(","));
 }
 function clearSession() {
   setSession("", "", "", "");
@@ -886,14 +903,14 @@ const isAdminRole = () => STATE.role === "admin";
 // it — it is a capability, because a duty planner also needs ordinary commander
 // powers. `caps` is a comma-separated column on the Accounts tab.
 //
-// Phase 1 is read-only and the server side of this does not exist yet, so
-// STATE.caps is always empty and only admins pass. That is the conservative
-// direction to be wrong in, and the predicate is already the shape phase 2
-// needs — the backend gate lands in routeAuthedPost alongside the sendEmail and
-// bulk-import checks, and THAT is what actually enforces this. Everything here
-// is cosmetic.
+// Everything here is COSMETIC. The enforcement is the tab gate in
+// routeAuthedPost (apps-script-Code.gs), sitting with the sendEmail and
+// bulk-import checks; these predicates only decide which buttons to draw. A
+// planner whose caps went stale sees the buttons and gets a 403 — annoying, not
+// a hole. The inverse (hiding the UI from a real planner) is why caps are
+// cached in localStorage rather than waiting on the network.
 function hasCap(cap) {
-  return (STATE.caps || []).indexOf(cap) !== -1;
+  return (STATE.caps || []).indexOf(String(cap).toLowerCase()) !== -1;
 }
 const canPlanDuty = () => isAdminRole() || hasCap("duty");
 

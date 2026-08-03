@@ -188,6 +188,9 @@ function applyRoleUI() {
   // Fix1B: drives the .commander-plus visibility class (e.g. the Archive nav),
   // which shows for commanders as well as admins.
   document.body.classList.toggle("role-commander", STATE.role === "commander");
+  // Duty planning is a capability, not a rung on the role ladder, so it gets its
+  // own class rather than being folded into the role ones (DUTY_LIST_SPEC.md §9).
+  document.body.classList.toggle("cap-duty", canPlanDuty());
   // A viewer can never legitimately have unsynced edits. Scrub any stale dirty
   // markers (e.g. left by a write attempt before this guard existed, or by a
   // commander who previously used this device) so the launch "push now?" prompt
@@ -232,7 +235,7 @@ async function doLogin(e) {
   try {
     const res = await API.login(email, password);
     if (res && res.ok && res.authToken) {
-      setSession(res.authToken, res.role, res.personId, res.email);
+      setSession(res.authToken, res.role, res.personId, res.email, res.caps);
       showApp();
       await pullAndRender();
     } else {

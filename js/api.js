@@ -87,10 +87,12 @@ const API = {
   },
   // ── Admin: account + token management ──────────────────
   async listAccounts() { return this.post({ action: "listAccounts" }); },
-  async addAccount(newEmail, newPersonId, newRole, newPassword) {
-    return this.post({ action: "addAccount", newEmail, newPersonId, newRole, newPassword });
+  async addAccount(newEmail, newPersonId, newRole, newPassword, newCaps) {
+    return this.post({ action: "addAccount", newEmail, newPersonId, newRole, newPassword, newCaps });
   },
   async removeAccount(targetEmail) { return this.post({ action: "removeAccount", targetEmail }); },
+  // caps is a comma-separated string — the Accounts column's own shape.
+  async setAccountCaps(targetEmail, caps) { return this.post({ action: "setAccountCaps", targetEmail, caps }); },
   async adminResetPassword(targetEmail, tempPassword) {
     return this.post({ action: "adminResetPassword", targetEmail, tempPassword });
   },
