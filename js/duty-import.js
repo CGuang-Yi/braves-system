@@ -70,6 +70,50 @@ function dutyCellIsEmpty(cell) {
   return !cell || cell.value === undefined || cell.value === null || String(cell.value).trim() === "";
 }
 
+// Sheets/Excel hand fills back as either RGB ("F4CCCC") or ARGB ("FFF4CCCC").
+// Strip a leading fully-opaque alpha so both match the same colour-map key.
+function dutyNormFill(f) {
+  return String(f || "").replace(/^FF(?=[0-9A-Fa-f]{6}$)/i, "").toUpperCase();
+}
+
+// Each column's own baseline, so detection is RELATIVE rather than absolute.
+//
+// An absolute "is this cell filled?" test is useless on this workbook: #F4CCCC is
+// the background of every duty cell in every month, and April additionally colours
+// the PDS headers per platoon. Both would be false positives, and between them
+// they cover essentially the whole grid. Deriving the baseline per column also
+// survives the palette drifting between months, which it does.
+function modalFillForColumn(sheet, col, fromRow, toRow) {
+  const counts = {};
+  let best = "", bestN = -1;
+  for (let r = fromRow; r <= toRow; r++) {
+    const c = dutyCell(sheet, col, r);
+    const f = dutyNormFill(c && c.fill);
+    counts[f] = (counts[f] || 0) + 1;
+    if (counts[f] > bestN) { bestN = counts[f]; best = f; }
+  }
+  return best;
+}
+
+function dutyReasonDelta(cfg, reason) {
+  const list = (cfg && cfg.dutyCorrectionReasons) || [];
+  for (let i = 0; i < list.length; i++) if (list[i].name === reason) return Number(list[i].delta) || 0;
+  return 0;
+}
+
+// True when EVERY duty column on the row carries the public-holiday shade. The
+// source workbook marks a PH by shading the whole row, which is what separates it
+// from a single-cell correction; requiring the full span keeps a lone red cell
+// from being promoted to a holiday.
+function dutyRowIsHoliday(sheet, row, holidayFill) {
+  if (!holidayFill) return false;
+  for (let c = DUTY_FIRST_COL; c <= DUTY_LAST_COL; c++) {
+    const cell = dutyCell(sheet, c, row);
+    if (dutyNormFill(cell && cell.fill) !== holidayFill) return false;
+  }
+  return true;
+}
+
 function parseDutyMonthSheet(sheet, cfg) {
   const rows = [], corrections = [], holidays = [], warnings = [];
 
@@ -84,20 +128,75 @@ function parseDutyMonthSheet(sheet, cfg) {
     else warnings.push({ sheet: sheet.name, cell: dutyColLetter(c) + "1", message: "blank duty-type header; column skipped" });
   }
 
+  const colours = (cfg && cfg.dutyCorrectionColours) || {};
+  const reasonByFill = colours.reason || {};
+  const magnitudeByFill = colours.magnitude || {};
+  const holidayFill = dutyNormFill(colours.holidayRow);
+
+  // Per-column baselines, computed once over the data rows (spec §7.2).
+  const baseline = {};
+  for (let c = DUTY_FIRST_COL; c <= DUTY_LAST_COL; c++) {
+    baseline[c] = modalFillForColumn(sheet, c, 2, sheet.maxRow);
+  }
+
   for (let r = 2; r <= sheet.maxRow; r++) {
     const dateCell = dutyCell(sheet, 1, r);
     if (dutyCellIsEmpty(dateCell)) continue;
     const iso = excelSerialToISO(dateCell.value);
     if (!iso) { warnings.push({ sheet: sheet.name, cell: "A" + r, message: "unparseable date" }); continue; }
 
+    const isHoliday = dutyRowIsHoliday(sheet, r, holidayFill);
+    if (isHoliday) holidays.push({ date: iso, name: "", tentative: "" });
+
     for (let c = DUTY_FIRST_COL; c <= DUTY_LAST_COL; c++) {
       const t = types[c];
       if (!t) continue;
       const cell = dutyCell(sheet, c, r);
       if (dutyCellIsEmpty(cell)) continue;
-      rows.push({
-        date: iso, dutyType: t.dutyType, platoon: t.platoon,
-        d4: String(cell.value).trim(), source: "import"
+      const d4 = String(cell.value).trim();
+      rows.push({ date: iso, dutyType: t.dutyType, platoon: t.platoon, d4: d4, source: "import" });
+
+      // A public-holiday row is shaded end to end, so every cell on it deviates
+      // from its column baseline. Skipping correction detection there is not an
+      // optimisation: PH is applied natively by the points engine from the
+      // Holidays tab, so also recording it as a correction would double-count
+      // (spec §3.5).
+      if (isHoliday) continue;
+
+      const fill = dutyNormFill(cell.fill);
+      if (fill === baseline[c]) continue;
+
+      // This block is B..H, so the fill is looked up in the REASON map and never
+      // the magnitude map. That is what disambiguates #FF9900, which appears in
+      // both legends (spec §1.4).
+      const reason = reasonByFill[fill];
+      if (reason) {
+        corrections.push({ date: iso, d4: d4, reason: reason, delta: dutyReasonDelta(cfg, reason), note: "" });
+      } else {
+        // Emitted anyway, with no reason, so a colour we do not recognise shows
+        // up for a human instead of vanishing.
+        corrections.push({ date: iso, d4: d4, reason: null, delta: 0, note: "unrecognised fill #" + fill });
+        warnings.push({
+          sheet: sheet.name, cell: dutyColLetter(c) + r, kind: "unknown-fill",
+          message: "unrecognised fill #" + fill + "; correction emitted with no reason"
+        });
+      }
+    }
+
+    // The ONLY reason the parser looks right of column H. Magnitude highlights are
+    // flagged and nothing more: the ±2/±4 legend does not agree with the +3/+1/-1
+    // literals actually appended to formulas in the workbook, so pairing them with
+    // a reason would invent precision that is not there. Deltas always come from
+    // the reason's Config default (spec §7.2, §14 item 2).
+    for (let c = DUTY_LAST_COL + 1; c <= (sheet.maxCol || DUTY_LAST_COL); c++) {
+      const cell = dutyCell(sheet, c, r);
+      if (!cell) continue;
+      const fill = dutyNormFill(cell.fill);
+      if (!fill || magnitudeByFill[fill] === undefined) continue;
+      warnings.push({
+        sheet: sheet.name, cell: dutyColLetter(c) + r, kind: "magnitude-highlight",
+        message: "magnitude highlight #" + fill + " (legend says " + magnitudeByFill[fill] +
+                 ") — flagged only, not applied to any total"
       });
     }
   }
@@ -123,5 +222,6 @@ function parseDutyWorkbook(workbook, cfg) {
 // Node test export (browser ignores `module`).
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { excelSerialToISO, dutyColNum, dutyColLetter, dutyHeaderToType,
+                     dutyNormFill, modalFillForColumn, dutyReasonDelta, dutyRowIsHoliday,
                      DUTY_SKIP_SHEETS, parseDutyMonthSheet, parseDutyWorkbook };
 }
