@@ -136,6 +136,14 @@ const DEFAULT_CONFIG = {
     holidayRow: "EA4335",
     gridBase: "F4CCCC"
   },
+  // Duty type for a workbook column whose header cell is BLANK, keyed by column
+  // letter. Column B is CDO in the source workbook but carries no header text —
+  // its identity is only established by the A33 VLOOKUP, which labels offset 2
+  // "CDO:". Without this the importer skips the column and every CDO assignment
+  // is silently lost. It lives in Config rather than being hardcoded so it stays
+  // a correctable statement about one workbook, not a guess baked into the
+  // parser; the importer still emits a warning whenever it has to fall back.
+  dutyHeaderFallback: { B: "CDO" },
   dutyCycleStart: "2026-04-01",
   dutyCycleMonths: 6,
   // Extra 4Ds eligible for duty beyond the automatic commander rule. Safe to keep
@@ -175,6 +183,7 @@ function dutyConfig() {
     dutyDayWeights: configGetJSON("dutyDayWeights"),
     dutyCorrectionReasons: configGetJSON("dutyCorrectionReasons"),
     dutyCorrectionColours: configGetJSON("dutyCorrectionColours"),
+    dutyHeaderFallback: configGetJSON("dutyHeaderFallback"),
     dutyExtraEligible: configGetJSON("dutyExtraEligible"),
     dutyCycleStart: configGet("dutyCycleStart"),
     dutyCycleMonths: Number(configGet("dutyCycleMonths")) || 6

@@ -120,12 +120,33 @@ function parseDutyMonthSheet(sheet, cfg) {
   // The header row resolves each column's duty type. Column B is CDO in the source
   // workbook but its header cell is blank there, so a missing header is reported
   // rather than crashing or silently guessing.
+  const fallback = (cfg && cfg.dutyHeaderFallback) || {};
   const types = {};
   for (let c = DUTY_FIRST_COL; c <= DUTY_LAST_COL; c++) {
+    const letter = dutyColLetter(c);
     const hc = dutyCell(sheet, c, 1);
     const t = hc ? dutyHeaderToType(hc.value) : null;
-    if (t) types[c] = t;
-    else warnings.push({ sheet: sheet.name, cell: dutyColLetter(c) + "1", message: "blank duty-type header; column skipped" });
+    if (t) { types[c] = t; continue; }
+
+    // Column B is CDO in the source workbook but its header cell is blank — the
+    // identity is only established by the A33 VLOOKUP that labels offset 2
+    // "CDO:". Without a fallback the column is skipped and every CDO assignment
+    // is silently lost, which is worse than either alternative. The fallback is
+    // Config data rather than a hardcoded guess, and using it is always warned
+    // about, so it can never be mistaken for a header the workbook actually had.
+    const fb = fallback[letter] ? dutyHeaderToType(fallback[letter]) : null;
+    if (fb) {
+      types[c] = fb;
+      warnings.push({
+        sheet: sheet.name, cell: letter + "1", kind: "header-fallback",
+        message: "blank duty-type header; assumed " + fb.dutyType + " from dutyHeaderFallback"
+      });
+    } else {
+      warnings.push({
+        sheet: sheet.name, cell: letter + "1", kind: "header-missing",
+        message: "blank duty-type header and no dutyHeaderFallback entry; column skipped"
+      });
+    }
   }
 
   const colours = (cfg && cfg.dutyCorrectionColours) || {};
@@ -165,6 +186,12 @@ function parseDutyMonthSheet(sheet, cfg) {
 
       const fill = dutyNormFill(cell.fill);
       if (fill === baseline[c]) continue;
+      // An ABSENT fill is not a correction marker. It deviates from a coloured
+      // baseline, but the legends assign meaning to colours, not to the lack of
+      // one — an uncoloured cell is at most a formatting gap. Without this the
+      // sanitised workbook alone produces 48 phantom corrections whose "colour"
+      // is the empty string.
+      if (!fill) continue;
 
       // This block is B..H, so the fill is looked up in the REASON map and never
       // the magnitude map. That is what disambiguates #FF9900, which appears in

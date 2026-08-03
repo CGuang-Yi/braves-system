@@ -101,12 +101,38 @@ module.exports = async function run() {
     eq(r.rows.every(function (x) { return x.source === "import"; }), true);
   });
 
-  await test("a blank duty-type header is warned about, not silently skipped", () => {
+  await test("a blank header with no fallback is warned about and the column skipped", () => {
     const s = makeSheet();
     s.cells["B1"] = { value: "", fill: "" };
-    const r = imp.parseDutyMonthSheet(s, CFG);
-    eq(r.warnings.filter(function (w) { return w.cell === "B1"; }).length, 1);
+    const r = imp.parseDutyMonthSheet(s, CFG);   // CFG has no dutyHeaderFallback
+    const w = r.warnings.filter(function (x) { return x.cell === "B1"; });
+    eq(w.length, 1);
+    eq(w[0].kind, "header-missing");
     eq(r.rows.filter(function (x) { return x.dutyType === "CDO"; }).length, 0);
+  });
+
+  await test("dutyHeaderFallback recovers the blank CDO column, and says so", () => {
+    // Column B is CDO in the real workbook but its header cell is blank, so
+    // without this every CDO assignment would be silently lost.
+    const cfg = { dutyCorrectionColours: CFG.dutyCorrectionColours,
+                  dutyCorrectionReasons: CFG.dutyCorrectionReasons,
+                  dutyHeaderFallback: { B: "CDO" } };
+    const s = makeSheet();
+    s.cells["B1"] = { value: "", fill: "" };
+    const r = imp.parseDutyMonthSheet(s, cfg);
+    eq(r.rows.filter(function (x) { return x.dutyType === "CDO"; }).length, 2);
+    const w = r.warnings.filter(function (x) { return x.cell === "B1"; });
+    eq(w.length, 1);
+    eq(w[0].kind, "header-fallback");   // never silent — a fallback is always reported
+  });
+
+  await test("a real header always beats the fallback", () => {
+    const cfg = { dutyCorrectionColours: CFG.dutyCorrectionColours,
+                  dutyCorrectionReasons: CFG.dutyCorrectionReasons,
+                  dutyHeaderFallback: { B: "CDO", D: "WRONG" } };
+    const r = imp.parseDutyMonthSheet(makeSheet(), cfg);
+    eq(r.rows.filter(function (x) { return x.dutyType === "WRONG"; }).length, 0);
+    eq(r.rows.filter(function (x) { return x.dutyType === "COS"; }).length, 2);
   });
 
   await test("the workbook parser skips the non-month reference sheets", () => {
@@ -182,6 +208,18 @@ module.exports = async function run() {
     const flagged = r.warnings.filter(function (w) { return w.cell === "R3"; });
     eq(flagged.length, 1);
     eq(flagged[0].kind, "magnitude-highlight");
+  });
+
+  await test("an UNFILLED cell is not a correction, even against a coloured baseline", () => {
+    // The legends assign meaning to colours, not to the absence of one. Treating
+    // a bare cell as a deviation produced 48 phantom corrections on the real
+    // workbook, all with an empty-string "colour".
+    const r = imp.parseDutyMonthSheet(makeSheet({
+      "D3": { value: "0005", fill: "" }
+    }), CFG);
+    eq(r.corrections.length, 0);
+    eq(r.warnings.filter(function (w) { return w.cell === "D3"; }).length, 0);
+    eq(r.rows.filter(function (x) { return x.d4 === "0005"; }).length, 1); // still imported
   });
 
   await test("an unrecognised deviating fill is emitted with a warning, never dropped", () => {
