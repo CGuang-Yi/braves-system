@@ -50,11 +50,20 @@ module.exports = async function run() {
   await test("the pure duty modules load before the view that consumes them", () => {
     const view = at("js/render-duty.js");
     ok(view !== -1, "js/render-duty.js is not in index.html");
-    ["js/duty-points.js", "js/duty-eligibility.js", "js/duty-import.js"].forEach(src => {
+    ["js/duty-points.js", "js/duty-eligibility.js", "js/duty-conflicts.js", "js/duty-import.js"].forEach(src => {
       const i = at(src);
       ok(i !== -1, src + " is not in index.html");
       ok(i < view, src + " must load before js/render-duty.js");
     });
+  });
+
+  // duty-conflicts is the one duty module that is not self-contained: it calls
+  // addDaysISO from calc.js. Loading it earlier is a ReferenceError the first
+  // time a planner opens an assignment cell — a runtime-only failure on a path
+  // no test exercises in the browser.
+  await test("duty-conflicts loads after calc, whose addDaysISO it calls", () => {
+    ok(at("js/calc.js") !== -1 && at("js/calc.js") < at("js/duty-conflicts.js"),
+       "js/duty-conflicts.js must load after js/calc.js");
   });
 
   await test("render-duty loads after actions, because it calls registerActions()", () => {
