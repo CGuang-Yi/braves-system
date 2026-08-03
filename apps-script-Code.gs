@@ -212,6 +212,28 @@
  *                HQ+PLT1–4 assumption. code ∈ {HQ, PLT1, …}; active=FALSE
  *                retires a platoon without deleting history. Scope selector +
  *                Roster platoon dropdown derive options from active rows.)
+ *   Duty:       id | date | dutyType | platoon | d4 | assignedBy | assignedAt | source
+ *               (Duty roster, DUTY_LIST_SPEC.md §3.1. date is ISO YYYY-MM-DD —
+ *                NOT the "01 Jan 2026" form older tabs use. dutyType comes from
+ *                the Config key dutyTypes. platoon is the LITERAL platoon at the
+ *                time of assignment (e.g. "PLT3"), blank for company-scoped
+ *                types; it is never re-resolved against the current roster, so a
+ *                commander transferring platoon cannot rewrite history or move a
+ *                past total. source ∈ {manual, import, auto} — "auto" marks a row
+ *                that originated from the scheduler's proposal.)
+ *   DutyCorrection: id | date | d4 | reason | delta | note | enteredBy | enteredAt
+ *               (Manual point adjustments, §3.2. delta is a signed number,
+ *                defaulting from the reason's entry in the Config key
+ *                dutyCorrectionReasons and overridable per row. There is
+ *                deliberately NO "Public Holiday" reason: PH is applied natively
+ *                by the points engine from the Holidays tab, so a PH correction
+ *                row would double-count.)
+ *   Holidays:   date | name | tentative
+ *               (§3.3. A holiday is the highest day weight at 5 points, so a
+ *                tentative one that never materialises would silently overpay by
+ *                4. tentative rows still score 5 but are flagged in the UI and in
+ *                the import reconciliation report, making that visible rather
+ *                than silent.)
  */
 
 var FRONTEND_BASE_URL = "https://cguang-yi.github.io/braves-system/";
@@ -716,7 +738,8 @@ function clearFailedAttempts(email) {
 // newer data. A single (document) lock makes the check → write → bump sequence
 // atomic, since Apps Script web apps do NOT serialize concurrent requests.
 var REV_TABS = ["Roster", "Medical", "Attendance", "IPPT", "RouteMarch", "SOC",
-  "PolarFlow", "ConductDetail", "Appointments", "Leave", "MSK", "Conducts"];
+  "PolarFlow", "ConductDetail", "Appointments", "Leave", "MSK", "Conducts",
+  "Duty", "DutyCorrection", "Holidays"];
 
 function getRev(tabName) {
   var p = PropertiesService.getScriptProperties();
@@ -1318,6 +1341,17 @@ function bravesMigrateSchema() {
   ensureTabWithHeaders_(ss, "SOC",
     ["id", "d4", "socNum", "date", "time", "avgHr", "pass"]);
 
+  // Duty list (MD_Docs/DUTY_LIST_SPEC.md §3). `d4` on Duty and DutyCorrection is
+  // registered in WRITE_TEXT_COLS_BY_TAB — without that, Sheets coerces "0042" to
+  // 42 on write and every commander 4D is corrupted (the documented cause of the
+  // Attendance-participants and conduct-time bugs).
+  ensureTabWithHeaders_(ss, "Duty",
+    ["id", "date", "dutyType", "platoon", "d4", "assignedBy", "assignedAt", "source"]);
+  ensureTabWithHeaders_(ss, "DutyCorrection",
+    ["id", "date", "d4", "reason", "delta", "note", "enteredBy", "enteredAt"]);
+  ensureTabWithHeaders_(ss, "Holidays",
+    ["date", "name", "tentative"]);
+
   // BravesConfig (key|value) — create + seed the company-identity settings the
   // frontend's DEFAULT_CONFIG defines. Only seeds keys that aren't already present
   // so re-running never clobbers values an admin has edited.
@@ -1641,7 +1675,7 @@ function readAllTabs(ctx) {
 // update silently APPENDS a duplicate person instead. Both header spellings are
 // listed because the sheet may name the column "4d" or "id" (see SHEET TABS at
 // the top of this file); forceTextColsForRange_ skips the ones that don't exist.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"] };
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"] };
 
 // Which sheet column holds a tab's row key, in preference order. Default is the
 // literal "id" column that nextId()-keyed tabs use. Roster is the exception: the

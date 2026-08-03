@@ -46,7 +46,11 @@ const TAB_TO_STATE = {
   // sync primitives; Config is key/value and is written through its own path
   // (it normalizes array→object on read), so it is intentionally absent here.
   "VocFit": "vocfit",
-  "Platoons": "platoons"
+  "Platoons": "platoons",
+  // Duty list (DUTY_LIST_SPEC.md §3).
+  "Duty": "duty",
+  "DutyCorrection": "dutyCorrection",
+  "Holidays": "holidays"
 };
 
 // Company-specific defaults (spec §4). Every value the system used to hardcode
@@ -75,7 +79,101 @@ const DEFAULT_CONFIG = {
   // #32/#35). Any leave type NOT in this comma-separated list falls to OTHERS,
   // sub-typed in/out of camp by reason keywords. Edit here (or override via the
   // Config tab) to retune the split without touching code.
-  alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate"
+  alOilLeaveTypes: "Leave, Off-in-Lieu, OIL, AL, Annual Leave, Weekend, Night's Out, Compassionate",
+
+  // ── Duty list (DUTY_LIST_SPEC.md §3.5) ────────────────────────────────────
+  // These defaults reproduce the source spreadsheet's behaviour exactly: only
+  // COS scores, on the day-weight scale in its Explanatory Notes. Everything
+  // else is tracked and counted but deliberately unscored.
+  //
+  // Unlike the string-valued keys above, these are structured. Read them with
+  // configGetJSON(), which parses a JSON string from the Config sheet and falls
+  // back to the object here — a sheet cell can only ever hold text.
+  //
+  // scope "company" = one slot company-wide per day; scope "platoon" = one slot
+  // per live platoon, derived from STATE.platoons. PDS therefore needs no
+  // per-platoon entry and follows platoon renumbering on its own.
+  // pointWeight null = counted but never scored; a number multiplies the day weight.
+  dutyTypes: [
+    { name: "CDO", scope: "company", pointWeight: null },
+    { name: "CDS", scope: "company", pointWeight: null },
+    { name: "COS", scope: "company", pointWeight: 1 },
+    { name: "PDS", scope: "platoon", pointWeight: null }
+  ],
+  // Mon–Thu 1, Fri and Sun (book out / book in) 3, Sat and public holidays 5.
+  dutyDayWeights: { sun: 3, mon: 1, tue: 1, wed: 1, thu: 1, fri: 3, sat: 5, holiday: 5 },
+  // NOTE: there is deliberately no "Public Holiday" reason. In the source sheet
+  // PH was a manual correction BECAUSE its points formula ignored holidays; here
+  // the points engine applies them natively from the Holidays tab, so a PH
+  // correction row would double-count. "Extras" carries delta 0 on purpose: it
+  // records that something happened, visible in the log, without moving the score.
+  dutyCorrectionReasons: [
+    { name: "PDS after COS", delta: -2 },
+    { name: "On leave while scheduled", delta: -2 },
+    { name: "COS duty ends on leave day", delta: -2 },
+    { name: "Doing 2 duties at once", delta: -2 },
+    { name: "Ext. duties while scheduled", delta: -2 },
+    { name: "Outfield skip", delta: -2 },
+    { name: "Confinement", delta: -2 },
+    { name: "Extras", delta: 0 }
+  ],
+  // Fill colours in the legacy workbook (spec §1.4), used only by the importer.
+  // `gridBase` is the background of EVERY duty cell, so detection is relative to
+  // each column's modal fill rather than absolute. #FF9900 appears in both the
+  // reason and magnitude legends; the column block disambiguates it. Magnitude
+  // colours are FLAGGED ONLY and never turned into a delta — the legend does not
+  // agree with the literals actually in the workbook, so deltas always come from
+  // the reason's entry above.
+  dutyCorrectionColours: {
+    reason: {
+      "FF00FF": "PDS after COS",
+      "00FFFF": "On leave while scheduled",
+      "FF9900": "COS duty ends on leave day",
+      "9900FF": "Doing 2 duties at once",
+      "373F6B": "Ext. duties while scheduled"
+    },
+    magnitude: { "E06666": -2, "FF9900": -4, "B6D7A8": 2, "00FF00": 4 },
+    holidayRow: "EA4335",
+    gridBase: "F4CCCC"
+  },
+  // Duty type for a workbook column whose header cell is BLANK, keyed by column
+  // letter. Column B is CDO in the source workbook but carries no header text —
+  // its identity is only established by the A33 VLOOKUP, which labels offset 2
+  // "CDO:". Without this the importer skips the column and every CDO assignment
+  // is silently lost. It lives in Config rather than being hardcoded so it stays
+  // a correctable statement about one workbook, not a guess baked into the
+  // parser; the importer still emits a warning whenever it has to fall back.
+  dutyHeaderFallback: { B: "CDO" },
+  // Per-platoon colour ramps for commander names in the duty views.
+  //
+  // Position in the array IS the meaning, and it is keyed off the org model
+  // rather than off a person: index 0 is the platoon's Command element (both PC
+  // and PS — they deliberately share one colour, which also covers a platoon
+  // carrying two PCs or two PSs), and indexes 1..n are sections 1..n in order.
+  //
+  // Both the platoon count and the section count can change, so nothing here is
+  // fixed: a platoon with no entry simply gets no colour, and a section beyond
+  // the end of its ramp clamps to the last colour rather than wrapping. Clamping
+  // is chosen over wrapping because these ramps run dark→light — an extra
+  // section reads as "one more of this platoon's shade" instead of colliding
+  // with the Command colour, which would be actively misleading.
+  //
+  // Add a platoon by adding a key; re-order or extend a ramp by editing its
+  // array. No code change either way.
+  dutyPlatoonColours: {
+    PLT1: ["#900b0a", "#ab201d", "#c6312f", "#e24240", "#ff5252"],
+    PLT2: ["#168039", "#469c47", "#6eb855", "#95d563", "#bdf271"],
+    PLT3: ["#1510F0", "#006fdc", "#009be5", "#51d3ed", "#acf0f2"],
+    PLT4: ["#ffbe00", "#feca2a", "#fed642", "#fee662", "#fff176"]
+  },
+  dutyCycleStart: "2026-04-01",
+  dutyCycleMonths: 6,
+  // Extra 4Ds eligible for duty beyond the automatic commander rule. Safe to keep
+  // in Config: eligibility is not a security boundary (appearing in a dropdown
+  // grants nothing). The duty-PLANNING permission is, and deliberately does not
+  // live here — Config is writable by any commander.
+  dutyExtraEligible: [],
+  dutyReminderBody: "Please check your duties to ensure there are no conflicts and that you are available. If you aren't, you will have to find your own replacement."
 };
 
 // Read a Config value with the company default as a fallback. Always returns a
@@ -83,6 +181,36 @@ const DEFAULT_CONFIG = {
 function configGet(key) {
   const v = STATE.config && STATE.config[key];
   return (v !== undefined && v !== null && v !== "") ? v : DEFAULT_CONFIG[key];
+}
+
+// Structured-value counterpart to configGet, for keys whose default is an object
+// or array (the duty-list keys). A Config sheet cell can only hold text, so an
+// override arrives as a JSON string and has to be parsed; the in-code default is
+// already structured and is returned as-is. A malformed override falls back to
+// the default rather than throwing — a typo in one Config cell must not take the
+// whole app down, and the default is always a working value.
+function configGetJSON(key) {
+  const v = STATE.config && STATE.config[key];
+  if (v === undefined || v === null || v === "") return DEFAULT_CONFIG[key];
+  if (typeof v !== "string") return v;
+  try { return JSON.parse(v); } catch { return DEFAULT_CONFIG[key]; }
+}
+
+// The duty modules are pure — they never read STATE or call configGet themselves,
+// which is what keeps them unit-testable and DOM-free. This assembles the config
+// object they expect, and is the single place that bridges STATE into them.
+function dutyConfig() {
+  return {
+    dutyTypes: configGetJSON("dutyTypes"),
+    dutyDayWeights: configGetJSON("dutyDayWeights"),
+    dutyCorrectionReasons: configGetJSON("dutyCorrectionReasons"),
+    dutyCorrectionColours: configGetJSON("dutyCorrectionColours"),
+    dutyHeaderFallback: configGetJSON("dutyHeaderFallback"),
+    dutyPlatoonColours: configGetJSON("dutyPlatoonColours"),
+    dutyExtraEligible: configGetJSON("dutyExtraEligible"),
+    dutyCycleStart: configGet("dutyCycleStart"),
+    dutyCycleMonths: Number(configGet("dutyCycleMonths")) || 6
+  };
 }
 
 // Persisted set of tab names with unpushed local changes. Survives reloads
@@ -171,6 +299,9 @@ const STATE = {
   // admin panel; `personId`/`email` identify the signed-in account. Empty until
   // a successful login.
   role: localStorage.getItem(ROLE_KEY) || "",
+  // Per-account capabilities beyond the role ladder (DUTY_LIST_SPEC.md §9).
+  // Populated from the login response in phase 2; empty until then.
+  caps: [],
   personId: localStorage.getItem(PERSONID_KEY) || "",
   email: localStorage.getItem(EMAIL_KEY) || "",
   // Admin-panel data, loaded on demand from the backend (never cached to disk):
@@ -186,6 +317,10 @@ const STATE = {
   config: {},
   vocfit: [],
   platoons: [],
+  // Duty list (DUTY_LIST_SPEC.md §3). Row arrays, empty until pulled.
+  duty: [],
+  dutyCorrection: [],
+  holidays: [],
   // Canonical conduct registry: [{id: "c001", name: "Orientation Run"}, ...].
   // Source of truth for the conduct dimension — records on attendance/polar/
   // conductDetail reference entries here via `conductId` instead of carrying
@@ -489,6 +624,50 @@ function normalizeConfig(rows) {
   return out;
 }
 
+// ── Duty list normalizers (DUTY_LIST_SPEC.md §3) ────────────────────────────
+// padD4 on every 4D is the client half of the leading-zero defence; the server
+// half is the WRITE_TEXT_COLS_BY_TAB entry that stops Sheets coercing "0042" to
+// 42 on write. Both are needed — a value can lose its zeros in either direction.
+
+function normalizeDuty(rows) {
+  return (rows || []).map(r => ({
+    id: r.id || "",
+    date: r.date || "",
+    dutyType: r.dutyType || "",
+    // Literal platoon at time of assignment. Never re-resolved against the
+    // current roster: that is what lets a commander transfer platoon without
+    // rewriting history (spec §5.1.2).
+    platoon: r.platoon || "",
+    d4: padD4(r.d4),
+    assignedBy: r.assignedBy || "",
+    assignedAt: r.assignedAt || "",
+    source: r.source || "manual"
+  }));
+}
+
+function normalizeDutyCorrection(rows) {
+  return (rows || []).map(r => ({
+    id: r.id || "",
+    date: r.date || "",
+    d4: padD4(r.d4),
+    reason: r.reason || "",
+    delta: Number(r.delta) || 0,
+    note: r.note || "",
+    enteredBy: r.enteredBy || "",
+    enteredAt: r.enteredAt || ""
+  }));
+}
+
+function normalizeHolidays(rows) {
+  return (rows || []).map(r => ({
+    date: r.date || "",
+    name: r.name || "",
+    // Sheets hands back TRUE/"TRUE"/"yes"/"" — collapse to a real boolean here so
+    // no reader downstream has to re-interpret a truthy string.
+    tentative: !!(r.tentative && String(r.tentative).trim() && String(r.tentative).trim().toLowerCase() !== "false")
+  }));
+}
+
 // VocFit completion rows (spec §12.3): personId | completionDate | certifyingUnit.
 // d4-pad personId so it joins cleanly with the roster id space.
 function normalizeVocFit(rows) {
@@ -603,6 +782,7 @@ function _saveLocalFlush() {
     conductDetail: STATE.conductDetail, appointments: STATE.appointments,
     leave: STATE.leave, msk: STATE.msk, conducts: STATE.conducts,
     config: STATE.config, vocfit: STATE.vocfit, platoons: STATE.platoons,
+    duty: STATE.duty, dutyCorrection: STATE.dutyCorrection, holidays: STATE.holidays,
     rev: STATE.rev || {}
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
@@ -666,6 +846,9 @@ function loadLocal() {
     STATE.config = d.config && typeof d.config === "object" ? d.config : {};
     STATE.vocfit = normalizeVocFit(d.vocfit);
     STATE.platoons = normalizePlatoons(d.platoons);
+    STATE.duty = normalizeDuty(d.duty);
+    STATE.dutyCorrection = normalizeDutyCorrection(d.dutyCorrection);
+    STATE.holidays = normalizeHolidays(d.holidays);
     STATE.rev = (d.rev && typeof d.rev === "object") ? d.rev : {};
   } catch { /* fall through to empty state */ }
 }
@@ -697,6 +880,22 @@ function clearSession() {
 // only drive what the read-only viewer sees (soft disabling) and the admin panel.
 const canWrite = () => STATE.role === "commander" || STATE.role === "admin";
 const isAdminRole = () => STATE.role === "admin";
+
+// Duty planning (DUTY_LIST_SPEC.md §9). The account model is a linear ladder
+// (viewer < commander < admin) and duty planning is deliberately NOT a rung on
+// it — it is a capability, because a duty planner also needs ordinary commander
+// powers. `caps` is a comma-separated column on the Accounts tab.
+//
+// Phase 1 is read-only and the server side of this does not exist yet, so
+// STATE.caps is always empty and only admins pass. That is the conservative
+// direction to be wrong in, and the predicate is already the shape phase 2
+// needs — the backend gate lands in routeAuthedPost alongside the sendEmail and
+// bulk-import checks, and THAT is what actually enforces this. Everything here
+// is cosmetic.
+function hasCap(cap) {
+  return (STATE.caps || []).indexOf(cap) !== -1;
+}
+const canPlanDuty = () => isAdminRole() || hasCap("duty");
 
 function loadFilter() {
   try {

@@ -18,7 +18,7 @@ npm run map
 ```
 
 <!-- GENERATED:meta:start -->
-_Generated from `6f7c0e8` by `npm run map`. 24 source files, 1026 declarations._
+_Generated from `d6da8f5` by `npm run map`. 28 source files, 1098 declarations._
 <!-- GENERATED:meta:end -->
 
 ## How much to trust each part
@@ -105,30 +105,34 @@ reference it. Per-declaration callers live in `codebase-map.json` → `functions
 <!-- GENERATED:inventory:start -->
 | file | lines | decls | calls into | called by | test files |
 |---|---:|---:|---|---|---:|
-| `js/actions.js` | 107 | 5 | — | `js/parade-tab.js` | 2 |
-| `js/api.js` | 311 | 45 | `apps-script-Code.gs` `js/forms-conducts.js` `js/state.js` `js/sync.js` | `apps-script-Code.gs` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` `js/sync.js` | 51 |
-| `js/braves-parade.js` | 910 | 47 | `js/helpers.js` `js/state.js` | `apps-script-Code.gs` `js/forms-records.js` `js/forms-reports.js` `js/parade-tab.js` `js/render-dashboard.js` `js/render-statusboard.js` `js/render.js` | 33 |
+| `js/actions.js` | 107 | 5 | — | `js/parade-tab.js` `js/render-duty.js` | 4 |
+| `js/api.js` | 317 | 48 | `apps-script-Code.gs` `js/forms-conducts.js` `js/state.js` `js/sync.js` | `apps-script-Code.gs` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` `js/sync.js` | 56 |
+| `js/braves-parade.js` | 922 | 47 | `js/helpers.js` `js/state.js` | `apps-script-Code.gs` `js/forms-records.js` `js/forms-reports.js` `js/parade-tab.js` `js/render-dashboard.js` `js/render-statusboard.js` `js/render.js` | 37 |
 | `js/calc.js` | 375 | 18 | — | `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/render-conducts.js` `js/render-dashboard.js` | 8 |
+| `js/duty-eligibility.js` | 96 | 5 | — | `js/render-duty.js` | 1 |
+| `js/duty-import.js` | 255 | 15 | — | — | 1 |
+| `js/duty-points.js` | 186 | 12 | — | `js/render-duty.js` | 1 |
 | `js/forms-admin.js` | 422 | 21 | `js/api.js` `js/forms-conducts.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/render.js` `js/state.js` `js/sync.js` | `js/render-conducts.js` `js/sync.js` | 0 |
 | `js/forms-conducts.js` | 622 | 32 | `js/api.js` `js/forms.js` `js/helpers.js` `js/render.js` `js/state.js` `js/sync.js` | `js/api.js` `js/forms-admin.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/main.js` `js/render-conducts.js` `js/render-records.js` | 3 |
 | `js/forms-import.js` | 654 | 22 | `js/api.js` `js/forms-conducts.js` `js/forms.js` `js/helpers.js` `js/ippt-scoring.js` `js/render.js` `js/state.js` `js/sync.js` | `js/render-conducts.js` `js/render-records.js` | 1 |
-| `js/forms-records.js` | 700 | 35 | `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms-conducts.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/render-statusboard.js` `js/render.js` `js/sick-history-import.js` `js/state.js` `js/sync.js` | `js/forms.js` `js/parade-tab.js` `js/render-dashboard.js` `js/render-records.js` | 5 |
-| `js/forms-reports.js` | 1160 | 37 | `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/ippt-scoring.js` `js/state.js` | `js/forms-wizard.js` `js/render-dashboard.js` `js/render-statusboard.js` `js/sync.js` | 2 |
+| `js/forms-records.js` | 709 | 35 | `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms-conducts.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/render-statusboard.js` `js/render.js` `js/sick-history-import.js` `js/state.js` `js/sync.js` | `js/forms.js` `js/parade-tab.js` `js/render-dashboard.js` `js/render-records.js` | 6 |
+| `js/forms-reports.js` | 1175 | 38 | `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/ippt-scoring.js` `js/state.js` | `js/forms-wizard.js` `js/render-dashboard.js` `js/render-statusboard.js` `js/sync.js` | 2 |
 | `js/forms-wizard.js` | 1348 | 50 | `js/calc.js` `js/forms-conducts.js` `js/forms-reports.js` `js/forms.js` `js/helpers.js` `js/render.js` `js/state.js` `js/sync.js` | `js/forms-records.js` `js/forms-reports.js` `js/forms.js` `js/render-records.js` | 6 |
-| `js/forms.js` | 1453 | 31 | `apps-script-Code.gs` `js/calc.js` `js/forms-conducts.js` `js/forms-records.js` `js/forms-wizard.js` `js/helpers.js` `js/ippt-scoring.js` `js/render-conducts.js` `js/render.js` `js/state.js` `js/sync.js` | `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` | 15 |
-| `js/helpers.js` | 1958 | 157 | `js/api.js` `js/calc.js` `js/ippt-scoring.js` `js/render.js` `js/state.js` `js/sync.js` | `apps-script-Code.gs` `js/braves-parade.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/forms.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` `js/render.js` `js/sync.js` | 45 |
+| `js/forms.js` | 1453 | 31 | `apps-script-Code.gs` `js/calc.js` `js/forms-conducts.js` `js/forms-records.js` `js/forms-wizard.js` `js/helpers.js` `js/ippt-scoring.js` `js/render-conducts.js` `js/render.js` `js/state.js` `js/sync.js` | `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` | 16 |
+| `js/helpers.js` | 1977 | 157 | `js/api.js` `js/calc.js` `js/ippt-scoring.js` `js/render.js` `js/state.js` `js/sync.js` | `apps-script-Code.gs` `js/braves-parade.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/forms.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-duty.js` `js/render-records.js` `js/render-statusboard.js` `js/render.js` `js/sync.js` | 49 |
 | `js/ippt-scoring.js` | 168 | 11 | — | `js/forms-import.js` `js/forms-reports.js` `js/forms.js` `js/helpers.js` `js/render-records.js` | 1 |
 | `js/main.js` | 363 | 15 | `js/api.js` `js/forms-conducts.js` `js/forms.js` `js/helpers.js` `js/render.js` `js/state.js` `js/sync.js` | `js/forms-admin.js` `js/render-dashboard.js` `js/render.js` `js/sync.js` | 2 |
-| `js/parade-tab.js` | 650 | 40 | `js/actions.js` `js/api.js` `js/braves-parade.js` `js/forms-records.js` `js/forms.js` `js/helpers.js` `js/state.js` `js/sync.js` | `js/render-dashboard.js` `js/render.js` | 4 |
+| `js/parade-tab.js` | 664 | 40 | `js/actions.js` `js/api.js` `js/braves-parade.js` `js/forms-records.js` `js/forms.js` `js/helpers.js` `js/state.js` `js/sync.js` | `js/render-dashboard.js` `js/render.js` | 5 |
 | `js/render-conducts.js` | 689 | 20 | `js/api.js` `js/calc.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms.js` `js/helpers.js` `js/render-dashboard.js` `js/render.js` `js/state.js` `js/sync.js` | `js/forms.js` `js/render.js` | 2 |
 | `js/render-dashboard.js` | 1373 | 43 | `js/api.js` `js/braves-parade.js` `js/calc.js` `js/forms-records.js` `js/forms-reports.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-statusboard.js` `js/render.js` `js/state.js` `js/sync.js` | `js/render-conducts.js` `js/render-statusboard.js` `js/render.js` `js/sync.js` | 5 |
+| `js/render-duty.js` | 244 | 19 | `js/actions.js` `js/duty-eligibility.js` `js/duty-points.js` `js/helpers.js` `js/render.js` `js/state.js` | `js/render.js` | 0 |
 | `js/render-records.js` | 898 | 36 | `js/api.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/ippt-scoring.js` `js/render-statusboard.js` `js/render.js` `js/state.js` `js/sync.js` | `js/render.js` | 0 |
-| `js/render-statusboard.js` | 446 | 36 | `js/braves-parade.js` `js/forms-reports.js` `js/forms.js` `js/helpers.js` `js/render-dashboard.js` `js/state.js` | `js/forms-records.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` | 24 |
-| `js/render.js` | 424 | 26 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` `js/state.js` `js/sync.js` | `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/sync.js` | 25 |
-| `js/sick-history-import.js` | 275 | 26 | — | `js/forms-records.js` | 23 |
-| `js/state.js` | 719 | 91 | — | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render-statusboard.js` `js/render.js` `js/sync.js` | 41 |
-| `js/sync.js` | 1066 | 72 | `apps-script-Code.gs` `js/api.js` `js/forms-admin.js` `js/forms-reports.js` `js/helpers.js` `js/main.js` `js/render-dashboard.js` `js/render.js` `js/state.js` | `js/api.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` | 14 |
-| `apps-script-Code.gs` | 3368 | 180 | `js/api.js` `js/braves-parade.js` `js/helpers.js` `js/state.js` | `js/api.js` `js/forms.js` `js/render.js` `js/sync.js` | 44 |
+| `js/render-statusboard.js` | 446 | 36 | `js/braves-parade.js` `js/forms-reports.js` `js/forms.js` `js/helpers.js` `js/render-dashboard.js` `js/state.js` | `js/forms-records.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` | 26 |
+| `js/render.js` | 425 | 26 | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-duty.js` `js/render-records.js` `js/render-statusboard.js` `js/state.js` `js/sync.js` | `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-duty.js` `js/render-records.js` `js/sync.js` | 27 |
+| `js/sick-history-import.js` | 275 | 26 | — | `js/forms-records.js` | 25 |
+| `js/state.js` | 876 | 108 | — | `apps-script-Code.gs` `js/api.js` `js/braves-parade.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-reports.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-duty.js` `js/render-records.js` `js/render-statusboard.js` `js/render.js` `js/sync.js` | 47 |
+| `js/sync.js` | 1066 | 72 | `apps-script-Code.gs` `js/api.js` `js/forms-admin.js` `js/forms-reports.js` `js/helpers.js` `js/main.js` `js/render-dashboard.js` `js/render.js` `js/state.js` | `js/api.js` `js/forms-admin.js` `js/forms-conducts.js` `js/forms-import.js` `js/forms-records.js` `js/forms-wizard.js` `js/forms.js` `js/helpers.js` `js/main.js` `js/parade-tab.js` `js/render-conducts.js` `js/render-dashboard.js` `js/render-records.js` `js/render.js` | 15 |
+| `apps-script-Code.gs` | 3413 | 180 | `js/api.js` `js/braves-parade.js` `js/helpers.js` `js/state.js` | `js/api.js` `js/forms.js` `js/render.js` `js/sync.js` | 48 |
 <!-- GENERATED:inventory:end -->
 
 ## Risk markers
@@ -137,13 +141,13 @@ reference it. Per-declaration callers live in `codebase-map.json` → `functions
 **Longest functions** (over 100 lines, longest first)
 
 - `openPerson` — 411 lines, `js/forms.js:215`
-- `bpClassifyPerson` — 314 lines, `js/braves-parade.js:210`
+- `bpClassifyPerson` — 326 lines, `js/braves-parade.js:210`
 - `renderMSKAnalytics` — 286 lines, `js/render-dashboard.js:556`
-- `API` — 267 lines, `js/api.js:44`
+- `API` — 267 lines, `js/api.js:50`
 - `renderConductDashboard` — 266 lines, `js/render-conducts.js:157`
-- `bpClassifyPerson` — 254 lines, `apps-script-Code.gs:2464`
+- `bpClassifyPerson` — 265 lines, `apps-script-Code.gs:2498`
 - `renderDashboard` — 251 lines, `js/render-dashboard.js:82`
-- `buildFitnessReportHTML` — 250 lines, `js/forms-reports.js:615`
+- `buildFitnessReportHTML` — 250 lines, `js/forms-reports.js:630`
 - `renderIPPT` — 224 lines, `js/render-records.js:453`
 - `renderLogConductWizard` — 218 lines, `js/forms-wizard.js:306`
 - `saveLogConductWizard` — 173 lines, `js/forms-wizard.js:1101`
@@ -152,22 +156,22 @@ reference it. Per-declaration callers live in `codebase-map.json` → `functions
 - `toggleReportSickPatterns` — 153 lines, `js/forms.js:631`
 - `confirmConductImport` — 139 lines, `js/forms-import.js:515`
 
-_7 more over the threshold; full list in `docs/codebase-map.json` → `markers.longFunctions`._
+_8 more over the threshold; full list in `docs/codebase-map.json` → `markers.longFunctions`._
 
 **Highest fan-in** — most referencing files, so the largest blast radius if changed
 
+- `escapeAttr` — referenced from 14 other file(s) (defined in `js/helpers.js`)
+- `escapeHTML` — referenced from 14 other file(s) (defined in `js/helpers.js`)
 - `displayDateToISO` — referenced from 13 other file(s) (defined in `js/helpers.js`)
-- `escapeAttr` — referenced from 13 other file(s) (defined in `js/helpers.js`)
-- `escapeHTML` — referenced from 13 other file(s) (defined in `js/helpers.js`)
-- `render` — referenced from 12 other file(s) (defined in `js/render.js`)
-- `todayISO` — referenced from 12 other file(s) (defined in `js/helpers.js`)
+- `render` — referenced from 13 other file(s) (defined in `js/render.js`)
+- `todayISO` — referenced from 13 other file(s) (defined in `js/helpers.js`)
 - `isoToDisplayDate` — referenced from 11 other file(s) (defined in `js/helpers.js`)
 - `saveLocal` — referenced from 11 other file(s) (defined in `js/state.js`)
+- `activePlatoons` — referenced from 10 other file(s) (defined in `js/helpers.js`)
+- `displayPersonLabel` — referenced from 10 other file(s) (defined in `js/helpers.js`)
 - `personPlatoon` — referenced from 10 other file(s) (defined in `js/helpers.js`)
-- `activePlatoons` — referenced from 9 other file(s) (defined in `js/helpers.js`)
 - `conductName` — referenced from 9 other file(s) (defined in `js/helpers.js`)
 - `configGet` — referenced from 9 other file(s) (defined in `js/state.js`)
-- `displayPersonLabel` — referenced from 9 other file(s) (defined in `js/helpers.js`)
 - `autoSync` — referenced from 8 other file(s) (defined in `js/sync.js`)
 - `canWrite` — referenced from 8 other file(s) (defined in `js/state.js`)
 - `openModal` — referenced from 8 other file(s) (defined in `js/forms.js`)
@@ -195,6 +199,7 @@ _7 more over the threshold; full list in `docs/codebase-map.json` → `markers.l
 - `typeBadge` (`js/helpers.js`)
 - `ipptAwardColor` (`js/ippt-scoring.js`)
 - `upsertLocal` (`js/parade-tab.js`)
+- `DEFAULT_CONFIG.dutyReminderBody` (`js/state.js`)
 - `syncTimingSummary` (`js/sync.js`)
 - `pollCadenceInfo` (`js/sync.js`)
 - `FRONTEND_BASE_URL` (`apps-script-Code.gs`)
@@ -209,7 +214,7 @@ _7 more over the threshold; full list in `docs/codebase-map.json` → `markers.l
 
 **Untested surface**
 
-_642 of 1026 declarations are named by no test file._ Full list in `docs/codebase-map.json` → `markers.untested`. Being named by a test is not proof of meaningful coverage — see the trust table.
+_687 of 1098 declarations are named by no test file._ Full list in `docs/codebase-map.json` → `markers.untested`. Being named by a test is not proof of meaningful coverage — see the trust table.
 <!-- GENERATED:markers:end -->
 
 ## Assets
@@ -220,41 +225,46 @@ checks are the only safety net they have.
 <!-- GENERATED:assets:start -->
 **Script load order** (`index.html`) — with no module system this order *is* the dependency graph
 
-1. `styles.css` — `?v=132`
+1. `styles.css` — `?v=133`
 2. `vendor/chart.umd.min.js` — `?v=114`
 3. `vendor/papaparse.min.js` — `?v=114`
 4. `vendor/exceljs.min.js` — `?v=114`
-5. `js/state.js` — `?v=128`
-6. `js/api.js` — `?v=127`
+5. `js/state.js` — `?v=129`
+6. `js/api.js` — `?v=128`
 7. `js/ippt-scoring.js` — `?v=113`
 8. `js/calc.js` — `?v=8`
-9. `js/helpers.js` — `?v=147`
+9. `js/helpers.js` — `?v=148`
 10. `js/sick-history-import.js` — `?v=114`
-11. `js/render.js` — `?v=177`
-12. `js/render-dashboard.js` — `?v=1`
-13. `js/render-records.js` — `?v=1`
-14. `js/render-conducts.js` — `?v=1`
-15. `js/render-statusboard.js` — `?v=1`
-16. `js/forms.js` — `?v=179`
-17. `js/forms-import.js` — `?v=1`
-18. `js/forms-records.js` — `?v=1`
-19. `js/forms-reports.js` — `?v=1`
-20. `js/forms-conducts.js` — `?v=1`
-21. `js/forms-wizard.js` — `?v=1`
-22. `js/forms-admin.js` — `?v=1`
-23. `js/braves-parade.js` — `?v=139`
-24. `js/actions.js` — `?v=1`
-25. `js/parade-tab.js` — `?v=25`
-26. `js/sync.js` — `?v=126`
-27. `js/main.js` — `?v=123`
+11. `js/duty-points.js` — `?v=1`
+12. `js/duty-eligibility.js` — `?v=1`
+13. `js/duty-import.js` — `?v=1`
+14. `js/render.js` — `?v=178`
+15. `js/render-dashboard.js` — `?v=1`
+16. `js/render-records.js` — `?v=1`
+17. `js/render-conducts.js` — `?v=1`
+18. `js/render-statusboard.js` — `?v=1`
+19. `js/forms.js` — `?v=179`
+20. `js/forms-import.js` — `?v=1`
+21. `js/forms-records.js` — `?v=2`
+22. `js/forms-reports.js` — `?v=2`
+23. `js/forms-conducts.js` — `?v=1`
+24. `js/forms-wizard.js` — `?v=1`
+25. `js/forms-admin.js` — `?v=1`
+26. `js/braves-parade.js` — `?v=140`
+27. `js/actions.js` — `?v=1`
+28. `js/parade-tab.js` — `?v=26`
+29. `js/render-duty.js` — `?v=1`
+30. `js/sync.js` — `?v=126`
+31. `js/main.js` — `?v=123`
 
 **Cache-bust drift** — source committed more recently than its `?v=` was bumped
 
-_none_
+- `js/state.js` (`?v=129`) — source touched 2026-08-03T15:02:22+08:00, version last bumped 2026-08-03T14:59:07+08:00
+- `js/duty-import.js` (`?v=1`) — source touched 2026-08-03T15:02:22+08:00, version last bumped 2026-08-03T14:59:07+08:00
 
-**Dead CSS candidates** — 3 of 114 classes
+**Dead CSS candidates** — 2 of 116 classes
 
-`.badge-orange`, `.sb-td`, `.pc-cph__row`
+`.sb-td`, `.pc-cph__row`
 
 **DOM ids declared in `index.html` but never queried** — 3
 
