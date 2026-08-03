@@ -19,3 +19,23 @@
 
 /** js/calc.js — shift an ISO date by whole days, tz-safely. */
 declare function addDaysISO(iso: string, n: number | string): string;
+
+// js/duty-points.js — the scheduler scores against the same arithmetic the
+// views display, so these are shared rather than reimplemented.
+declare function dutyDayOfWeek(iso: string): number;
+declare function dutyDayWeight(iso: string, cfg: any, holidaysByDate: any): number;
+declare function dutyPointsFor(row: any, cfg: any, holidaysByDate: any): number;
+declare function dutyInRange(iso: string, range: any): boolean;
+declare function dutyTotals(dutyRows: any[], correctionRows: any[], cfg: any, holidaysByDate: any, range: any): any;
+
+// js/duty-eligibility.js — who may hold a slot. The scheduler must not have its
+// own answer to this; a second one would drift from the assignment form's.
+declare function dutyTypeScope(cfg: any, dutyType: string): string;
+declare function dutyPlatoonsFor(dutyType: string, platoons: any[], cfg: any): string[];
+declare function dutyBasePool(roster: any[], cfg: any): any[];
+declare function dutyEligible(dutyType: string, platoon: string, iso: string, roster: any[], cfg: any, opts: any): string[];
+
+// js/duty-conflicts.js — reused so the scheduler's soft costs and the
+// assignment form's warnings are computed from the same predicates.
+declare function dutyRowsFor(rows: any[], d4: string, iso: string, excludeId: string): any[];
+declare function dutyDateInSpans(iso: string, spans: any[]): any;

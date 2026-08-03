@@ -184,6 +184,16 @@ const DEFAULT_CONFIG = {
   // grants nothing). The duty-PLANNING permission is, and deliberately does not
   // live here — Config is writable by any commander.
   dutyExtraEligible: [],
+  // Auto-scheduler soft-cost weights (spec §11.1). Raising one makes the
+  // scheduler avoid that situation harder; zeroing one switches the rule off.
+  // dutiesAboveMedian is not in the spec's table: it exists because the points
+  // objective is inert for count-only duty types, which is the default for
+  // everything but COS — see the comment on it in js/duty-schedule.js.
+  dutySchedulerWeights: {
+    pointsAboveMedian: 10, weekendAboveMedian: 8, dutiesAboveMedian: 5,
+    sameTypeConsecutive: 6, pdsAfterCos: 6, withinMinSpacing: 4,
+    adjacentToLeave: 3, minSpacingDays: 3
+  },
   dutyReminderBody: "Please check your duties to ensure there are no conflicts and that you are available. If you aren't, you will have to find your own replacement."
 };
 

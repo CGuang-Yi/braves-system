@@ -50,7 +50,8 @@ module.exports = async function run() {
   await test("the pure duty modules load before the view that consumes them", () => {
     const view = at("js/render-duty.js");
     ok(view !== -1, "js/render-duty.js is not in index.html");
-    ["js/duty-points.js", "js/duty-eligibility.js", "js/duty-conflicts.js", "js/duty-import.js"].forEach(src => {
+    ["js/duty-points.js", "js/duty-eligibility.js", "js/duty-conflicts.js",
+     "js/duty-import.js", "js/duty-schedule.js"].forEach(src => {
       const i = at(src);
       ok(i !== -1, src + " is not in index.html");
       ok(i < view, src + " must load before js/render-duty.js");
@@ -64,6 +65,17 @@ module.exports = async function run() {
   await test("duty-conflicts loads after calc, whose addDaysISO it calls", () => {
     ok(at("js/calc.js") !== -1 && at("js/calc.js") < at("js/duty-conflicts.js"),
        "js/duty-conflicts.js must load after js/calc.js");
+  });
+
+  // duty-schedule is the most dependent of the pure modules: it scores against
+  // duty-points, resolves candidates through duty-eligibility, and reuses
+  // duty-conflicts' predicates so its costs and the assignment form's warnings
+  // cannot diverge. Load it last of the five.
+  await test("duty-schedule loads after every module it calls into", () => {
+    ["js/calc.js", "js/duty-points.js", "js/duty-eligibility.js", "js/duty-conflicts.js"].forEach(src => {
+      ok(at(src) !== -1 && at(src) < at("js/duty-schedule.js"),
+         "js/duty-schedule.js must load after " + src);
+    });
   });
 
   await test("render-duty loads after actions, because it calls registerActions()", () => {
