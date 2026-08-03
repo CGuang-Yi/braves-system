@@ -1334,6 +1334,10 @@ function buildConductChatFormat(attendanceId) {
 async function copyConductChatFormat(attendanceId, silent) {
   const text = buildConductChatFormat(attendanceId);
   if (!text) { alert("Couldn't find that conduct."); return; }
+  // silent=true is the post-save invocation (saveLogConductWizard), where the
+  // user is mid-save, already gets the wizard's own alert, and has just
+  // written — a pull is not the relevant risk there and a second dialog is noise.
+  if (!silent && !unsyncedCopyGuard("conduct chat message")) return;
   try {
     await navigator.clipboard.writeText(text);
     if (!silent) alert("Chat-format message copied to clipboard. Paste into WhatsApp.");

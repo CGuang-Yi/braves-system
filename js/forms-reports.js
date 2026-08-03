@@ -582,6 +582,7 @@ async function copyReportToClipboard() {
   const ta = document.getElementById("rep-text");
   const btn = document.getElementById("rep-copy-btn");
   const text = ta.value;
+  if (!unsyncedCopyGuard("report")) return;
   try {
     await navigator.clipboard.writeText(text);
     if (btn) {
