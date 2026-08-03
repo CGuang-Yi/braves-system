@@ -590,3 +590,8 @@ body.role-admin .nav-btn.commander-plus,body.role-commander .nav-btn.commander-p
    light, so as text one end is always unreadable. The foreground is computed
    per chip by dutyContrastText. */
 .duty-chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
+/* Clickable grid cell — rendered only for a duty planner. The hover tint is the
+   only affordance an empty cell has, and empty cells are precisely the ones a
+   planner most needs to click. */
+.duty-cell{cursor:pointer}
+.duty-cell:hover{background:var(--surface-2,rgba(255,255,255,.06))}

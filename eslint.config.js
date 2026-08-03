@@ -43,7 +43,7 @@ const FRONTEND_FILES = [
   "js/sick-history-import.js", "js/duty-points.js", "js/duty-eligibility.js",
   "js/duty-conflicts.js", "js/duty-import.js",
   "js/render.js", "js/render-dashboard.js", "js/render-records.js", "js/render-conducts.js", "js/render-statusboard.js",
-  "js/forms.js", "js/forms-import.js", "js/forms-records.js", "js/forms-reports.js", "js/forms-conducts.js", "js/forms-wizard.js", "js/forms-admin.js",
+  "js/forms.js", "js/forms-import.js", "js/forms-records.js", "js/forms-reports.js", "js/forms-conducts.js", "js/forms-wizard.js", "js/forms-admin.js", "js/forms-duty.js",
   "js/braves-parade.js", "js/actions.js", "js/parade-tab.js", "js/render-duty.js", "js/sync.js", "js/main.js"
 ];
 
