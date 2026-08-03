@@ -88,4 +88,120 @@ module.exports = async function run() {
     const cfg2 = { dutyTypes: [{ name: "COS", scope: "company", pointWeight: 2 }], dutyDayWeights: CFG.dutyDayWeights };
     eq(d.dutyPointsFor({ date: "2026-08-08", dutyType: "COS", d4: "0012" }, cfg2, {}), 10);
   });
+
+  suite("duty-points: range aggregation");
+
+  const HOL = d.indexHolidays([{ date: "2026-08-05", name: "PH", tentative: "" }]);
+  const ROWS = [
+    { date: "2026-08-03", dutyType: "COS", platoon: "",     d4: "0012" }, // Mon  1
+    { date: "2026-08-08", dutyType: "COS", platoon: "",     d4: "0012" }, // Sat  5
+    { date: "2026-08-05", dutyType: "COS", platoon: "",     d4: "0013" }, // PH   5
+    { date: "2026-08-04", dutyType: "PDS", platoon: "PLT1", d4: "0013" }, // Tue  0 (unscored)
+    { date: "2026-09-01", dutyType: "COS", platoon: "",     d4: "0012" }  // next month
+  ];
+
+  await test("totals sum base points inside the range and exclude outside it", () => {
+    const r = d.dutyTotals(ROWS, [], CFG, HOL, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0012"].basePoints, 6);  // 1 + 5, September excluded
+    eq(r.byPerson["0013"].basePoints, 5);  // PH only; PDS is unscored
+  });
+
+  await test("counts tally every type including unscored ones", () => {
+    const r = d.dutyTotals(ROWS, [], CFG, HOL, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0013"].counts.COS, 1);
+    eq(r.byPerson["0013"].counts.PDS, 1);   // counted despite scoring zero
+    eq(r.byPerson["0013"].basePoints, 5);
+  });
+
+  await test("weekend and holiday points are tracked separately", () => {
+    const r = d.dutyTotals(ROWS, [], CFG, HOL, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0012"].weekendPoints, 5); // the Saturday
+    eq(r.byPerson["0013"].weekendPoints, 5); // the public holiday, though a Wednesday
+  });
+
+  await test("corrections apply and land in the total", () => {
+    const corr = [{ date: "2026-08-08", d4: "0012", reason: "Outfield skip", delta: -2 }];
+    const r = d.dutyTotals(ROWS, corr, CFG, HOL, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0012"].corrections, -2);
+    eq(r.byPerson["0012"].total, 4); // 6 - 2
+  });
+
+  await test("corrections outside the range are excluded", () => {
+    const corr = [{ date: "2026-09-02", d4: "0012", reason: "Outfield skip", delta: -2 }];
+    const r = d.dutyTotals(ROWS, corr, CFG, HOL, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0012"].corrections, 0);
+    eq(r.byPerson["0012"].total, 6);
+  });
+
+  await test("an Extras correction records without moving the score", () => {
+    const corr = [{ date: "2026-08-08", d4: "0012", reason: "Extras", delta: 0 }];
+    const r = d.dutyTotals(ROWS, corr, CFG, HOL, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0012"].corrections, 0);
+    eq(r.byPerson["0012"].total, 6);
+  });
+
+  await test("a correction for someone with no duties still produces a row", () => {
+    const corr = [{ date: "2026-08-08", d4: "0099", reason: "Extras", delta: -2 }];
+    const r = d.dutyTotals(ROWS, corr, CFG, HOL, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0099"].total, -2);
+    eq(r.byPerson["0099"].basePoints, 0);
+  });
+
+  suite("duty-points: regressions against the source spreadsheet's bugs");
+
+  await test("spec bug #2 — the 31st of a month is counted, not dropped", () => {
+    // The sheet's column R summed A2:A31 (30 rows) while its sibling counts used
+    // A2:A32 (31), silently excluding the last day of any 31-day month.
+    const rows = [{ date: "2026-08-31", dutyType: "COS", platoon: "", d4: "0012" }]; // Mon
+    const r = d.dutyTotals(rows, [], CFG, {}, { from: "2026-08-01", to: "2026-08-31" });
+    eq(r.byPerson["0012"].basePoints, 1);
+    eq(r.byPerson["0012"].counts.COS, 1);
+  });
+
+  await test("spec bug #3 — a multi-month total sums rows directly, not subtotals", () => {
+    // Overall duties drifted because it added per-month cells that were themselves
+    // column-offset or missing. Summing rows over the wider range makes that
+    // class of bug structurally impossible.
+    const r = d.dutyTotals(ROWS, [], CFG, HOL, { from: "2026-08-01", to: "2026-09-30" });
+    eq(r.byPerson["0012"].basePoints, 7); // Mon 1 + Sat 5 + Tue 1 (2026-09-01 is a Tuesday)
+  });
+
+  suite("duty-points: ranges");
+
+  await test("month range spans the whole calendar month", () => {
+    const r = d.dutyRangeFor("month", "2026-08-15", CFG);
+    eq(r.from, "2026-08-01");
+    eq(r.to, "2026-08-31");
+  });
+
+  await test("month range handles February and 30-day months", () => {
+    eq(d.dutyRangeFor("month", "2026-02-10", CFG).to, "2026-02-28");
+    eq(d.dutyRangeFor("month", "2026-09-10", CFG).to, "2026-09-30");
+    eq(d.dutyRangeFor("month", "2028-02-10", CFG).to, "2028-02-29"); // leap year
+  });
+
+  await test("cycle range runs dutyCycleMonths from dutyCycleStart and rolls", () => {
+    const cfg = { dutyCycleStart: "2026-04-01", dutyCycleMonths: 6, dutyDayWeights: CFG.dutyDayWeights, dutyTypes: CFG.dutyTypes };
+    const r = d.dutyRangeFor("cycle", "2026-08-15", cfg);
+    eq(r.from, "2026-04-01");
+    eq(r.to, "2026-09-30");
+    const next = d.dutyRangeFor("cycle", "2026-11-15", cfg);
+    eq(next.from, "2026-10-01");
+    eq(next.to, "2027-03-31");
+  });
+
+  await test("a date before the cycle start still resolves to a whole cycle", () => {
+    const cfg = { dutyCycleStart: "2026-04-01", dutyCycleMonths: 6, dutyDayWeights: CFG.dutyDayWeights, dutyTypes: CFG.dutyTypes };
+    const r = d.dutyRangeFor("cycle", "2026-01-15", cfg);
+    eq(r.from, "2025-10-01");
+    eq(r.to, "2026-03-31");
+  });
+
+  await test("all-time range is unbounded", () => {
+    const r = d.dutyRangeFor("all", "2026-08-15", CFG);
+    eq(r.from, "");
+    eq(r.to, "");
+    const t = d.dutyTotals(ROWS, [], CFG, HOL, r);
+    eq(t.byPerson["0012"].counts.COS, 3); // September included
+  });
 };
