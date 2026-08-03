@@ -194,6 +194,8 @@ function renderDashboard(el) {
           <button type="button" onclick="openReportModal('MSK'); closeReportMenu()">🦵 MSK Report</button>
           <button type="button" onclick="openReportModal('CONDUCT'); closeReportMenu()">📊 Per-Conduct Chat Format</button>
           <button type="button" onclick="openReportModal('MR'); closeReportMenu()">🩺 MR (Medical Review)</button>
+          <button type="button" onclick="openReportModal('DUTYBOARD'); closeReportMenu()">🛡️ Duty Board (one day)</button>
+          ${canPlanDuty() ? `<button type="button" onclick="openReportModal('DUTYREMIND'); closeReportMenu()">🛡️ Duty Planning Reminder</button>` : ""}
         </div>
       </div>
       </div>

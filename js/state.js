@@ -219,8 +219,14 @@ function dutyConfig() {
     dutyHeaderFallback: configGetJSON("dutyHeaderFallback"),
     dutyPlatoonColours: configGetJSON("dutyPlatoonColours"),
     dutyExtraEligible: configGetJSON("dutyExtraEligible"),
+    dutySchedulerWeights: configGetJSON("dutySchedulerWeights"),
     dutyCycleStart: configGet("dutyCycleStart"),
-    dutyCycleMonths: Number(configGet("dutyCycleMonths")) || 6
+    dutyCycleMonths: Number(configGet("dutyCycleMonths")) || 6,
+    // Plain text, not JSON — configGet, not configGetJSON. Passing it through
+    // the JSON reader would work by accident (a non-JSON string falls back to
+    // the default) but would silently ignore any override an admin actually
+    // typed, which is exactly the value this key exists to let them change.
+    dutyReminderBody: configGet("dutyReminderBody")
   };
 }
 
