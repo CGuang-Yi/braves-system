@@ -28,6 +28,7 @@
     "js/calc.js",
     "js/ippt-scoring.js",
     "js/sick-history-import.js",
-    "js/duty-points.js"
+    "js/duty-points.js",
+    "js/duty-eligibility.js"
   ]
 }
