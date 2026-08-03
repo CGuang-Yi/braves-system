@@ -265,6 +265,20 @@ function mrPeopleForDate(dateIso) {
   });
 }
 
+// The Medical form's "Reason / Purpose" for that person's pending MR on `dateIso`
+// — the same row mrPeopleForDate picked (first match in STATE.medical order, so the
+// two agree when a person somehow has two MR rows on one date). This is what the MO
+// is reviewing, so it is exactly what "Diagnosis/Issue" wants; blank stays blank
+// rather than guessing, and the sender fills it in like the other manual fields.
+function mrReasonForDate(d4, dateIso) {
+  const m = (STATE.medical || []).find(r =>
+    r.type === "MR"
+    && r.d4 === d4
+    && displayDateToISO(r.date) === dateIso
+    && (!r.status || r.status === "Pending"));
+  return (m && m.reason) || "";
+}
+
 // "RANK FULLNAME" (name uppercased) from the roster; falls back to the raw 4D.
 // Rank via bpDisplayRank (braves-parade.js) so a blank-rank recruit reads "REC"
 // here exactly as it does in the parade state and the sick message — the three
@@ -277,8 +291,9 @@ function mrRankName(d4) {
 }
 
 // MR (Medical Review) message — "MR Message Format" in MD_Docs/Message Formats.md.
-// Auto-lists pending MR personnel for the date; Rank+Name + Coy prefilled, NRIC never
-// asked, MA dates from _mrDates (blank → NIL), everything else left blank for manual fill.
+// Auto-lists pending MR personnel for the date; Rank+Name + Coy prefilled, Diagnosis/Issue
+// from the MR record's Reason/Purpose, NRIC never asked, MA dates from _mrDates
+// (blank → NIL), everything else left blank for manual fill.
 function generateMRFormat(dateIso, time) {
   const heading = `B COY *MEDICAL REVIEW* ${toDDMMYY(dateIso)}`;
   const people = mrPeopleForDate(dateIso);
@@ -289,7 +304,7 @@ function generateMRFormat(dateIso, time) {
     return `${i + 1}) Rank + Full Name: ${mrRankName(d4)}\n`
       + `Coy: B\n`
       + `NRIC: \n`
-      + `Diagnosis/Issue: \n`
+      + `Diagnosis/Issue: ${mrReasonForDate(d4, dateIso)}\n`
       + `Date of most recent Medical Appointment: ${mad(d.recent)}\n`
       + `Date of next MA: ${mad(d.next)}\n`
       + `Memo (Yes/No): \n`
