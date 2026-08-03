@@ -86,6 +86,21 @@ module.exports = async function run() {
        "js/render-duty.js must load after js/actions.js");
   });
 
+  // (d) The modal must not swallow clicks before they reach document. js/actions.js
+  // delegates EVERY data-action from a single document listener, so a
+  // stopPropagation() anywhere on the modal's own container silently disables
+  // every data-action button rendered into a modal — which is exactly how the
+  // parade "Mark Present" button did nothing: the popup stayed open, no error.
+  // The backdrop-close must therefore be a target-identity check on the overlay,
+  // never a stopped event on the inner .modal.
+  await test("the modal does not stopPropagation (js/actions.js delegates on document)", () => {
+    const modalBlock = html.slice(html.indexOf(`id="modal-overlay"`),
+      html.indexOf(`id="modal-overlay"`) + 600);
+    ok(!/stopPropagation/.test(modalBlock),
+       "the modal container stops click propagation, so data-action buttons inside " +
+       "any modal never reach the delegated listener in js/actions.js");
+  });
+
   suite("static: no unbumped tracked-tab writes (heuristic)");
 
   // (c) Heuristic lint: any DIRECT write primitive called with a tracked-tab

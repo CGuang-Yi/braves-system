@@ -32,6 +32,21 @@ function closeModal() {
   if (after) after();
 }
 
+// Backdrop-click close, wired from the overlay in index.html.
+//
+// WHY A TARGET CHECK AND NOT stopPropagation ON .modal. The overlay covers the
+// whole screen, so a click inside the modal also hits the overlay on the way up;
+// the old markup suppressed that with onclick="event.stopPropagation()" on the
+// inner .modal. But js/actions.js dispatches EVERY data-action from one listener
+// on `document` — stopping the event at .modal meant no click inside any modal
+// ever reached it, so a data-action button in a modal silently did nothing and
+// logged nothing. That is what broke the parade "Mark Present" confirm: the
+// button was inert and the popup stayed open. Comparing event.target to the
+// overlay gets the same close behaviour while letting the event keep bubbling.
+function closeModalOnBackdrop(event) {
+  if (event && event.target === document.getElementById("modal-overlay")) closeModal();
+}
+
 // Delete a record from within the person card, then re-open the card so the
 // operator stays in context (plain deleteEntry would leave a stale modal up).
 function pcDelete(arrayName, id, label, d4) {

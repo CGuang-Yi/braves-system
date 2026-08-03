@@ -106,8 +106,16 @@
 </div>
 
 <!-- MODAL -->
-<div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()">
-  <div class="modal" onclick="event.stopPropagation()">
+<!--
+  Backdrop-click closes; a click inside the modal must not. That guard lives in
+  closeModalOnBackdrop() as a target-identity check, NOT as an
+  onclick="event.stopPropagation()" on .modal — see the comment on that function
+  in js/forms.js. Stopping the event here also stopped it reaching the single
+  delegated listener in js/actions.js, which silently killed every data-action
+  button rendered into a modal.
+-->
+<div id="modal-overlay" class="modal-overlay hidden" onclick="closeModalOnBackdrop(event)">
+  <div class="modal">
     <div class="modal-header">
       <h3 id="modal-title"></h3>
       <button class="modal-close" onclick="closeModal()">✕</button>
@@ -155,7 +163,7 @@
 <script src="js/render-records.js?v=1"></script>
 <script src="js/render-conducts.js?v=1"></script>
 <script src="js/render-statusboard.js?v=1"></script>
-<script src="js/forms.js?v=179"></script>
+<script src="js/forms.js?v=180"></script>
 <script src="js/forms-import.js?v=1"></script>
 <script src="js/forms-records.js?v=2"></script>
 <script src="js/forms-reports.js?v=4"></script>
