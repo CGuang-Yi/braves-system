@@ -1982,3 +1982,71 @@ function haProjectDouble(ha) {
     : { relevant: true, attained: false, reachable: false, days: 0, projectedDates: [] };
 }
 
+// ── Button feedback ──────────────────────────────────────────────────────────
+// Most buttons here are still inline `onclick="foo()"` — the data-action
+// migration in js/actions.js is incremental — so a handler has no `this` and no
+// `event` and cannot reach its own button. Rather than thread one through ~100
+// call sites, a single delegated listener records the clicked button and the
+// helpers below fall back to it.
+//
+// CAPTURE phase, so this runs before the target's own inline onclick and the
+// handler already sees the right button.
+//
+// The clear on the next macrotask is the load-bearing part: handlers run
+// SYNCHRONOUSLY off the click and see the button, while an async continuation
+// resolving later sees null and no-ops — instead of decorating whatever button
+// happened to be clicked last, minutes ago.
+//
+// Registration is guarded on `document` existing: this file is the pure-utility
+// layer and several tests (test/ha.test.js, test/calc.test.js) load it into a
+// bare sandbox with no DOM at all. A hard top-level document reference would
+// throw at LOAD time there and take the whole file down with it.
+let _lastClickedBtn = null;
+if (typeof document !== "undefined" && document.addEventListener) {
+  document.addEventListener("click", e => {
+    const t = e && e.target;
+    const btn = t && t.closest && t.closest(".btn, .nav-btn, .btn-icon");
+    if (!btn) return;
+    _lastClickedBtn = btn;
+    setTimeout(() => { _lastClickedBtn = null; }, 0);
+  }, true);
+}
+
+function btnFeedback(btn) { return btn || _lastClickedBtn || null; }
+
+// The original label is stashed ON the element rather than in a Map, so a
+// re-render that throws the node away can't leak an entry.
+function btnBusy(btn, label) {
+  btn = btnFeedback(btn);
+  if (!btn) return () => {};
+  // Only stash if nothing is stashed yet — a second btnBusy must NOT record
+  // "Saving…" as the original, or restore() would hand back the busy text.
+  if (btn._btnOrig == null) btn._btnOrig = btn.textContent;
+  if (btn._btnTimer) { clearTimeout(btn._btnTimer); btn._btnTimer = null; }
+  btn.textContent = label || "…";
+  btn.disabled = true;
+  return () => btnRestore(btn);
+}
+
+function btnRestore(btn) {
+  if (!btn || btn._btnOrig == null) return;
+  if (btn._btnTimer) { clearTimeout(btn._btnTimer); btn._btnTimer = null; }
+  btn.textContent = btn._btnOrig;
+  btn._btnOrig = null;
+  btn.disabled = false;
+}
+
+// Transient success label. Generalises the "✓ Copied!" that was hand-written
+// twice (js/parade-tab.js, js/forms-reports.js); 1800ms is their timing, kept
+// so the feel doesn't change. Re-enables, so a btnBusy → btnDone handoff on the
+// success path leaves the button usable.
+function btnDone(btn, label) {
+  btn = btnFeedback(btn);
+  if (!btn) return;
+  if (btn._btnOrig == null) btn._btnOrig = btn.textContent;
+  if (btn._btnTimer) clearTimeout(btn._btnTimer);
+  btn.textContent = label || "✓ Done";
+  btn.disabled = false;
+  btn._btnTimer = setTimeout(() => { btn._btnTimer = null; btnRestore(btn); }, 1800);
+}
+
