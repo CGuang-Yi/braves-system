@@ -329,6 +329,9 @@ function openAddAccountForm() {
         </select>
       </label>
       <label class="form-label">Temporary password (min 6)<input type="text" id="aa-password" class="form-input" placeholder="they change it after first login"></label>
+      <label class="form-label" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="aa-cap-duty"> Can plan duties
+      </label>
       <div id="aa-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
       <button class="btn btn-primary" onclick="submitAddAccount()">Create Account</button>
     </div>`);
@@ -342,7 +345,8 @@ async function submitAddAccount() {
   err.textContent = "";
   if (!email || pw.length < 6) { err.textContent = "Email and a 6+ char password are required."; return; }
   try {
-    const res = await API.addAccount(email, personId, role, pw);
+    const caps = document.getElementById("aa-cap-duty")?.checked ? "duty" : "";
+    const res = await API.addAccount(email, personId, role, pw, caps);
     if (res && res.ok) {
       closeModal();
       if (res.warning) alert("Account created.\n\nNote: " + res.warning);
@@ -362,6 +366,29 @@ async function doRemoveAccount(emailEnc) {
     const res = await API.removeAccount(email);
     if (res && res.ok) refreshAdminData();
     else alert((res && res.error) || "Could not remove account.");
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    alert("Network error: " + e.message);
+  }
+}
+
+// ── Grant / revoke the duty-planning capability (admin) ──
+// A capability, not a role — see DUTY_LIST_SPEC.md §9 and hasCap() in state.js.
+// `duty` is the only one today, so this is a toggle rather than a caps editor;
+// a second capability turns it into a picker.
+async function doToggleDutyCap(emailEnc, hasIt) {
+  const email = decodeURIComponent(emailEnc);
+  const granting = !hasIt;
+  if (!confirm(`${granting ? "Grant" : "Revoke"} duty planning for ${email}?`)) return;
+  try {
+    // Caps are snapshotted onto the token at login, so a revoke doesn't reach a
+    // device that is already signed in. Say so rather than let an admin assume
+    // it took effect immediately — revoking their tokens is the way to force it.
+    const res = await API.setAccountCaps(email, granting ? "duty" : "");
+    if (res && res.ok) {
+      refreshAdminData();
+      if (!granting) alert(`Duty planning revoked for ${email}.\n\nAny device they're already signed in on keeps it until they sign in again — revoke their sessions below to apply it now.`);
+    } else alert((res && res.error) || "Could not update capabilities.");
   } catch (e) {
     if (e.name === "AuthError") { handleAuthFailure(); return; }
     alert("Network error: " + e.message);
