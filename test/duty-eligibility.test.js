@@ -132,6 +132,57 @@ module.exports = async function run() {
     eq(e.dutyEligible.length, 6);
   });
 
+  suite("duty-eligibility: platoon colour ramps");
+
+  const CCFG = {
+    dutyTypes: CFG.dutyTypes,
+    dutyPlatoonColours: {
+      PLT1: ["#900b0a", "#ab201d", "#c6312f", "#e24240", "#ff5252"],
+      PLT2: ["#168039", "#469c47", "#6eb855", "#95d563", "#bdf271"]
+    }
+  };
+
+  await test("index 0 is the Command element — PC and PS share it", () => {
+    eq(e.dutyColourIndexForSection("Command"), 0);
+    eq(e.dutyColourFor("PLT1", "Command", CCFG), "#900b0a");
+  });
+
+  await test("sections 1..n map to indexes 1..n in order", () => {
+    eq(e.dutyColourFor("PLT1", "1", CCFG), "#ab201d");
+    eq(e.dutyColourFor("PLT1", "2", CCFG), "#c6312f");
+    eq(e.dutyColourFor("PLT1", "3", CCFG), "#e24240");
+    eq(e.dutyColourFor("PLT1", "4", CCFG), "#ff5252");
+  });
+
+  await test("each platoon uses its own ramp", () => {
+    eq(e.dutyColourFor("PLT2", "Command", CCFG), "#168039");
+    eq(e.dutyColourFor("PLT2", "4", CCFG), "#bdf271");
+  });
+
+  await test("a section beyond the ramp clamps to the last colour, never wraps", () => {
+    // Wrapping would hand section 5 the Command colour, which reads as a lie
+    // about the org chart. Clamping just says "one more of this platoon's shade".
+    eq(e.dutyColourFor("PLT1", "5", CCFG), "#ff5252");
+    eq(e.dutyColourFor("PLT1", "9", CCFG), "#ff5252");
+  });
+
+  await test("a platoon with no ramp gets no colour rather than a wrong one", () => {
+    eq(e.dutyColourFor("PLT9", "1", CCFG), "");
+    eq(e.dutyColourFor("HQ", "", CCFG), "");
+    eq(e.dutyColourFor("", "", CCFG), "");
+    eq(e.dutyColourFor("PLT1", "1", {}), "");
+  });
+
+  await test("contrast text flips with the background's luminance", () => {
+    // The ramps span very dark (#900b0a) to very light (#fff176), so a fixed
+    // foreground would be unreadable at one end or the other.
+    eq(e.dutyContrastText("#900b0a"), "#ffffff");
+    eq(e.dutyContrastText("#1510F0"), "#ffffff");
+    eq(e.dutyContrastText("#fff176"), "#000000");
+    eq(e.dutyContrastText("#bdf271"), "#000000");
+    eq(e.dutyContrastText(""), "");
+  });
+
   await test("missing or empty inputs degrade quietly", () => {
     eq(e.dutyEligible("COS", "", "2026-08-03", [], CFG, {}).length, 0);
     eq(e.dutyEligible("COS", "", "2026-08-03", null, CFG, {}).length, 0);

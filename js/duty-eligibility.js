@@ -89,7 +89,46 @@ function dutyEligible(dutyType, platoon, isoDate, roster, cfg, opts) {
   return out;
 }
 
+// ── Platoon colour ramps ─────────────────────────────────────────────────────
+// Lives here rather than in the view because it is the same org-model knowledge
+// the eligibility rules above encode: what "Command" means, and that sections are
+// numbered. The view just paints what this returns.
+
+// Position in a platoon's ramp. Index 0 is the Command element — PC and PS share
+// one colour deliberately, which also covers a platoon carrying two PCs or two
+// PSs. Sections 1..n take indexes 1..n.
+function dutyColourIndexForSection(section) {
+  const s = String(section || "").trim();
+  if (s === "Command") return 0;
+  const n = parseInt(s, 10);
+  return n > 0 ? n : -1;
+}
+
+function dutyColourFor(platoon, section, cfg) {
+  const ramps = (cfg && cfg.dutyPlatoonColours) || {};
+  const ramp = ramps[platoon];
+  if (!ramp || !ramp.length) return "";     // unknown platoon → no colour beats a wrong one
+  const i = dutyColourIndexForSection(section);
+  if (i < 0) return "";
+  // Clamp rather than wrap. Wrapping would hand section 5 the Command colour,
+  // which reads as a claim about the org chart that isn't true; clamping just
+  // says "one more of this platoon's shade". The ramps run dark→light, so the
+  // clamped end is the lightest, not a collision.
+  return ramp[Math.min(i, ramp.length - 1)] || "";
+}
+
+// Readable foreground for a ramp colour. The palettes span #900b0a to #fff176,
+// so any fixed foreground is unreadable at one end; pick by relative luminance.
+function dutyContrastText(hex) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return "";
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  // Rec. 601 luma — cheap, and adequate for a two-way black/white decision.
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#000000" : "#ffffff";
+}
+
 // Node test export (browser ignores `module`).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { dutyTypeScope, dutyPlatoonsFor, dutyIsActive, dutyBasePool, dutyEligible };
+  module.exports = { dutyTypeScope, dutyPlatoonsFor, dutyIsActive, dutyBasePool, dutyEligible,
+                     dutyColourIndexForSection, dutyColourFor, dutyContrastText };
 }

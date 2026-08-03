@@ -144,6 +144,28 @@ const DEFAULT_CONFIG = {
   // a correctable statement about one workbook, not a guess baked into the
   // parser; the importer still emits a warning whenever it has to fall back.
   dutyHeaderFallback: { B: "CDO" },
+  // Per-platoon colour ramps for commander names in the duty views.
+  //
+  // Position in the array IS the meaning, and it is keyed off the org model
+  // rather than off a person: index 0 is the platoon's Command element (both PC
+  // and PS — they deliberately share one colour, which also covers a platoon
+  // carrying two PCs or two PSs), and indexes 1..n are sections 1..n in order.
+  //
+  // Both the platoon count and the section count can change, so nothing here is
+  // fixed: a platoon with no entry simply gets no colour, and a section beyond
+  // the end of its ramp clamps to the last colour rather than wrapping. Clamping
+  // is chosen over wrapping because these ramps run dark→light — an extra
+  // section reads as "one more of this platoon's shade" instead of colliding
+  // with the Command colour, which would be actively misleading.
+  //
+  // Add a platoon by adding a key; re-order or extend a ramp by editing its
+  // array. No code change either way.
+  dutyPlatoonColours: {
+    PLT1: ["#900b0a", "#ab201d", "#c6312f", "#e24240", "#ff5252"],
+    PLT2: ["#168039", "#469c47", "#6eb855", "#95d563", "#bdf271"],
+    PLT3: ["#1510F0", "#006fdc", "#009be5", "#51d3ed", "#acf0f2"],
+    PLT4: ["#ffbe00", "#feca2a", "#fed642", "#fee662", "#fff176"]
+  },
   dutyCycleStart: "2026-04-01",
   dutyCycleMonths: 6,
   // Extra 4Ds eligible for duty beyond the automatic commander rule. Safe to keep
@@ -184,6 +206,7 @@ function dutyConfig() {
     dutyCorrectionReasons: configGetJSON("dutyCorrectionReasons"),
     dutyCorrectionColours: configGetJSON("dutyCorrectionColours"),
     dutyHeaderFallback: configGetJSON("dutyHeaderFallback"),
+    dutyPlatoonColours: configGetJSON("dutyPlatoonColours"),
     dutyExtraEligible: configGetJSON("dutyExtraEligible"),
     dutyCycleStart: configGet("dutyCycleStart"),
     dutyCycleMonths: Number(configGet("dutyCycleMonths")) || 6
@@ -276,6 +299,9 @@ const STATE = {
   // admin panel; `personId`/`email` identify the signed-in account. Empty until
   // a successful login.
   role: localStorage.getItem(ROLE_KEY) || "",
+  // Per-account capabilities beyond the role ladder (DUTY_LIST_SPEC.md §9).
+  // Populated from the login response in phase 2; empty until then.
+  caps: [],
   personId: localStorage.getItem(PERSONID_KEY) || "",
   email: localStorage.getItem(EMAIL_KEY) || "",
   // Admin-panel data, loaded on demand from the backend (never cached to disk):
@@ -854,6 +880,22 @@ function clearSession() {
 // only drive what the read-only viewer sees (soft disabling) and the admin panel.
 const canWrite = () => STATE.role === "commander" || STATE.role === "admin";
 const isAdminRole = () => STATE.role === "admin";
+
+// Duty planning (DUTY_LIST_SPEC.md §9). The account model is a linear ladder
+// (viewer < commander < admin) and duty planning is deliberately NOT a rung on
+// it — it is a capability, because a duty planner also needs ordinary commander
+// powers. `caps` is a comma-separated column on the Accounts tab.
+//
+// Phase 1 is read-only and the server side of this does not exist yet, so
+// STATE.caps is always empty and only admins pass. That is the conservative
+// direction to be wrong in, and the predicate is already the shape phase 2
+// needs — the backend gate lands in routeAuthedPost alongside the sendEmail and
+// bulk-import checks, and THAT is what actually enforces this. Everything here
+// is cosmetic.
+function hasCap(cap) {
+  return (STATE.caps || []).indexOf(cap) !== -1;
+}
+const canPlanDuty = () => isAdminRole() || hasCap("duty");
 
 function loadFilter() {
   try {

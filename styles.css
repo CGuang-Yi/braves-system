@@ -585,3 +585,8 @@ body.role-admin .nav-btn.commander-plus,body.role-commander .nav-btn.commander-p
 .duty-weekend{background:#58A6FF0D}
 .duty-date{font-family:'JetBrains Mono',monospace;font-size:11px;white-space:nowrap;position:sticky;left:0;background:var(--surface);z-index:1}
 .duty-weekend .duty-date{background:#1b2430}
+/* Name chip in the person's platoon/section colour (DUTY_LIST_SPEC.md §8).
+   Background rather than text colour: the ramps run from very dark to very
+   light, so as text one end is always unreadable. The foreground is computed
+   per chip by dutyContrastText. */
+.duty-chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}

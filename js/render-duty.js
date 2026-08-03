@@ -13,9 +13,9 @@
 //                platoon, derived from activePlatoons(). Nothing here is
 //                hardcoded to four platoons, because the number and numbering of
 //                platoons can change.
-//   • FAIRNESS — per person: counts by type, base points, weekend/PH points,
+//   • OVERALL  — per person: counts by type, base points, weekend/PH points,
 //                corrections, total. Sortable, over month / cycle / all time.
-//   • LOG      — every correction with its reason, delta, note and provenance.
+//   • LOG      — planner-only (canPlanDuty); see renderDuty.
 //
 // All arithmetic is delegated to js/duty-points.js and all column derivation to
 // js/duty-eligibility.js. Both are pure modules that never read STATE; this file
@@ -24,7 +24,7 @@
 // ============================================================================
 
 // ── Tab state (module-level, mirrors the _sb*/_parade* pattern) ──────────────
-let _dutyView = "grid";        // "grid" | "fairness" | "log"
+let _dutyView = "grid";        // "grid" | "overall" | "log"
 let _dutyMonth = "";           // ISO yyyy-mm-01; lazily defaulted to this month
 let _dutyRangeKind = "month";  // "month" | "cycle" | "all" — fairness/log scope
 let _dutySort = "total";       // fairness sort column
@@ -74,16 +74,53 @@ function dutyDatesInMonth(anchorISO) {
 
 const DUTY_DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// A person's name as a chip in their platoon/section colour.
+//
+// The colour is looked up from the person's CURRENT platoon and section, not
+// from the duty row's stored platoon. Those differ after a transfer, and the
+// current one is right here: the chip answers "who is this person" for someone
+// scanning the grid today, whereas the row's stored platoon answers "which slot
+// did they fill", which is what the column already says.
+//
+// Rendered as a background rather than as text colour because the ramps span
+// #900b0a to #fff176 — as text, one end or the other is unreadable on any
+// background. dutyContrastText picks black or white per chip so both ends stay
+// legible. Anyone with no ramp (HQ, an unlisted platoon, a recruit) falls back
+// to plain text, which is why this returns a bare label rather than an empty chip.
+function dutyNameChip(d4, cfg) {
+  const label = displayPersonLabel(d4);
+  const r = (STATE.roster || []).find(x => x.id === d4);
+  const colour = r ? dutyColourFor(personPlatoon(r), personSection(r), cfg) : "";
+  if (!colour) return escapeHTML(label);
+  const fg = dutyContrastText(colour);
+  const title = r ? `${personPlatoon(r)}${personSection(r) ? " · " + personSection(r) : ""}` : "";
+  return `<span class="duty-chip" style="background:${escapeAttr(colour)};color:${fg}" title="${escapeAttr(title)}">${escapeHTML(label)}</span>`;
+}
+
 function renderDuty(el) {
   const cfg = dutyConfig();
-  const tabs = [["grid", "Month grid"], ["fairness", "Fairness"], ["log", "Corrections log"]]
+
+  // The corrections log is planner-only. It is an audit trail of manual point
+  // adjustments — who was docked what and why — which is administrative detail
+  // rather than something everyone needs, while the duties and totals it feeds
+  // stay visible to all (spec §9.3).
+  //
+  // This is presentation only. The rows are in STATE either way, so treat it as
+  // tidying the UI for people who cannot act on it, NOT as access control; the
+  // server gate in phase 2 is what actually enforces anything.
+  const showLog = canPlanDuty();
+  if (_dutyView === "log" && !showLog) _dutyView = "grid";
+
+  const tabDefs = [["grid", "Month grid"], ["overall", "Overall duties"]];
+  if (showLog) tabDefs.push(["log", "Corrections log"]);
+  const tabs = tabDefs
     .map(([k, label]) =>
       `<button type="button" class="role-btn${_dutyView === k ? " active" : ""}" data-action="dutyView" data-value="${k}">${label}</button>`)
     .join("");
 
   let body = "";
   if (_dutyView === "grid") body = dutyGridHTML(cfg);
-  else if (_dutyView === "fairness") body = dutyFairnessHTML(cfg);
+  else if (_dutyView === "overall") body = dutyOverallHTML(cfg);
   else body = dutyLogHTML(cfg);
 
   el.innerHTML = `
@@ -118,7 +155,7 @@ function dutyGridHTML(cfg) {
       : "";
     const cells = cols.map(c => {
       const d4 = idx[iso] && idx[iso][c.dutyType + "|" + c.platoon];
-      return `<td>${d4 ? escapeHTML(displayPersonLabel(d4)) : "<span style=\"color:var(--muted)\">—</span>"}</td>`;
+      return `<td>${d4 ? dutyNameChip(d4, cfg) : "<span style=\"color:var(--muted)\">—</span>"}</td>`;
     }).join("");
     const wknd = (dow === 0 || dow === 6 || hol) ? ' class="duty-weekend"' : "";
     return `<tr${wknd}><td class="duty-date">${iso.slice(8)} ${DUTY_DOW_LABELS[dow] || ""}${holTag}
@@ -137,8 +174,8 @@ function dutyGridHTML(cfg) {
     </table></div>`;
 }
 
-// ── Fairness ─────────────────────────────────────────────────────────────────
-function dutyFairnessHTML(cfg) {
+// ── Overall duties ───────────────────────────────────────────────────────────
+function dutyOverallHTML(cfg) {
   const range = dutyRangeFor(_dutyRangeKind, dutyMonthAnchor(), cfg);
   const holidays = indexHolidays(STATE.holidays);
   const totals = dutyTotals(STATE.duty, STATE.dutyCorrection, cfg, holidays, range);
@@ -147,7 +184,7 @@ function dutyFairnessHTML(cfg) {
   const people = Object.keys(totals.byPerson).map(d4 => {
     const p = totals.byPerson[d4];
     return {
-      d4, label: displayPersonLabel(d4),
+      d4, label: displayPersonLabel(d4), chip: dutyNameChip(d4, cfg),
       counts: p.counts, basePoints: p.basePoints, weekendPoints: p.weekendPoints,
       corrections: p.corrections, total: p.total,
       duties: types.reduce((n, t) => n + (p.counts[t] || 0), 0)
@@ -170,7 +207,7 @@ function dutyFairnessHTML(cfg) {
     sortable("weekendPoints", "Wknd/PH") + sortable("corrections", "Corr.") + sortable("total", "Total");
 
   const body = people.map(p =>
-    `<tr><td>${escapeHTML(p.label)}</td>` +
+    `<tr><td>${p.chip}</td>` +
     types.map(t => `<td>${p.counts[t] || 0}</td>`).join("") +
     `<td>${p.duties}</td><td>${p.basePoints}</td><td>${p.weekendPoints}</td>` +
     `<td>${p.corrections === 0 ? "—" : (p.corrections > 0 ? "+" : "") + p.corrections}</td>` +
@@ -190,7 +227,7 @@ function dutyLogHTML(cfg) {
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
   const body = rows.map(c =>
-    `<tr><td>${escapeHTML(c.date)}</td><td>${escapeHTML(displayPersonLabel(c.d4))}</td>` +
+    `<tr><td>${escapeHTML(c.date)}</td><td>${dutyNameChip(c.d4, cfg)}</td>` +
     `<td>${c.reason ? escapeHTML(c.reason) : '<span class="badge badge-orange">no reason</span>'}</td>` +
     `<td>${c.delta > 0 ? "+" : ""}${c.delta}</td><td>${escapeHTML(c.note || "")}</td>` +
     `<td style="color:var(--muted)">${escapeHTML(c.enteredBy || "")}</td></tr>`
