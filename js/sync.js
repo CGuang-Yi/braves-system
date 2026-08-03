@@ -391,6 +391,32 @@ function setPullInFlight(promise) {
   _pullPromise = Promise.resolve(promise).finally(() => { _pullInFlight = false; refreshSyncIndicator(); });
 }
 
+// Copy-time staleness warning. A generated parade state / sick report gets
+// pasted into WhatsApp and SENT — so a copy taken while a pull is in flight can
+// be superseded seconds later, with the sender none the wiser. An Apps Script
+// round trip is slow enough for that window to be real (see the ~2.1s revCheck
+// median noted below).
+//
+// Returns true to proceed. SILENT when no pull is running, which is the
+// overwhelmingly common path — a guard that fires routinely is one people learn
+// to click through, which would make it worse than no guard at all.
+//
+// It warns rather than awaiting _pullPromise, which would be trivial. Two
+// reasons: the button would sit dead for the whole round trip with no
+// explanation, and the parade/report textareas are deliberately EDITABLE for
+// last-minute corrections — a pull landing behind a silent wait would leave
+// hand-typed edits disagreeing with the data they were generated from, and
+// regenerating instead would throw those edits away. The person holding the
+// phone knows whether the message has to go out now; this leaves it to them.
+function unsyncedCopyGuard(label) {
+  if (!_pullInFlight) return true;
+  return confirm(
+    `Newer data is being pulled from the sheet right now.\n\n`
+    + `This ${label || "message"} was generated before that data arrived, so it may `
+    + `already be out of date.\n\nCancel to re-copy once the sync settles, or OK to copy anyway.`
+  );
+}
+
 const _writeQueue = new Map();    // tabName → array of pending modes
 const _draining = new Map();      // tabName → promise of the active drain loop
 
