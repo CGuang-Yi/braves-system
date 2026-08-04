@@ -95,4 +95,57 @@ module.exports = async function run() {
     ok(m.fourDSortKey({}) === Infinity, "empty row ⇒ last");
     ok(m.fourDSortKey(null) === Infinity, "null row ⇒ last");
   });
+
+  suite("appointment-4d: the personPlatoon / personSection ladder");
+
+  const H = (() => {
+    // helpers.js reaches for STATE and browser globals at call time, but the two
+    // accessors under test touch neither. Stub only what the file needs to LOAD.
+    const sandbox = {
+      module: { exports: {} }, String, Number, Object, JSON, console, Date, Math, Set, Array,
+      STATE: { roster: [], platoons: [] }
+    };
+    sandbox.exports = sandbox.module.exports;
+    vm.createContext(sandbox);
+    ["appointment-4d.js", "helpers.js"].forEach(f => {
+      vm.runInContext(
+        fs.readFileSync(path.join(__dirname, "..", "js", f), "utf8"),
+        sandbox, { filename: f }
+      );
+    });
+    return sandbox;
+  })();
+
+  await test("an explicit platoon column still beats the fourD code", () => {
+    // Non-negotiable: a hand-typed value is an override, never something the
+    // parser is allowed to contradict.
+    eq(H.personPlatoon({ role: "Commander", fourD: "PC2", platoon: "HQ" }), "HQ");
+    eq(H.personSection({ role: "Commander", fourD: "SC21", section: "3" }), "3");
+  });
+
+  await test("a commander with blank columns derives platoon and section from fourD", () => {
+    // Before this change both returned "" — getPlt/getSect deliberately blank
+    // commanders out as coy-level, which is right for an OC but wrong for a PC.
+    const sc = { role: "Commander", fourD: "SC21", platoon: "", section: "" };
+    eq(H.personPlatoon(sc), "PLT2");
+    eq(H.personSection(sc), "1");
+    const pc = { role: "Commander", fourD: "PC3", platoon: "", section: "" };
+    eq(H.personPlatoon(pc), "PLT3");
+    eq(H.personSection(pc), "Command");
+  });
+
+  await test("a recruit is untouched by the new tier", () => {
+    // The regression that would matter most: recruits must keep resolving
+    // through the existing getPlt/getSect 4D parsing.
+    const rec = { role: "Recruit", id: "1411", fourD: "1411", platoon: "", section: "" };
+    eq(H.personPlatoon(rec), "PLT1");
+    eq(H.personSection(rec), "4");
+  });
+
+  await test("a commander with no appointment code stays coy-level", () => {
+    // OC/CSM hold no appointment code. They must NOT acquire a platoon.
+    const oc = { role: "Commander", id: "0006", fourD: "", platoon: "", section: "" };
+    eq(H.personPlatoon(oc), "");
+    eq(H.personSection(oc), "");
+  });
 };

@@ -36,7 +36,10 @@ const { makeBrowser } = require("./mocks/browser");
 // Fixed date: the classifier is date-driven, so a wall-clock TODAY would make
 // this suite rot overnight. Matches parade-classifier.test.js.
 const TODAY = "2026-06-29";           // a Monday
-const PARADE_FILES = ["js/state.js", "js/helpers.js", "js/braves-parade.js"];
+// appointment-4d.js precedes helpers.js because personPlatoon/personSection call
+// parseAppointment4D; without it every test here dies on a ReferenceError rather
+// than comparing anything.
+const PARADE_FILES = ["js/state.js", "js/appointment-4d.js", "js/helpers.js", "js/braves-parade.js"];
 
 // Dates in fixtures MUST be "DD MMM YYYY": the real helpers.js displayDateToISO
 // only parses that shape and returns "" for ISO input, which silently makes a
