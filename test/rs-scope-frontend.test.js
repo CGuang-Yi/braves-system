@@ -87,4 +87,52 @@ module.exports = async function run() {
     sb.STATE.role = "admin"; sb.STATE.caps = [];
     eq(sb.rsOutOfScopeCounts().length, 0, "no count lines to draw");
   });
+
+  suite("rs-scope: scope-key-driven refresh");
+
+  const sbFor = () => {
+    const b = loadBackend();
+    const c = makeClient(b, {});
+    return c.sb;
+  };
+
+  await test("an unchanged scope key adds no tabs", () => {
+    const sb = sbFor();
+    sb.STATE.scopeKey = "PLT1";
+    eq(sb.rsApplyScopeKey({ scopeKey: "PLT1" }).length, 0, "nothing forced");
+    eq(sb.STATE.scopeKey, "PLT1", "unchanged");
+  });
+
+  await test("a changed scope key forces Medical and MSK", () => {
+    const sb = sbFor();
+    sb.STATE.scopeKey = "PLT1";
+    eq(sb.rsApplyScopeKey({ scopeKey: "company" }).sort().join(","), "MSK,Medical", "both forced");
+    eq(sb.STATE.scopeKey, "company", "key advanced");
+  });
+
+  await test("a first-ever key (empty cache) forces a pull", () => {
+    const sb = sbFor();
+    sb.STATE.scopeKey = "";
+    eq(sb.rsApplyScopeKey({ scopeKey: "PLT1" }).sort().join(","), "MSK,Medical", "cold cache pulls");
+  });
+
+  // An older backend deploy has no scopeKey at all. The client must not read
+  // that as "your scope became empty" and thrash a re-pull on every poll.
+  await test("a response with no scopeKey field changes nothing", () => {
+    const sb = sbFor();
+    sb.STATE.scopeKey = "PLT1";
+    eq(sb.rsApplyScopeKey({ ok: true, revs: {} }).length, 0, "no forced tabs");
+    eq(sb.STATE.scopeKey, "PLT1", "cached key preserved");
+  });
+
+  // Guard on plan deviation D1: the revs map must stay numeric so sync.js's
+  // Number(a) > Number(b) filter keeps working.
+  await test("the forced tabs are added WITHOUT touching STATE.rev", () => {
+    const sb = sbFor();
+    sb.STATE.scopeKey = "PLT1";
+    sb.STATE.rev = { Medical: 7, MSK: 3 };
+    sb.rsApplyScopeKey({ scopeKey: "company" });
+    eq(sb.STATE.rev.Medical, 7, "rev untouched — OCC baseRev must stay valid");
+    eq(sb.STATE.rev.MSK, 3, "rev untouched");
+  });
 };

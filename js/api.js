@@ -164,6 +164,9 @@ const API = {
         STATE.rev[sheet] = data.revs[sheet];
       }
     }
+    // Report-sick scope (spec §1). Stored, never compared here — a full pull has
+    // already fetched the scoped tabs under whatever scope the server applied.
+    rsStoreScopeKey(data.scopeKey);
     // Braves reference tabs (spec §4/§12/A6). Assigned unconditionally (not
     // length-gated) so clearing a tab in the Sheet actually clears it here —
     // config especially must reflect deletions, not stick to a stale cache.
@@ -233,6 +236,10 @@ const API = {
       // read&tab now returns { rows, rev }; tolerate a bare array too.
       const rows = Array.isArray(res) ? res : (res && res.rows) || [];
       const rev = (res && res.rev != null) ? res.rev : undefined;
+      // Each single-tab read carries the caller's scope key; storing it here
+      // keeps a partial pull from leaving a stale key that would force a
+      // redundant re-pull on the next revCheck.
+      if (res && !Array.isArray(res)) rsStoreScopeKey(res.scopeKey);
       return { sheet, rows, rev };
     }));
     let changed = false;
@@ -262,6 +269,7 @@ const API = {
     if (isUnknownAction) { _readTabsUnsupported = true; return null; } // older, not-yet-redeployed backend
     if (res && res.error) throw new Error(res.error);
     if (!res || !res.tabs) return null; // unrecognized shape — fall back defensively
+    rsStoreScopeKey(res.scopeKey);
     let changed = false;
     for (const sheet of names) {
       const entry = res.tabs[sheet];

@@ -38,7 +38,12 @@ module.exports = async function run() {
       JSON.parse(JSON.stringify(primer.sb.STATE.rev))
     );
 
-    const warm = makeLaunchClient(backend, { cachedState });
+    // scopeKey: this device has already run a build with the report-sick gate,
+    // so it holds the server's current scope key ("company" for the admin token
+    // the harness mints). Without it the launch correctly forces a one-time
+    // Medical/MSK re-pull — right behaviour, but it would be measuring the
+    // scope-key migration rather than the P1-1 property under test here.
+    const warm = makeLaunchClient(backend, { cachedState, scopeKey: "company" });
     // By the time makeLaunchClient() returns, bootstrap()'s synchronous prefix
     // (loadLocal → warm-cache check → applyRoleUI → render) has already run —
     // vm.runInContext doesn't return until that synchronous portion finishes,
@@ -78,7 +83,9 @@ module.exports = async function run() {
     await B.sb.API.pullAll();
     await B.sb.autoSync("Medical", { type: "upsert", row: med(9, "B-fresh") });
 
-    const warm = makeLaunchClient(backend, { cachedState });
+    // See the scopeKey note in the previous test — this device already holds the
+    // server's scope key, so the ONE partial read below is rev-driven only.
+    const warm = makeLaunchClient(backend, { cachedState, scopeKey: "company" });
     eq(warm.renderCalls[0], 0, "instant render from cache still happens first");
     await flushMicrotasks();
 

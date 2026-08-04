@@ -1044,6 +1044,29 @@ function isModalOpen() {
   return !!o && !o.classList.contains("hidden");
 }
 
+// Report-sick scope changes are not revision changes: the Medical tab's rev is
+// unchanged when an admin narrows a grant or a different account signs in on a
+// shared device, but WHAT THAT CALLER MAY SEE has changed completely. So the
+// server reports a scope key (apps-script-Code.gs, rsScopeKey_) and a difference
+// forces a re-pull of the two scoped tabs.
+//
+// Deliberately a SEPARATE field rather than folding the scope into the rev
+// itself: the changed-tab filters below compare revs with Number(a) > Number(b),
+// and js/api.js round-trips the rev back as the OCC baseRev. A non-numeric rev
+// would make Medical read as never-changed AND make every whole-tab write
+// conflict. Never widen `revs` to carry anything but numbers.
+//
+// Returns the tab names to add to the changed list. STATE.rev is deliberately
+// untouched — the tabs are pulled, and the pull advances the rev normally.
+const RS_SCOPED_TABS = ["Medical", "MSK"];
+function rsApplyScopeKey(res) {
+  // An older backend deploy omits the field entirely. Treat that as "no
+  // information", not as "your scope is now empty" — otherwise every poll
+  // against a stale deployment would thrash a re-pull.
+  if (!res) return [];
+  return rsStoreScopeKey(res.scopeKey) ? RS_SCOPED_TABS.slice() : [];
+}
+
 async function autoRefreshTick(reason) {
   if (!STATE.authToken) return;
   if (_autoRefreshing) return;
@@ -1059,9 +1082,11 @@ async function autoRefreshTick(reason) {
     refreshSyncIndicator();
 
     // Which sheet tabs have a server revision ahead of ours?
-    const changed = Object.keys(res.revs).filter(sheet =>
+    const revChanged = Object.keys(res.revs).filter(sheet =>
       Number(res.revs[sheet]) > Number(STATE.rev[sheet] || 0)
     );
+    // A scope change makes the scoped tabs stale without moving their revision.
+    const changed = [...new Set(revChanged.concat(rsApplyScopeKey(res)))];
     if (changed.length === 0) {
       // P4-1: a quiet poll. Past the streak threshold, drop to the relaxed
       // cadence and surface it (refreshSyncIndicator renders the "Check now"
@@ -1261,7 +1286,8 @@ async function autoSyncOnLaunch() {
       const res = await timed("revCheck", "revCheck (launch)", () => API.revCheck());
       _lastCheckedAt = Date.now();
       if (res && !res.error && res.revs) {
-        const changed = Object.keys(res.revs).filter(s => Number(res.revs[s]) > Number(STATE.rev[s] || 0));
+        const revChanged = Object.keys(res.revs).filter(s => Number(res.revs[s]) > Number(STATE.rev[s] || 0));
+        const changed = [...new Set(revChanged.concat(rsApplyScopeKey(res)))];
 
         if (changed.length === 0) {
           _lastSyncedAt = Date.now();

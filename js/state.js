@@ -1162,6 +1162,18 @@ function rsScope() {
   return { company: false, plt: own ? [own] : [] };
 }
 
+// Persist the server-reported scope key. Shared by js/api.js (every pull path)
+// and js/sync.js (the revCheck poll) so the localStorage round-trip lives in one
+// place. A null/absent key means "this backend predates the field" — leave the
+// cached value alone rather than reading it as an emptied scope.
+function rsStoreScopeKey(key) {
+  if (key == null) return false;
+  if (key === STATE.scopeKey) return false;
+  STATE.scopeKey = key;
+  try { localStorage.setItem(SCOPE_KEY_KEY, key); } catch { /* private mode */ }
+  return true;
+}
+
 function inRSScope(d4) {
   const s = rsScope();
   if (s.company) return true;
