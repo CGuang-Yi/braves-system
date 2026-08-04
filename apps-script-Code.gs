@@ -269,19 +269,17 @@ function doGet(e) {
     var tab = e.parameter.tab || "";
     var auth = e.parameter.auth || "";
 
-    // Public action: ping (used by the frontend to verify the URL is reachable).
+    // Public action: ping. This is the ONE action that answers without a token,
+    // so it answers as little as possible — is the deployment reachable, and
+    // what time does it think it is. Nothing about the spreadsheet behind it.
+    //
+    // It used to return the tab list, which was only ever cosmetic (the Sync log
+    // printed it, and readAllTabs pulls from an explicit allow-list, not from
+    // this). A liveness check that describes the schema to anyone holding the
+    // URL is a poor trade for a log line, so the list is gone rather than
+    // filtered. Callers wanting tab names must authenticate.
     if (action === "ping") {
-      // Filter manual/scratch tabs out of the connectivity list so they don't
-      // read as data tabs in the Sync log. They are never pulled — readAllTabs
-      // uses an explicit allow-list — this is purely cosmetic. "Conduct Master"
-      // is a human planning sheet with a banner in row 1 (real headers in row 2),
-      // so it must never be treated as a data tab regardless.
-      var NON_DATA_TABS = { "notes": 1, "Conduct Master": 1 };
-      output = {
-        ok: true,
-        sheets: getTabNames().filter(function (n) { return !NON_DATA_TABS[n]; }),
-        timestamp: new Date().toISOString()
-      };
+      output = { ok: true, timestamp: new Date().toISOString() };
     } else {
       // Every other read resolves the account context behind the token. Any valid
       // role (admin/commander/viewer) may read — read-only enforcement only bites
@@ -292,69 +290,8 @@ function doGet(e) {
         output = { error: "Unauthorized — please log in", code: 401 };
       } else if (isTokenExpired(ctx)) {
         output = { error: "session_expired", code: 401 };
-      } else if (action === "readAll") {
-        output = readAllTabs(ctx);              // ctx → AuditLog included only for admins
-      } else if (action === "revCheck") {
-        // Cheap "what changed?" poll — just the per-tab revisions, no row data.
-        //
-        // `revs` values stay NUMBERS. Folding the report-sick scope into the
-        // Medical/MSK rev as "<rev>:<key>" was considered and rejected: it breaks
-        // two live call sites — js/sync.js filters changed tabs with
-        // Number(a) > Number(b) (NaN, so the tab reads as never-changed) and
-        // js/api.js round-trips the rev back as baseRev, which withRevLock also
-        // coerces (NaN, so every whole-tab write is rejected as a conflict). The
-        // scope therefore travels as its own additive field; a client that
-        // ignores it behaves exactly as before.
-        output = { ok: true, revs: getAllRevs(), scopeKey: rsScopeKey_(rsScopeOf_(ctx)),
-                   timestamp: new Date().toISOString() };
-      } else if (action === "read" && tab) {
-        if (tab === "AuditLog" && ctx.role !== "admin") {
-          output = { error: "Not authorised", code: 403 };
-        } else if ((tab === "ParadeArchive" || tab === "SickArchive") && !canWrite(ctx)) {
-          output = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
-        } else if (tab === "Accounts") {
-          output = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
-        } else if (tab === "SickArchive" && !rsScopeOf_(ctx).company) {
-          output = { rows: [], rev: getRev(tab) };
-        } else {
-          // Single-tab read for partial pulls; carries the tab's current revision
-          // so the client can baseline it. (Untracked tabs report rev 1.)
-          output = { rows: rsApplyReadScope_(tab, readTab(tab), ctx), rev: getRev(tab),
-                     scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
-        }
-      } else if (action === "readTabs" && e.parameter.tabs) {
-        // Batched partial pull (SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1): N tabs in ONE
-        // request instead of N parallel `read` GETs. Read-only, no lock needed — same
-        // as the single-tab `read` route above, just looped. Per-tab shape is
-        // identical to `read`'s ({rows, rev}), keyed by tab name under `tabs`.
-        //
-        // Gating choice: apply the SAME per-tab gating as `read`, but per-tab —
-        // a disallowed tab (AuditLog/archives for non-admins, Accounts always) gets
-        // its own {error, code} entry under tabs[name] instead of failing the whole
-        // batch. This composes best with the frontend fallback/normalization path,
-        // which already assigns per-tab and can skip/ignore an errored entry the
-        // same way it would skip a tab it never requested. Unknown tab names mirror
-        // `readTab`'s own not-found shape (rows becomes {error, available}), exactly
-        // as the single-tab route already does today (no extra handling needed).
-        var reqTabs = e.parameter.tabs.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t; });
-        var tabsOut = {};
-        for (var ti = 0; ti < reqTabs.length; ti++) {
-          var rt = reqTabs[ti];
-          if (rt === "AuditLog" && ctx.role !== "admin") {
-            tabsOut[rt] = { error: "Not authorised", code: 403 };
-          } else if ((rt === "ParadeArchive" || rt === "SickArchive") && !canWrite(ctx)) {
-            tabsOut[rt] = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
-          } else if (rt === "Accounts") {
-            tabsOut[rt] = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
-          } else if (rt === "SickArchive" && !rsScopeOf_(ctx).company) {
-            tabsOut[rt] = { rows: [], rev: getRev(rt) };
-          } else {
-            tabsOut[rt] = { rows: rsApplyReadScope_(rt, readTab(rt), ctx), rev: getRev(rt) };
-          }
-        }
-        output = { ok: true, tabs: tabsOut, scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
       } else {
-        output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, readTabs&tabs=A,B, or ping" };
+        output = routeRead(action, tab, e.parameter, ctx);
       }
     }
   } catch (err) {
@@ -362,6 +299,94 @@ function doGet(e) {
   }
 
   return jsonResponse(output);
+}
+
+// The read routes, shared by doGet and doPost.
+//
+// These used to live inline in doGet only, which forced every read — the launch
+// pull and the 20-second revCheck poll among them — to put the session token in
+// the query string, where it lands in the deployment's request logs and in any
+// Referer header the page emits. POST carries it in the body instead. Both
+// callers route through this one function so the gating below cannot drift
+// between them; `params` is e.parameter for GET and the parsed body for POST,
+// and the only field either reads off it is `tabs`.
+//
+// `ctx` is already resolved and unexpired — both callers do that before getting
+// here, because an expired session must answer session_expired regardless of
+// which action was asked for.
+function routeRead(action, tab, params, ctx) {
+  if (action === "readAll") {
+    return readAllTabs(ctx);                // ctx → AuditLog included only for admins
+  } else if (action === "revCheck") {
+    // Cheap "what changed?" poll — just the per-tab revisions, no row data.
+    //
+    // `revs` values stay NUMBERS. Folding the report-sick scope into the
+    // Medical/MSK rev as "<rev>:<key>" was considered and rejected: it breaks
+    // two live call sites — js/sync.js filters changed tabs with
+    // Number(a) > Number(b) (NaN, so the tab reads as never-changed) and
+    // js/api.js round-trips the rev back as baseRev, which withRevLock also
+    // coerces (NaN, so every whole-tab write is rejected as a conflict). The
+    // scope therefore travels as its own additive field; a client that
+    // ignores it behaves exactly as before.
+    return { ok: true, revs: getAllRevs(), scopeKey: rsScopeKey_(rsScopeOf_(ctx)),
+             timestamp: new Date().toISOString() };
+  } else if (action === "read" && tab) {
+    if (tab === "AuditLog" && ctx.role !== "admin") {
+      return { error: "Not authorised", code: 403 };
+    } else if ((tab === "ParadeArchive" || tab === "SickArchive") && !canWrite(ctx)) {
+      return { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
+    } else if (tab === "Accounts") {
+      return { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+    } else if (tab === "SickArchive" && !rsScopeOf_(ctx).company) {
+      return { rows: [], rev: getRev(tab) };
+    } else {
+      // Single-tab read for partial pulls; carries the tab's current revision
+      // so the client can baseline it. (Untracked tabs report rev 1.)
+      return { rows: rsApplyReadScope_(tab, readTab(tab), ctx), rev: getRev(tab),
+               scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
+    }
+  } else if (action === "readTabs" && params.tabs) {
+    // Batched partial pull (SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1): N tabs in ONE
+    // request instead of N parallel `read` GETs. Read-only, no lock needed — same
+    // as the single-tab `read` route above, just looped. Per-tab shape is
+    // identical to `read`'s ({rows, rev}), keyed by tab name under `tabs`.
+    //
+    // Gating choice: apply the SAME per-tab gating as `read`, but per-tab —
+    // a disallowed tab (AuditLog/archives for non-admins, Accounts always) gets
+    // its own {error, code} entry under tabs[name] instead of failing the whole
+    // batch. This composes best with the frontend fallback/normalization path,
+    // which already assigns per-tab and can skip/ignore an errored entry the
+    // same way it would skip a tab it never requested. Unknown tab names mirror
+    // `readTab`'s own not-found shape (rows becomes {error, available}), exactly
+    // as the single-tab route already does today (no extra handling needed).
+    var reqTabs = params.tabs.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t; });
+    var tabsOut = {};
+    for (var ti = 0; ti < reqTabs.length; ti++) {
+      var rt = reqTabs[ti];
+      if (rt === "AuditLog" && ctx.role !== "admin") {
+        tabsOut[rt] = { error: "Not authorised", code: 403 };
+      } else if ((rt === "ParadeArchive" || rt === "SickArchive") && !canWrite(ctx)) {
+        tabsOut[rt] = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
+      } else if (rt === "Accounts") {
+        tabsOut[rt] = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+      } else if (rt === "SickArchive" && !rsScopeOf_(ctx).company) {
+        tabsOut[rt] = { rows: [], rev: getRev(rt) };
+      } else {
+        tabsOut[rt] = { rows: rsApplyReadScope_(rt, readTab(rt), ctx), rev: getRev(rt) };
+      }
+    }
+    return { ok: true, tabs: tabsOut, scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
+  } else {
+    return { error: "Unknown action. Use: readAll, revCheck, read + tab, readTabs + tabs, or ping" };
+  }
+}
+
+// The four actions routeRead answers. doPost consults this before falling
+// through to the write router, so a read asked for over POST is not mistaken
+// for an unknown write action.
+function isReadAction(action) {
+  return action === "readAll" || action === "revCheck"
+      || action === "read" || action === "readTabs";
 }
 
 function doPost(e) {
@@ -383,6 +408,11 @@ function doPost(e) {
         output = { error: "Unauthorized — please log in", code: 401 };
       } else if (isTokenExpired(ctx)) {
         output = { error: "session_expired", code: 401 };
+      } else if (isReadAction(action)) {
+        // Reads over POST so the token travels in the body rather than the URL.
+        // Same routeRead the GET path uses, so the per-tab gating is identical
+        // by construction and there is no second copy to keep in step.
+        output = routeRead(action, tab, body, ctx);
       } else {
         output = routeAuthedPost(action, tab, body, ctx);
       }

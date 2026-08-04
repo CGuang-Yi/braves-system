@@ -39,7 +39,7 @@ function patchTabsAwareFetch(client, backend) {
       out = backend.doGet({ parameter: q });
     } else {
       const body = JSON.parse(init.body);
-      rec = { method: "POST", action: body.action, tab: body.tab };
+      rec = { method: "POST", action: body.action, tab: body.tab, tabs: body.tabs };
       out = backend.doPost({ parameter: {}, postData: { contents: init.body } });
     }
     client.fetchSpy.push(rec);
@@ -50,13 +50,16 @@ function patchTabsAwareFetch(client, backend) {
 
 // Fetch override that forwards action/tab/auth to the REAL current backend
 // but deliberately drops `tabs` — the shape of "the client is talking to a
-// backend deployment that doesn't understand ?tabs=…" (e.g. mid-rollout, one
-// tab still on an older Apps Script version). Hitting the CURRENT doGet's
-// `action === "readTabs" && e.parameter.tabs` guard with tabs missing falls
-// through to its generic "Unknown action" branch — a genuine response from
-// today's real code, not a hardcoded stand-in — so this proves the fallback
-// also works against the exact error text the live backend produces, not
-// just the older wording patchFetchSimulateOldBackend below hardcodes.
+// backend deployment that doesn't understand a batched read" (e.g. mid-rollout,
+// one tab still on an older Apps Script version). Hitting the CURRENT
+// routeRead's `action === "readTabs" && params.tabs` guard with tabs missing
+// falls through to its generic "Unknown action" branch — a genuine response
+// from today's real code, not a hardcoded stand-in — so this proves the
+// fallback also works against the exact error text the live backend produces,
+// not just the older wording patchFetchSimulateOldBackend below hardcodes.
+//
+// Reads travel by POST now, so `tabs` is dropped from the request BODY; the
+// GET arm is kept only because `ping` still goes that way.
 function patchFetchDropTabsParam(client, backend) {
   client.sb.fetch = async (url, init) => {
     const method = (init && init.method ? init.method : "GET").toUpperCase();
@@ -73,8 +76,10 @@ function patchFetchDropTabsParam(client, backend) {
       out = backend.doGet({ parameter: q });
     } else {
       const body = JSON.parse(init.body);
+      delete body.tabs;                       // deliberately omitted
+      const contents = JSON.stringify(body);
       rec = { method: "POST", action: body.action, tab: body.tab };
-      out = backend.doPost({ parameter: {}, postData: { contents: init.body } });
+      out = backend.doPost({ parameter: {}, postData: { contents } });
     }
     client.fetchSpy.push(rec);
     const text = out.getContent();
@@ -91,9 +96,10 @@ function patchFetchSimulateOldBackend(client, backend) {
   patchTabsAwareFetch(client, backend);
   const inner = client.sb.fetch;
   client.sb.fetch = async (url, init) => {
-    const u = new URL(url);
-    if (u.searchParams.get("action") === "readTabs") {
-      client.fetchSpy.push({ method: "GET", action: "readTabs", tabs: u.searchParams.get("tabs") });
+    // Reads are POSTs now, so the action to intercept is in the body.
+    const body = init && init.body ? JSON.parse(init.body) : null;
+    if (body && body.action === "readTabs") {
+      client.fetchSpy.push({ method: "POST", action: "readTabs", tabs: body.tabs });
       return {
         ok: true, status: 200,
         json: async () => ({ error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, or ping" })

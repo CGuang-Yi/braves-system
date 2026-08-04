@@ -134,6 +134,19 @@ module.exports = async function run() {
     ok(typeof r.rev === "number", "rev is a number");
   });
 
+  // ping is the only action that answers without a token, so what it answers
+  // WITH matters: liveness and a clock, and nothing that describes the sheet.
+  // The tab list it used to carry told any holder of the deployment URL the
+  // whole schema for free; this test is what stops it drifting back in.
+  await test("unauthenticated ping reports liveness only", () => {
+    const b = loadBackend();
+    b.db.seed("Medical", ["id", "reason"], [["1", "a"]]);
+    const r = JSON.parse(b.doGet({ parameter: { action: "ping" } }).getContent());
+    ok(r.ok, "answers without a token");
+    ok(typeof r.timestamp === "string", "carries a timestamp");
+    eq(Object.keys(r).sort().join(","), "ok,timestamp", "and carries nothing else");
+  });
+
   await test("unauthorized request is rejected", () => {
     const b = loadBackend();
     const out = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: "bogus" } }).getContent());
