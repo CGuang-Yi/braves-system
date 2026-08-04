@@ -238,6 +238,7 @@ function renderDashboard(el) {
       </div>`;
     })()}
     ${renderDashAppointments(visible, today)}
+    ${renderDashDuty(today)}
     <!-- Feature 25: the people who are OUT come before the analytics. A duty
          commander opens this page to find out who is missing, not to read a
          chart — so Non-Active, Recovering and Out-today sit directly under
@@ -1279,6 +1280,54 @@ function renderLeaveTimeline(scoped, todayIso) {
     </div>
     <div style="overflow-x:auto"><table style="border-collapse:collapse"><thead><tr><th style="background:var(--surface);position:sticky;left:0;z-index:2"></th>${headerCells}</tr></thead><tbody>${personRows}</tbody></table></div>
     ${expansionControl}
+  </div>`;
+}
+
+// ── Today's and tomorrow's duty (spec §2) ───────────────────────────────────
+//
+// Tomorrow is the reason this card exists. Today's duty is already known to
+// everyone who turned up; an unfilled slot TOMORROW is the thing worth finding
+// now rather than at 0730. So unfilled slots render an explicit "— unassigned —"
+// instead of a blank: a blank cell reads as "nothing here", which is exactly the
+// wrong reading.
+//
+// Read-only, and a pure read of STATE.duty — assignment stays on the Duty tab,
+// where the conflict preview and the points arithmetic live. Gated on canWrite()
+// (the same gate the Archive nav and this page's "+ Log" button use): a viewer
+// has no use for a planning aid. That gate is cosmetic, as everywhere else on
+// the client — STATE.duty is present either way and the server's tab gate is
+// what enforces.
+function renderDashDuty(todayIso) {
+  if (!canWrite()) return "";
+  const cfg = dutyConfig();
+  // No duty types configured means the company does not use this feature yet.
+  // An empty card would read as "no duties tomorrow" — a false statement rather
+  // than an absent one.
+  if (!(cfg.dutyTypes || []).length) return "";
+
+  const days = [["Today", todayIso], ["Tomorrow", addDaysISO(todayIso, 1)]];
+  const cols = days.map(([label, iso]) => {
+    const slots = dutyDaySlots(cfg, STATE.duty, iso);
+    const rows = slots.map(s => `
+      <div class="dash-duty__slot">
+        <span class="dash-duty__label">${escapeHTML(s.label)}</span>
+        <span class="dash-duty__who">${s.d4
+          ? dutyNameChip(s.d4, cfg)
+          : '<span class="dash-duty__gap">— unassigned —</span>'}</span>
+      </div>`).join("");
+    const gaps = slots.filter(s => !s.d4).length;
+    const gapBadge = gaps
+      ? ` <span class="badge badge-orange" style="font-size:9px">${gaps} open</span>`
+      : "";
+    return `<div class="dash-duty__day">
+      <div class="dash-duty__head">${label} <span style="color:var(--dim);font-weight:400">${escapeHTML(iso)}</span>${gapBadge}</div>
+      ${rows}
+    </div>`;
+  }).join("");
+
+  return `<div class="card" style="padding:10px 16px;margin-top:10px">
+    <h3 style="font-size:13px;color:var(--muted);margin-bottom:8px">🛡️ Duty <span style="font-weight:400;color:var(--dim)">(today and tomorrow)</span></h3>
+    <div class="dash-duty">${cols}</div>
   </div>`;
 }
 

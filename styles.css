@@ -591,6 +591,18 @@ body.role-admin .nav-btn.commander-plus,body.role-commander .nav-btn.commander-p
    block at the end of this file, so a finger doesn't leave it stuck lit. */
 .duty-cell{cursor:pointer}
 
+/* Dashboard duty card (spec §2) — today beside tomorrow. Below 640px the two
+   days stack: at 375px a slot label and a name chip side by side in a half-width
+   column wrap into an unreadable pile. */
+.dash-duty{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.dash-duty__head{font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px}
+.dash-duty__slot{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;font-size:12px;border-bottom:1px solid var(--border,rgba(255,255,255,.06))}
+.dash-duty__slot:last-child{border-bottom:none}
+.dash-duty__label{color:var(--muted);white-space:nowrap}
+.dash-duty__who{text-align:right;min-width:0}
+.dash-duty__gap{color:var(--dim);font-style:italic}
+@media(max-width:640px){.dash-duty{grid-template-columns:1fr}}
+
 /* ── Pointer-only hover ──────────────────────────────────────────────────────
    These were top-level rules. On a touch device :hover is applied on tap and
    stays applied until the next tap elsewhere, so the last-tapped control looked
