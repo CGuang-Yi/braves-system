@@ -106,6 +106,26 @@ module.exports = async function run() {
     ok(all.revs && typeof all.revs.Medical === "number", "readAll carries revs");
   });
 
+  await test("readAll returns the duty tabs", () => {
+    const b = loadBackend();
+    b.db.seed("Duty", ["id", "date", "dutyType", "platoon", "d4", "assignedBy", "assignedAt", "source"],
+      [["d1", "2026-09-01", "COS", "", "0042", "a@b.c", "", "manual"]]);
+    b.db.seed("DutyCorrection", ["id", "date", "d4", "reason", "delta", "note", "enteredBy", "enteredAt"], []);
+    b.db.seed("Holidays", ["date", "name", "tentative"], []);
+    b.db.seed("DutyUnavailable", ["id", "d4", "from", "to", "note", "addedBy", "addedAt"],
+      [["u1", "0042", "2026-09-01", "2026-09-05", "exam period", "a@b.c", ""]]);
+    const all = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: VALID_TOKEN } }).getContent());
+    // Not "is it non-empty" but "is the key present at all": pullAll gates each
+    // assignment on Array.isArray(data[key]), so an absent key is skipped in
+    // silence while the rev baseline still advances from data.revs — the client
+    // then believes an empty duty list is current and never asks again.
+    ok(Array.isArray(all.duty), "readAll carried no duty key — a cold cache never loads the roster");
+    eq(all.duty.length, 1, "the duty row did not come back");
+    ok(Array.isArray(all.dutyCorrection), "readAll carried no dutyCorrection key");
+    ok(Array.isArray(all.holidays), "readAll carried no holidays key");
+    ok(Array.isArray(all.dutyUnavailable), "readAll carried no dutyUnavailable key");
+  });
+
   await test("single-tab read carries { rows, rev }", () => {
     const b = loadBackend();
     b.db.seed("Medical", ["id", "reason"], [["1", "a"]]);

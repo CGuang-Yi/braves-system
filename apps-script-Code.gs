@@ -244,6 +244,18 @@
  *                4. tentative rows still score 5 but are flagged in the UI and in
  *                the import reconciliation report, making that visible rather
  *                than silent.)
+ *   DutyUnavailable: id | d4 | from | to | note | addedBy | addedAt
+ *               (Soft "probably unavailable" windows, design §4. from/to are
+ *                INCLUSIVE ISO YYYY-MM-DD bounds. This is NOT leave, MC or an
+ *                appointment — those are real records the parade classifier
+ *                already resolves and dutyConflicts already treats as hard
+ *                conflicts. This is the UNCONFIRMED case: leave not yet applied
+ *                for, a course nomination not yet published, an exam block. It is
+ *                deliberately outside the classifier — a soft planning hint must
+ *                never influence parade state — and its only consumer is a
+ *                highlight on the duty grid and the dashboard duty card.
+ *                d4/from/to are in WRITE_TEXT_COLS_BY_TAB: Sheets would otherwise
+ *                coerce "0042" to 42 and re-serve the dates as "01 Sep 2026".)
  */
 
 var FRONTEND_BASE_URL = "https://cguang-yi.github.io/braves-system/";
@@ -1110,7 +1122,7 @@ function clearFailedAttempts(email) {
 // atomic, since Apps Script web apps do NOT serialize concurrent requests.
 var REV_TABS = ["Roster", "Medical", "Attendance", "IPPT", "RouteMarch", "SOC",
   "PolarFlow", "ConductDetail", "Appointments", "Leave", "MSK", "Conducts",
-  "Duty", "DutyCorrection", "Holidays"];
+  "Duty", "DutyCorrection", "Holidays", "DutyUnavailable"];
 
 function getRev(tabName) {
   var p = PropertiesService.getScriptProperties();
@@ -1274,7 +1286,8 @@ function routeAuthedPost(action, tab, body, ctx) {
   //
   // This is the enforcement point. `canPlanDuty()` on the client only hides UI;
   // a hand-rolled POST has to come through here.
-  if (tab === "Duty" || tab === "DutyCorrection" || tab === "Holidays") {
+  if (tab === "Duty" || tab === "DutyCorrection" || tab === "Holidays"
+      || tab === "DutyUnavailable") {
     if (!hasCap(ctx, "duty")) {
       return { error: "Duty planning is restricted to duty planners.", code: 403 };
     }
@@ -1931,6 +1944,8 @@ function bravesMigrateSchema() {
     ["id", "date", "d4", "reason", "delta", "note", "enteredBy", "enteredAt"]);
   ensureTabWithHeaders_(ss, "Holidays",
     ["date", "name", "tentative"]);
+  ensureTabWithHeaders_(ss, "DutyUnavailable",
+    ["id", "d4", "from", "to", "note", "addedBy", "addedAt"]);
 
   // Duty-planning capability (DUTY_LIST_SPEC.md §9.2). A comma-separated `caps`
   // column on Accounts, NOT a fourth role: a duty planner also needs ordinary
@@ -2175,7 +2190,18 @@ function readAllTabs(ctx) {
     // and the frontend falls back to defaults/derivation. Config is handled
     // separately below (it is merged from two tabs).
     "VocFit": "vocfit",
-    "Platoons": "platoons"
+    "Platoons": "platoons",
+    // Duty list (DUTY_LIST_SPEC.md §3) plus the unavailability flags (design §4).
+    // These were absent here while being present in REV_TABS, which is worse than
+    // either alone would have been: a full pull returned no duty key at all
+    // (pullAll gates each assignment on Array.isArray, so it skipped them in
+    // silence) yet still advanced the client's rev baseline from data.revs, so
+    // the incremental launch path then saw nothing changed and never asked. A
+    // device with a cold cache never loaded the duty roster.
+    "Duty": "duty",
+    "DutyCorrection": "dutyCorrection",
+    "Holidays": "holidays",
+    "DutyUnavailable": "dutyUnavailable"
   };
 
   var result = {};
@@ -2273,7 +2299,7 @@ function readAllTabs(ctx) {
 // update silently APPENDS a duplicate person instead. Both header spellings are
 // listed because the sheet may name the column "4d" or "id" (see SHEET TABS at
 // the top of this file); forceTextColsForRange_ skips the ones that don't exist.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"] };
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"], DutyUnavailable: ["d4", "from", "to"] };
 
 // Which sheet column holds a tab's row key, in preference order. Default is the
 // literal "id" column that nextId()-keyed tabs use. Roster is the exception: the

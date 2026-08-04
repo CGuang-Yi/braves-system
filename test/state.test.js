@@ -102,6 +102,21 @@ module.exports = async function run() {
     ok(S.evalIn("canPlanDuty()"), "admin holds it implicitly, matching the backend's hasCap");
   });
 
+  suite("state: unavailability flags");
+
+  await test("flags normalize and the tab maps to a STATE key", () => {
+    const rows = S.normalizeDutyUnavailable([
+      // 42, not "0042": Sheets stores the 4D numerically unless the column is
+      // text-formatted, and every lookup downstream compares padded strings.
+      { id: "u1", d4: 42, from: "2026-09-01", to: "2026-09-05", note: "exam period" }
+    ]);
+    eq(rows[0].d4, "0042", "the 4D was not padded");
+    eq(rows[0].note, "exam period", "the note was dropped");
+    eq(rows[0].addedBy, "", "a missing field should normalize to an empty string, not undefined");
+    eq(S.evalIn('TAB_TO_STATE["DutyUnavailable"]'), "dutyUnavailable", "the tab is not mapped to a STATE key");
+    eq(S.normalizeDutyUnavailable(undefined).length, 0, "an absent tab should normalize to an empty list");
+  });
+
   await test("signing out clears the capability", () => {
     S.localStorage.setItem = () => {}; S.localStorage.removeItem = () => {};
     S.setSession("tok", "commander", "0042", "p@x.com", ["duty"]);

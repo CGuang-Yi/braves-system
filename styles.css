@@ -603,6 +603,13 @@ body.role-admin .nav-btn.commander-plus,body.role-commander .nav-btn.commander-p
 .dash-duty__gap{color:var(--dim);font-style:italic}
 @media(max-width:640px){.dash-duty{grid-template-columns:1fr}}
 
+/* Soft unavailability (design §4.3) — a duty landing inside a flagged window.
+   Amber rather than red on purpose: this says "check this", not "this is
+   wrong". Red is already the conflict colour at assignment time, where the
+   clash is confirmed rather than suspected. */
+.duty-unavail{background:rgba(255,167,38,.14)}
+.duty-unavail-mark{cursor:help;font-size:11px;opacity:.9}
+
 /* ── Pointer-only hover ──────────────────────────────────────────────────────
    These were top-level rules. On a touch device :hover is applied on tap and
    stays applied until the next tap elsewhere, so the last-tapped control looked

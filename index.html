@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Braves Company Data System</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=137">
+<link rel="stylesheet" href="styles.css?v=138">
 <!-- Third-party libs are VENDORED locally under vendor/ (pinned exact versions)
      rather than loaded from a CDN. This removes the supply-chain risk flagged by
      code scanning ("inclusion of functionality from an untrusted source" — a CDN
@@ -128,7 +128,7 @@
   Plain scripts (not modules) so this works under file:// too.
   Load order matters: state → api → ippt-scoring → calc → appointment-4d → helpers →
   sick-history-import → duty-points → duty-eligibility → duty-conflicts → duty-import →
-  duty-schedule →
+  duty-schedule → duty-unavailable →
   render* → forms* → braves-parade → actions → parade-tab → render-duty →
   sync → main. The render-* and forms-* files are SPLITS of two former monoliths,
   not independent modules: they share the one global scope, and their tags must
@@ -138,10 +138,13 @@
   tab view; it calls bp* globals from braves-parade at runtime, so load it after
   braves-parade. actions is the delegated event dispatcher; any file calling
   registerActions() must load after it.
-  duty-points/duty-eligibility/duty-conflicts/duty-import are DOM-free pure modules (the duty
-  list's arithmetic, eligibility rules, conflict detection and workbook parser).
-  Only duty-conflicts has a dependency — addDaysISO from calc.js — so all four
-  load after calc and before the views that use them. render-duty is the Duty
+  duty-points/duty-eligibility/duty-conflicts/duty-import/duty-unavailable are DOM-free pure
+  modules (the duty list's arithmetic, eligibility rules, conflict detection, workbook parser
+  and soft-unavailability window matching).
+  Only duty-conflicts has a dependency — addDaysISO from calc.js — so all five
+  load after calc and before the views that use them. duty-unavailable has no
+  dependency at all; its only ordering requirement is before render-duty and
+  render-dashboard, both of which draw its highlight. render-duty is the Duty
   List tab view — it sits with parade-tab rather than the other render-* files
   because it calls registerActions(), so it must load after actions. forms-duty
   is the duty list's write half; like render-duty it is a NEW file rather than a
@@ -152,8 +155,8 @@
   before both — it is a leaf precisely so neither of those has to depend on the
   other.
 -->
-<script src="js/state.js?v=137"></script>
-<script src="js/api.js?v=131"></script>
+<script src="js/state.js?v=138"></script>
+<script src="js/api.js?v=132"></script>
 <script src="js/ippt-scoring.js?v=113"></script>
 <script src="js/calc.js?v=8"></script>
 <script src="js/appointment-4d.js?v=1"></script>
@@ -164,8 +167,9 @@
 <script src="js/duty-conflicts.js?v=1"></script>
 <script src="js/duty-import.js?v=1"></script>
 <script src="js/duty-schedule.js?v=4"></script>
+<script src="js/duty-unavailable.js?v=1"></script>
 <script src="js/render.js?v=180"></script>
-<script src="js/render-dashboard.js?v=4"></script>
+<script src="js/render-dashboard.js?v=5"></script>
 <script src="js/render-records.js?v=2"></script>
 <script src="js/render-conducts.js?v=1"></script>
 <script src="js/render-statusboard.js?v=4"></script>
@@ -176,11 +180,11 @@
 <script src="js/forms-conducts.js?v=2"></script>
 <script src="js/forms-wizard.js?v=2"></script>
 <script src="js/forms-admin.js?v=4"></script>
-<script src="js/forms-duty.js?v=4"></script>
+<script src="js/forms-duty.js?v=5"></script>
 <script src="js/braves-parade.js?v=141"></script>
 <script src="js/actions.js?v=1"></script>
 <script src="js/parade-tab.js?v=29"></script>
-<script src="js/render-duty.js?v=6"></script>
+<script src="js/render-duty.js?v=7"></script>
 <script src="js/sync.js?v=130"></script>
 <script src="js/main.js?v=125"></script>
 </body>

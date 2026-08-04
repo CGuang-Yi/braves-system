@@ -1305,16 +1305,22 @@ function renderDashDuty(todayIso) {
   // than an absent one.
   if (!(cfg.dutyTypes || []).length) return "";
 
+  // Soft unavailability flags (design §4.3). Indexed once for both columns.
+  const unavail = duIndexByPerson(STATE.dutyUnavailable);
+
   const days = [["Today", todayIso], ["Tomorrow", addDaysISO(todayIso, 1)]];
   const cols = days.map(([label, iso]) => {
     const slots = dutyDaySlots(cfg, STATE.duty, iso);
-    const rows = slots.map(s => `
-      <div class="dash-duty__slot">
+    const rows = slots.map(s => {
+      const mark = dutyUnavailMark(unavail, s.d4, iso);
+      return `
+      <div class="dash-duty__slot${mark ? " duty-unavail" : ""}">
         <span class="dash-duty__label">${escapeHTML(s.label)}</span>
         <span class="dash-duty__who">${s.d4
-          ? dutyNameChip(s.d4, cfg)
+          ? dutyNameChip(s.d4, cfg) + mark
           : '<span class="dash-duty__gap">— unassigned —</span>'}</span>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     const gaps = slots.filter(s => !s.d4).length;
     const gapBadge = gaps
       ? ` <span class="badge badge-orange" style="font-size:9px">${gaps} open</span>`

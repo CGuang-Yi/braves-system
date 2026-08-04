@@ -30,15 +30,16 @@ module.exports = async function run() {
     b.db.seed("Duty", ["id", "date", "dutyType", "platoon", "d4", "assignedBy", "assignedAt", "source"], []);
     b.db.seed("DutyCorrection", ["id", "date", "d4", "reason", "delta", "note", "enteredBy", "enteredAt"], []);
     b.db.seed("Holidays", ["date", "name", "tentative"], []);
+    b.db.seed("DutyUnavailable", ["id", "d4", "from", "to", "note", "addedBy", "addedAt"], []);
   };
 
   const DUTY_ROW = { id: "d1", date: "2026-09-01", dutyType: "COS", platoon: "", d4: "0042" };
 
-  await test("commander WITHOUT the duty cap is refused on all three duty tabs", () => {
+  await test("commander WITHOUT the duty cap is refused on every duty tab", () => {
     const b = loadBackend();
     seedDuty(b);
     const tok = session(b, "commander", "");
-    ["Duty", "DutyCorrection", "Holidays"].forEach(tab => {
+    ["Duty", "DutyCorrection", "Holidays", "DutyUnavailable"].forEach(tab => {
       const r = post(b, tok, { action: "append", tab: tab, row: DUTY_ROW });
       eq(r.code, 403, tab + " refused with 403");
       eq(b.db.rowsOf(tab).length, 0, tab + " unchanged");
@@ -68,6 +69,18 @@ module.exports = async function run() {
     const r = post(b, tok, { action: "append", tab: "Duty", row: DUTY_ROW });
     ok(r.ok, "write accepted");
     eq(b.db.rowsOf("Duty").length, 1, "row landed");
+  });
+
+  await test("a duty planner may write unavailability flags", () => {
+    const b = loadBackend();
+    seedDuty(b);
+    const tok = session(b, "commander", "duty");
+    const r = post(b, tok, {
+      action: "append", tab: "DutyUnavailable",
+      row: { id: "u1", d4: "0042", from: "2026-09-01", to: "2026-09-05", note: "exam period" }
+    });
+    ok(!r.error, "a planner was refused: " + JSON.stringify(r));
+    eq(b.db.rowsOf("DutyUnavailable").length, 1, "the flag was not written");
   });
 
   // Capabilities sit ALONGSIDE the role ladder, they do not substitute for it.

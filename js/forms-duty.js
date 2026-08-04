@@ -476,3 +476,79 @@ function deleteDutyHoliday(isoDate) {
   saveLocal(); closeModal(); render();
   if (STATE.apiUrl) autoSync("Holidays", { type: "replace", data: STATE.holidays });
 }
+
+// ── Unavailability flags ─────────────────────────────────────────────────────
+//
+// One window, one reason, any number of people. The multi-select is the point:
+// "all of Plt 2 during the exam block" is the case this exists for, and doing it
+// one person at a time is how it stops being done at all.
+//
+// There is no edit — delete and re-add. A window is three short fields, and an
+// edit path would need its own OCC-guarded upsert for no gain over that.
+
+function openDutyUnavailForm() {
+  if (!canPlanDuty()) return;
+  const cfg = dutyConfig();
+  // The same pool the other duty forms draw from, so the picker cannot offer
+  // someone who could never hold a duty in the first place.
+  const pool = dutyBasePool(STATE.roster, cfg)
+    .map(r => `<option value="${escapeAttr(r.id)}">${escapeHTML(displayPersonLabel(r.id))}</option>`)
+    .join("");
+
+  openModal("Flag Unavailability", `
+    <form onsubmit="event.preventDefault(); submitDutyUnavail(); return false">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="form-group">
+          <label>People <span style="color:var(--muted);font-weight:400">— select as many as apply</span></label>
+          <select id="f-unavail-d4" multiple size="8" required style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">${pool}</select>
+        </div>
+        ${formField("f-unavail-from", "From", "date", "", `required value="${escapeAttr(todayISO())}" min="2020-01-01" max="2099-12-31"`)}
+        ${formField("f-unavail-to", "To (inclusive)", "date", "", `required value="${escapeAttr(todayISO())}" min="2020-01-01" max="2099-12-31"`)}
+        ${formField("f-unavail-note", "Reason", "text", "", `required maxlength="120" placeholder="exam period, pending course nomination…"`)}
+        <p style="font-size:11px;color:var(--muted);margin:-4px 0 0">
+          A planning hint only. It does not change parade state, block an assignment or move any
+          points — it highlights a duty that lands inside the window.
+        </p>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>`);
+}
+
+function submitDutyUnavail() {
+  if (!canPlanDuty()) return;
+  const sel = document.getElementById("f-unavail-d4");
+  const people = sel ? [...sel.selectedOptions].map(o => o.value).filter(Boolean) : [];
+  if (!people.length) { alert("Pick at least one person."); return; }
+
+  const from = gv("f-unavail-from"), to = gv("f-unavail-to");
+  if (!from || !to) { alert("Both dates are required."); return; }
+  // Refuse an inverted range rather than storing one. duCovers would match no
+  // date at all, so the flag would sit in the list looking correct while doing
+  // nothing — the failure nobody goes looking for.
+  if (to < from) { alert("The end date is before the start date."); return; }
+
+  const note = gv("f-unavail-note").trim();
+  if (!note) { alert("Give a reason — an unexplained highlight is not actionable."); return; }
+
+  const addedAt = new Date().toISOString();
+  const rows = people.map(d4 => ({
+    id: nextId(), d4, from, to, note,
+    addedBy: STATE.email || "", addedAt
+  }));
+  (STATE.dutyUnavailable = STATE.dutyUnavailable || []).push(...rows);
+
+  saveLocal(); closeModal(); render();
+  // appendMany rather than N upserts: these are all brand-new rows, and one
+  // OCC-guarded write is one chance to fail instead of N.
+  if (STATE.apiUrl) autoSync("DutyUnavailable", { type: "appendMany", rows });
+}
+
+function deleteDutyUnavail(id) {
+  if (!canPlanDuty()) return;
+  const f = (STATE.dutyUnavailable || []).find(x => String(x.id) === String(id));
+  if (!f) return;
+  if (!confirm(`Remove the ${f.from} → ${f.to} flag for ${displayPersonLabel(f.d4)}?`)) return;
+  STATE.dutyUnavailable = (STATE.dutyUnavailable || []).filter(x => String(x.id) !== String(id));
+  saveLocal(); render();
+  if (STATE.apiUrl) autoSync("DutyUnavailable", { type: "delete", id });
+}

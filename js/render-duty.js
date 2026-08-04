@@ -27,6 +27,7 @@
 let _dutyView = "grid";        // "grid" | "overall" | "log"
 let _dutyMonth = "";           // ISO yyyy-mm-01; lazily defaulted to this month
 let _dutyRangeKind = "month";  // "month" | "cycle" | "all" — fairness/log scope
+let _dutyShowExpired = false;  // Unavailable panel: hide finished windows by default
 let _dutySort = "total";       // fairness sort column
 let _dutySortDesc = true;
 
@@ -118,6 +119,25 @@ function dutyNameChip(d4, cfg) {
   return `<span class="duty-chip" style="background:${escapeAttr(colour)};color:${fg}" title="${escapeAttr(title)}">${escapeHTML(label)}</span>`;
 }
 
+// The soft-unavailability marker for one assignment (design §4.3).
+//
+// Planner-only, unlike the assignment itself: the flag is a planning signal
+// nobody else can act on, and the note ("exam period", "pending course
+// nomination") is the person's own business rather than the company's.
+//
+// Every overlapping window's note goes into the tooltip, not just the first.
+// Two flags legitimately overlap, and naming one of them would state the wrong
+// reason for the highlight — worse than stating no reason at all.
+function dutyUnavailMark(idx, d4, iso) {
+  if (!d4 || !canPlanDuty()) return "";
+  const flags = duFlagsOn(idx, d4, iso);
+  if (!flags.length) return "";
+  const why = flags
+    .map(f => (f.note || "Potentially unavailable") + " (" + f.from + " → " + f.to + ")")
+    .join("\n");
+  return ` <span class="duty-unavail-mark" title="${escapeAttr(why)}">⚠</span>`;
+}
+
 function renderDuty(el) {
   const cfg = dutyConfig();
 
@@ -132,7 +152,7 @@ function renderDuty(el) {
   const showLog = canPlanDuty();
   if (_dutyView === "log" && !showLog) _dutyView = "grid";
 
-  const tabDefs = [["grid", "Month grid"], ["overall", "Overall duties"]];
+  const tabDefs = [["grid", "Month grid"], ["overall", "Overall duties"], ["unavail", "Unavailable"]];
   if (showLog) tabDefs.push(["log", "Corrections log"]);
   const tabs = tabDefs
     .map(([k, label]) =>
@@ -142,6 +162,7 @@ function renderDuty(el) {
   let body = "";
   if (_dutyView === "grid") body = dutyGridHTML(cfg);
   else if (_dutyView === "overall") body = dutyOverallHTML(cfg);
+  else if (_dutyView === "unavail") body = dutyUnavailHTML(cfg);
   else body = dutyLogHTML(cfg);
 
   el.innerHTML = `
@@ -163,6 +184,9 @@ function dutyGridHTML(cfg) {
   const cols = dutyGridColumns(cfg);
   const idx = dutyIndexByDate(STATE.duty);
   const holidays = indexHolidays(STATE.holidays);
+  // Built once per render, not per cell: the grid is ~31 rows × one column per
+  // slot, and a per-cell lookup would be a full pass over every flag for each.
+  const unavail = duIndexByPerson(STATE.dutyUnavailable);
   const canPlan = canPlanDuty();
 
   const head = cols.map(c => `<th>${escapeHTML(c.label)}</th>`).join("");
@@ -178,12 +202,16 @@ function dutyGridHTML(cfg) {
       : "";
     const cells = cols.map(c => {
       const d4 = idx[iso] && idx[iso][c.dutyType + "|" + c.platoon];
-      const inner = d4 ? dutyNameChip(d4, cfg) : '<span style="color:var(--muted)">—</span>';
+      const mark = dutyUnavailMark(unavail, d4, iso);
+      const inner = d4
+        ? dutyNameChip(d4, cfg) + mark
+        : '<span style="color:var(--muted)">—</span>';
+      const cls = mark ? " duty-unavail" : "";
       // A planner gets the whole cell as a target — including the empty ones,
       // since filling a blank slot is the commonest action on this screen and
       // an empty cell is exactly where the click needs to land.
-      if (!canPlan) return `<td>${inner}</td>`;
-      return `<td class="duty-cell" data-action="dutyAssign" data-date="${escapeAttr(iso)}"
+      if (!canPlan) return `<td class="${cls.trim()}">${inner}</td>`;
+      return `<td class="duty-cell${cls}" data-action="dutyAssign" data-date="${escapeAttr(iso)}"
         data-type="${escapeAttr(c.dutyType)}" data-platoon="${escapeAttr(c.platoon)}"
         title="Assign ${escapeAttr(c.label)}">${inner}</td>`;
     }).join("");
@@ -288,6 +316,56 @@ function dutyLogHTML(cfg) {
     : `<p style="color:var(--muted)">No corrections recorded in this period.</p>`);
 }
 
+// ── Unavailable ──────────────────────────────────────────────────────────────
+//
+// Soft unavailability windows (design §4.4). Expired windows are hidden behind a
+// toggle rather than listed: the list is meant to prune itself by being looked
+// at, and a panel that only ever grows stops being read.
+//
+// The LIST is visible to everyone; only the add and delete controls are
+// planner-gated. The grid highlight already implies these flags exist, and
+// showing a highlight while hiding its explanation is the worse of the two.
+function dutyUnavailHTML(cfg) {
+  const canPlan = canPlanDuty();
+  const today = todayISO();
+  const all = duSortFlags(STATE.dutyUnavailable);
+  const rows = _dutyShowExpired ? all : all.filter(f => !duIsExpired(f, today));
+  const hidden = all.length - rows.length;
+
+  const body = rows.length
+    ? rows.map(f => {
+      const expired = duIsExpired(f, today);
+      return `<tr${expired ? ' style="opacity:.55"' : ""}>
+        <td>${dutyNameChip(f.d4, cfg)}</td>
+        <td style="white-space:nowrap">${escapeHTML(f.from)} → ${escapeHTML(f.to)}${expired ? ' <span class="badge">expired</span>' : ""}</td>
+        <td>${escapeHTML(f.note || "")}</td>
+        <td style="color:var(--muted)">${escapeHTML(f.addedBy || "")}</td>
+        <td style="text-align:right">${canPlan
+          ? `<button type="button" class="btn btn-danger" style="font-size:10px" data-action="dutyUnavailDelete" data-id="${escapeAttr(f.id)}">Delete</button>`
+          : ""}</td>
+      </tr>`;
+    }).join("")
+    : `<tr><td colspan="5" style="color:var(--muted)">No ${_dutyShowExpired ? "" : "current "}unavailability flags.</td></tr>`;
+
+  return `
+    <p style="color:var(--muted);margin:0 0 10px;font-size:12px">
+      Windows in which someone is <em>probably</em> unavailable — leave not yet applied for, a
+      course nomination not yet published, an exam block. A planning hint only: it does not
+      change parade state, does not block an assignment and does not move any points. A duty
+      falling inside a window is highlighted on the month grid and on the dashboard.
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      ${canPlan ? `<button type="button" class="btn btn-primary" data-action="dutyUnavailNew">+ Flag unavailability</button>` : ""}
+      <button type="button" class="btn" data-action="dutyUnavailExpired" data-value="${_dutyShowExpired ? "0" : "1"}">
+        ${_dutyShowExpired ? "Hide expired" : `Show expired${hidden ? ` (${hidden})` : ""}`}
+      </button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Person</th><th>Window</th><th>Reason</th><th>By</th><th></th></tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+}
+
 function dutyRangePicker(range) {
   const opts = [["month", "Month"], ["cycle", "Cycle"], ["all", "All time"]]
     .map(([k, label]) =>
@@ -305,6 +383,7 @@ function dutyRangePicker(range) {
 // inside a template literal is not (js/actions.js).
 function setDutyView(v) { _dutyView = v; render(); }
 function setDutyRange(v) { _dutyRangeKind = v; render(); }
+function setDutyShowExpired(v) { _dutyShowExpired = !!v && v !== "0"; render(); }
 
 function setDutySort(k) {
   if (_dutySort === k) _dutySortDesc = !_dutySortDesc;
@@ -333,5 +412,10 @@ registerActions({
   dutyCorrectionNew: () => openDutyCorrectionForm("", todayISO(), ""),
   dutyCorrectionEdit: el => openDutyCorrectionForm(el.dataset.d4, el.dataset.date, "", el.dataset.id),
   dutyCorrectionDelete: el => deleteDutyCorrection(el.dataset.id),
+  dutyUnavailNew: () => openDutyUnavailForm(),
+  dutyUnavailDelete: el => deleteDutyUnavail(el.dataset.id),
+  // Read-only view toggle, so it is NOT planner-gated: anyone reading the list
+  // may want to see what has already lapsed.
+  dutyUnavailExpired: el => setDutyShowExpired(el.dataset.value),
   dutyAutoPlan: () => openDutySchedulerForm(dutyMonthAnchor())
 });
