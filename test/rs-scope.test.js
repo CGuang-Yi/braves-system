@@ -4,7 +4,7 @@
 // matter are the ones a hand-rolled request would hit — scope resolution from a
 // token, and the row cut that decides what a scoped caller is allowed to see.
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend } = require("./harness");
+const { loadBackend, readVia } = require("./harness");
 
 module.exports = async function run() {
   suite("rs-scope: scope resolution");
@@ -235,7 +235,7 @@ module.exports = async function run() {
     b.db.setProp("auth:" + tok, JSON.stringify({
       email: "pc@example.com", personId: "0011", role: "commander", caps: "", issuedAt: new Date().toISOString()
     }));
-    const out = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: tok } }).getContent());
+    const out = readVia(b, { action: "readAll", auth: tok });
     eq(idsOf(out.medical), "m1,m3,m4", "readAll filtered");
     eq(out.scopeKey, "PLT1", "scope key stamped");
   });
@@ -247,9 +247,9 @@ module.exports = async function run() {
     b.db.setProp("auth:" + tok, JSON.stringify({
       email: "pc@example.com", personId: "0011", role: "commander", caps: "", issuedAt: new Date().toISOString()
     }));
-    const one = JSON.parse(b.doGet({ parameter: { action: "read", tab: "Medical", auth: tok } }).getContent());
+    const one = readVia(b, { action: "read", tab: "Medical", auth: tok });
     eq(idsOf(one.rows), "m1,m3,m4", "single-tab read filtered");
-    const many = JSON.parse(b.doGet({ parameter: { action: "readTabs", tabs: "Medical,Roster", auth: tok } }).getContent());
+    const many = readVia(b, { action: "readTabs", tabs: "Medical,Roster", auth: tok });
     eq(idsOf(many.tabs.Medical.rows), "m1,m3,m4", "batched read filtered");
     eq(many.tabs.Roster.rows.length, 6, "Roster is NOT gated");
   });
@@ -266,7 +266,7 @@ module.exports = async function run() {
     b.db.setProp("auth:" + tok, JSON.stringify({
       email: "pc@example.com", personId: "0011", role: "commander", caps: "", issuedAt: new Date().toISOString()
     }));
-    const out = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: tok } }).getContent());
+    const out = readVia(b, { action: "readAll", auth: tok });
     eq(out.sickArchive.length, 0, "sick archive withheld");
     eq(out.paradeArchive.length, 1, "parade archive kept");
   });
@@ -284,9 +284,7 @@ module.exports = async function run() {
   await test("revCheck reports the caller's scope key alongside numeric revs", () => {
     const b = loadBackend();
     seedMedical(b);
-    const out = JSON.parse(b.doGet({
-      parameter: { action: "revCheck", auth: tokFor(b, "t1", "0011") }
-    }).getContent());
+    const out = readVia(b, { action: "revCheck", auth: tokFor(b, "t1", "0011") });
     eq(out.scopeKey, "PLT1", "scope key present");
     eq(typeof out.revs.Medical, "number", "Medical rev is still a NUMBER");
     eq(typeof out.revs.Roster, "number", "Roster rev is still a number");
@@ -300,17 +298,15 @@ module.exports = async function run() {
   await test("no rev value is ever a string", () => {
     const b = loadBackend();
     seedMedical(b);
-    const out = JSON.parse(b.doGet({
-      parameter: { action: "revCheck", auth: tokFor(b, "t2", "0011") }
-    }).getContent());
+    const out = readVia(b, { action: "revCheck", auth: tokFor(b, "t2", "0011") });
     Object.keys(out.revs).forEach(k => eq(typeof out.revs[k], "number", k + " numeric"));
   });
 
   await test("two accounts with different scopes get different keys", () => {
     const b = loadBackend();
     seedMedical(b);
-    const a = JSON.parse(b.doGet({ parameter: { action: "revCheck", auth: tokFor(b, "t3", "0011") } }).getContent());
-    const c = JSON.parse(b.doGet({ parameter: { action: "revCheck", auth: tokFor(b, "t4", "0021") } }).getContent());
+    const a = readVia(b, { action: "revCheck", auth: tokFor(b, "t3", "0011") });
+    const c = readVia(b, { action: "revCheck", auth: tokFor(b, "t4", "0021") });
     eq(a.scopeKey, "PLT1", "PLT1 commander");
     eq(c.scopeKey, "PLT2", "PLT2 commander");
     ok(a.scopeKey !== c.scopeKey, "a shared device sees a changed key on account switch");

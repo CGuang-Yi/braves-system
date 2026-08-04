@@ -262,37 +262,38 @@ var FRONTEND_BASE_URL = "https://cguang-yi.github.io/braves-system/";
 
 // ─── ROUTING ───────────────────────────────────────────
 
+// GET answers exactly one action: ping.
+//
+// It used to answer the four read actions as well, which forced every read —
+// the launch pull and the 20-second revCheck poll among them — to carry the
+// 30-day session token as a query parameter, where it lands in the deployment's
+// request logs and in any Referer the page emits. Those routes moved to POST
+// (token in the body); this is the second half of that move, deleting the GET
+// arm now that no live client uses it.
+//
+// The two-deploy sequencing mattered and is worth recording: a phone holding a
+// cached index.html keeps talking to whatever is deployed, so the GET route had
+// to outlive the frontend change by one deploy. Cutting both at once would have
+// signed out every stale client with an error it could not interpret. Do not
+// re-add a read here to "help" an old client — re-adding it re-opens the leak
+// for everyone.
+//
+// ping itself is the ONE action that answers without a token, so it answers as
+// little as possible: is the deployment reachable, and what time does it think
+// it is. Nothing about the spreadsheet behind it. (It used to return the tab
+// list, which was only ever cosmetic — the Sync log printed it, and
+// readAllTabs pulls from an explicit allow-list, not from this. A liveness
+// check that describes the schema to anyone holding the URL is a poor trade for
+// a log line, so the list is gone rather than filtered.)
 function doGet(e) {
   var output;
   try {
-    var action = e.parameter.action || "readAll";
-    var tab = e.parameter.tab || "";
-    var auth = e.parameter.auth || "";
+    var action = e.parameter.action || "";
 
-    // Public action: ping. This is the ONE action that answers without a token,
-    // so it answers as little as possible — is the deployment reachable, and
-    // what time does it think it is. Nothing about the spreadsheet behind it.
-    //
-    // It used to return the tab list, which was only ever cosmetic (the Sync log
-    // printed it, and readAllTabs pulls from an explicit allow-list, not from
-    // this). A liveness check that describes the schema to anyone holding the
-    // URL is a poor trade for a log line, so the list is gone rather than
-    // filtered. Callers wanting tab names must authenticate.
     if (action === "ping") {
       output = { ok: true, timestamp: new Date().toISOString() };
     } else {
-      // Every other read resolves the account context behind the token. Any valid
-      // role (admin/commander/viewer) may read — read-only enforcement only bites
-      // on writes (doPost). Expired sessions return session_expired so the frontend
-      // can bounce the user to the login screen.
-      var ctx = getAuthContext(auth);
-      if (!ctx) {
-        output = { error: "Unauthorized — please log in", code: 401 };
-      } else if (isTokenExpired(ctx)) {
-        output = { error: "session_expired", code: 401 };
-      } else {
-        output = routeRead(action, tab, e.parameter, ctx);
-      }
+      output = { error: "Unknown action. GET answers only ping; reads go over POST." };
     }
   } catch (err) {
     output = { error: err.message };
@@ -301,17 +302,15 @@ function doGet(e) {
   return jsonResponse(output);
 }
 
-// The read routes, shared by doGet and doPost.
+// The read routes. doPost is the only caller — see doGet above for why GET no
+// longer answers reads at all.
 //
-// These used to live inline in doGet only, which forced every read — the launch
-// pull and the 20-second revCheck poll among them — to put the session token in
-// the query string, where it lands in the deployment's request logs and in any
-// Referer header the page emits. POST carries it in the body instead. Both
-// callers route through this one function so the gating below cannot drift
-// between them; `params` is e.parameter for GET and the parsed body for POST,
-// and the only field either reads off it is `tabs`.
+// Kept as its own function rather than folded back into doPost because the
+// per-tab gating below is the security-bearing part of the read path and reads
+// better with the write router out of the way. `params` is the parsed request
+// body, and the only field this reads off it is `tabs`.
 //
-// `ctx` is already resolved and unexpired — both callers do that before getting
+// `ctx` is already resolved and unexpired — doPost does that before getting
 // here, because an expired session must answer session_expired regardless of
 // which action was asked for.
 function routeRead(action, tab, params, ctx) {
@@ -377,7 +376,7 @@ function routeRead(action, tab, params, ctx) {
     }
     return { ok: true, tabs: tabsOut, scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
   } else {
-    return { error: "Unknown action. Use: readAll, revCheck, read + tab, readTabs + tabs, or ping" };
+    return { error: "Unknown action. Use: readAll, revCheck, read + tab, or readTabs + tabs" };
   }
 }
 

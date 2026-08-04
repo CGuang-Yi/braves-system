@@ -1,19 +1,22 @@
 // Tests for SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1: the batched `readTabs` action.
 //
-//   Backend suite: exercises the real apps-script-Code.gs doGet directly
-//   (loadBackend() + b.doGet(...)) — same pattern as test/perf-p2.test.js.
+//   Backend suite: exercises the real apps-script-Code.gs read routes directly
+//   (loadBackend() + readVia(...)) — same pattern as test/perf-p2.test.js.
 //
 //   Frontend suite: exercises the real js/api.js pullTabs() through the
 //   full-stack harness (test/harness.js). The shared harness's mock fetch DOES
-//   forward a `tabs` query param through to doGet (so every other multi-tab
-//   integration test in the suite exercises the batched readTabs path by
-//   default, matching what a redeployed backend does in production) — so
-//   readTabs works against the vanilla harness with NO patching, and only the
-//   "not-yet-redeployed backend" fallback tests need a local fetch override
-//   that deliberately fails/rejects `action=readTabs` (added here, scoped to
-//   this file — harness.js itself stays generic).
+//   forward `tabs` through to the backend (so every other multi-tab integration
+//   test in the suite exercises the batched readTabs path by default, matching
+//   what a redeployed backend does in production) — so readTabs works against
+//   the vanilla harness with NO patching, and only the "not-yet-redeployed
+//   backend" fallback tests need a local fetch override that deliberately
+//   fails/rejects `action=readTabs` (added here, scoped to this file —
+//   harness.js itself stays generic).
+//
+//   Reads travel by POST; the GET arms in the overrides below survive only
+//   because `ping` still goes that way.
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend, makeClient, VALID_TOKEN } = require("./harness");
+const { loadBackend, makeClient, readVia, VALID_TOKEN } = require("./harness");
 
 const AUDIT_HEADERS = ["timestamp", "email", "personId", "role", "action", "target", "detail", "tokenPrefix"];
 const MED_HEADERS = ["id", "d4", "date", "reason", "location", "status", "startDate", "endDate"];
@@ -119,9 +122,9 @@ module.exports = async function run() {
     b.db.seed("Medical", MED_HEADERS, [["1", "1101", "", "fever", "", "", "", ""]]);
     b.bumpRev("Medical");
 
-    const single = JSON.parse(b.doGet({ parameter: { action: "read", tab: "Roster", auth: VALID_TOKEN } }).getContent());
-    const singleMed = JSON.parse(b.doGet({ parameter: { action: "read", tab: "Medical", auth: VALID_TOKEN } }).getContent());
-    const batch = JSON.parse(b.doGet({ parameter: { action: "readTabs", tabs: "Roster,Medical", auth: VALID_TOKEN } }).getContent());
+    const single = readVia(b, { action: "read", tab: "Roster", auth: VALID_TOKEN });
+    const singleMed = readVia(b, { action: "read", tab: "Medical", auth: VALID_TOKEN });
+    const batch = readVia(b, { action: "readTabs", tabs: "Roster,Medical", auth: VALID_TOKEN });
 
     ok(batch.ok, "ok:true");
     eq(batch.tabs.Roster.rows, single.rows, "Roster rows identical to single read");
@@ -132,8 +135,8 @@ module.exports = async function run() {
 
   await test("unknown tab name → same not-found shape as single `read` (nested in rows)", () => {
     const b = loadBackend();
-    const single = JSON.parse(b.doGet({ parameter: { action: "read", tab: "Nope", auth: VALID_TOKEN } }).getContent());
-    const batch = JSON.parse(b.doGet({ parameter: { action: "readTabs", tabs: "Nope", auth: VALID_TOKEN } }).getContent());
+    const single = readVia(b, { action: "read", tab: "Nope", auth: VALID_TOKEN });
+    const batch = readVia(b, { action: "readTabs", tabs: "Nope", auth: VALID_TOKEN });
     ok(batch.ok, "ok:true even though the one tab inside is bad — shape stays composable");
     eq(batch.tabs.Nope.rows, single.rows, "same {error, available} not-found shape nested under rows");
     eq(batch.tabs.Nope.rev, single.rev, "untracked tab rev still reports 1, same as single read");
@@ -147,8 +150,8 @@ module.exports = async function run() {
     b.db.seed("AuditLog", AUDIT_HEADERS, [["2026-01-01T00:00:00.000Z", "a@x.com", "0001", "admin", "act", "", "", "tok12345"]]);
     b.db.seed("Medical", MED_HEADERS, [["1", "1101", "", "fever", "", "", "", ""]]);
 
-    const singleAudit = JSON.parse(b.doGet({ parameter: { action: "read", tab: "AuditLog", auth: "viewertok" } }).getContent());
-    const batch = JSON.parse(b.doGet({ parameter: { action: "readTabs", tabs: "AuditLog,Medical", auth: "viewertok" } }).getContent());
+    const singleAudit = readVia(b, { action: "read", tab: "AuditLog", auth: "viewertok" });
+    const batch = readVia(b, { action: "readTabs", tabs: "AuditLog,Medical", auth: "viewertok" });
 
     ok(batch.ok, "batch itself still succeeds (per-tab gating, not whole-request rejection)");
     eq(batch.tabs.AuditLog.error, singleAudit.error, "AuditLog rejected with the SAME error text as the single-tab route");
@@ -160,15 +163,15 @@ module.exports = async function run() {
 
   await test("gating: Accounts always rejected, even for an admin token", () => {
     const b = loadBackend();
-    const batch = JSON.parse(b.doGet({ parameter: { action: "readTabs", tabs: "Accounts", auth: VALID_TOKEN } }).getContent());
+    const batch = readVia(b, { action: "readTabs", tabs: "Accounts", auth: VALID_TOKEN });
     eq(batch.tabs.Accounts.error, "Not authorised", "Accounts rejected for admin too — never exposes hashes via raw read");
     eq(batch.tabs.Accounts.code, 403);
   });
 
   await test("readTabs with no ?tabs param falls through to the generic Unknown action error (mirrors `read` with no ?tab)", () => {
     const b = loadBackend();
-    const noTab = JSON.parse(b.doGet({ parameter: { action: "read", auth: VALID_TOKEN } }).getContent());
-    const noTabs = JSON.parse(b.doGet({ parameter: { action: "readTabs", auth: VALID_TOKEN } }).getContent());
+    const noTab = readVia(b, { action: "read", auth: VALID_TOKEN });
+    const noTabs = readVia(b, { action: "readTabs", auth: VALID_TOKEN });
     ok(/Unknown action/.test(noTab.error), "read with no tab → unknown action (existing behaviour)");
     ok(/Unknown action/.test(noTabs.error), "readTabs with no tabs → unknown action, same family");
   });
