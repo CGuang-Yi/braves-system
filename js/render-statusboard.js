@@ -52,6 +52,28 @@ function sbRSCounts() {
   return map;
 }
 
+// §1.7: out-of-scope people are COUNTS ONLY — no names, nothing identifying.
+//
+// The alternative (rendering them as rows with no data) is worse than useless:
+// an empty row in the status grid reads as "this person has never reported
+// sick", which is a false statement about a real person rather than an absence
+// of information. One honest line per platoon says exactly what is true.
+//
+// Two shapes because the three panels are two different kinds of markup — the
+// leaderboard renders <div>s, the roster list and grid render table rows.
+function sbScopeNoticeText() {
+  return rsOutOfScopeCounts()
+    .map(x => `${escapeHTML(x.platoon)} — ${x.count} pax · history outside your scope`);
+}
+function sbScopeNoticeDivs() {
+  return sbScopeNoticeText().map(t =>
+    `<div style="font-size:11px;color:var(--muted);background:var(--surface2);padding:6px 8px;border-top:1px solid var(--border)">${t}</div>`).join("");
+}
+function sbScopeNoticeRows(colspan) {
+  return sbScopeNoticeText().map(t =>
+    `<tr><td colspan="${colspan}" style="font-size:11px;color:var(--muted);background:var(--surface2);padding:6px 8px">${t}</td></tr>`).join("");
+}
+
 function renderStatusBoard(el) {
   const scopeLabel = isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}]</span>` : "";
   el.innerHTML = `
@@ -74,7 +96,10 @@ function renderSBLeaderboard() {
   const host = document.getElementById("sb-leaderboard");
   if (!host) return;
   const counts = sbRSCounts();
-  const scoped = filteredRoster();
+  // Report-sick scope (§1.7). filteredRoster() is the ROSTER, which is ungated —
+  // so without this an out-of-scope person renders with RSI 0 / RSO 0, which
+  // reads as "never reported sick" rather than "you may not see this".
+  const scoped = filteredRoster().filter(r => inRSScope(r.id));
   let rows = scoped.map(r => {
     const c = counts[r.id] || { rsi: 0, rso: 0 };
     return { r, rsi: c.rsi, rso: c.rso, total: c.rsi + c.rso };
@@ -104,6 +129,7 @@ function renderSBLeaderboard() {
     </div>
     ${_sbCollapsed ? "" : `<div style="margin-top:8px">
       ${shown.length ? shown.map(row).join("") : `<div style="font-size:12px;color:var(--muted);padding:6px">No report-sick records in scope.</div>`}
+      ${sbScopeNoticeDivs()}
       ${!_sbShowAll && rows.length > 3 ? `<button class="btn" style="margin-top:8px;font-size:11px" onclick="sbShowAllLeaderboard()">Show all ${rows.length} personnel</button>` : ""}
     </div>`}
   `;
@@ -138,7 +164,13 @@ function sbShowAllLeaderboard() { _sbShowAll = true; renderSBLeaderboard(); }
 // platoon's MC list for the company's is a reporting error, not a cosmetic one.
 function exportScopeSlug() {
   const l = filterLabel();
-  return l ? l.replace(/\s*·\s*/g, "-").replace(/\s+/g, "") : "Company";
+  const base = l ? l.replace(/\s*·\s*/g, "-").replace(/\s+/g, "") : "Company";
+  // A report-sick-scoped account's file is NOT the company's, even with no
+  // platoon filter set — calling it "Company" is exactly the reporting error the
+  // rest of this helper exists to prevent. Name the real scope instead.
+  const rs = rsScope();
+  if (rs.company) return base;
+  return l ? base : (rs.plt.length ? "RS-" + rs.plt.join("-") : "RS-none");
 }
 function exportListFileName(label) {
   return exportFileName(`${label} ${exportScopeSlug()}`, "csv");
@@ -164,7 +196,9 @@ function exportPersonCols(d4) {
 // list's local filter: export what is on screen).
 function exportStatusList() {
   const today = todayISO();
-  let scoped = filteredRoster();
+  // Same report-sick scope as the on-screen A7 list this mirrors. Without it a
+  // scoped commander could export the very names the panel collapsed to counts.
+  let scoped = filteredRoster().filter(r => inRSScope(r.id));
   const q = _sbSearch.trim().toLowerCase();
   if (q) scoped = scoped.filter(r => String(r.name || "").toLowerCase().includes(q)
     || String(r.id || "").toLowerCase().includes(q) || String(r.fourD || "").includes(q));
@@ -195,7 +229,10 @@ function exportStatusList() {
 function exportLeaveList() {
   const visible = visibleD4Set();
   const rows = STATE.leave
-    .filter(l => passesFilter(l.d4, visible))
+    // Leave is not a server-scoped tab, but this is a Status Board export and
+    // the board above it is scoped — leaving it open would hand back the names
+    // that panel just withheld.
+    .filter(l => passesFilter(l.d4, visible) && inRSScope(l.d4))
     .map(l => ({ l, startIso: displayDateToISO(l.startDate) || "" }))
     .sort((a, b) => (a.startIso === b.startIso ? 0 : a.startIso < b.startIso ? 1 : -1))
     .map(({ l }) => Object.assign(exportPersonCols(l.d4), {
@@ -224,7 +261,7 @@ function exportMCList() {
   const today = todayISO();
   const visible = visibleD4Set();
   const rows = STATE.medical
-    .filter(m => passesFilter(m.d4, visible))
+    .filter(m => passesFilter(m.d4, visible) && inRSScope(m.d4))
     .filter(m => String(m.status || "").trim() === "MC" && !m.bookInDate)
     .map(m => {
       const s = displayDateToISO(m.startDate || m.date) || "";
@@ -251,7 +288,10 @@ function renderSBRosterList() {
   const host = document.getElementById("sb-rosterlist");
   if (!host) return;
   const today = todayISO();
-  let scoped = filteredRoster();
+  // Report-sick scope: §1.1 gates this A7 list, §1.7 makes the remainder counts.
+  // filteredRoster() is the ROSTER, which is ungated — so without this an
+  // out-of-scope person renders as a full row with their live status and reason.
+  let scoped = filteredRoster().filter(r => inRSScope(r.id));
   const q = _sbSearch.trim().toLowerCase();
   if (q) scoped = scoped.filter(r => String(r.name || "").toLowerCase().includes(q) || String(r.id || "").toLowerCase().includes(q) || String(r.fourD || "").includes(q));
   const ordered = sbOrdered(scoped);
@@ -300,7 +340,7 @@ function renderSBRosterList() {
     </div>
     <div class="table-wrap" style="max-height:420px;overflow:auto"><table><thead><tr>
       <th style="text-align:left">R/N</th><th>Plt · Sect</th><th>Today</th><th style="text-align:left">Reason</th>
-    </tr></thead><tbody>${body || `<tr><td colspan="4" style="color:var(--muted);padding:10px">No personnel in scope${q ? " match the filter" : ""}.</td></tr>`}</tbody></table></div>
+    </tr></thead><tbody>${body || `<tr><td colspan="4" style="color:var(--muted);padding:10px">No personnel in scope${q ? " match the filter" : ""}.</td></tr>`}${sbScopeNoticeRows(4)}</tbody></table></div>
   `;
   const inp = document.getElementById("sb-search");
   if (inp && q) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
@@ -330,7 +370,10 @@ const SB_GRID_DEFER_ROWS = 30;
 function renderSBGrid() {
   const host = document.getElementById("sb-grid");
   if (!host) return;
-  const scoped = filteredRoster();
+  // Filtered BEFORE the defer check, so the threshold measures rows actually
+  // rendered. An empty grid row is the worst version of the false-absence
+  // problem: a whole month of blank squares reads as a spotless record.
+  const scoped = filteredRoster().filter(r => inRSScope(r.id));
   if (!_sbGridShown && shouldDeferCharts() && scoped.length > SB_GRID_DEFER_ROWS) {
     host.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
@@ -407,7 +450,7 @@ function renderSBGrid() {
         <tr><th class="sb-id" style="text-align:left">4D</th><th class="sb-name" style="text-align:left">Name</th>${weekHead}<th rowspan="2" style="text-align:center">Total<br>RS</th></tr>
         <tr><th class="sb-id"></th><th class="sb-name"></th>${dowHead}</tr>
       </thead>
-      <tbody>${body || `<tr><td style="color:var(--muted);padding:10px">No personnel in scope.</td></tr>`}</tbody>
+      <tbody>${body || `<tr><td style="color:var(--muted);padding:10px">No personnel in scope.</td></tr>`}${sbScopeNoticeRows(colspanAll)}</tbody>
     </table></div>
   `;
 }

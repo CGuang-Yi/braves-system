@@ -65,6 +65,12 @@ function load(fx) {
   vm.runInContext(
     "Object.keys(STATE).forEach(k => { delete STATE[k]; }); Object.assign(STATE, "
       + JSON.stringify(fx) + ");"
+    // These suites assert export CONTENT, so the exporting account must hold
+    // company report-sick scope or inRSScope() would withhold rows and confound
+    // every assertion below. A fixture can override `role` to exercise the gate
+    // itself — see the "report-sick scope" suite at the end of this file.
+    + "if (!STATE.role) STATE.role = 'admin';"
+    + "if (!STATE.caps) STATE.caps = [];"
     + "todayISO = () => " + JSON.stringify(TODAY) + ";"
     // Capture the export instead of letting it reach the DOM download path.
     + "var __out = null; downloadCSVText = (csv, filename) => { __out = { csv, filename }; };"
@@ -224,5 +230,54 @@ module.exports = async function run() {
     // failure as the message doing it (DECISIONS #122).
     const row = parse(runExport(MC_FIXTURE(), "exportMCList()").out.csv).find(r => r["4D"] === "1422");
     eq(row.Rank, "REC");
+  });
+
+  suite("list exports: report-sick scope (spec §1.7)");
+
+  // A file is the easiest way for withheld data to escape the gate: the panels
+  // on screen collapse out-of-scope people to counts, and an unscoped export
+  // would hand back exactly the names that panel just withheld.
+  const scopedTo = plt => Object.assign(MC_FIXTURE(), {
+    role: "commander", caps: ["rs:plt:" + plt.toLowerCase()], personId: "0001"
+  });
+
+  await test("the MC list carries only in-scope people", () => {
+    const rows = parse(runExport(scopedTo("PLT1"), "exportMCList()").out.csv);
+    ok(rows.length > 0, "PLT1 rows still export");
+    ok(rows.every(r => r["4D"].startsWith("14")), "only PLT1 4Ds: " + rows.map(r => r["4D"]).join(","));
+  });
+
+  await test("the Status list carries only in-scope people", () => {
+    const rows = parse(runExport(scopedTo("PLT1"), "exportStatusList()").out.csv);
+    eq(rows.length, 2, "the two PLT1 recruits only");
+    ok(!rows.some(r => r["4D"] === "2411" || r["4D"] === "0001"), "no PLT2, no HQ");
+  });
+
+  await test("the Out/Leave list carries only in-scope people", () => {
+    const fx = Object.assign(scopedTo("PLT1"), {
+      leave: [
+        { id: 1, d4: "1411", type: "AL", startDate: dayOffset(-1), endDate: dayOffset(1), days: 3, reason: "in scope" },
+        { id: 2, d4: "2411", type: "AL", startDate: dayOffset(-1), endDate: dayOffset(1), days: 3, reason: "out of scope" }
+      ]
+    });
+    const rows = parse(runExport(fx, "exportLeaveList()").out.csv);
+    eq(rows.length, 1, "one row");
+    eq(rows[0]["4D"], "1411", "the in-scope one");
+  });
+
+  // The filename is the other half: a one-platoon file that reads "Company" on
+  // disk is the exact reporting error exportScopeSlug exists to prevent.
+  await test("the filename names the report-sick scope, not 'Company'", () => {
+    const name = runExport(scopedTo("PLT1"), "exportMCList()").out.filename;
+    ok(/RS-PLT1/.test(name), "scope in filename: " + name);
+    ok(!/Company/.test(name), "never reads as the company: " + name);
+  });
+
+  await test("a company-scope account exports exactly as before", () => {
+    const scoped = parse(runExport(Object.assign(MC_FIXTURE(), {
+      role: "commander", caps: ["rs:company"], personId: "0001"
+    }), "exportMCList()").out.csv);
+    const admin = parse(runExport(MC_FIXTURE(), "exportMCList()").out.csv);
+    eq(JSON.stringify(scoped), JSON.stringify(admin), "rs:company === admin");
   });
 };
