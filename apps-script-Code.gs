@@ -2593,9 +2593,42 @@ function medStatusActive(record, todayIso) {
   return todayIso >= start && todayIso <= end;
 }
 
+// Hand-ported from js/appointment-4d.js — see the header there for the full
+// reasoning. Commanders carry an appointment code in the Roster fourD column
+// ("SC21" = section commander of platoon 2 section 1, "PS2"/"PC2" = that
+// platoon's sergeant/commander), and both the platoon derivation below and the
+// 4D sort key read it. Single-digit only; anything else returns null and the
+// caller keeps its previous behaviour rather than acting on a guess.
+function parseAppointment4D(fourD) {
+  const s = String(fourD == null ? "" : fourD).trim();
+  if (!s) return null;
+  const sc = /^SC([1-9])([1-9])$/i.exec(s);
+  if (sc) return { appointment: "SectComd", platoon: "PLT" + sc[1], section: sc[2] };
+  const cmd = /^(PC|PS)([1-9])$/i.exec(s);
+  if (cmd) return { appointment: cmd[1].toUpperCase(), platoon: "PLT" + cmd[2], section: "Command" };
+  return null;
+}
+
+// Numeric fourD, else numeric id, else last. An appointment-coded fourD is
+// truthy but not numeric, so a plain `r.fourD || r.id` stops falling through to
+// the 00xx id and parseInt gives NaN — which sorted every commander last.
+function fourDSortKey(r) {
+  if (!r) return Infinity;
+  const f = String(r.fourD == null ? "" : r.fourD).trim();
+  if (/^\d+$/.test(f)) return parseInt(f, 10);
+  const id = String(r.id == null ? "" : r.id).trim();
+  if (/^\d+$/.test(id)) return parseInt(id, 10);
+  return Infinity;
+}
+
 function personPlatoon(r) {
   if (!r) return "";
   if (r.platoon) return String(r.platoon).trim();
+  // Between the explicit column and the 4D digit parse: getPlt deliberately
+  // blanks commanders out as coy-level, which is right for an OC but wrong for
+  // a PC, who belongs to a platoon and whose own 4D names it.
+  const appt = parseAppointment4D(r.fourD);
+  if (appt) return appt.platoon;
   const p = getPlt(r);
   return p ? "PLT" + p : "";
 }
@@ -2603,6 +2636,8 @@ function personPlatoon(r) {
 function personSection(r) {
   if (!r) return "";
   if (r.section != null && r.section !== "") return String(r.section).trim();
+  const appt = parseAppointment4D(r.fourD);
+  if (appt) return appt.section;
   return getSect(r) || "";
 }
 
@@ -3187,11 +3222,11 @@ function bpBuildBlock(people, dateIso, type, opts) {
 
   // Collect entries per section across all people. Iterate in ascending 4D order
   // so every section's rows come out 4D-sorted (people are pushed section-by-section
-  // in this loop's order, so ordering the loop orders the rows). Non-numeric 4Ds
-  // sort last.
-  const bp4DNum = r => { const n = parseInt(String(r.fourD || r.id || ""), 10); return Number.isFinite(n) ? n : Infinity; };
+  // in this loop's order, so ordering the loop orders the rows). Rows with no
+  // number anywhere sort last; a commander whose fourD is an appointment code
+  // falls through to the 00xx id, which is what fourDSortKey is for.
   const buckets = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
-  [...people].sort((a, b) => bp4DNum(a) - bp4DNum(b)).forEach(r => {
+  [...people].sort((a, b) => fourDSortKey(a) - fourDSortKey(b)).forEach(r => {
     if (!bpIsActive(r)) return;
     const c = bpClassifyPerson(r, dateIso, { lookaheadDays: opts.lookaheadDays });
     BP_SECTIONS.forEach(k => { c.sections[k].forEach(line => buckets[k].push(line)); });
