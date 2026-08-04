@@ -49,18 +49,15 @@ const STATE_KEY_TO_TAB = Object.keys(TAB_TO_STATE).reduce((m, sheet) => {
 let _readTabsUnsupported = false;
 
 const API = {
-  async get(action, tab, extraParams) {
-    const auth = encodeURIComponent(STATE.authToken || "");
-    let url = `${STATE.apiUrl}?action=${action}${tab ? "&tab=" + tab : ""}&auth=${auth}`;
-    if (extraParams) {
-      for (const k in extraParams) url += `&${k}=${encodeURIComponent(extraParams[k])}`;
-    }
-    const res = await fetch(url);
-    const data = await res.json();
-    // 401 covers both "not logged in" and "session_expired" — either way the
-    // caller should bounce to the login screen (handleAuthFailure in main.js).
-    if (data && data.code === 401) throw new AuthError(data.error);
-    return data;
+  // Unauthenticated GET. `ping` is the only thing that goes through here, and
+  // that is the point: a GET puts everything it carries in the URL, where it
+  // reaches the deployment's request logs and any Referer the page emits. Reads
+  // used to use this too — the launch pull and the 20-second revCheck poll among
+  // them — which put the session token in the query string on essentially every
+  // request. They go through post() now; see read() below.
+  async getPublic(action) {
+    const res = await fetch(`${STATE.apiUrl}?action=${action}`);
+    return res.json();
   },
   async post(body) {
     const res = await fetch(STATE.apiUrl, {
@@ -71,6 +68,14 @@ const API = {
     const data = await res.json();
     if (data && data.code === 401) throw new AuthError(data.error);
     return data;
+  },
+  // Authenticated read. Same four actions the backend has always answered
+  // (readAll / revCheck / read+tab / readTabs+tabs) and the same response
+  // shapes — only the transport changed, so the token rides in the body
+  // instead of the query string. Kept as its own name rather than folded into
+  // post() so a read still reads as a read at every call site.
+  async read(action, tab, extra) {
+    return this.post(Object.assign({ action }, tab ? { tab } : null, extra || null));
   },
   // ── Account auth (Step 1) ──────────────────────────────
   // login does not carry an existing token — it's how you get one.
@@ -130,13 +135,13 @@ const API = {
   // not authorised), or null when the whole call is unusable (older backend that
   // lacks readTabs, an error, or an unrecognized shape).
   async fetchArchives() {
-    const res = await this.get("readTabs", null, { tabs: "ParadeArchive,SickArchive" });
+    const res = await this.read("readTabs", null, { tabs: "ParadeArchive,SickArchive" });
     if (!res || res.error || !res.tabs) return null;
     const pick = name => { const e = res.tabs[name]; return e && Array.isArray(e.rows) ? e.rows : null; };
     return { paradeArchive: pick("ParadeArchive"), sickArchive: pick("SickArchive") };
   },
   async pullAll() {
-    const data = await this.get("readAll");
+    const data = await this.read("readAll");
     if (data.error) throw new Error(data.error);
     // Replace a STATE array whenever the response carries that key — including an
     // EMPTY array, which means the tab was cleared/emptied on the Sheet and the
@@ -232,7 +237,7 @@ const API = {
       // Fall through to the legacy per-tab loop below (older backend).
     }
     const fetched = await Promise.all(names.map(async sheet => {
-      const res = await this.get("read", sheet);
+      const res = await this.read("read", sheet);
       if (res && res.error) throw new Error(res.error);
       // read&tab now returns { rows, rev }; tolerate a bare array too.
       const rows = Array.isArray(res) ? res : (res && res.rows) || [];
@@ -265,7 +270,7 @@ const API = {
   // NOT swallowed here — it propagates like every other read failure so
   // existing error handling (e.g. AuthError → login bounce) still fires.
   async _pullTabsBatched(names) {
-    const res = await this.get("readTabs", null, { tabs: names.join(",") });
+    const res = await this.read("readTabs", null, { tabs: names.join(",") });
     const isUnknownAction = res && typeof res.error === "string" && /unknown action/i.test(res.error);
     if (isUnknownAction) { _readTabsUnsupported = true; return null; } // older, not-yet-redeployed backend
     if (res && res.error) throw new Error(res.error);
@@ -294,7 +299,7 @@ const API = {
   // Cheap "what changed?" poll — returns { ok, revs: {Roster:N,…}, timestamp }.
   // No row data, so safe to call frequently.
   async revCheck() {
-    return this.get("revCheck");
+    return this.read("revCheck");
   },
   async pushTab(tabName, data, imported) {
     return this.post({ action: "write", tab: tabName, data, baseRev: STATE.rev[tabName], imported });

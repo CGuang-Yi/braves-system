@@ -77,7 +77,7 @@ function makeClient(backend, opts) {
       out = backend.doGet({ parameter: { action: q.action, tab: q.tab, tabs: q.tabs, auth: q.auth } });
     } else {
       const body = JSON.parse(init.body);
-      rec = { method: "POST", action: body.action, tab: body.tab };
+      rec = { method: "POST", action: body.action, tab: body.tab, tabs: body.tabs };
       // doPost reads only postData; parameter:{} stands in for the query string
       // the real Apps Script runtime always supplies.
       out = backend.doPost({ parameter: {}, postData: { contents: init.body } });
@@ -184,7 +184,7 @@ function makeLaunchClient(backend, opts) {
       out = backend.doGet({ parameter: { action: q.action, tab: q.tab, tabs: q.tabs, auth: q.auth } });
     } else {
       const body = JSON.parse(init.body);
-      rec = { method: "POST", action: body.action, tab: body.tab };
+      rec = { method: "POST", action: body.action, tab: body.tab, tabs: body.tabs };
       out = backend.doPost({ parameter: {}, postData: { contents: init.body } });
     }
     fetchSpy.push(rec);

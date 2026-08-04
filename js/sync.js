@@ -926,7 +926,7 @@ async function signOut() {
 async function doPing() {
   try {
     syncLog("Pinging...");
-    const res = await API.get("ping");
+    const res = await API.getPublic("ping");
     // Liveness only — the backend deliberately no longer reports its tab list
     // here, so there is nothing to print but the fact that it answered.
     if (res.ok) syncLog("Connected!", "var(--green)");
