@@ -229,11 +229,19 @@ const DEFAULT_CONFIG = {
   // per live platoon, derived from STATE.platoons. PDS therefore needs no
   // per-platoon entry and follows platoon renumbering on its own.
   // pointWeight null = counted but never scored; a number multiplies the day weight.
+  //
+  // `appointments` restricts who may hold the slot to the listed appointments
+  // ("PC" / "PS" / "SectComd", read from the Roster `appointment` column — see
+  // dutyAppointmentOf in js/duty-eligibility.js). Each duty here belongs to one
+  // appointment: CDO is the PC duty, CDS the PS duty, COS and PDS the section
+  // commanders'. Omitting the key leaves a type unrestricted, so an ad-hoc duty
+  // type added later needs no config migration. Note COS carries no platoon
+  // scope, so an HQ section commander is offered for COS but never for a PDS.
   dutyTypes: [
-    { name: "CDO", scope: "company", pointWeight: null },
-    { name: "CDS", scope: "company", pointWeight: null },
-    { name: "COS", scope: "company", pointWeight: 1 },
-    { name: "PDS", scope: "platoon", pointWeight: null }
+    { name: "CDO", scope: "company", pointWeight: null, appointments: ["PC"] },
+    { name: "CDS", scope: "company", pointWeight: null, appointments: ["PS"] },
+    { name: "COS", scope: "company", pointWeight: 1, appointments: ["SectComd"] },
+    { name: "PDS", scope: "platoon", pointWeight: null, appointments: ["SectComd"] }
   ],
   // Mon–Thu 1, Fri and Sun (book out / book in) 3, Sat and public holidays 5.
   dutyDayWeights: { sun: 3, mon: 1, tue: 1, wed: 1, thu: 1, fri: 3, sat: 5, holiday: 5 },
@@ -590,6 +598,12 @@ function normalizeRoster(roster) {
     //   platoon  — "HQ" / "PLT1".."PLTn"
     //   section  — "1".."N", "Command" (PC/PS), or blank for HQ-flat personnel
     //   rankGroup— "Officer" / "WOSPEC" / "Enlistee" (drives the strength split)
+    //   appointment — "PC" / "PS" / "SectComd" / blank. Splits the Command
+    //              element, which `section` alone cannot: it is "Command" for
+    //              both PC and PS, and the duty list needs them apart (CDO is the
+    //              PC duty, CDS the PS duty). Blank falls back to the org model
+    //              in dutyAppointmentOf() — it is stored raw here rather than
+    //              canonicalised so the sheet keeps saying whatever the user typed.
     //   fourD    — display 4D; equals id for numeric non-commander ids, blank
     //              for no-4D personnel (commanders show rank+name instead).
     const fourD = rest.fourD !== undefined && rest.fourD !== ""
@@ -603,6 +617,7 @@ function normalizeRoster(roster) {
       platoon: canonicalPlatoonCode(rest.platoon),
       section: rest.section != null ? String(rest.section) : "",
       rankGroup: rest.rankGroup || "",
+      appointment: rest.appointment != null ? String(rest.appointment).trim() : "",
       fourD,
       leaveQuota: rest.leaveQuota !== undefined && rest.leaveQuota !== "" ? +rest.leaveQuota : ""
     };

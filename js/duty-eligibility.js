@@ -11,10 +11,67 @@
 //
 // Do not add a roster-wide re-validation pass here. That would be the whole bug.
 
-function dutyTypeScope(cfg, dutyType) {
+function dutyTypeEntry(cfg, dutyType) {
   const types = (cfg && cfg.dutyTypes) || [];
-  for (let i = 0; i < types.length; i++) if (types[i].name === dutyType) return types[i].scope;
-  return "company";
+  for (let i = 0; i < types.length; i++) if (types[i].name === dutyType) return types[i];
+  return null;
+}
+
+function dutyTypeScope(cfg, dutyType) {
+  const t = dutyTypeEntry(cfg, dutyType);
+  return t ? t.scope : "company";
+}
+
+// ── Appointment ──────────────────────────────────────────────────────────────
+// Which appointment a duty draws from is CONFIG, not code: `appointments` on a
+// dutyTypes entry (spec §3.5/§5). CDO is the PC duty, CDS the PS duty, COS and
+// PDS the section-commander duties — but that is a statement about this company,
+// not about the app, so it is editable from the Config sheet like every other
+// duty rule. A type with no `appointments` key is unrestricted, which is what
+// keeps a hand-added duty type working without a config migration.
+function dutyTypeAppointments(cfg, dutyType) {
+  const t = dutyTypeEntry(cfg, dutyType);
+  const a = t && t.appointments;
+  return a && a.length ? a.map(function (x) { return dutyCanonAppointment(x); }) : null;
+}
+
+// Canonical appointment codes: "PC", "PS", "SectComd". The sheet is typed by
+// hand, so accept the spellings a person actually writes rather than making a
+// backfill typo look like an empty duty roster.
+function dutyCanonAppointment(v) {
+  const s = String(v || "").trim().toLowerCase().replace(/[^a-z]/g, "");
+  if (!s) return "";
+  if (s === "pc" || s === "platooncommander") return "PC";
+  if (s === "ps" || s === "platoonsergeant" || s === "platoonsgt") return "PS";
+  if (s === "sc" || s === "sectcomd" || s === "sectioncommander" ||
+      s === "sectcommander" || s === "sectioncomd") return "SectComd";
+  return "";
+}
+
+// A person's appointment. Prefers the explicit `appointment` roster column; falls
+// back to the org model so the rules work on day one, before anyone has backfilled
+// the new column (the same "explicit column wins, otherwise derive" shape as
+// personPlatoon/personSection/rankGroupOf in helpers.js).
+//
+// The fallback is deliberately incomplete in one place. A numbered section means
+// section commander unambiguously. "Command" means PC *or* PS and nothing in the
+// org model separates them — so we split on the explicit rankGroup column
+// (Officer → PC, WOSPEC → PS) and, when even that is blank, return "" rather than
+// guessing. A blank appointment is offered for no duty at all, which surfaces as
+// an empty CDO/CDS dropdown: visible, and fixed by filling the column in. Guessing
+// would instead put the PS on CDO silently, which is the failure nobody catches.
+function dutyAppointmentOf(r) {
+  if (!r) return "";
+  const explicit = dutyCanonAppointment(r.appointment);
+  if (explicit) return explicit;
+  const sect = String(r.section || "").trim();
+  if (/^\d+$/.test(sect)) return "SectComd";
+  if (sect === "Command") {
+    const g = String(r.rankGroup || "").trim().toLowerCase();
+    if (g.indexOf("off") === 0) return "PC";
+    if (g.indexOf("wo") === 0 || g.indexOf("spec") === 0) return "PS";
+  }
+  return "";
 }
 
 // Company-scoped types occupy one unnamed column; platoon-scoped types get one
@@ -46,9 +103,13 @@ function dutyIsActive(r) {
 // nothing. The duty-PLANNING permission is a boundary, and it deliberately does
 // NOT live in Config, because Config is an ordinary writable tab that any
 // commander could edit to grant themselves access (spec §9.1).
-function dutyBasePool(roster, cfg) {
+function dutyExtraSet(cfg) {
   const extra = (cfg && cfg.dutyExtraEligible) || [];
-  const extraSet = new Set(extra.map(function (x) { return String(x); }));
+  return new Set(extra.map(function (x) { return String(x); }));
+}
+
+function dutyBasePool(roster, cfg) {
+  const extraSet = dutyExtraSet(cfg);
   const out = [];
   const list = roster || [];
   for (let i = 0; i < list.length; i++) {
@@ -61,6 +122,8 @@ function dutyBasePool(roster, cfg) {
 
 function dutyEligible(dutyType, platoon, isoDate, roster, cfg, opts) {
   const scope = dutyTypeScope(cfg, dutyType);
+  const wanted = dutyTypeAppointments(cfg, dutyType);
+  const extraSet = dutyExtraSet(cfg);
   const pool = dutyBasePool(roster, cfg);
   const out = [];
 
@@ -68,12 +131,32 @@ function dutyEligible(dutyType, platoon, isoDate, roster, cfg, opts) {
     const r = pool[i];
     if (!dutyIsActive(r)) continue;
     if (scope === "platoon") {
-      if (r.platoon !== platoon) continue;
-      // `section` is already "Command" for PC/PS and a number for section
-      // commanders, so "that platoon's commanders who are not the PC or PS" needs
-      // no new field. Blank means HQ-flat, which never holds a platoon duty.
+      // Blank platoon means unplaced, which never holds a platoon duty. HQ is
+      // rejected explicitly rather than relied on to be unreachable: dutyPlatoonsFor
+      // never emits an HQ column, but a hand-written or imported row can still ask,
+      // and "HQ has no PDS" should be true of the rule and not just of the caller.
+      if (!r.platoon || r.platoon === "HQ" || r.platoon !== platoon) continue;
+      // The PC/PS exclusion is a property of platoon SCOPE, not of the appointment
+      // list, so it survives a duty type configured without `appointments` — a
+      // platoon duty belongs to that platoon's sections, and the spec §5 rule
+      // ("section !== 'Command'") is what says so. With the default config it is
+      // redundant, since SectComd already excludes them; that redundancy is the
+      // point. Blank section is HQ-flat, which never holds a platoon duty either.
       const sect = String(r.section || "");
       if (sect === "Command" || sect === "") continue;
+    }
+    // Appointment rule. Note it is applied WITHOUT a platoon test of its own, so
+    // an HQ WOSPEC carrying a section-commander appointment is offered for COS —
+    // the company-scoped section-commander duty — while still being excluded from
+    // every PDS column by the platoon scope above. That is the intended reading:
+    // COS asks what appointment you hold, not which platoon you hold it in.
+    //
+    // dutyExtraEligible bypasses this. It is the Config escape hatch for someone
+    // outside the org model entirely, so filtering it by an appointment it was
+    // never going to have would make the key grant nothing and quietly break the
+    // only lever an admin has.
+    if (wanted && !extraSet.has(String(r.id))) {
+      if (wanted.indexOf(dutyAppointmentOf(r)) === -1) continue;
     }
     out.push(String(r.id));
   }
@@ -129,6 +212,7 @@ function dutyContrastText(hex) {
 
 // Node test export (browser ignores `module`).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { dutyTypeScope, dutyPlatoonsFor, dutyIsActive, dutyBasePool, dutyEligible,
+  module.exports = { dutyTypeScope, dutyTypeAppointments, dutyCanonAppointment, dutyAppointmentOf,
+                     dutyPlatoonsFor, dutyIsActive, dutyExtraSet, dutyBasePool, dutyEligible,
                      dutyColourIndexForSection, dutyColourFor, dutyContrastText };
 }

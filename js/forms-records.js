@@ -354,11 +354,21 @@ function openCommanderForm(id) {
           ${formField("f-section", "Section", "text", "Command / 1", `maxlength="12" value="${escapeAttr(e?.section)}"`)}
         </div>
         <datalist id="platoon-codes">${activePlatoons().map(p => `<option value="${escapeAttr(p.code)}">`).join("")}</datalist>
-        <div class="form-group">
-          <label>Rank group</label>
-          <select id="f-rankgroup">
-            ${["", "Officer", "WOSPEC", "Enlistee"].map(g => `<option value="${g}" ${g === (e?.rankGroup || "") ? "selected" : ""}>${g || "Auto from rank"}</option>`).join("")}
-          </select>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Rank group</label>
+            <select id="f-rankgroup">
+              ${["", "Officer", "WOSPEC", "Enlistee"].map(g => `<option value="${g}" ${g === (e?.rankGroup || "") ? "selected" : ""}>${g || "Auto from rank"}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Appointment</label>
+            <select id="f-appointment">
+              ${[["", "Auto from section"], ["PC", "PC — Platoon Commander"], ["PS", "PS — Platoon Sergeant"], ["SectComd", "Sect Comd — Section Commander"]]
+                .map(([v, lbl]) => `<option value="${v}" ${v === (e?.appointment || "") ? "selected" : ""}>${lbl}</option>`).join("")}
+            </select>
+            <div style="font-size:10px;color:var(--dim);margin-top:3px;line-height:1.4">Drives duty-list eligibility: CDO is the PC duty, CDS the PS duty, COS and PDS the section commanders'. "Auto" reads section — but section is "Command" for <em>both</em> PC and PS, so set this explicitly for them.</div>
+          </div>
         </div>
         ${formField("f-quota", "Off-in-Lieu Quota (days)", "number", "14", `min="0" max="365" step="1" value="${e?.leaveQuota ?? 14}"`)}
         ${formField("f-phone", "Phone (optional)", "text", "9123 4567", `maxlength="20" value="${escapeAttr(e?.phone)}"`)}
@@ -384,6 +394,7 @@ function submitCommander() {
     platoon: gv("f-platoon").trim(),
     section: gv("f-section").trim(),
     rankGroup: gv("f-rankgroup"),
+    appointment: gv("f-appointment"),
     fourD: "",
     // Legacy parse-fallback fields kept blank (the old topbar filter still reads
     // these until the Step-5 scope rewrite switches to platoon/section).

@@ -30,8 +30,8 @@ function loadScheduler() {
 
 const CFG = {
   dutyTypes: [
-    { name: "COS", scope: "company", pointWeight: 1 },
-    { name: "PDS", scope: "platoon", pointWeight: 1 }
+    { name: "COS", scope: "company", pointWeight: 1, appointments: ["SectComd"] },
+    { name: "PDS", scope: "platoon", pointWeight: 1, appointments: ["SectComd"] }
   ],
   dutyDayWeights: { sun: 3, mon: 1, tue: 1, wed: 1, thu: 1, fri: 3, sat: 5, holiday: 5 },
   dutyExtraEligible: [],
@@ -43,11 +43,11 @@ const CFG = {
 
 // PLT1 has two section commanders (eligible for PDS 1); PLT2 has one.
 const ROSTER = [
-  { id: "0001", role: "Commander", platoon: "PLT1", section: "Command", status: "Active" },
-  { id: "0003", role: "Commander", platoon: "PLT1", section: "1", status: "Active" },
-  { id: "0004", role: "Commander", platoon: "PLT1", section: "2", status: "Active" },
-  { id: "0005", role: "Commander", platoon: "PLT2", section: "1", status: "Active" },
-  { id: "1411", role: "Recruit", platoon: "PLT1", section: "1", status: "Active" }
+  { id: "0001", role: "Commander", platoon: "PLT1", section: "Command", appointment: "PC", status: "Active" },
+  { id: "0003", role: "Commander", platoon: "PLT1", section: "1", appointment: "SectComd", status: "Active" },
+  { id: "0004", role: "Commander", platoon: "PLT1", section: "2", appointment: "SectComd", status: "Active" },
+  { id: "0005", role: "Commander", platoon: "PLT2", section: "1", appointment: "SectComd", status: "Active" },
+  { id: "1411", role: "Recruit", platoon: "PLT1", section: "1", appointment: "SectComd", status: "Active" }
 ];
 const PLATOONS = ["HQ", "PLT1", "PLT2"];
 
