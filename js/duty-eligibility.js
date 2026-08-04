@@ -53,17 +53,28 @@ function dutyCanonAppointment(v) {
 // the new column (the same "explicit column wins, otherwise derive" shape as
 // personPlatoon/personSection/rankGroupOf in helpers.js).
 //
-// The fallback is deliberately incomplete in one place. A numbered section means
-// section commander unambiguously. "Command" means PC *or* PS and nothing in the
-// org model separates them — so we split on the explicit rankGroup column
-// (Officer → PC, WOSPEC → PS) and, when even that is blank, return "" rather than
+// The ladder has three tiers: the explicit column, then the appointment code
+// carried in the fourD column, then the org model.
+//
+// The fourD tier is the one that does the real work. Commanders' 4Ds name their
+// appointment outright — "PC2" is the platoon commander of platoon 2 — which the
+// org-model tier below cannot reproduce: `section` is "Command" for the PC and
+// the PS alike, and separating them needs the rankGroup column, which is blank
+// on most rows. Without this tier the CDO/CDS pools came up empty until someone
+// hand-backfilled the appointment column. See js/appointment-4d.js.
+//
+// The org-model tier below remains, for rows carrying no appointment code at all.
+// It is deliberately incomplete: a numbered section means section commander
+// unambiguously, but "Command" with a blank rankGroup returns "" rather than
 // guessing. A blank appointment is offered for no duty at all, which surfaces as
-// an empty CDO/CDS dropdown: visible, and fixed by filling the column in. Guessing
-// would instead put the PS on CDO silently, which is the failure nobody catches.
+// an empty dropdown: visible, and fixed by filling the column in. Guessing would
+// instead put the PS on CDO silently, which is the failure nobody catches.
 function dutyAppointmentOf(r) {
   if (!r) return "";
   const explicit = dutyCanonAppointment(r.appointment);
   if (explicit) return explicit;
+  const appt = parseAppointment4D(r.fourD);
+  if (appt) return appt.appointment;
   const sect = String(r.section || "").trim();
   if (/^\d+$/.test(sect)) return "SectComd";
   if (sect === "Command") {
