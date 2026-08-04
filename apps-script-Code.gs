@@ -1250,7 +1250,7 @@ function handleSetAccountCaps(body, ctx) {
 
   var caps = parseCaps(body.caps);
   for (var i = 0; i < caps.length; i++) {
-    if (KNOWN_CAPS.indexOf(caps[i]) === -1) return { error: "Unknown capability '" + caps[i] + "'." };
+    if (!rsCapIsKnown_(caps[i])) return { error: "Unknown capability '" + caps[i] + "'." };
   }
   var written = writeAccountCaps(email, caps.join(","));
   if (written && written.error) return written;
@@ -1261,8 +1261,17 @@ function handleSetAccountCaps(body, ctx) {
 }
 
 // The allowlist exists so a typo ("dutty") fails loudly at the point of granting
-// rather than silently producing an account that can never plan anything.
-var KNOWN_CAPS = ["duty"];
+// rather than silently producing an account that can never plan anything. The
+// same reasoning is why `rs:plt:` validates its KEY as well as its prefix: an
+// empty key would be accepted, stored, and match no platoon forever.
+var KNOWN_CAPS = ["duty", "rs:company"];
+
+function rsCapIsKnown_(cap) {
+  var c = String(cap == null ? "" : cap).trim().toLowerCase();
+  if (KNOWN_CAPS.indexOf(c) !== -1) return true;
+  if (c.indexOf(RS_PLT_CAP_PREFIX) !== 0) return false;
+  return c.slice(RS_PLT_CAP_PREFIX.length).length > 0;
+}
 
 function writeAccountCaps(email, capsCsv) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Accounts");

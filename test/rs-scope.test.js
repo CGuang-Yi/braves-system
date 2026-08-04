@@ -85,4 +85,50 @@ module.exports = async function run() {
     const s = b.rsScopeOf_(ctx("commander", "", "0011"));
     eq(b.rsPersonInScope_(s, 11, idx), true, "numeric 11 resolves to 0011");
   });
+
+  suite("rs-scope: capability validation");
+
+  const acct = b => b.db.seed("Accounts",
+    ["email", "personId", "role", "passwordHash", "salt", "addedBy", "addedAt", "caps"],
+    [["p@example.com", "0021", "commander", "h", "s", "", "", ""]]);
+  const ADMIN = { email: "a@example.com", personId: "0001", role: "admin" };
+
+  await test("rs:company and rs:plt:<key> are accepted", () => {
+    const b = loadBackend();
+    acct(b);
+    const r = b.handleSetAccountCaps({ targetEmail: "p@example.com", caps: "duty,rs:company" }, ADMIN);
+    ok(r.ok, "granted: " + JSON.stringify(r));
+    eq(b.db.rowsOf("Accounts")[0].caps, "duty,rs:company", "cell written");
+
+    ok(b.handleSetAccountCaps({ targetEmail: "p@example.com", caps: "rs:plt:PLT2,rs:plt:HQ" }, ADMIN).ok,
+       "platoon grants accepted");
+    eq(b.db.rowsOf("Accounts")[0].caps, "rs:plt:plt2,rs:plt:hq", "stored lowercased by parseCaps");
+  });
+
+  // The allowlist is the only thing between a typo and a commander who was
+  // "granted" something that will never match. It must stay strict as it gains
+  // a prefix form.
+  await test("a bare rs:plt: with no key is rejected", () => {
+    const b = loadBackend();
+    acct(b);
+    const r = b.handleSetAccountCaps({ targetEmail: "p@example.com", caps: "rs:plt:" }, ADMIN);
+    ok(r.error, "rejected: " + r.error);
+    eq(b.db.rowsOf("Accounts")[0].caps, "", "row untouched");
+  });
+
+  await test("near-miss capability names are still rejected", () => {
+    const b = loadBackend();
+    acct(b);
+    ["rs:companies", "rs:plt", "rsplt:1", "rs:coy", "dutty"].forEach(bad => {
+      const r = b.handleSetAccountCaps({ targetEmail: "p@example.com", caps: bad }, ADMIN);
+      ok(r.error, bad + " rejected");
+    });
+    eq(b.db.rowsOf("Accounts")[0].caps, "", "row untouched throughout");
+  });
+
+  await test("the duty capability is unaffected", () => {
+    const b = loadBackend();
+    acct(b);
+    ok(b.handleSetAccountCaps({ targetEmail: "p@example.com", caps: "duty" }, ADMIN).ok, "duty still granted");
+  });
 };
