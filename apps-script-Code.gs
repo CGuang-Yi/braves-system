@@ -2190,7 +2190,18 @@ function readAllTabs(ctx) {
     // and the frontend falls back to defaults/derivation. Config is handled
     // separately below (it is merged from two tabs).
     "VocFit": "vocfit",
-    "Platoons": "platoons"
+    "Platoons": "platoons",
+    // Duty list (DUTY_LIST_SPEC.md §3) plus the unavailability flags (design §4).
+    // These were absent here while being present in REV_TABS, which is worse than
+    // either alone would have been: a full pull returned no duty key at all
+    // (pullAll gates each assignment on Array.isArray, so it skipped them in
+    // silence) yet still advanced the client's rev baseline from data.revs, so
+    // the incremental launch path then saw nothing changed and never asked. A
+    // device with a cold cache never loaded the duty roster.
+    "Duty": "duty",
+    "DutyCorrection": "dutyCorrection",
+    "Holidays": "holidays",
+    "DutyUnavailable": "dutyUnavailable"
   };
 
   var result = {};
