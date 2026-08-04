@@ -270,4 +270,49 @@ module.exports = async function run() {
     eq(out.sickArchive.length, 0, "sick archive withheld");
     eq(out.paradeArchive.length, 1, "parade archive kept");
   });
+
+  suite("rs-scope: revCheck scope key");
+
+  const tokFor = (b, name, personId, caps) => {
+    b.db.setProp("auth:" + name, JSON.stringify({
+      email: name + "@example.com", personId: personId, role: "commander",
+      caps: caps || "", issuedAt: new Date().toISOString()
+    }));
+    return name;
+  };
+
+  await test("revCheck reports the caller's scope key alongside numeric revs", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const out = JSON.parse(b.doGet({
+      parameter: { action: "revCheck", auth: tokFor(b, "t1", "0011") }
+    }).getContent());
+    eq(out.scopeKey, "PLT1", "scope key present");
+    eq(typeof out.revs.Medical, "number", "Medical rev is still a NUMBER");
+    eq(typeof out.revs.Roster, "number", "Roster rev is still a number");
+  });
+
+  // The composite "<rev>:<fingerprint>" shape from spec §1.6 was abandoned
+  // because js/sync.js compares revs with Number(a) > Number(b) and js/api.js
+  // sends the rev back as baseRev, which withRevLock also coerces. A string
+  // there would make Medical read as never-changed AND reject every whole-tab
+  // write as a conflict. See plan deviation D1 — this test is the guard.
+  await test("no rev value is ever a string", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const out = JSON.parse(b.doGet({
+      parameter: { action: "revCheck", auth: tokFor(b, "t2", "0011") }
+    }).getContent());
+    Object.keys(out.revs).forEach(k => eq(typeof out.revs[k], "number", k + " numeric"));
+  });
+
+  await test("two accounts with different scopes get different keys", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const a = JSON.parse(b.doGet({ parameter: { action: "revCheck", auth: tokFor(b, "t3", "0011") } }).getContent());
+    const c = JSON.parse(b.doGet({ parameter: { action: "revCheck", auth: tokFor(b, "t4", "0021") } }).getContent());
+    eq(a.scopeKey, "PLT1", "PLT1 commander");
+    eq(c.scopeKey, "PLT2", "PLT2 commander");
+    ok(a.scopeKey !== c.scopeKey, "a shared device sees a changed key on account switch");
+  });
 };

@@ -284,7 +284,17 @@ function doGet(e) {
         output = readAllTabs(ctx);              // ctx → AuditLog included only for admins
       } else if (action === "revCheck") {
         // Cheap "what changed?" poll — just the per-tab revisions, no row data.
-        output = { ok: true, revs: getAllRevs(), timestamp: new Date().toISOString() };
+        //
+        // `revs` values stay NUMBERS. Folding the report-sick scope into the
+        // Medical/MSK rev as "<rev>:<key>" was considered and rejected: it breaks
+        // two live call sites — js/sync.js filters changed tabs with
+        // Number(a) > Number(b) (NaN, so the tab reads as never-changed) and
+        // js/api.js round-trips the rev back as baseRev, which withRevLock also
+        // coerces (NaN, so every whole-tab write is rejected as a conflict). The
+        // scope therefore travels as its own additive field; a client that
+        // ignores it behaves exactly as before.
+        output = { ok: true, revs: getAllRevs(), scopeKey: rsScopeKey_(rsScopeOf_(ctx)),
+                   timestamp: new Date().toISOString() };
       } else if (action === "read" && tab) {
         if (tab === "AuditLog" && ctx.role !== "admin") {
           output = { error: "Not authorised", code: 403 };
