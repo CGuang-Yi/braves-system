@@ -15,7 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend, ROOT } = require("./harness");
+const { loadBackend, readVia, ROOT } = require("./harness");
 const { makeBrowser } = require("./mocks/browser");
 const { expandFiles } = require("./sources");
 
@@ -116,7 +116,7 @@ module.exports = async function run() {
     return b;
   };
   const readAllAs = (b, tok) =>
-    JSON.parse(b.doGet({ parameter: { action: "readAll", auth: tok } }).getContent());
+    readVia(b, { action: "readAll", auth: tok });
 
   await test("the two accounts really do receive different data", () => {
     // Negative control. Without this, an identical parade state below could

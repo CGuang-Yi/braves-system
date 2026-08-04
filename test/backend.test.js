@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend, VALID_TOKEN } = require("./harness");
+const { loadBackend, readVia, VALID_TOKEN } = require("./harness");
 
 module.exports = async function run() {
   suite("backend: revisions + OCC");
@@ -99,10 +99,10 @@ module.exports = async function run() {
     const b = loadBackend();
     b.db.seed("Medical", ["id", "reason"], []);
     post(b, { action: "upsertRow", tab: "Medical", row: { id: 1, reason: "a" }, baseRev: b.getRev("Medical") });
-    const rc = JSON.parse(b.doGet({ parameter: { action: "revCheck", auth: VALID_TOKEN } }).getContent());
+    const rc = readVia(b, { action: "revCheck", auth: VALID_TOKEN });
     ok(rc.ok && rc.revs, "revCheck shape");
     ok(rc.revs.Medical >= 2, "Medical rev reflected");
-    const all = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: VALID_TOKEN } }).getContent());
+    const all = readVia(b, { action: "readAll", auth: VALID_TOKEN });
     ok(all.revs && typeof all.revs.Medical === "number", "readAll carries revs");
   });
 
@@ -114,7 +114,7 @@ module.exports = async function run() {
     b.db.seed("Holidays", ["date", "name", "tentative"], []);
     b.db.seed("DutyUnavailable", ["id", "d4", "from", "to", "note", "addedBy", "addedAt"],
       [["u1", "0042", "2026-09-01", "2026-09-05", "exam period", "a@b.c", ""]]);
-    const all = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: VALID_TOKEN } }).getContent());
+    const all = readVia(b, { action: "readAll", auth: VALID_TOKEN });
     // Not "is it non-empty" but "is the key present at all": pullAll gates each
     // assignment on Array.isArray(data[key]), so an absent key is skipped in
     // silence while the rev baseline still advances from data.revs — the client
@@ -129,7 +129,7 @@ module.exports = async function run() {
   await test("single-tab read carries { rows, rev }", () => {
     const b = loadBackend();
     b.db.seed("Medical", ["id", "reason"], [["1", "a"]]);
-    const r = JSON.parse(b.doGet({ parameter: { action: "read", tab: "Medical", auth: VALID_TOKEN } }).getContent());
+    const r = readVia(b, { action: "read", tab: "Medical", auth: VALID_TOKEN });
     ok(Array.isArray(r.rows), "rows is an array");
     ok(typeof r.rev === "number", "rev is a number");
   });
@@ -141,6 +141,7 @@ module.exports = async function run() {
   await test("unauthenticated ping reports liveness only", () => {
     const b = loadBackend();
     b.db.seed("Medical", ["id", "reason"], [["1", "a"]]);
+    // ping is the one action GET still answers, so it is driven as a GET.
     const r = JSON.parse(b.doGet({ parameter: { action: "ping" } }).getContent());
     ok(r.ok, "answers without a token");
     ok(typeof r.timestamp === "string", "carries a timestamp");
@@ -149,7 +150,7 @@ module.exports = async function run() {
 
   await test("unauthorized request is rejected", () => {
     const b = loadBackend();
-    const out = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: "bogus" } }).getContent());
+    const out = readVia(b, { action: "readAll", auth: "bogus" });
     eq(out.code, 401, "401 for bad token");
   });
 
