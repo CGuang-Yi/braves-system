@@ -60,6 +60,27 @@ function dutyIndexByDate(rows) {
   return idx;
 }
 
+// One day's slots, for the dashboard card (spec §2).
+//
+// Deliberately built from dutyGridColumns() — the month grid's own column
+// derivation — rather than from a second list of duty types. Two independent
+// derivations are how the dashboard and the grid come to disagree about whether
+// a slot exists, and the disagreement would surface as a duty nobody was told
+// about. Reusing the grid's columns also means a new duty type or a new platoon
+// appears on the card with no edit here.
+//
+// Unfilled slots are RETURNED, with an empty d4, not omitted: the gap is the
+// point of the card, so the caller must be able to draw it.
+function dutyDaySlots(cfg, dutyRows, iso) {
+  const byKey = dutyIndexByDate(dutyRows)[iso] || {};
+  return dutyGridColumns(cfg).map(c => ({
+    dutyType: c.dutyType,
+    platoon: c.platoon,
+    label: c.label,
+    d4: byKey[c.dutyType + "|" + c.platoon] || ""
+  }));
+}
+
 // Every date in a month, so the grid shows empty days too — an unfilled slot is
 // information, not an absence of it.
 function dutyDatesInMonth(anchorISO) {
