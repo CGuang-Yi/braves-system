@@ -187,4 +187,87 @@ module.exports = async function run() {
     eq(m({ d4: "1101", cleared: true }), false, "cleared boolean → history");
     eq(m({ d4: "1101", cleared: "TRUE" }), false, "cleared string → history");
   });
+
+  suite("rs-scope: read filtering");
+
+  const MED_HEADERS = ["id", "d4", "date", "reason", "status", "startDate", "endDate", "type", "bookInDate"];
+  const seedMedical = b => {
+    b.db.seed("Roster", ROSTER_HEADERS, ROSTER_ROWS);
+    b.db.seed("Medical", MED_HEADERS, [
+      // in-scope (PLT1) history — a scoped PLT1 commander SHOULD see this
+      ["m1", "1101", disp("2026-02-01"), "fever", "MC", disp("2026-02-01"), disp("2026-02-03"), "RSI", disp("2026-02-04")],
+      // out-of-scope (PLT2) history — must be withheld
+      ["m2", "2101", disp("2026-02-01"), "cough", "MC", disp("2026-02-01"), disp("2026-02-03"), "RSI", disp("2026-02-04")],
+      // out-of-scope OPEN mc — must survive, parade state needs it
+      ["m3", "2101", disp("2026-08-03"), "flu", "MC", disp("2026-08-03"), "", "RSI", ""],
+      // out-of-scope ended-but-UNBOOKED, months old — must survive (PR #65)
+      ["m4", "2101", disp("2025-11-01"), "ankle", "MC", disp("2025-11-01"), disp("2025-11-05"), "RSI", ""]
+    ]);
+  };
+  const idsOf = rows => rows.map(r => r.id).sort().join(",");
+
+  await test("company scope returns every row", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const rows = b.rsApplyReadScope_("Medical", b.readTab("Medical"), ctx("admin", ""));
+    eq(idsOf(rows), "m1,m2,m3,m4", "nothing withheld");
+  });
+
+  await test("a scoped caller keeps their own platoon's history and only operational rows elsewhere", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const rows = b.rsApplyReadScope_("Medical", b.readTab("Medical"), ctx("commander", "", "0011"));
+    eq(idsOf(rows), "m1,m3,m4", "own history + other platoons' operational rows only");
+  });
+
+  await test("the withheld row is the OTHER platoon's closed history, and only that", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const rows = b.rsApplyReadScope_("Medical", b.readTab("Medical"), ctx("commander", "", "0011"));
+    eq(rows.filter(r => r.id === "m2").length, 0, "m2 withheld");
+    eq(rows.filter(r => r.id === "m4").length, 1, "unbooked row NOT withheld — parade state needs it");
+  });
+
+  await test("readAll applies the gate and stamps the scope key", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const tok = "tok-scoped";
+    b.db.setProp("auth:" + tok, JSON.stringify({
+      email: "pc@example.com", personId: "0011", role: "commander", caps: "", issuedAt: new Date().toISOString()
+    }));
+    const out = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: tok } }).getContent());
+    eq(idsOf(out.medical), "m1,m3,m4", "readAll filtered");
+    eq(out.scopeKey, "PLT1", "scope key stamped");
+  });
+
+  await test("read&tab=Medical and readTabs apply the same gate", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    const tok = "tok-scoped2";
+    b.db.setProp("auth:" + tok, JSON.stringify({
+      email: "pc@example.com", personId: "0011", role: "commander", caps: "", issuedAt: new Date().toISOString()
+    }));
+    const one = JSON.parse(b.doGet({ parameter: { action: "read", tab: "Medical", auth: tok } }).getContent());
+    eq(idsOf(one.rows), "m1,m3,m4", "single-tab read filtered");
+    const many = JSON.parse(b.doGet({ parameter: { action: "readTabs", tabs: "Medical,Roster", auth: tok } }).getContent());
+    eq(idsOf(many.tabs.Medical.rows), "m1,m3,m4", "batched read filtered");
+    eq(many.tabs.Roster.rows.length, 6, "Roster is NOT gated");
+  });
+
+  // SickArchive rows are generated whole-company message blobs — there is no
+  // per-person row to filter. See plan deviation D3. ParadeArchive stays open:
+  // parade state is ungated, so its archive is the same content.
+  await test("SickArchive is withheld whole from a scoped caller; ParadeArchive is not", () => {
+    const b = loadBackend();
+    seedMedical(b);
+    b.db.seed("SickArchive", ["timestamp", "date", "slot", "text"], [["t", "2026-08-01", "0730", "MSG"]]);
+    b.db.seed("ParadeArchive", ["timestamp", "date", "slot", "type", "scope", "text"], [["t", "2026-08-01", "0730", "FP", "company", "MSG"]]);
+    const tok = "tok-scoped3";
+    b.db.setProp("auth:" + tok, JSON.stringify({
+      email: "pc@example.com", personId: "0011", role: "commander", caps: "", issuedAt: new Date().toISOString()
+    }));
+    const out = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: tok } }).getContent());
+    eq(out.sickArchive.length, 0, "sick archive withheld");
+    eq(out.paradeArchive.length, 1, "parade archive kept");
+  });
 };

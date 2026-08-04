@@ -292,10 +292,13 @@ function doGet(e) {
           output = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
         } else if (tab === "Accounts") {
           output = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+        } else if (tab === "SickArchive" && !rsScopeOf_(ctx).company) {
+          output = { rows: [], rev: getRev(tab) };
         } else {
           // Single-tab read for partial pulls; carries the tab's current revision
           // so the client can baseline it. (Untracked tabs report rev 1.)
-          output = { rows: readTab(tab), rev: getRev(tab) };
+          output = { rows: rsApplyReadScope_(tab, readTab(tab), ctx), rev: getRev(tab),
+                     scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
         }
       } else if (action === "readTabs" && e.parameter.tabs) {
         // Batched partial pull (SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1): N tabs in ONE
@@ -321,11 +324,13 @@ function doGet(e) {
             tabsOut[rt] = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
           } else if (rt === "Accounts") {
             tabsOut[rt] = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+          } else if (rt === "SickArchive" && !rsScopeOf_(ctx).company) {
+            tabsOut[rt] = { rows: [], rev: getRev(rt) };
           } else {
-            tabsOut[rt] = { rows: readTab(rt), rev: getRev(rt) };
+            tabsOut[rt] = { rows: rsApplyReadScope_(rt, readTab(rt), ctx), rev: getRev(rt) };
           }
         }
-        output = { ok: true, tabs: tabsOut };
+        output = { ok: true, tabs: tabsOut, scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
       } else {
         output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, readTabs&tabs=A,B, or ping" };
       }
@@ -910,6 +915,35 @@ function rsRowIsOperational_(tabName, row, todayIso) {
   var end = displayDateToISO(row.endDate || "");
   if (!end) return true;
   return end >= bpAddDaysISO(todayIso, -RS_GHOST_TAIL_DAYS);
+}
+
+// The single read chokepoint. Called from all three read routes so a new route
+// cannot forget the gate by omission — if you add a fourth, call this from it.
+//
+// The archive cron is deliberately NOT routed through here: it runs unattended
+// with no user context and must keep seeing everything, or the archived parade
+// state and sick report would be silently truncated to one platoon.
+function rsApplyReadScope_(tabName, rows, ctx) {
+  if (!RS_SCOPED_TABS[tabName]) return rows;
+  if (!rows || !rows.length || rows.error) return rows;
+  var scope = rsScopeOf_(ctx);
+  if (scope.company) return rows;
+
+  var idx = rsPlatoonIndex_();
+  // todayISO(), not bravesTodayISO_(): the latter routes through
+  // Utilities.formatDate, which the test harness stubs to a fixed display date
+  // ("01 Jan 2026") regardless of the format string — so the cut would compare
+  // an ISO endDate against a display today and silently keep everything. This
+  // one is plain JS and behaves identically in Apps Script and under test.
+  var today = todayISO();
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (rsPersonInScope_(scope, rows[i].d4, idx) ||
+        rsRowIsOperational_(tabName, rows[i], today)) {
+      out.push(rows[i]);
+    }
+  }
+  return out;
 }
 
 // ── Login + failed-attempt throttling ────────────────────
@@ -2103,12 +2137,22 @@ function readAllTabs(ctx) {
   // both need to review/compare. Empty arrays when the tabs don't exist yet.
   if (canWrite(ctx)) {
     result.paradeArchive = ss.getSheetByName("ParadeArchive") ? readTab("ParadeArchive") : [];
-    result.sickArchive = ss.getSheetByName("SickArchive") ? readTab("SickArchive") : [];
+    // Sick-archive rows are whole-company generated message text — there is no
+    // per-person row to filter and no way to redact one platoon out of a
+    // rendered message. Withheld entirely below company scope.
+    result.sickArchive = (rsScopeOf_(ctx).company && ss.getSheetByName("SickArchive"))
+      ? readTab("SickArchive") : [];
   }
+
+  // Report-sick scope (spec §1). Applied here rather than inside readTab so the
+  // archive cron and other internal readTab callers stay unfiltered.
+  result.medical = rsApplyReadScope_("Medical", result.medical, ctx);
+  result.msk = rsApplyReadScope_("MSK", result.msk, ctx);
 
   result.timestamp = new Date().toISOString();
   result.sheetName = ss.getName();
   result.revs = getAllRevs();   // per-tab revisions so the client can baseline
+  result.scopeKey = rsScopeKey_(rsScopeOf_(ctx));
   return result;
 }
 
