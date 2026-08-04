@@ -131,4 +131,60 @@ module.exports = async function run() {
     acct(b);
     ok(b.handleSetAccountCaps({ targetEmail: "p@example.com", caps: "duty" }, ADMIN).ok, "duty still granted");
   });
+
+  suite("rs-scope: the operational/history cut");
+
+  // Rows carry DISPLAY dates ("16 May 2026"), which is what displayDateToISO
+  // parses — not ISO. Building fixtures in ISO would pass a broken cut.
+  const disp = iso => {
+    const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const [y, m, d] = iso.split("-");
+    return d + " " + M[parseInt(m, 10) - 1] + " " + y;
+  };
+  const TODAY = "2026-08-04";
+  const op = (b, row) => b.rsRowIsOperational_("Medical", row, TODAY);
+
+  await test("a blank endDate is operational — an open MC has not ended", () => {
+    const b = loadBackend();
+    ok(op(b, { d4: "1101", status: "MC", endDate: "", bookInDate: disp("2026-01-01") }), "open-ended");
+  });
+
+  await test("a row inside the 2-day ghost tail is operational", () => {
+    const b = loadBackend();
+    // MC+1/MC+2 recovery tags are computed at render time from a CLOSED record.
+    // Cutting at exactly `today` makes them vanish for out-of-scope people.
+    ok(op(b, { d4: "1101", endDate: disp("2026-08-02"), bookInDate: disp("2026-08-03") }), "today-2 kept");
+    ok(op(b, { d4: "1101", endDate: disp("2026-08-04"), bookInDate: disp("2026-08-04") }), "today kept");
+  });
+
+  await test("a row past the ghost tail with a bookInDate is history", () => {
+    const b = loadBackend();
+    eq(op(b, { d4: "1101", endDate: disp("2026-08-01"), bookInDate: disp("2026-08-02") }), false, "today-3 cut");
+    eq(op(b, { d4: "1101", endDate: disp("2026-03-01"), bookInDate: disp("2026-03-02") }), false, "months old cut");
+  });
+
+  // THE LOAD-BEARING CASE. Per PR #65 an ended-but-unbooked MC stays listed under
+  // ATT C: the dates say it is over, the person was never booked in, and the
+  // classifier keeps them away. Such a row can be arbitrarily old. Drop it and a
+  // scoped commander's COMPANY parade state silently loses people — which looks
+  // exactly like a correct parade state. Do not "simplify" this clause away.
+  await test("an ended-but-unbooked row survives the cut no matter how old", () => {
+    const b = loadBackend();
+    ok(op(b, { d4: "1101", endDate: disp("2025-11-01"), bookInDate: "" }), "no bookInDate → operational");
+    ok(op(b, { d4: "1101", endDate: disp("2025-11-01") }), "absent bookInDate key → operational");
+    ok(op(b, { d4: "1101", endDate: disp("2025-11-01"), bookInDate: "   " }), "whitespace → operational");
+  });
+
+  // MSK has no endDate and no bookInDate (schema: timestamp | d4 | type |
+  // description | physioDate | exercises | cleared | manualRegions), so the date
+  // cut is undefined there. `cleared` is the analogue: a live injury stays
+  // visible, a closed case is history. See plan deviation D2.
+  await test("MSK cuts on `cleared`, not on dates", () => {
+    const b = loadBackend();
+    const m = r => b.rsRowIsOperational_("MSK", r, TODAY);
+    ok(m({ d4: "1101", cleared: "" }), "uncleared → operational");
+    ok(m({ d4: "1101" }), "absent cleared → operational");
+    eq(m({ d4: "1101", cleared: true }), false, "cleared boolean → history");
+    eq(m({ d4: "1101", cleared: "TRUE" }), false, "cleared string → history");
+  });
 };

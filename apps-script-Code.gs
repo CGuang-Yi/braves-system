@@ -875,6 +875,43 @@ function rsPersonInScope_(scope, d4, idx) {
   return !!p && !!scope.plt[p];
 }
 
+// The gate is a DATE CUT, not field redaction. Redacting `reason` was rejected:
+// classifyURTI() derives from it, the sick-report generator prints it, the
+// classifier exists in two copies (js/braves-parade.js and the hand-port below),
+// and spec §1.1 makes reason company-visible anyway.
+//
+// A Medical row is OPERATIONAL when any of:
+//   • it carries no bookInDate            — PR #65: an ended-but-unbooked MC
+//                                            stays under ATT C, and such a row
+//                                            can be arbitrarily old
+//   • endDate is blank                    — open-ended, still running
+//   • endDate >= today - RS_GHOST_TAIL_DAYS — the MC+1/MC+2, LD+1/LD+2 recovery
+//                                            tags are derived at render time
+//                                            from a CLOSED record
+// Otherwise it is history. Parade state only ever consults operational rows, so
+// nothing downstream of the classifier changes — that is the whole reason this
+// is a date filter and not a person filter.
+//
+// The bookInDate clause is the one that silently breaks parade state if removed,
+// and the failure looks like a CORRECT parade state with people missing from it.
+var RS_GHOST_TAIL_DAYS = 2;
+
+function rsRowIsOperational_(tabName, row, todayIso) {
+  if (!row) return false;
+  // MSK carries no endDate/bookInDate — `cleared` is its live/closed flag.
+  if (tabName === "MSK") {
+    var c = row.cleared;
+    if (c === true) return false;
+    return String(c == null ? "" : c).trim().toUpperCase() !== "TRUE";
+  }
+  // Checked BEFORE the date parse, so a row whose endDate is unparseable garbage
+  // still resolves through the cheap, unambiguous path.
+  if (!String(row.bookInDate == null ? "" : row.bookInDate).trim()) return true;
+  var end = displayDateToISO(row.endDate || "");
+  if (!end) return true;
+  return end >= bpAddDaysISO(todayIso, -RS_GHOST_TAIL_DAYS);
+}
+
 // ── Login + failed-attempt throttling ────────────────────
 
 function handleLogin(body) {
