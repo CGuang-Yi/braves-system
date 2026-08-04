@@ -126,7 +126,7 @@
 
 <!--
   Plain scripts (not modules) so this works under file:// too.
-  Load order matters: state → api → ippt-scoring → calc → helpers →
+  Load order matters: state → api → ippt-scoring → calc → appointment-4d → helpers →
   sick-history-import → duty-points → duty-eligibility → duty-conflicts → duty-import →
   duty-schedule →
   render* → forms* → braves-parade → actions → parade-tab → render-duty →
@@ -146,11 +146,17 @@
   because it calls registerActions(), so it must load after actions. forms-duty
   is the duty list's write half; like render-duty it is a NEW file rather than a
   split of the forms monolith, so it is NOT part of test/sources.js PARTS.forms.
+  appointment-4d is a DOM-free leaf parser for the appointment codes commanders
+  carry in the Roster fourD column (SC21/PS2/PC2). BOTH helpers (personPlatoon/
+  personSection) and duty-eligibility (dutyAppointmentOf) call it, so it loads
+  before both — it is a leaf precisely so neither of those has to depend on the
+  other.
 -->
 <script src="js/state.js?v=136"></script>
 <script src="js/api.js?v=130"></script>
 <script src="js/ippt-scoring.js?v=113"></script>
 <script src="js/calc.js?v=8"></script>
+<script src="js/appointment-4d.js?v=1"></script>
 <script src="js/helpers.js?v=149"></script>
 <script src="js/sick-history-import.js?v=114"></script>
 <script src="js/duty-points.js?v=1"></script>
