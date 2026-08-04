@@ -956,6 +956,73 @@ function rsApplyReadScope_(tabName, rows, ctx) {
   return out;
 }
 
+// Write-side enforcement (spec §1.5). Two guards, both required:
+//
+//  1. Row-level writes are PERMITTED and scope-checked. Commanders keep logging,
+//     editing and deleting their own platoon's report-sick records — the daily
+//     workflow is untouched. On an upsert the check runs against BOTH the
+//     incoming row's subject and the existing row's subject, so a scoped caller
+//     cannot re-point someone else's record at their own platoon and capture it.
+//
+//  2. The whole-tab replace is HARD-BLOCKED below company scope. Not a filter,
+//     not a merge — a refusal. writeTab derives headers from Object.keys(data[0])
+//     and replaces the entire tab, so a scoped account holding a filtered Medical
+//     array would delete every other platoon's rows. That is silent, total,
+//     cross-platoon data loss and it is the single most dangerous consequence of
+//     filtering on the wire.
+function rsGuardWrite_(tabName, action, body, ctx) {
+  if (!RS_SCOPED_TABS[tabName]) return null;
+  var scope = rsScopeOf_(ctx);
+  if (scope.company) return null;
+
+  if (action === "write" || action === "replaceConductRows") {
+    return { error: "Scoped accounts cannot replace a tab. Ask an admin, or edit rows individually.", code: 403 };
+  }
+  // updateRow/deleteRow address a row by SHEET INDEX, so the subject cannot be
+  // resolved from the request alone without re-reading and trusting the index.
+  // Refuse rather than guess — nothing in the app uses them for Medical/MSK.
+  if (action === "updateRow" || action === "deleteRow") {
+    return { error: "Out of scope for that platoon.", code: 403 };
+  }
+
+  var idx = rsPlatoonIndex_();
+  var subjects = [];
+  if (action === "append" && body.row) subjects.push(body.row.d4);
+  if (action === "appendMany" && body.rows) {
+    for (var i = 0; i < body.rows.length; i++) subjects.push(body.rows[i].d4);
+  }
+  if (action === "upsertRow" && body.row) {
+    subjects.push(body.row.d4);
+    var existingU = rsFindRowById_(tabName, body.row.id);
+    if (existingU) subjects.push(existingU.d4);   // capture defence
+  }
+  if (action === "deleteRowById") {
+    var existingD = rsFindRowById_(tabName, body.id);
+    // A missing row is not a scope failure — let the normal delete path report it.
+    if (existingD) subjects.push(existingD.d4);
+  }
+
+  for (var j = 0; j < subjects.length; j++) {
+    if (!rsPersonInScope_(scope, subjects[j], idx)) {
+      return { error: "Out of scope for that platoon.", code: 403 };
+    }
+  }
+  return null;
+}
+
+// MSK has no `id` column (schema: timestamp | d4 | …), so an id lookup there
+// simply finds nothing and the incoming row's own d4 is the only subject — which
+// is correct, because the frontend addresses MSK rows by timestamp, not id.
+function rsFindRowById_(tabName, id) {
+  var rows = readTab(tabName);
+  if (!rows || !rows.length || rows.error) return null;
+  var target = String(id == null ? "" : id).trim();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].id == null ? "" : rows[i].id).trim() === target) return rows[i];
+  }
+  return null;
+}
+
 // ── Login + failed-attempt throttling ────────────────────
 
 function handleLogin(body) {
@@ -1212,6 +1279,12 @@ function routeAuthedPost(action, tab, body, ctx) {
       return { error: "Duty planning is restricted to duty planners.", code: 403 };
     }
   }
+
+  // Report-sick platoon scope (spec §1.5). Sits with the duty gate above for the
+  // same reason: canWrite has already passed, and this restricts a subset of tabs
+  // further. Reads are gated separately, in doGet/readAllTabs.
+  var rsGuard = rsGuardWrite_(tab, action, body, ctx);
+  if (rsGuard) return rsGuard;
 
   // Mass-deletion safety net (Misc B1): commanders are capped at N single-row
   // deletes per rolling hour (default 30, Config key `commanderDeleteCap`).
