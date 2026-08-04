@@ -586,9 +586,11 @@ function paradeClearPerson(d4) {
 // parade dates) while the classifier reads the person Present on/after
 // bookInDate (bookedInBy). Pending Medical has no range to preserve, so it still
 // resolves to NIL. Active Leave (AL/OIL or OTHERS-from-leave) is booked in the
-// same way. Same-day out-of-camp Appointments are single-day events with no
-// range to keep, so they still resolve. Mutated rows are appended to `changed`
-// as [tab, row]. Only reached from Mark-Present (paradeClearPerson) now.
+// same way. A same-day Medical Appointment (type MA) is booked in on its VISIT
+// DATE rather than on status activity — see the comment in the loop for why the
+// status guards can never reach one. Legacy standalone Appointments rows have no
+// range to keep, so they still resolve outright. Mutated rows are appended to
+// `changed` as [tab, row]. Only reached from Mark-Present (paradeClearPerson).
 //
 // IN-CAMP STATUSES ARE LEFT ALONE. Booking a person in says "they are back in
 // camp", which an LD / RIB / Excuse-* never contradicted — they were in camp the
@@ -601,17 +603,33 @@ function paradeClearPerson(d4) {
 function paradeEndActiveContributors(d4, changed) {
   const iso = paradeCurrentDateISO();
   (STATE.medical || []).forEach(m => {
-    if (m.d4 !== d4 || m.status === "NIL") return;
-    if (!medStatusActive(m, iso)) return;
-    // Pending has no date range → resolve to NIL. Away records keep their dates
-    // and are simply marked booked-in from the parade date: MC and Warded, plus
-    // type MA — an appointment is a discrete event whose own classifier branch
-    // still honours bookInDate, so book-in legitimately closes it. Everything
-    // else reaching here is an in-camp status and is left untouched.
-    if (m.status === "Pending") m.status = "NIL";
-    else if (m.status === "MC" || m.status === "Warded" || m.type === "MA") m.bookInDate = isoToDisplayDate(iso);
-    else return;
-    changed.push(["Medical", m]);
+    if (m.d4 !== d4) return;
+    // A type-MA appointment is DATE-driven, not status-driven, so it is tested
+    // on its own terms — exactly the terms its classifier branch reads it on
+    // (§8: type MA + visit date == the parade date, status never consulted).
+    // It cannot ride the status guards below: a real appointment is logged with
+    // status NIL (the MO issued nothing) or Pending and carries no end date, so
+    // medStatusActive is false for it and the two guards dropped the row before
+    // the old `|| m.type === "MA"` stamp could ever run. That made the stamp
+    // dead for every appointment that wasn't ALSO an active MC — the grid
+    // offered "→ Present" on an out-of-camp MA and choosing it did nothing.
+    const maToday = m.type === "MA" && displayDateToISO(m.date) === iso;
+    // Away records keep their dates and are simply marked booked-in from the
+    // parade date; Pending has no range to preserve so it resolves to NIL.
+    // Everything else reaching here is an in-camp status and is left untouched.
+    const active = m.status !== "NIL" && medStatusActive(m, iso);
+    let touched = false;
+    // bookInDate is immutable once stamped (PR #65) — an already-booked-in MA is
+    // also already off the grid, so there is nothing to re-stamp or re-push.
+    if (maToday && !m.bookInDate) { m.bookInDate = isoToDisplayDate(iso); touched = true; }
+    if (active) {
+      // Both halves can fire on one row: an appointment logged as Pending has to
+      // resolve AND book in, or the date-driven MA branch keeps listing it and
+      // the pill snaps straight back after the commander clicks Present.
+      if (m.status === "Pending") { m.status = "NIL"; touched = true; }
+      else if (m.status === "MC" || m.status === "Warded") { m.bookInDate = isoToDisplayDate(iso); touched = true; }
+    }
+    if (touched) changed.push(["Medical", m]);
   });
   (STATE.leave || []).forEach(l => {
     if (l.d4 !== d4) return;
