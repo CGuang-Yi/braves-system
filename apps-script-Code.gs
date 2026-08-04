@@ -663,11 +663,18 @@ var AUDIT_READALL_MAX_ROWS = 500;
 // Apps Script's execution limits, on their CPU not ours — and each round is a
 // separate Utilities.* bridge call, far more expensive than a native HMAC, so
 // the usable ceiling here is well below the 600k+ you would pick on an ordinary
-// server. 10k lands around a second per login on a typical project.
+// server.
 // **Run bravesBenchmarkKdf() in the Apps Script editor after deploying** and tune
 // this to taste: the count is stored inside each hash, so raising or lowering it
 // invalidates nothing.
-var PBKDF2_ITERATIONS = 10000;
+//
+// MEASURED on this project (2026-08-04, bravesBenchmarkKdf): ~1.67 ms per
+// iteration — 10k took 16,650 ms per login. That is ~16x slower than the "about
+// a second at 10k" this comment used to guess, because each round is a separate
+// Utilities.* bridge call rather than a native HMAC. Do not re-derive the guess;
+// re-run the benchmark if the project moves. 2000 buys ~3.3 s per login, which
+// is the accepted ceiling here given how rarely people log in.
+var PBKDF2_ITERATIONS = 2000;
 var PBKDF2_PREFIX = "pbkdf2$sha256$";   // pbkdf2$sha256$<iters>$<hex>
 
 // PBKDF2 with dkLen == hLen, i.e. exactly one block (T_1), which is all we need
