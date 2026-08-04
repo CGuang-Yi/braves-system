@@ -1,7 +1,7 @@
 // Backend tests for SYNC_PERF_IMPROVEMENTS_SPEC.md §3 items P2-2/P2-3/P2-4.
 // Runs the REAL apps-script-Code.gs against the in-memory mocks (test/harness.js).
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend, VALID_TOKEN } = require("./harness");
+const { loadBackend, readVia, VALID_TOKEN } = require("./harness");
 
 const AUDIT_HEADERS = ["timestamp", "email", "personId", "role", "action", "target", "detail", "tokenPrefix"];
 
@@ -49,7 +49,7 @@ module.exports = async function run() {
     const b = loadBackend();
     b.db.seed("Medical", ["id", "reason"], []);
     post(b, { action: "upsertRow", tab: "Medical", row: { id: 1, reason: "a" } }); // bumps Medical
-    const rc = JSON.parse(b.doGet({ parameter: { action: "revCheck", auth: VALID_TOKEN } }).getContent());
+    const rc = readVia(b, { action: "revCheck", auth: VALID_TOKEN });
     ok(rc.ok && rc.revs, "revCheck shape preserved");
     eq(rc.revs.Medical, 2, "changed tab rev reflected");
     eq(rc.revs.IPPT, 1, "lazily-seeded tab still reports 1 in the response");
@@ -163,7 +163,7 @@ module.exports = async function run() {
   await test("admin readAll returns exactly the newest AUDIT_READALL_MAX_ROWS rows, order preserved", () => {
     const b = loadBackend();
     seedBigAuditLog(b, 520);
-    const all = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: VALID_TOKEN } }).getContent());
+    const all = readVia(b, { action: "readAll", auth: VALID_TOKEN });
     eq(all.auditLog.length, b.AUDIT_READALL_MAX_ROWS, "capped to the constant");
     eq(all.auditLog.length, 500, "the constant is 500 per spec §7 Q1");
     // 520 rows (act0..act519), keep the newest 500 → act20..act519, in the
@@ -176,7 +176,7 @@ module.exports = async function run() {
   await test("a small AuditLog (< cap) returns all rows unchanged", () => {
     const b = loadBackend();
     seedBigAuditLog(b, 10);
-    const all = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: VALID_TOKEN } }).getContent());
+    const all = readVia(b, { action: "readAll", auth: VALID_TOKEN });
     eq(all.auditLog.length, 10, "all 10 rows returned");
     eq(all.auditLog[0].action, "act0");
     eq(all.auditLog[9].action, "act9");
@@ -189,7 +189,7 @@ module.exports = async function run() {
     b.db.setProp("auth:" + token, JSON.stringify({
       email: "viewer@example.com", personId: "0099", role: "viewer", issuedAt: new Date().toISOString()
     }));
-    const all = JSON.parse(b.doGet({ parameter: { action: "readAll", auth: token } }).getContent());
+    const all = readVia(b, { action: "readAll", auth: token });
     ok(!("auditLog" in all), "non-admin payload carries no auditLog field");
   });
 

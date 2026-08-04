@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-04T22:34:55.678Z",
-  "commit": "04a045e",
+  "generatedAt": "2026-08-04T22:57:32.502Z",
+  "commit": "57f2408",
   "thresholds": {
     "maxFunctionLines": 100,
     "fanInTop": 25
@@ -38,7 +38,7 @@
     "js/sick-history-import.js": "3ff53b4a89cc298357748f6dee01b95ff39f27296c95dce483114ef779a56f70",
     "js/state.js": "79a01a6467f624136b82b4fbb3cb85cb5cc025ea784ba8b09d7e977ec8a96121",
     "js/sync.js": "46cce47b4c21d75744772d9da1235376b151a128226a16c84fee212690a4a943",
-    "apps-script-Code.gs": "206cd6f910fadb881f5df11f642e7ad6acd9ddc7379c5fe7f00846c04ae0eda2"
+    "apps-script-Code.gs": "cb6b03db631c53efa3e62a73c528909e56a0994f906f4e832dbb1eccd6199132"
   },
   "files": [
     {
@@ -8831,7 +8831,7 @@
     },
     {
       "file": "apps-script-Code.gs",
-      "lines": 4102,
+      "lines": 4101,
       "declCount": 214,
       "callsInto": [
         "js/api.js",
@@ -8861,1492 +8861,1492 @@
         {
           "name": "doGet",
           "kind": "function",
-          "line": 265,
-          "endLine": 302,
-          "length": 38
+          "line": 288,
+          "endLine": 303,
+          "length": 16
         },
         {
           "name": "routeRead",
           "kind": "function",
-          "line": 317,
-          "endLine": 382,
+          "line": 316,
+          "endLine": 381,
           "length": 66
         },
         {
           "name": "isReadAction",
           "kind": "function",
-          "line": 387,
-          "endLine": 390,
+          "line": 386,
+          "endLine": 389,
           "length": 4
         },
         {
           "name": "doPost",
           "kind": "function",
-          "line": 392,
-          "endLine": 425,
+          "line": 391,
+          "endLine": 424,
           "length": 34
         },
         {
           "name": "jsonResponse",
           "kind": "function",
-          "line": 427,
-          "endLine": 431,
+          "line": 426,
+          "endLine": 430,
           "length": 5
         },
         {
           "name": "setAnthropicKey",
           "kind": "function",
-          "line": 440,
-          "endLine": 447,
+          "line": 439,
+          "endLine": 446,
           "length": 8
         },
         {
           "name": "analyzePhotoHelper",
           "kind": "function",
-          "line": 455,
-          "endLine": 546,
+          "line": 454,
+          "endLine": 545,
           "length": 92
         },
         {
           "name": "sendEmailHelper",
           "kind": "function",
-          "line": 552,
-          "endLine": 585,
+          "line": 551,
+          "endLine": 584,
           "length": 34
         },
         {
           "name": "bulkInviteStatus",
           "kind": "function",
-          "line": 599,
-          "endLine": 615,
+          "line": 598,
+          "endLine": 614,
           "length": 17
         },
         {
           "name": "listInvites",
           "kind": "function",
-          "line": 617,
-          "endLine": 627,
+          "line": 616,
+          "endLine": 626,
           "length": 11
         },
         {
           "name": "listAuthTokens",
           "kind": "function",
-          "line": 629,
-          "endLine": 639,
+          "line": 628,
+          "endLine": 638,
           "length": 11
         },
         {
           "name": "revokeAuthToken",
           "kind": "function",
-          "line": 641,
-          "endLine": 644,
+          "line": 640,
+          "endLine": 643,
           "length": 4
         },
         {
           "name": "revokeInvite",
           "kind": "function",
-          "line": 646,
-          "endLine": 649,
+          "line": 645,
+          "endLine": 648,
           "length": 4
         },
         {
           "name": "revokeAllAuthTokens",
           "kind": "function",
-          "line": 653,
-          "endLine": 664,
+          "line": 652,
+          "endLine": 663,
           "length": 12
         },
         {
           "name": "SESSION_TTL_MS",
+          "kind": "var",
+          "line": 693,
+          "endLine": 693,
+          "length": 1
+        },
+        {
+          "name": "LOCKOUT_THRESHOLD",
           "kind": "var",
           "line": 694,
           "endLine": 694,
           "length": 1
         },
         {
-          "name": "LOCKOUT_THRESHOLD",
+          "name": "LOCKOUT_WINDOW_MS",
           "kind": "var",
           "line": 695,
           "endLine": 695,
           "length": 1
         },
         {
-          "name": "LOCKOUT_WINDOW_MS",
-          "kind": "var",
-          "line": 696,
-          "endLine": 696,
-          "length": 1
-        },
-        {
           "name": "AUDIT_READALL_MAX_ROWS",
           "kind": "var",
-          "line": 704,
-          "endLine": 704,
+          "line": 703,
+          "endLine": 703,
           "length": 1
         },
         {
           "name": "PBKDF2_ITERATIONS",
+          "kind": "var",
+          "line": 733,
+          "endLine": 733,
+          "length": 1
+        },
+        {
+          "name": "PBKDF2_PREFIX",
           "kind": "var",
           "line": 734,
           "endLine": 734,
           "length": 1
         },
         {
-          "name": "PBKDF2_PREFIX",
-          "kind": "var",
-          "line": 735,
-          "endLine": 735,
-          "length": 1
-        },
-        {
           "name": "pbkdf2Sha256_",
           "kind": "function",
-          "line": 742,
-          "endLine": 753,
+          "line": 741,
+          "endLine": 752,
           "length": 12
         },
         {
           "name": "hashPasswordLegacySha256_",
           "kind": "function",
-          "line": 757,
-          "endLine": 761,
+          "line": 756,
+          "endLine": 760,
           "length": 5
         },
         {
           "name": "hashPassword",
           "kind": "function",
-          "line": 763,
-          "endLine": 765,
+          "line": 762,
+          "endLine": 764,
           "length": 3
         },
         {
           "name": "verifyPassword",
           "kind": "function",
-          "line": 771,
-          "endLine": 780,
+          "line": 770,
+          "endLine": 779,
           "length": 10
         },
         {
           "name": "passwordHashNeedsUpgrade",
           "kind": "function",
-          "line": 785,
-          "endLine": 789,
+          "line": 784,
+          "endLine": 788,
           "length": 5
         },
         {
           "name": "bravesBenchmarkKdf",
           "kind": "function",
-          "line": 793,
-          "endLine": 803,
+          "line": 792,
+          "endLine": 802,
           "length": 11
         },
         {
           "name": "generateSalt",
           "kind": "function",
-          "line": 805,
-          "endLine": 819,
+          "line": 804,
+          "endLine": 818,
           "length": 15
         },
         {
           "name": "findAccountByEmail",
           "kind": "function",
-          "line": 810,
-          "endLine": 819,
+          "line": 809,
+          "endLine": 818,
           "length": 10
         },
         {
           "name": "getAuthContext",
           "kind": "function",
-          "line": 823,
-          "endLine": 831,
+          "line": 822,
+          "endLine": 830,
           "length": 9
         },
         {
           "name": "isTokenExpired",
           "kind": "function",
-          "line": 833,
-          "endLine": 836,
+          "line": 832,
+          "endLine": 835,
           "length": 4
         },
         {
           "name": "canWrite",
           "kind": "function",
-          "line": 838,
-          "endLine": 838,
+          "line": 837,
+          "endLine": 837,
           "length": 1
         },
         {
           "name": "isAdmin",
           "kind": "function",
-          "line": 839,
-          "endLine": 853,
+          "line": 838,
+          "endLine": 852,
           "length": 15
         },
         {
           "name": "parseCaps",
           "kind": "function",
-          "line": 849,
-          "endLine": 853,
+          "line": 848,
+          "endLine": 852,
           "length": 5
         },
         {
           "name": "hasCap",
           "kind": "function",
-          "line": 854,
-          "endLine": 858,
+          "line": 853,
+          "endLine": 857,
           "length": 5
         },
         {
           "name": "RS_SCOPED_TABS",
+          "kind": "var",
+          "line": 872,
+          "endLine": 872,
+          "length": 1
+        },
+        {
+          "name": "RS_PLT_CAP_PREFIX",
           "kind": "var",
           "line": 873,
           "endLine": 873,
           "length": 1
         },
         {
-          "name": "RS_PLT_CAP_PREFIX",
+          "name": "RS_COMPANY_CAP",
           "kind": "var",
           "line": 874,
           "endLine": 874,
           "length": 1
         },
         {
-          "name": "RS_COMPANY_CAP",
-          "kind": "var",
-          "line": 875,
-          "endLine": 875,
-          "length": 1
-        },
-        {
           "name": "rsScopeOf_",
           "kind": "function",
-          "line": 877,
-          "endLine": 898,
+          "line": 876,
+          "endLine": 897,
           "length": 22
         },
         {
           "name": "rsScopeKey_",
           "kind": "function",
-          "line": 904,
-          "endLine": 911,
+          "line": 903,
+          "endLine": 910,
           "length": 8
         },
         {
           "name": "rsPlatoonIndex_",
           "kind": "function",
-          "line": 917,
-          "endLine": 926,
+          "line": 916,
+          "endLine": 925,
           "length": 10
         },
         {
           "name": "rsPersonInScope_",
           "kind": "function",
-          "line": 928,
-          "endLine": 933,
+          "line": 927,
+          "endLine": 932,
           "length": 6
         },
         {
           "name": "RS_GHOST_TAIL_DAYS",
           "kind": "var",
-          "line": 954,
-          "endLine": 954,
+          "line": 953,
+          "endLine": 953,
           "length": 1
         },
         {
           "name": "rsRowIsOperational_",
           "kind": "function",
-          "line": 956,
-          "endLine": 970,
+          "line": 955,
+          "endLine": 969,
           "length": 15
         },
         {
           "name": "rsApplyReadScope_",
           "kind": "function",
-          "line": 978,
-          "endLine": 999,
+          "line": 977,
+          "endLine": 998,
           "length": 22
         },
         {
           "name": "rsGuardWrite_",
           "kind": "function",
-          "line": 1015,
-          "endLine": 1053,
+          "line": 1014,
+          "endLine": 1052,
           "length": 39
         },
         {
           "name": "rsFindRowById_",
           "kind": "function",
-          "line": 1058,
-          "endLine": 1066,
+          "line": 1057,
+          "endLine": 1065,
           "length": 9
         },
         {
           "name": "handleLogin",
           "kind": "function",
-          "line": 1070,
-          "endLine": 1115,
+          "line": 1069,
+          "endLine": 1114,
           "length": 46
         },
         {
           "name": "logFailedAttempt",
           "kind": "function",
-          "line": 1117,
-          "endLine": 1130,
+          "line": 1116,
+          "endLine": 1129,
           "length": 14
         },
         {
           "name": "isLockedOut",
           "kind": "function",
-          "line": 1132,
-          "endLine": 1138,
+          "line": 1131,
+          "endLine": 1137,
           "length": 7
         },
         {
           "name": "clearFailedAttempts",
           "kind": "function",
-          "line": 1140,
-          "endLine": 1142,
+          "line": 1139,
+          "endLine": 1141,
           "length": 3
         },
         {
           "name": "REV_TABS",
           "kind": "var",
-          "line": 1153,
-          "endLine": 1155,
+          "line": 1152,
+          "endLine": 1154,
           "length": 3
         },
         {
           "name": "getRev",
           "kind": "function",
-          "line": 1157,
-          "endLine": 1162,
+          "line": 1156,
+          "endLine": 1161,
           "length": 6
         },
         {
           "name": "bumpRev",
           "kind": "function",
-          "line": 1164,
-          "endLine": 1169,
+          "line": 1163,
+          "endLine": 1168,
           "length": 6
         },
         {
           "name": "getAllRevs",
           "kind": "function",
-          "line": 1178,
-          "endLine": 1186,
+          "line": 1177,
+          "endLine": 1185,
           "length": 9
         },
         {
           "name": "initAllRevs",
           "kind": "function",
-          "line": 1189,
-          "endLine": 1192,
+          "line": 1188,
+          "endLine": 1191,
           "length": 4
         },
         {
           "name": "getDataLock",
           "kind": "function",
-          "line": 1199,
-          "endLine": 1202,
+          "line": 1198,
+          "endLine": 1201,
           "length": 4
         },
         {
           "name": "withRevLock",
           "kind": "function",
-          "line": 1211,
-          "endLine": 1230,
+          "line": 1210,
+          "endLine": 1229,
           "length": 20
         },
         {
           "name": "onEditBumpRev",
           "kind": "function",
-          "line": 1241,
-          "endLine": 1253,
+          "line": 1240,
+          "endLine": 1252,
           "length": 13
         },
         {
           "name": "installEditTrigger",
           "kind": "function",
-          "line": 1257,
-          "endLine": 1267,
+          "line": 1256,
+          "endLine": 1266,
           "length": 11
         },
         {
           "name": "routeAuthedPost",
           "kind": "function",
-          "line": 1269,
-          "endLine": 1384,
+          "line": 1268,
+          "endLine": 1383,
           "length": 116
         },
         {
           "name": "auditActionForTab",
           "kind": "function",
-          "line": 1386,
-          "endLine": 1392,
+          "line": 1385,
+          "endLine": 1391,
           "length": 7
         },
         {
           "name": "handleLogout",
           "kind": "function",
-          "line": 1394,
-          "endLine": 1402,
+          "line": 1393,
+          "endLine": 1401,
           "length": 9
         },
         {
           "name": "handleChangePassword",
           "kind": "function",
-          "line": 1406,
-          "endLine": 1420,
+          "line": 1405,
+          "endLine": 1419,
           "length": 15
         },
         {
           "name": "handleAdminResetPassword",
           "kind": "function",
-          "line": 1422,
-          "endLine": 1433,
+          "line": 1421,
+          "endLine": 1432,
           "length": 12
         },
         {
           "name": "handleSetAccountCaps",
           "kind": "function",
-          "line": 1442,
-          "endLine": 1458,
+          "line": 1441,
+          "endLine": 1457,
           "length": 17
         },
         {
           "name": "KNOWN_CAPS",
           "kind": "var",
-          "line": 1464,
-          "endLine": 1464,
+          "line": 1463,
+          "endLine": 1463,
           "length": 1
         },
         {
           "name": "rsCapIsKnown_",
           "kind": "function",
-          "line": 1466,
-          "endLine": 1471,
+          "line": 1465,
+          "endLine": 1470,
           "length": 6
         },
         {
           "name": "writeAccountCaps",
           "kind": "function",
-          "line": 1473,
-          "endLine": 1489,
+          "line": 1472,
+          "endLine": 1488,
           "length": 17
         },
         {
           "name": "updateAccountPassword",
           "kind": "function",
-          "line": 1492,
-          "endLine": 1508,
+          "line": 1491,
+          "endLine": 1507,
           "length": 17
         },
         {
           "name": "handleListAccounts",
           "kind": "function",
-          "line": 1512,
-          "endLine": 1522,
+          "line": 1511,
+          "endLine": 1521,
           "length": 11
         },
         {
           "name": "handleAddAccount",
           "kind": "function",
-          "line": 1524,
-          "endLine": 1548,
+          "line": 1523,
+          "endLine": 1547,
           "length": 25
         },
         {
           "name": "handleRemoveAccount",
           "kind": "function",
-          "line": 1550,
-          "endLine": 1561,
+          "line": 1549,
+          "endLine": 1560,
           "length": 12
         },
         {
           "name": "removeAccountRow",
           "kind": "function",
-          "line": 1563,
-          "endLine": 1574,
+          "line": 1562,
+          "endLine": 1573,
           "length": 12
         },
         {
           "name": "rosterHasId",
           "kind": "function",
-          "line": 1579,
-          "endLine": 1588,
+          "line": 1578,
+          "endLine": 1587,
           "length": 10
         },
         {
           "name": "handleListTokens",
           "kind": "function",
-          "line": 1592,
-          "endLine": 1610,
+          "line": 1591,
+          "endLine": 1609,
           "length": 19
         },
         {
           "name": "handleRevokeToken",
           "kind": "function",
-          "line": 1612,
-          "endLine": 1623,
+          "line": 1611,
+          "endLine": 1622,
           "length": 12
         },
         {
           "name": "handleRevokeAllForEmail",
           "kind": "function",
-          "line": 1625,
-          "endLine": 1636,
+          "line": 1624,
+          "endLine": 1635,
           "length": 12
         },
         {
           "name": "handleRevokeAllTokens",
           "kind": "function",
-          "line": 1638,
-          "endLine": 1649,
+          "line": 1637,
+          "endLine": 1648,
           "length": 12
         },
         {
           "name": "revokeAllTokensForEmail",
           "kind": "function",
-          "line": 1651,
-          "endLine": 1663,
+          "line": 1650,
+          "endLine": 1662,
           "length": 13
         },
         {
           "name": "OFFLINE_GRANT_MAX_MS",
           "kind": "var",
-          "line": 1686,
-          "endLine": 1686,
+          "line": 1685,
+          "endLine": 1685,
           "length": 1
         },
         {
           "name": "offlineGrantKey_",
           "kind": "function",
-          "line": 1688,
-          "endLine": 1714,
+          "line": 1687,
+          "endLine": 1713,
           "length": 27
         },
         {
           "name": "handleRegisterOfflineGrant",
           "kind": "function",
-          "line": 1693,
-          "endLine": 1714,
+          "line": 1692,
+          "endLine": 1713,
           "length": 22
         },
         {
           "name": "handleCheckOfflineGrant",
           "kind": "function",
-          "line": 1718,
-          "endLine": 1729,
+          "line": 1717,
+          "endLine": 1728,
           "length": 12
         },
         {
           "name": "handleRevokeOfflineGrant",
           "kind": "function",
-          "line": 1733,
-          "endLine": 1755,
+          "line": 1732,
+          "endLine": 1754,
           "length": 23
         },
         {
           "name": "handleListOfflineGrants",
           "kind": "function",
-          "line": 1761,
-          "endLine": 1784,
+          "line": 1760,
+          "endLine": 1783,
           "length": 24
         },
         {
           "name": "writeAuditLog",
           "kind": "function",
-          "line": 1801,
-          "endLine": 1820,
+          "line": 1800,
+          "endLine": 1819,
           "length": 20
         },
         {
           "name": "getEmailInfoHelper",
           "kind": "function",
-          "line": 1824,
-          "endLine": 1832,
+          "line": 1823,
+          "endLine": 1831,
           "length": 9
         },
         {
           "name": "setupAuthTabs",
           "kind": "function",
-          "line": 1838,
-          "endLine": 1843,
+          "line": 1837,
+          "endLine": 1842,
           "length": 6
         },
         {
           "name": "ensureTabWithHeaders_",
           "kind": "function",
-          "line": 1845,
-          "endLine": 1863,
+          "line": 1844,
+          "endLine": 1862,
           "length": 19
         },
         {
           "name": "bravesMigrateMrTiming",
           "kind": "function",
-          "line": 1886,
-          "endLine": 1923,
+          "line": 1885,
+          "endLine": 1922,
           "length": 38
         },
         {
           "name": "bravesMigrateSchema",
           "kind": "function",
-          "line": 1946,
-          "endLine": 2005,
+          "line": 1945,
+          "endLine": 2004,
           "length": 60
         },
         {
           "name": "bravesBackfillLeaveInCamp",
           "kind": "function",
-          "line": 2019,
-          "endLine": 2045,
+          "line": 2018,
+          "endLine": 2044,
           "length": 27
         },
         {
           "name": "bravesSeedConfig_",
           "kind": "function",
-          "line": 2050,
-          "endLine": 2075,
+          "line": 2049,
+          "endLine": 2074,
           "length": 26
         },
         {
           "name": "seedFirstAdmin",
           "kind": "function",
-          "line": 2080,
-          "endLine": 2091,
+          "line": 2079,
+          "endLine": 2090,
           "length": 12
         },
         {
           "name": "createAccount",
           "kind": "function",
-          "line": 2095,
-          "endLine": 2107,
+          "line": 2094,
+          "endLine": 2106,
           "length": 13
         },
         {
           "name": "getTabNames",
           "kind": "function",
-          "line": 2111,
-          "endLine": 2114,
+          "line": 2110,
+          "endLine": 2113,
           "length": 4
         },
         {
           "name": "readTab",
           "kind": "function",
-          "line": 2116,
-          "endLine": 2154,
+          "line": 2115,
+          "endLine": 2153,
           "length": 39
         },
         {
           "name": "readTabTail",
           "kind": "function",
-          "line": 2164,
-          "endLine": 2203,
+          "line": 2163,
+          "endLine": 2202,
           "length": 40
         },
         {
           "name": "readAllTabs",
           "kind": "function",
-          "line": 2205,
-          "endLine": 2296,
+          "line": 2204,
+          "endLine": 2295,
           "length": 92
         },
         {
           "name": "WRITE_TEXT_COLS_BY_TAB",
           "kind": "var",
-          "line": 2332,
-          "endLine": 2332,
+          "line": 2331,
+          "endLine": 2331,
           "length": 1
         },
         {
           "name": "KEY_ALIASES_BY_TAB",
           "kind": "var",
-          "line": 2340,
-          "endLine": 2340,
+          "line": 2339,
+          "endLine": 2339,
           "length": 1
         },
         {
           "name": "resolveKeyCol_",
           "kind": "function",
-          "line": 2347,
-          "endLine": 2353,
+          "line": 2346,
+          "endLine": 2352,
           "length": 7
         },
         {
           "name": "keyMatches_",
           "kind": "function",
-          "line": 2359,
-          "endLine": 2362,
+          "line": 2358,
+          "endLine": 2361,
           "length": 4
         },
         {
           "name": "writeTab",
           "kind": "function",
-          "line": 2364,
-          "endLine": 2418,
+          "line": 2363,
+          "endLine": 2417,
           "length": 55
         },
         {
           "name": "ensureColumnsForKeys",
           "kind": "function",
-          "line": 2425,
-          "endLine": 2440,
+          "line": 2424,
+          "endLine": 2439,
           "length": 16
         },
         {
           "name": "forceTextColsForRange_",
           "kind": "function",
-          "line": 2453,
-          "endLine": 2460,
+          "line": 2452,
+          "endLine": 2459,
           "length": 8
         },
         {
           "name": "appendRow",
           "kind": "function",
-          "line": 2462,
-          "endLine": 2485,
+          "line": 2461,
+          "endLine": 2484,
           "length": 24
         },
         {
           "name": "appendMany",
           "kind": "function",
-          "line": 2487,
-          "endLine": 2516,
+          "line": 2486,
+          "endLine": 2515,
           "length": 30
         },
         {
           "name": "replaceConductRows",
           "kind": "function",
-          "line": 2529,
-          "endLine": 2638,
+          "line": 2528,
+          "endLine": 2637,
           "length": 110
         },
         {
           "name": "upsertRow",
           "kind": "function",
-          "line": 2646,
-          "endLine": 2710,
+          "line": 2645,
+          "endLine": 2709,
           "length": 65
         },
         {
           "name": "deleteRowById",
           "kind": "function",
-          "line": 2715,
-          "endLine": 2745,
+          "line": 2714,
+          "endLine": 2744,
           "length": 31
         },
         {
           "name": "rowCount",
           "kind": "function",
-          "line": 2750,
-          "endLine": 2756,
+          "line": 2749,
+          "endLine": 2755,
           "length": 7
         },
         {
           "name": "updateRow",
           "kind": "function",
-          "line": 2758,
-          "endLine": 2783,
+          "line": 2757,
+          "endLine": 2782,
           "length": 26
         },
         {
           "name": "deleteRow",
           "kind": "function",
-          "line": 2785,
-          "endLine": 2803,
+          "line": 2784,
+          "endLine": 2802,
           "length": 19
         },
         {
           "name": "STATE",
           "kind": "var",
-          "line": 2820,
-          "endLine": 2820,
+          "line": 2819,
+          "endLine": 2819,
           "length": 1
         },
         {
           "name": "DEFAULT_CONFIG",
           "kind": "const",
-          "line": 2822,
-          "endLine": 2840,
+          "line": 2821,
+          "endLine": 2839,
           "length": 19
         },
         {
           "name": "DEFAULT_CONFIG.companyName",
+          "kind": "method",
+          "line": 2822,
+          "endLine": 2822,
+          "length": 1
+        },
+        {
+          "name": "DEFAULT_CONFIG.companyPrefix",
           "kind": "method",
           "line": 2823,
           "endLine": 2823,
           "length": 1
         },
         {
-          "name": "DEFAULT_CONFIG.companyPrefix",
+          "name": "DEFAULT_CONFIG.companyCoyCode",
           "kind": "method",
           "line": 2824,
           "endLine": 2824,
           "length": 1
         },
         {
-          "name": "DEFAULT_CONFIG.companyCoyCode",
+          "name": "DEFAULT_CONFIG.unitCode",
           "kind": "method",
           "line": 2825,
           "endLine": 2825,
           "length": 1
         },
         {
-          "name": "DEFAULT_CONFIG.unitCode",
+          "name": "DEFAULT_CONFIG.hqLabel",
           "kind": "method",
           "line": 2826,
           "endLine": 2826,
           "length": 1
         },
         {
-          "name": "DEFAULT_CONFIG.hqLabel",
+          "name": "DEFAULT_CONFIG.defaultSickLocation",
           "kind": "method",
           "line": 2827,
           "endLine": 2827,
           "length": 1
         },
         {
-          "name": "DEFAULT_CONFIG.defaultSickLocation",
+          "name": "DEFAULT_CONFIG.polarCompanyName",
           "kind": "method",
           "line": 2828,
           "endLine": 2828,
           "length": 1
         },
         {
-          "name": "DEFAULT_CONFIG.polarCompanyName",
-          "kind": "method",
-          "line": 2829,
-          "endLine": 2829,
-          "length": 1
-        },
-        {
           "name": "DEFAULT_CONFIG.haEligibilitySource",
           "kind": "method",
-          "line": 2834,
-          "endLine": 2834,
+          "line": 2833,
+          "endLine": 2833,
           "length": 1
         },
         {
           "name": "DEFAULT_CONFIG.alOilLeaveTypes",
           "kind": "method",
-          "line": 2839,
-          "endLine": 2839,
+          "line": 2838,
+          "endLine": 2838,
           "length": 1
         },
         {
           "name": "configGet",
           "kind": "function",
-          "line": 2842,
-          "endLine": 2845,
+          "line": 2841,
+          "endLine": 2844,
           "length": 4
         },
         {
           "name": "todayISO",
           "kind": "function",
-          "line": 2847,
-          "endLine": 2851,
+          "line": 2846,
+          "endLine": 2850,
           "length": 5
         },
         {
           "name": "isoToDisplayDate",
           "kind": "function",
-          "line": 2853,
-          "endLine": 2859,
+          "line": 2852,
+          "endLine": 2858,
           "length": 7
         },
         {
           "name": "displayDateToISO",
           "kind": "function",
-          "line": 2861,
-          "endLine": 2871,
+          "line": 2860,
+          "endLine": 2870,
           "length": 11
         },
         {
           "name": "getPlt",
           "kind": "function",
-          "line": 2873,
-          "endLine": 2880,
+          "line": 2872,
+          "endLine": 2879,
           "length": 8
         },
         {
           "name": "getSect",
           "kind": "function",
-          "line": 2882,
-          "endLine": 2887,
+          "line": 2881,
+          "endLine": 2886,
           "length": 6
         },
         {
           "name": "medStatusActive",
           "kind": "function",
-          "line": 2889,
-          "endLine": 2898,
+          "line": 2888,
+          "endLine": 2897,
           "length": 10
         },
         {
           "name": "parseAppointment4D",
           "kind": "function",
-          "line": 2906,
-          "endLine": 2914,
+          "line": 2905,
+          "endLine": 2913,
           "length": 9
         },
         {
           "name": "fourDSortKey",
           "kind": "function",
-          "line": 2919,
-          "endLine": 2926,
+          "line": 2918,
+          "endLine": 2925,
           "length": 8
         },
         {
           "name": "personPlatoon",
           "kind": "function",
-          "line": 2928,
-          "endLine": 2938,
+          "line": 2927,
+          "endLine": 2937,
           "length": 11
         },
         {
           "name": "personSection",
           "kind": "function",
-          "line": 2940,
-          "endLine": 2946,
+          "line": 2939,
+          "endLine": 2945,
           "length": 7
         },
         {
           "name": "rankGroupOf",
           "kind": "function",
-          "line": 2948,
-          "endLine": 2963,
+          "line": 2947,
+          "endLine": 2962,
           "length": 16
         },
         {
           "name": "activePlatoons",
           "kind": "function",
-          "line": 2965,
-          "endLine": 2981,
+          "line": 2964,
+          "endLine": 2980,
           "length": 17
         },
         {
           "name": "classifyURTI",
           "kind": "function",
-          "line": 2983,
-          "endLine": 2988,
+          "line": 2982,
+          "endLine": 2987,
           "length": 6
         },
         {
           "name": "BP_BIG_SEP",
+          "kind": "const",
+          "line": 3014,
+          "endLine": 3014,
+          "length": 1
+        },
+        {
+          "name": "BP_EQ_SEP",
           "kind": "const",
           "line": 3015,
           "endLine": 3015,
           "length": 1
         },
         {
-          "name": "BP_EQ_SEP",
-          "kind": "const",
-          "line": 3016,
-          "endLine": 3016,
-          "length": 1
-        },
-        {
           "name": "BP_PLT_SECTION_SEPS",
           "kind": "const",
-          "line": 3018,
-          "endLine": 3018,
+          "line": 3017,
+          "endLine": 3017,
           "length": 1
         },
         {
           "name": "BP_SECTIONS",
           "kind": "const",
-          "line": 3021,
-          "endLine": 3021,
+          "line": 3020,
+          "endLine": 3020,
           "length": 1
         },
         {
           "name": "BP_SECTION_LABELS",
           "kind": "const",
-          "line": 3022,
-          "endLine": 3029,
+          "line": 3021,
+          "endLine": 3028,
           "length": 8
         },
         {
           "name": "BP_SECTION_LABELS.alOil",
+          "kind": "method",
+          "line": 3022,
+          "endLine": 3022,
+          "length": 1
+        },
+        {
+          "name": "BP_SECTION_LABELS.mr",
           "kind": "method",
           "line": 3023,
           "endLine": 3023,
           "length": 1
         },
         {
-          "name": "BP_SECTION_LABELS.mr",
+          "name": "BP_SECTION_LABELS.reportingSick",
           "kind": "method",
           "line": 3024,
           "endLine": 3024,
           "length": 1
         },
         {
-          "name": "BP_SECTION_LABELS.reportingSick",
+          "name": "BP_SECTION_LABELS.attC",
           "kind": "method",
           "line": 3025,
           "endLine": 3025,
           "length": 1
         },
         {
-          "name": "BP_SECTION_LABELS.attC",
+          "name": "BP_SECTION_LABELS.status",
           "kind": "method",
           "line": 3026,
           "endLine": 3026,
           "length": 1
         },
         {
-          "name": "BP_SECTION_LABELS.status",
+          "name": "BP_SECTION_LABELS.others",
           "kind": "method",
           "line": 3027,
           "endLine": 3027,
           "length": 1
         },
         {
-          "name": "BP_SECTION_LABELS.others",
-          "kind": "method",
-          "line": 3028,
-          "endLine": 3028,
-          "length": 1
-        },
-        {
           "name": "BP_ALOIL_TYPES_DEFAULT",
           "kind": "const",
-          "line": 3040,
-          "endLine": 3041,
+          "line": 3039,
+          "endLine": 3040,
           "length": 2
         },
         {
           "name": "bpAlOilTypeSet",
           "kind": "function",
-          "line": 3042,
-          "endLine": 3050,
+          "line": 3041,
+          "endLine": 3049,
           "length": 9
         },
         {
           "name": "bpIsAlOilType",
           "kind": "function",
-          "line": 3051,
-          "endLine": 3053,
+          "line": 3050,
+          "endLine": 3052,
           "length": 3
         },
         {
           "name": "bpDDMMYY",
           "kind": "function",
-          "line": 3058,
-          "endLine": 3063,
+          "line": 3057,
+          "endLine": 3062,
           "length": 6
         },
         {
           "name": "bp2",
           "kind": "function",
-          "line": 3064,
-          "endLine": 3076,
+          "line": 3063,
+          "endLine": 3075,
           "length": 13
         },
         {
           "name": "bpAddDaysISO",
           "kind": "function",
-          "line": 3069,
-          "endLine": 3076,
+          "line": 3068,
+          "endLine": 3075,
           "length": 8
         },
         {
           "name": "bpInclusiveDays",
           "kind": "function",
-          "line": 3079,
-          "endLine": 3085,
+          "line": 3078,
+          "endLine": 3084,
           "length": 7
         },
         {
           "name": "bpRange",
           "kind": "function",
-          "line": 3088,
-          "endLine": 3093,
+          "line": 3087,
+          "endLine": 3092,
           "length": 6
         },
         {
           "name": "bpDisplayRank",
           "kind": "function",
-          "line": 3109,
-          "endLine": 3113,
+          "line": 3108,
+          "endLine": 3112,
           "length": 5
         },
         {
           "name": "bravesParadeRN",
           "kind": "function",
-          "line": 3115,
-          "endLine": 3125,
+          "line": 3114,
+          "endLine": 3124,
           "length": 11
         },
         {
           "name": "sickRN",
           "kind": "function",
-          "line": 3135,
-          "endLine": 3137,
+          "line": 3134,
+          "endLine": 3136,
           "length": 3
         },
         {
           "name": "bpOthersNotInCamp",
           "kind": "function",
-          "line": 3143,
-          "endLine": 3149,
+          "line": 3142,
+          "endLine": 3148,
           "length": 7
         },
         {
           "name": "bpSupersedeSameType",
           "kind": "function",
-          "line": 3160,
-          "endLine": 3176,
+          "line": 3159,
+          "endLine": 3175,
           "length": 17
         },
         {
           "name": "bookedInBy",
           "kind": "function",
-          "line": 3178,
-          "endLine": 3181,
+          "line": 3177,
+          "endLine": 3180,
           "length": 4
         },
         {
           "name": "bpClassifyPerson",
           "kind": "function",
-          "line": 3187,
-          "endLine": 3451,
+          "line": 3186,
+          "endLine": 3450,
           "length": 265
         },
         {
           "name": "BP_PRIMARY_CHAIN",
           "kind": "const",
-          "line": 3457,
-          "endLine": 3460,
+          "line": 3456,
+          "endLine": 3459,
           "length": 4
         },
         {
           "name": "bpStripRN",
           "kind": "function",
-          "line": 3461,
-          "endLine": 3465,
+          "line": 3460,
+          "endLine": 3464,
           "length": 5
         },
         {
           "name": "bpPrimaryForDay",
           "kind": "function",
-          "line": 3466,
-          "endLine": 3474,
+          "line": 3465,
+          "endLine": 3473,
           "length": 9
         },
         {
           "name": "bpGridCell",
           "kind": "function",
-          "line": 3477,
-          "endLine": 3488,
+          "line": 3476,
+          "endLine": 3487,
           "length": 12
         },
         {
           "name": "BP_DEPARTED_STATUSES",
           "kind": "var",
-          "line": 3498,
-          "endLine": 3498,
+          "line": 3497,
+          "endLine": 3497,
           "length": 1
         },
         {
           "name": "bpIsActive",
           "kind": "function",
-          "line": 3499,
-          "endLine": 3502,
+          "line": 3498,
+          "endLine": 3501,
           "length": 4
         },
         {
           "name": "bpStrength",
           "kind": "function",
-          "line": 3504,
-          "endLine": 3516,
+          "line": 3503,
+          "endLine": 3515,
           "length": 13
         },
         {
           "name": "bpBuildBlock",
           "kind": "function",
-          "line": 3521,
-          "endLine": 3573,
+          "line": 3520,
+          "endLine": 3572,
           "length": 53
         },
         {
           "name": "generateBravesParadeState",
           "kind": "function",
-          "line": 3580,
-          "endLine": 3614,
+          "line": 3579,
+          "endLine": 3613,
           "length": 35
         },
         {
           "name": "bpTimeH",
           "kind": "function",
-          "line": 3629,
-          "endLine": 3631,
+          "line": 3628,
+          "endLine": 3630,
           "length": 3
         },
         {
           "name": "bpKV",
           "kind": "function",
-          "line": 3634,
-          "endLine": 3636,
+          "line": 3633,
+          "endLine": 3635,
           "length": 3
         },
         {
           "name": "bpSickReports",
           "kind": "function",
-          "line": 3638,
-          "endLine": 3642,
+          "line": 3637,
+          "endLine": 3641,
           "length": 5
         },
         {
           "name": "bpUrtiOf",
           "kind": "function",
-          "line": 3644,
-          "endLine": 3647,
+          "line": 3643,
+          "endLine": 3646,
           "length": 4
         },
         {
           "name": "bpSickFollowUp",
           "kind": "function",
-          "line": 3651,
-          "endLine": 3656,
+          "line": 3650,
+          "endLine": 3655,
           "length": 6
         },
         {
           "name": "bpSickEntryLines",
           "kind": "function",
-          "line": 3659,
-          "endLine": 3668,
+          "line": 3658,
+          "endLine": 3667,
           "length": 10
         },
         {
           "name": "bpSickUrtiBlocks",
           "kind": "function",
-          "line": 3671,
-          "endLine": 3684,
+          "line": 3670,
+          "endLine": 3683,
           "length": 14
         },
         {
           "name": "bpHasCoveringStatus",
           "kind": "function",
-          "line": 3693,
-          "endLine": 3700,
+          "line": 3692,
+          "endLine": 3699,
           "length": 8
         },
         {
           "name": "generateRSFormat",
           "kind": "function",
-          "line": 3702,
-          "endLine": 3708,
+          "line": 3701,
+          "endLine": 3707,
           "length": 7
         },
         {
           "name": "generateRSIPersonnel",
           "kind": "function",
-          "line": 3718,
-          "endLine": 3748,
+          "line": 3717,
+          "endLine": 3747,
           "length": 31
         },
         {
           "name": "BRAVES_PARADE_ARCHIVE_TAB",
+          "kind": "var",
+          "line": 3751,
+          "endLine": 3751,
+          "length": 1
+        },
+        {
+          "name": "BRAVES_SICK_ARCHIVE_TAB",
           "kind": "var",
           "line": 3752,
           "endLine": 3752,
           "length": 1
         },
         {
-          "name": "BRAVES_SICK_ARCHIVE_TAB",
-          "kind": "var",
-          "line": 3753,
-          "endLine": 3753,
-          "length": 1
-        },
-        {
           "name": "bravesArr_",
           "kind": "function",
-          "line": 3755,
-          "endLine": 3775,
+          "line": 3754,
+          "endLine": 3774,
           "length": 21
         },
         {
           "name": "bravesNormalizeConfig_",
           "kind": "function",
-          "line": 3762,
-          "endLine": 3775,
+          "line": 3761,
+          "endLine": 3774,
           "length": 14
         },
         {
           "name": "bravesPadD4_",
           "kind": "function",
-          "line": 3784,
-          "endLine": 3788,
+          "line": 3783,
+          "endLine": 3787,
           "length": 5
         },
         {
           "name": "bravesNormalizeRoster_",
           "kind": "function",
-          "line": 3789,
-          "endLine": 3811,
+          "line": 3788,
+          "endLine": 3810,
           "length": 23
         },
         {
           "name": "bravesNormalizeMedical_",
           "kind": "function",
-          "line": 3812,
-          "endLine": 3846,
+          "line": 3811,
+          "endLine": 3845,
           "length": 35
         },
         {
           "name": "bravesPadD4OnLayer_",
           "kind": "function",
-          "line": 3848,
-          "endLine": 3853,
+          "line": 3847,
+          "endLine": 3852,
           "length": 6
         },
         {
           "name": "bravesNormalizeLeave_",
           "kind": "function",
-          "line": 3856,
-          "endLine": 3861,
+          "line": 3855,
+          "endLine": 3860,
           "length": 6
         },
         {
           "name": "bravesLoadState_",
           "kind": "function",
-          "line": 3865,
-          "endLine": 3874,
+          "line": 3864,
+          "endLine": 3873,
           "length": 10
         },
         {
           "name": "bravesTodayISO_",
           "kind": "function",
-          "line": 3876,
-          "endLine": 3876,
+          "line": 3875,
+          "endLine": 3875,
           "length": 1
         },
         {
           "name": "bravesNowHHMM_",
           "kind": "function",
-          "line": 3877,
-          "endLine": 3880,
+          "line": 3876,
+          "endLine": 3879,
           "length": 4
         },
         {
           "name": "bravesSlotType_",
           "kind": "function",
-          "line": 3881,
-          "endLine": 3890,
+          "line": 3880,
+          "endLine": 3889,
           "length": 10
         },
         {
           "name": "bravesParseSlots_",
           "kind": "function",
-          "line": 3883,
-          "endLine": 3890,
+          "line": 3882,
+          "endLine": 3889,
           "length": 8
         },
         {
           "name": "BRAVES_LP_HOUR_",
           "kind": "var",
-          "line": 3899,
-          "endLine": 3899,
+          "line": 3898,
+          "endLine": 3898,
           "length": 1
         },
         {
           "name": "bravesParseParadeSlots_",
           "kind": "function",
-          "line": 3900,
-          "endLine": 3915,
+          "line": 3899,
+          "endLine": 3914,
           "length": 16
         },
         {
           "name": "bravesSickSlots_",
           "kind": "function",
-          "line": 3919,
-          "endLine": 3925,
+          "line": 3918,
+          "endLine": 3924,
           "length": 7
         },
         {
           "name": "bravesEnsureArchiveTabs_",
           "kind": "function",
-          "line": 3927,
-          "endLine": 3939,
+          "line": 3926,
+          "endLine": 3938,
           "length": 13
         },
         {
           "name": "bravesForceTextCols_",
           "kind": "function",
-          "line": 3942,
-          "endLine": 3953,
+          "line": 3941,
+          "endLine": 3952,
           "length": 12
         },
         {
           "name": "bravesAlreadyArchived_",
           "kind": "function",
-          "line": 3956,
-          "endLine": 3960,
+          "line": 3955,
+          "endLine": 3959,
           "length": 5
         },
         {
           "name": "bravesArchiveParade_",
           "kind": "function",
-          "line": 3962,
-          "endLine": 3969,
+          "line": 3961,
+          "endLine": 3968,
           "length": 8
         },
         {
           "name": "bravesArchiveParadeText_",
           "kind": "function",
-          "line": 3977,
-          "endLine": 3987,
+          "line": 3976,
+          "endLine": 3986,
           "length": 11
         },
         {
           "name": "bravesArchiveSick_",
           "kind": "function",
-          "line": 3988,
-          "endLine": 3995,
+          "line": 3987,
+          "endLine": 3994,
           "length": 8
         },
         {
           "name": "bravesDeleteCap_",
           "kind": "function",
-          "line": 4000,
-          "endLine": 4006,
+          "line": 3999,
+          "endLine": 4005,
           "length": 7
         },
         {
           "name": "bravesCheckDeleteRate_",
           "kind": "function",
-          "line": 4007,
-          "endLine": 4019,
+          "line": 4006,
+          "endLine": 4018,
           "length": 13
         },
         {
           "name": "bravesDeleteArchive",
           "kind": "function",
-          "line": 4024,
-          "endLine": 4042,
+          "line": 4023,
+          "endLine": 4041,
           "length": 19
         },
         {
           "name": "bravesArchiveNow",
           "kind": "function",
-          "line": 4047,
-          "endLine": 4074,
+          "line": 4046,
+          "endLine": 4073,
           "length": 28
         },
         {
           "name": "archivePoll",
           "kind": "function",
-          "line": 4078,
-          "endLine": 4090,
+          "line": 4077,
+          "endLine": 4089,
           "length": 13
         },
         {
           "name": "setupBravesArchive",
           "kind": "function",
-          "line": 4094,
-          "endLine": 4101,
+          "line": 4093,
+          "endLine": 4100,
           "length": 8
         }
       ]
@@ -11640,27 +11640,27 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1353
+          "line": 1352
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1539
+          "line": 1538
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1810
+          "line": 1809
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2085
+          "line": 2084
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2101
+          "line": 2100
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2462
+          "line": 2461
         }
       ],
       "stringRefs": [],
@@ -11682,11 +11682,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1356
+          "line": 1355
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2646
+          "line": 2645
         }
       ],
       "stringRefs": [],
@@ -11709,11 +11709,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1357
+          "line": 1356
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2715
+          "line": 2714
         }
       ],
       "stringRefs": [],
@@ -11732,11 +11732,11 @@
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1273
+          "line": 1272
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2750
+          "line": 2749
         }
       ],
       "stringRefs": [],
@@ -11763,7 +11763,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 580
+          "line": 579
         }
       ],
       "stringRefs": [],
@@ -11856,15 +11856,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2906
+          "line": 2905
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2934
+          "line": 2933
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2943
+          "line": 2942
         }
       ],
       "stringRefs": [],
@@ -11908,15 +11908,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2919
+          "line": 2918
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3533
+          "line": 3532
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3533
+          "line": 3532
         }
       ],
       "stringRefs": [],
@@ -12132,11 +12132,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3042
+          "line": 3041
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3052
+          "line": 3051
         }
       ],
       "stringRefs": [],
@@ -12162,15 +12162,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2040
+          "line": 2039
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3051
+          "line": 3050
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3260
+          "line": 3259
         }
       ],
       "stringRefs": [],
@@ -12225,43 +12225,43 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3058
+          "line": 3057
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3092
+          "line": 3091
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3092
+          "line": 3091
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3092
+          "line": 3091
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3092
+          "line": 3091
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3525
+          "line": 3524
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3663
+          "line": 3662
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3705
+          "line": 3704
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3733
+          "line": 3732
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3733
+          "line": 3732
         }
       ],
       "stringRefs": [],
@@ -12311,39 +12311,39 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3064
+          "line": 3063
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3540
+          "line": 3539
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3540
+          "line": 3539
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3564
+          "line": 3563
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3661
+          "line": 3660
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3679
+          "line": 3678
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3681
+          "line": 3680
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3734
+          "line": 3733
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3744
+          "line": 3743
         }
       ],
       "stringRefs": [],
@@ -12365,15 +12365,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 969
+          "line": 968
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3069
+          "line": 3068
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3205
+          "line": 3204
         }
       ],
       "stringRefs": [],
@@ -12411,23 +12411,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3079
+          "line": 3078
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3320
+          "line": 3319
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3346
+          "line": 3345
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3401
+          "line": 3400
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3654
+          "line": 3653
         }
       ],
       "stringRefs": [],
@@ -12466,27 +12466,27 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3088
+          "line": 3087
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3261
+          "line": 3260
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3267
+          "line": 3266
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3322
+          "line": 3321
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3348
+          "line": 3347
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3403
+          "line": 3402
         }
       ],
       "stringRefs": [],
@@ -12520,15 +12520,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3109
+          "line": 3108
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3122
+          "line": 3121
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3124
+          "line": 3123
         }
       ],
       "stringRefs": [],
@@ -12560,15 +12560,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3115
+          "line": 3114
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3136
+          "line": 3135
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3188
+          "line": 3187
         }
       ],
       "stringRefs": [],
@@ -12591,11 +12591,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3135
+          "line": 3134
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3662
+          "line": 3661
         }
       ],
       "stringRefs": [],
@@ -12617,11 +12617,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2040
+          "line": 2039
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3143
+          "line": 3142
         }
       ],
       "stringRefs": [],
@@ -12643,11 +12643,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3160
+          "line": 3159
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3438
+          "line": 3437
         }
       ],
       "stringRefs": [],
@@ -12677,15 +12677,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3178
+          "line": 3177
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3221
+          "line": 3220
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3394
+          "line": 3393
         }
       ],
       "stringRefs": [],
@@ -12740,23 +12740,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3187
+          "line": 3186
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3467
+          "line": 3466
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3478
+          "line": 3477
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3511
+          "line": 3510
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3535
+          "line": 3534
         }
       ],
       "stringRefs": [],
@@ -12824,19 +12824,19 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3447
+          "line": 3446
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3461
+          "line": 3460
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3470
+          "line": 3469
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3472
+          "line": 3471
         }
       ],
       "stringRefs": [],
@@ -12862,7 +12862,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3466
+          "line": 3465
         }
       ],
       "stringRefs": [],
@@ -12884,7 +12884,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3477
+          "line": 3476
         }
       ],
       "stringRefs": [],
@@ -12946,11 +12946,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3499
+          "line": 3498
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3534
+          "line": 3533
         }
       ],
       "stringRefs": [],
@@ -13002,11 +13002,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3504
+          "line": 3503
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3539
+          "line": 3538
         }
       ],
       "stringRefs": [],
@@ -13039,19 +13039,19 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3521
+          "line": 3520
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3589
+          "line": 3588
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3594
+          "line": 3593
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3610
+          "line": 3609
         }
       ],
       "stringRefs": [],
@@ -13089,11 +13089,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3580
+          "line": 3579
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3965
+          "line": 3964
         }
       ],
       "stringRefs": [],
@@ -13125,19 +13125,19 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3629
+          "line": 3628
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3705
+          "line": 3704
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3733
+          "line": 3732
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3733
+          "line": 3732
         }
       ],
       "stringRefs": [],
@@ -13179,7 +13179,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3634
+          "line": 3633
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3660
         },
         {
           "file": "apps-script-Code.gs",
@@ -13200,10 +13204,6 @@
         {
           "file": "apps-script-Code.gs",
           "line": 3665
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3666
         }
       ],
       "stringRefs": [],
@@ -13229,15 +13229,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3638
+          "line": 3637
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3703
+          "line": 3702
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3720
+          "line": 3719
         }
       ],
       "stringRefs": [],
@@ -13263,15 +13263,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3644
+          "line": 3643
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3671
         },
         {
           "file": "apps-script-Code.gs",
           "line": 3672
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3673
         }
       ],
       "stringRefs": [],
@@ -13293,11 +13293,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3651
+          "line": 3650
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3666
+          "line": 3665
         }
       ],
       "stringRefs": [],
@@ -13323,15 +13323,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3659
+          "line": 3658
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3680
+          "line": 3679
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3682
+          "line": 3681
         }
       ],
       "stringRefs": [],
@@ -13357,15 +13357,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3671
+          "line": 3670
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3706
+          "line": 3705
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3745
+          "line": 3744
         }
       ],
       "stringRefs": [],
@@ -13391,15 +13391,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3693
+          "line": 3692
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3704
+          "line": 3703
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3721
+          "line": 3720
         }
       ],
       "stringRefs": [],
@@ -13421,11 +13421,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3702
+          "line": 3701
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3991
+          "line": 3990
         }
       ],
       "stringRefs": [],
@@ -13447,7 +13447,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3718
+          "line": 3717
         }
       ],
       "stringRefs": [],
@@ -20963,15 +20963,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1245
+          "line": 1244
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2113
+          "line": 2112
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2292
+          "line": 2291
         }
       ],
       "stringRefs": [],
@@ -20996,11 +20996,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2873
+          "line": 2872
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2936
+          "line": 2935
         }
       ],
       "stringRefs": [],
@@ -21022,11 +21022,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2882
+          "line": 2881
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2945
+          "line": 2944
         }
       ],
       "stringRefs": [],
@@ -21724,23 +21724,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 922
+          "line": 921
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2928
+          "line": 2927
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2971
+          "line": 2970
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3584
+          "line": 3583
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3724
+          "line": 3723
         }
       ],
       "stringRefs": [],
@@ -21861,7 +21861,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2940
+          "line": 2939
         }
       ],
       "stringRefs": [],
@@ -21897,11 +21897,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2948
+          "line": 2947
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3509
+          "line": 3508
         }
       ],
       "stringRefs": [],
@@ -21985,15 +21985,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2965
+          "line": 2964
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3600
+          "line": 3599
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3736
+          "line": 3735
         }
       ],
       "stringRefs": [],
@@ -22084,11 +22084,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2983
+          "line": 2982
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3645
+          "line": 3644
         }
       ],
       "stringRefs": [],
@@ -23586,11 +23586,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2889
+          "line": 2888
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3310
+          "line": 3309
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3316
         },
         {
           "file": "apps-script-Code.gs",
@@ -23598,7 +23602,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3318
+          "line": 3342
         },
         {
           "file": "apps-script-Code.gs",
@@ -23606,11 +23610,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3344
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3352
+          "line": 3351
         }
       ],
       "stringRefs": [],
@@ -27761,15 +27761,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 990
+          "line": 989
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2847
+          "line": 2846
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2890
+          "line": 2889
         }
       ],
       "stringRefs": [],
@@ -27984,7 +27984,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2853
+          "line": 2852
         }
       ],
       "stringRefs": [],
@@ -28608,19 +28608,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 967
+          "line": 966
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2861
+          "line": 2860
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2892
+          "line": 2891
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2895
+          "line": 2894
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3079
         },
         {
           "file": "apps-script-Code.gs",
@@ -28628,7 +28632,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3081
+          "line": 3088
         },
         {
           "file": "apps-script-Code.gs",
@@ -28636,11 +28640,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3090
+          "line": 3178
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3179
+          "line": 3211
         },
         {
           "file": "apps-script-Code.gs",
@@ -28648,35 +28652,35 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3213
+          "line": 3244
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3245
+          "line": 3244
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3245
+          "line": 3258
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3259
+          "line": 3276
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3277
+          "line": 3318
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3319
+          "line": 3321
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3322
+          "line": 3347
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3348
+          "line": 3352
         },
         {
           "file": "apps-script-Code.gs",
@@ -28684,7 +28688,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3354
+          "line": 3362
         },
         {
           "file": "apps-script-Code.gs",
@@ -28696,7 +28700,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3365
+          "line": 3394
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3394
         },
         {
           "file": "apps-script-Code.gs",
@@ -28712,31 +28720,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3396
+          "line": 3402
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3397
+          "line": 3417
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3403
+          "line": 3639
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3418
+          "line": 3662
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3640
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3663
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3697
+          "line": 3696
         }
       ],
       "stringRefs": [],
@@ -36201,47 +36201,47 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2842
+          "line": 2841
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3043
+          "line": 3042
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3119
+          "line": 3118
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3545
+          "line": 3544
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3588
+          "line": 3587
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3609
+          "line": 3608
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3664
+          "line": 3663
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3705
+          "line": 3704
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3705
+          "line": 3704
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3731
+          "line": 3730
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3742
+          "line": 3741
         }
       ],
       "stringRefs": [],
@@ -36752,7 +36752,7 @@
       "stringRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 637
+          "line": 636
         }
       ],
       "identRefFiles": [
@@ -38196,23 +38196,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 336
+          "line": 335
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 368
+          "line": 367
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 838
+          "line": 837
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1297
+          "line": 1296
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2277
+          "line": 2276
         }
       ],
       "stringRefs": [
@@ -38304,11 +38304,11 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 854
+          "line": 853
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1321
+          "line": 1320
         }
       ],
       "stringRefs": [],
@@ -40713,7 +40713,7 @@
       "name": "doGet",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 265,
+      "definedAtLine": 288,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40723,15 +40723,11 @@
       "name": "routeRead",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 317,
+      "definedAtLine": 316,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 294
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 415
+          "line": 414
         }
       ],
       "stringRefs": [],
@@ -40744,11 +40740,11 @@
       "name": "isReadAction",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 387,
+      "definedAtLine": 386,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 411
+          "line": 410
         }
       ],
       "stringRefs": [],
@@ -40761,7 +40757,7 @@
       "name": "doPost",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 392,
+      "definedAtLine": 391,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40771,15 +40767,15 @@
       "name": "jsonResponse",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 427,
+      "definedAtLine": 426,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 301
+          "line": 302
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 424
+          "line": 423
         }
       ],
       "stringRefs": [],
@@ -40792,12 +40788,12 @@
       "name": "setAnthropicKey",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 440,
+      "definedAtLine": 439,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 460
+          "line": 459
         }
       ],
       "identRefFiles": [
@@ -40809,11 +40805,11 @@
       "name": "analyzePhotoHelper",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 455,
+      "definedAtLine": 454,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1362
+          "line": 1361
         }
       ],
       "stringRefs": [],
@@ -40826,11 +40822,11 @@
       "name": "sendEmailHelper",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 552,
+      "definedAtLine": 551,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1360
+          "line": 1359
         }
       ],
       "stringRefs": [],
@@ -40844,7 +40840,7 @@
       "name": "bulkInviteStatus",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 599,
+      "definedAtLine": 598,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40854,7 +40850,7 @@
       "name": "listInvites",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 617,
+      "definedAtLine": 616,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40864,7 +40860,7 @@
       "name": "listAuthTokens",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 629,
+      "definedAtLine": 628,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40874,7 +40870,7 @@
       "name": "revokeAuthToken",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 641,
+      "definedAtLine": 640,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40884,7 +40880,7 @@
       "name": "revokeInvite",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 646,
+      "definedAtLine": 645,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40894,7 +40890,7 @@
       "name": "revokeAllAuthTokens",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 653,
+      "definedAtLine": 652,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -40904,7 +40900,7 @@
       "name": "SESSION_TTL_MS",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 694,
+      "definedAtLine": 693,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -40916,7 +40912,7 @@
       "name": "LOCKOUT_THRESHOLD",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 695,
+      "definedAtLine": 694,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -40928,7 +40924,7 @@
       "name": "LOCKOUT_WINDOW_MS",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 696,
+      "definedAtLine": 695,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -40940,12 +40936,12 @@
       "name": "PBKDF2_ITERATIONS",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 734,
+      "definedAtLine": 733,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 800
+          "line": 799
         }
       ],
       "identRefFiles": [
@@ -40957,7 +40953,7 @@
       "name": "PBKDF2_PREFIX",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 735,
+      "definedAtLine": 734,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -40969,19 +40965,19 @@
       "name": "pbkdf2Sha256_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 742,
+      "definedAtLine": 741,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 764
+          "line": 763
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 777
+          "line": 776
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 796
+          "line": 795
         }
       ],
       "stringRefs": [],
@@ -40994,11 +40990,11 @@
       "name": "hashPasswordLegacySha256_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 757,
+      "definedAtLine": 756,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 779
+          "line": 778
         }
       ],
       "stringRefs": [],
@@ -41011,97 +41007,8 @@
       "name": "hashPassword",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 763,
+      "definedAtLine": 762,
       "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1094
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1416
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1429
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1541
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2087
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2103
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "verifyPassword": {
-      "name": "verifyPassword",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 771,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1080
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1409
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "passwordHashNeedsUpgrade": {
-      "name": "passwordHashNeedsUpgrade",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 785,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1091
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesBenchmarkKdf": {
-      "name": "bravesBenchmarkKdf",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 793,
-      "directRefs": [],
-      "stringRefs": [],
-      "identRefFiles": [],
-      "fanIn": 0
-    },
-    "generateSalt": {
-      "name": "generateSalt",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 805,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 794
-        },
         {
           "file": "apps-script-Code.gs",
           "line": 1093
@@ -41116,15 +41023,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1535
+          "line": 1540
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2084
+          "line": 2086
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2100
+          "line": 2102
         }
       ],
       "stringRefs": [],
@@ -41133,31 +41040,79 @@
       ],
       "fanIn": 0
     },
-    "findAccountByEmail": {
-      "name": "findAccountByEmail",
+    "verifyPassword": {
+      "name": "verifyPassword",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 810,
+      "definedAtLine": 770,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1078
+          "line": 1079
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1407
+          "line": 1408
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "passwordHashNeedsUpgrade": {
+      "name": "passwordHashNeedsUpgrade",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 784,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1090
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesBenchmarkKdf": {
+      "name": "bravesBenchmarkKdf",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 792,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [],
+      "fanIn": 0
+    },
+    "generateSalt": {
+      "name": "generateSalt",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 804,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 793
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1424
+          "line": 1092
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1446
+          "line": 1414
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1533
+          "line": 1427
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1534
         },
         {
           "file": "apps-script-Code.gs",
@@ -41174,23 +41129,60 @@
       ],
       "fanIn": 0
     },
+    "findAccountByEmail": {
+      "name": "findAccountByEmail",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 809,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1077
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1406
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1423
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1445
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1532
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2082
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2098
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
     "getAuthContext": {
       "name": "getAuthContext",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 823,
+      "definedAtLine": 822,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 288
+          "line": 405
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 406
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1807
+          "line": 1806
         }
       ],
       "stringRefs": [],
@@ -41203,19 +41195,15 @@
       "name": "isTokenExpired",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 833,
+      "definedAtLine": 832,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 291
+          "line": 408
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 409
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1604
+          "line": 1603
         }
       ],
       "stringRefs": [],
@@ -41228,71 +41216,71 @@
       "name": "isAdmin",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 839,
+      "definedAtLine": 838,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 856
+          "line": 855
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 880
+          "line": 879
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1304
+          "line": 1303
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1307
+          "line": 1306
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1423
+          "line": 1422
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1443
+          "line": 1442
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1513
+          "line": 1512
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1525
+          "line": 1524
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1551
+          "line": 1550
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1593
+          "line": 1592
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1613
+          "line": 1612
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1626
+          "line": 1625
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1639
+          "line": 1638
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1743
+          "line": 1742
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1762
+          "line": 1761
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4025
+          "line": 4024
         }
       ],
       "stringRefs": [],
@@ -41305,35 +41293,35 @@
       "name": "parseCaps",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 849,
+      "definedAtLine": 848,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 857
+          "line": 856
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 882
+          "line": 881
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1106
+          "line": 1105
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1114
+          "line": 1113
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1448
+          "line": 1447
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1519
+          "line": 1518
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1543
+          "line": 1542
         }
       ],
       "stringRefs": [],
@@ -41346,7 +41334,7 @@
       "name": "RS_PLT_CAP_PREFIX",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 874,
+      "definedAtLine": 873,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -41358,7 +41346,7 @@
       "name": "RS_COMPANY_CAP",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 875,
+      "definedAtLine": 874,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -41370,315 +41358,15 @@
       "name": "rsScopeOf_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 877,
+      "definedAtLine": 876,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 331
+          "line": 330
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 340
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 346
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 372
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 378
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 981
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1017
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2282
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2294
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsScopeKey_": {
-      "name": "rsScopeKey_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 904,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 331
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 346
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 378
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2294
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsPlatoonIndex_": {
-      "name": "rsPlatoonIndex_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 917,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 895
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 984
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1030
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsPersonInScope_": {
-      "name": "rsPersonInScope_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 928,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 993
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1048
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "RS_GHOST_TAIL_DAYS": {
-      "name": "RS_GHOST_TAIL_DAYS",
-      "kind": "var",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 954,
-      "directRefs": [],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsRowIsOperational_": {
-      "name": "rsRowIsOperational_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 956,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 994
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsApplyReadScope_": {
-      "name": "rsApplyReadScope_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 978,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 345
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 375
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2288
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2289
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsGuardWrite_": {
-      "name": "rsGuardWrite_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1015,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1329
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsFindRowById_": {
-      "name": "rsFindRowById_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1058,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1038
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1042
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "handleLogin": {
-      "name": "handleLogin",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1070,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 402
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "logFailedAttempt": {
-      "name": "logFailedAttempt",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1117,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1079
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1081
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "isLockedOut": {
-      "name": "isLockedOut",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1132,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1075
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "clearFailedAttempts": {
-      "name": "clearFailedAttempts",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1140,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1083
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "REV_TABS": {
-      "name": "REV_TABS",
-      "kind": "var",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1153,
-      "directRefs": [],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "getRev": {
-      "name": "getRev",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1157,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 341
+          "line": 339
         },
         {
           "file": "apps-script-Code.gs",
@@ -41686,65 +41374,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 373
+          "line": 371
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 375
+          "line": 377
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1190
+          "line": 980
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1217
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bumpRev": {
-      "name": "bumpRev",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1164,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1225
+          "line": 1016
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1248
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1249
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "getAllRevs": {
-      "name": "getAllRevs",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1178,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 331
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1191
+          "line": 2281
         },
         {
           "file": "apps-script-Code.gs",
@@ -41757,11 +41403,353 @@
       ],
       "fanIn": 0
     },
+    "rsScopeKey_": {
+      "name": "rsScopeKey_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 903,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 330
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 345
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 377
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2293
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "rsPlatoonIndex_": {
+      "name": "rsPlatoonIndex_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 916,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 894
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 983
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1029
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "rsPersonInScope_": {
+      "name": "rsPersonInScope_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 927,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 992
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1047
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "RS_GHOST_TAIL_DAYS": {
+      "name": "RS_GHOST_TAIL_DAYS",
+      "kind": "var",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 953,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "rsRowIsOperational_": {
+      "name": "rsRowIsOperational_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 955,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 993
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "rsApplyReadScope_": {
+      "name": "rsApplyReadScope_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 977,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 344
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 374
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2287
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2288
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "rsGuardWrite_": {
+      "name": "rsGuardWrite_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1014,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1328
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "rsFindRowById_": {
+      "name": "rsFindRowById_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1057,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1037
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1041
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "handleLogin": {
+      "name": "handleLogin",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1069,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 401
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "logFailedAttempt": {
+      "name": "logFailedAttempt",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1116,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1078
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1080
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "isLockedOut": {
+      "name": "isLockedOut",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1131,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1074
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "clearFailedAttempts": {
+      "name": "clearFailedAttempts",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1139,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1082
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "REV_TABS": {
+      "name": "REV_TABS",
+      "kind": "var",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1152,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "getRev": {
+      "name": "getRev",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1156,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 340
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 344
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 372
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 374
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1189
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1216
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bumpRev": {
+      "name": "bumpRev",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1163,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1224
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1247
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1248
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "getAllRevs": {
+      "name": "getAllRevs",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1177,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 330
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1190
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2292
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
     "initAllRevs": {
       "name": "initAllRevs",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1189,
+      "definedAtLine": 1188,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -41771,15 +41759,15 @@
       "name": "getDataLock",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1199,
+      "definedAtLine": 1198,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1213
+          "line": 1212
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1247
+          "line": 1246
         }
       ],
       "stringRefs": [],
@@ -41792,8 +41780,12 @@
       "name": "withRevLock",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1211,
+      "definedAtLine": 1210,
       "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1351
+        },
         {
           "file": "apps-script-Code.gs",
           "line": 1352
@@ -41821,10 +41813,6 @@
         {
           "file": "apps-script-Code.gs",
           "line": 1358
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1359
         }
       ],
       "stringRefs": [],
@@ -41837,7 +41825,7 @@
       "name": "onEditBumpRev",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1241,
+      "definedAtLine": 1240,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -41849,7 +41837,7 @@
       "name": "installEditTrigger",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1257,
+      "definedAtLine": 1256,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -41859,11 +41847,11 @@
       "name": "routeAuthedPost",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1269,
+      "definedAtLine": 1268,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 417
+          "line": 416
         }
       ],
       "stringRefs": [],
@@ -41876,11 +41864,11 @@
       "name": "auditActionForTab",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1386,
+      "definedAtLine": 1385,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1381
+          "line": 1380
         }
       ],
       "stringRefs": [],
@@ -41893,11 +41881,11 @@
       "name": "handleLogout",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1394,
+      "definedAtLine": 1393,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1271
+          "line": 1270
         }
       ],
       "stringRefs": [],
@@ -41910,11 +41898,11 @@
       "name": "handleChangePassword",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1406,
+      "definedAtLine": 1405,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1272
+          "line": 1271
         }
       ],
       "stringRefs": [],
@@ -41927,146 +41915,7 @@
       "name": "handleAdminResetPassword",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1422,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1288
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "handleSetAccountCaps": {
-      "name": "handleSetAccountCaps",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1442,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1289
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "KNOWN_CAPS": {
-      "name": "KNOWN_CAPS",
-      "kind": "var",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1464,
-      "directRefs": [],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "rsCapIsKnown_": {
-      "name": "rsCapIsKnown_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1466,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1450
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "writeAccountCaps": {
-      "name": "writeAccountCaps",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1473,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1452
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "updateAccountPassword": {
-      "name": "updateAccountPassword",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1492,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1094
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1416
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1429
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "handleListAccounts": {
-      "name": "handleListAccounts",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1512,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1285
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "handleAddAccount": {
-      "name": "handleAddAccount",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1524,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1286
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "handleRemoveAccount": {
-      "name": "handleRemoveAccount",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1550,
+      "definedAtLine": 1421,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
@@ -42079,15 +41928,154 @@
       ],
       "fanIn": 0
     },
+    "handleSetAccountCaps": {
+      "name": "handleSetAccountCaps",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1441,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1288
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "KNOWN_CAPS": {
+      "name": "KNOWN_CAPS",
+      "kind": "var",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1463,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "rsCapIsKnown_": {
+      "name": "rsCapIsKnown_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1465,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1449
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "writeAccountCaps": {
+      "name": "writeAccountCaps",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1472,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1451
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "updateAccountPassword": {
+      "name": "updateAccountPassword",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1491,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1093
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1415
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1428
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "handleListAccounts": {
+      "name": "handleListAccounts",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1511,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1284
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "handleAddAccount": {
+      "name": "handleAddAccount",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1523,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1285
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "handleRemoveAccount": {
+      "name": "handleRemoveAccount",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 1549,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1286
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
     "removeAccountRow": {
       "name": "removeAccountRow",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1563,
+      "definedAtLine": 1562,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1555
+          "line": 1554
         }
       ],
       "stringRefs": [],
@@ -42100,11 +42088,11 @@
       "name": "rosterHasId",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1579,
+      "definedAtLine": 1578,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1537
+          "line": 1536
         }
       ],
       "stringRefs": [],
@@ -42117,11 +42105,11 @@
       "name": "handleListTokens",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1592,
+      "definedAtLine": 1591,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1290
+          "line": 1289
         }
       ],
       "stringRefs": [],
@@ -42134,11 +42122,11 @@
       "name": "handleRevokeToken",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1612,
+      "definedAtLine": 1611,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1291
+          "line": 1290
         }
       ],
       "stringRefs": [],
@@ -42151,11 +42139,11 @@
       "name": "handleRevokeAllForEmail",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1625,
+      "definedAtLine": 1624,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1292
+          "line": 1291
         }
       ],
       "stringRefs": [],
@@ -42168,11 +42156,11 @@
       "name": "handleRevokeAllTokens",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1638,
+      "definedAtLine": 1637,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1293
+          "line": 1292
         }
       ],
       "stringRefs": [],
@@ -42185,15 +42173,15 @@
       "name": "revokeAllTokensForEmail",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1651,
+      "definedAtLine": 1650,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1556
+          "line": 1555
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1628
+          "line": 1627
         }
       ],
       "stringRefs": [],
@@ -42206,7 +42194,7 @@
       "name": "OFFLINE_GRANT_MAX_MS",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1686,
+      "definedAtLine": 1685,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -42218,19 +42206,19 @@
       "name": "offlineGrantKey_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1688,
+      "definedAtLine": 1687,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1705
+          "line": 1704
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1721
+          "line": 1720
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1737
+          "line": 1736
         }
       ],
       "stringRefs": [],
@@ -42243,11 +42231,11 @@
       "name": "handleRegisterOfflineGrant",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1693,
+      "definedAtLine": 1692,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1279
+          "line": 1278
         }
       ],
       "stringRefs": [],
@@ -42260,11 +42248,11 @@
       "name": "handleCheckOfflineGrant",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1718,
+      "definedAtLine": 1717,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1280
+          "line": 1279
         }
       ],
       "stringRefs": [],
@@ -42277,11 +42265,11 @@
       "name": "handleRevokeOfflineGrant",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1733,
+      "definedAtLine": 1732,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1281
+          "line": 1280
         }
       ],
       "stringRefs": [],
@@ -42294,11 +42282,11 @@
       "name": "handleListOfflineGrants",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1761,
+      "definedAtLine": 1760,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1282
+          "line": 1281
         }
       ],
       "stringRefs": [],
@@ -42311,71 +42299,71 @@
       "name": "writeAuditLog",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1801,
+      "definedAtLine": 1800,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1112
+          "line": 1111
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1127
+          "line": 1126
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1370
+          "line": 1369
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1374
+          "line": 1373
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1381
+          "line": 1380
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1400
+          "line": 1399
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1418
+          "line": 1417
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1431
+          "line": 1430
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1455
+          "line": 1454
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1546
+          "line": 1545
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1559
+          "line": 1558
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1621
+          "line": 1620
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1634
+          "line": 1633
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1647
+          "line": 1646
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1712
+          "line": 1711
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1753
+          "line": 1752
         }
       ],
       "stringRefs": [],
@@ -42388,11 +42376,11 @@
       "name": "getEmailInfoHelper",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1824,
+      "definedAtLine": 1823,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1361
+          "line": 1360
         }
       ],
       "stringRefs": [],
@@ -42405,15 +42393,15 @@
       "name": "setupAuthTabs",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1838,
+      "definedAtLine": 1837,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2082
+          "line": 2081
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2098
+          "line": 2097
         }
       ],
       "stringRefs": [],
@@ -42426,79 +42414,79 @@
       "name": "ensureTabWithHeaders_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1845,
+      "definedAtLine": 1844,
       "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1839
+        },
         {
           "file": "apps-script-Code.gs",
           "line": 1840
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1841
+          "line": 1949
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1950
+          "line": 1951
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1952
+          "line": 1953
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1954
+          "line": 1955
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1956
+          "line": 1959
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1960
+          "line": 1961
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1962
+          "line": 1963
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1964
+          "line": 1970
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1971
+          "line": 1972
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1973
+          "line": 1974
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1975
+          "line": 1976
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1977
+          "line": 1985
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1986
+          "line": 1990
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1991
+          "line": 2000
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2001
+          "line": 3928
         },
         {
           "file": "apps-script-Code.gs",
           "line": 3929
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3930
         }
       ],
       "stringRefs": [],
@@ -42511,7 +42499,7 @@
       "name": "bravesMigrateMrTiming",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1886,
+      "definedAtLine": 1885,
       "directRefs": [],
       "stringRefs": [
         {
@@ -42528,20 +42516,20 @@
       "name": "bravesMigrateSchema",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 1946,
+      "definedAtLine": 1945,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1480
+          "line": 1479
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1895
+          "line": 1894
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2029
+          "line": 2028
         }
       ],
       "identRefFiles": [
@@ -42553,7 +42541,7 @@
       "name": "bravesBackfillLeaveInCamp",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2019,
+      "definedAtLine": 2018,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -42565,11 +42553,11 @@
       "name": "bravesSeedConfig_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2050,
+      "definedAtLine": 2049,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1992
+          "line": 1991
         }
       ],
       "stringRefs": [],
@@ -42582,12 +42570,12 @@
       "name": "seedFirstAdmin",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2080,
+      "definedAtLine": 2079,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2081
+          "line": 2080
         }
       ],
       "identRefFiles": [
@@ -42599,16 +42587,16 @@
       "name": "createAccount",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2095,
+      "definedAtLine": 2094,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2096
+          "line": 2095
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2104
+          "line": 2103
         }
       ],
       "identRefFiles": [
@@ -42620,15 +42608,15 @@
       "name": "getTabNames",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2111,
+      "definedAtLine": 2110,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2119
+          "line": 2118
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2167
+          "line": 2166
         }
       ],
       "stringRefs": [],
@@ -42641,39 +42629,43 @@
       "name": "readTab",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2116,
+      "definedAtLine": 2115,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 345
+          "line": 344
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 375
+          "line": 374
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 812
+          "line": 811
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 918
+          "line": 917
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1059
+          "line": 1058
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1514
+          "line": 1513
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1580
+          "line": 1579
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2243
+          "line": 2242
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2256
         },
         {
           "file": "apps-script-Code.gs",
@@ -42681,15 +42673,15 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2258
+          "line": 2277
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2278
+          "line": 2282
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2283
+          "line": 3866
         },
         {
           "file": "apps-script-Code.gs",
@@ -42713,27 +42705,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3872
+          "line": 3956
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3957
+          "line": 3977
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3978
+          "line": 4001
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4002
+          "line": 4057
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4058
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4081
+          "line": 4080
         }
       ],
       "stringRefs": [],
@@ -42746,11 +42734,11 @@
       "name": "readTabTail",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2164,
+      "definedAtLine": 2163,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2272
+          "line": 2271
         }
       ],
       "stringRefs": [],
@@ -42763,11 +42751,11 @@
       "name": "readAllTabs",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2205,
+      "definedAtLine": 2204,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 319
+          "line": 318
         }
       ],
       "stringRefs": [],
@@ -42781,7 +42769,7 @@
       "name": "WRITE_TEXT_COLS_BY_TAB",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2332,
+      "definedAtLine": 2331,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -42793,7 +42781,7 @@
       "name": "KEY_ALIASES_BY_TAB",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2340,
+      "definedAtLine": 2339,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -42805,15 +42793,15 @@
       "name": "resolveKeyCol_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2347,
+      "definedAtLine": 2346,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2658
+          "line": 2657
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2726
+          "line": 2725
         }
       ],
       "stringRefs": [],
@@ -42826,15 +42814,15 @@
       "name": "keyMatches_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2359,
+      "definedAtLine": 2358,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2682
+          "line": 2681
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2733
+          "line": 2732
         }
       ],
       "stringRefs": [],
@@ -42847,11 +42835,11 @@
       "name": "writeTab",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2364,
+      "definedAtLine": 2363,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1352
+          "line": 1351
         }
       ],
       "stringRefs": [],
@@ -42864,23 +42852,23 @@
       "name": "ensureColumnsForKeys",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2425,
+      "definedAtLine": 2424,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2467
+          "line": 2466
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2498
+          "line": 2497
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2543
+          "line": 2542
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2665
+          "line": 2664
         }
       ],
       "stringRefs": [],
@@ -42893,27 +42881,27 @@
       "name": "forceTextColsForRange_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2453,
+      "definedAtLine": 2452,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 2476
+          "line": 2475
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2507
+          "line": 2506
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2633
+          "line": 2632
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2685
+          "line": 2684
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2701
+          "line": 2700
         }
       ],
       "stringRefs": [],
@@ -42926,7 +42914,7 @@
       "name": "appendRow",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2462,
+      "definedAtLine": 2461,
       "directRefs": [
         {
           "file": "js/api.js",
@@ -42938,23 +42926,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1353
+          "line": 1352
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1539
+          "line": 1538
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1810
+          "line": 1809
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2085
+          "line": 2084
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2101
+          "line": 2100
         }
       ],
       "stringRefs": [],
@@ -42969,23 +42957,23 @@
       "name": "appendMany",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2487,
+      "definedAtLine": 2486,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1354
+          "line": 1353
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3967
+          "line": 3966
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3985
+          "line": 3984
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3993
+          "line": 3992
         }
       ],
       "stringRefs": [],
@@ -43004,11 +42992,11 @@
       "name": "replaceConductRows",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2529,
+      "definedAtLine": 2528,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1355
+          "line": 1354
         }
       ],
       "stringRefs": [],
@@ -43022,7 +43010,7 @@
       "name": "upsertRow",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2646,
+      "definedAtLine": 2645,
       "directRefs": [
         {
           "file": "js/api.js",
@@ -43034,7 +43022,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1356
+          "line": 1355
         }
       ],
       "stringRefs": [],
@@ -43049,7 +43037,7 @@
       "name": "deleteRowById",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2715,
+      "definedAtLine": 2714,
       "directRefs": [
         {
           "file": "js/api.js",
@@ -43061,7 +43049,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1357
+          "line": 1356
         }
       ],
       "stringRefs": [],
@@ -43076,7 +43064,7 @@
       "name": "rowCount",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2750,
+      "definedAtLine": 2749,
       "directRefs": [
         {
           "file": "js/api.js",
@@ -43084,7 +43072,7 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1273
+          "line": 1272
         }
       ],
       "stringRefs": [],
@@ -43099,11 +43087,11 @@
       "name": "updateRow",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2758,
+      "definedAtLine": 2757,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1359
+          "line": 1358
         }
       ],
       "stringRefs": [],
@@ -43116,27 +43104,27 @@
       "name": "deleteRow",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 2785,
+      "definedAtLine": 2784,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1358
+          "line": 1357
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 1571
+          "line": 1570
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2734
+          "line": 2733
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2795
+          "line": 2794
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4039
+          "line": 4038
         }
       ],
       "stringRefs": [],
@@ -43149,7 +43137,7 @@
       "name": "BRAVES_PARADE_ARCHIVE_TAB",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3752,
+      "definedAtLine": 3751,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -43161,7 +43149,7 @@
       "name": "BRAVES_SICK_ARCHIVE_TAB",
       "kind": "var",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3753,
+      "definedAtLine": 3752,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -43173,8 +43161,12 @@
       "name": "bravesArr_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3755,
+      "definedAtLine": 3754,
       "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3866
+        },
         {
           "file": "apps-script-Code.gs",
           "line": 3867
@@ -43197,27 +43189,23 @@
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3872
+          "line": 3956
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3957
+          "line": 3977
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3978
+          "line": 4001
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4002
+          "line": 4057
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4058
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4081
+          "line": 4080
         }
       ],
       "stringRefs": [],
@@ -43230,23 +43218,23 @@
       "name": "bravesNormalizeConfig_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3762,
+      "definedAtLine": 3761,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 3872
+          "line": 3871
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4002
+          "line": 4001
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4058
+          "line": 4057
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4081
+          "line": 4080
         }
       ],
       "stringRefs": [],
@@ -43259,39 +43247,39 @@
       "name": "bravesPadD4_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3784,
+      "definedAtLine": 3783,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 895
+          "line": 894
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 923
+          "line": 922
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 931
+          "line": 930
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2360
+          "line": 2359
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 2360
+          "line": 2359
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3791
+          "line": 3790
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3818
+          "line": 3817
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3850
+          "line": 3849
         }
       ],
       "stringRefs": [],
@@ -43304,11 +43292,11 @@
       "name": "bravesNormalizeRoster_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3789,
+      "definedAtLine": 3788,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 3867
+          "line": 3866
         }
       ],
       "stringRefs": [],
@@ -43321,11 +43309,11 @@
       "name": "bravesNormalizeMedical_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3812,
+      "definedAtLine": 3811,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 3868
+          "line": 3867
         }
       ],
       "stringRefs": [],
@@ -43338,15 +43326,15 @@
       "name": "bravesPadD4OnLayer_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3848,
+      "definedAtLine": 3847,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 3857
+          "line": 3856
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 3870
+          "line": 3869
         }
       ],
       "stringRefs": [],
@@ -43359,11 +43347,11 @@
       "name": "bravesNormalizeLeave_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3856,
+      "definedAtLine": 3855,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 3869
+          "line": 3868
         }
       ],
       "stringRefs": [],
@@ -43376,208 +43364,7 @@
       "name": "bravesLoadState_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3865,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3964
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3990
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesTodayISO_": {
-      "name": "bravesTodayISO_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3876,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4049
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4080
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesNowHHMM_": {
-      "name": "bravesNowHHMM_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3877,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4050
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4080
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesSlotType_": {
-      "name": "bravesSlotType_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3881,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4060
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesParseSlots_": {
-      "name": "bravesParseSlots_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3883,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3920
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "BRAVES_LP_HOUR_": {
-      "name": "BRAVES_LP_HOUR_",
-      "kind": "var",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3899,
-      "directRefs": [],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesParseParadeSlots_": {
-      "name": "bravesParseParadeSlots_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3900,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3922
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4059
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4083
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesSickSlots_": {
-      "name": "bravesSickSlots_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3919,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4087
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesEnsureArchiveTabs_": {
-      "name": "bravesEnsureArchiveTabs_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3927,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4048
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4079
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 4095
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesForceTextCols_": {
-      "name": "bravesForceTextCols_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3942,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 2399
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3937
-        },
-        {
-          "file": "apps-script-Code.gs",
-          "line": 3938
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesAlreadyArchived_": {
-      "name": "bravesAlreadyArchived_",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3956,
+      "definedAtLine": 3864,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
@@ -43594,19 +43381,220 @@
       ],
       "fanIn": 0
     },
+    "bravesTodayISO_": {
+      "name": "bravesTodayISO_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3875,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4048
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4079
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesNowHHMM_": {
+      "name": "bravesNowHHMM_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3876,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4049
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4079
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesSlotType_": {
+      "name": "bravesSlotType_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3880,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4059
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesParseSlots_": {
+      "name": "bravesParseSlots_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3882,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3919
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "BRAVES_LP_HOUR_": {
+      "name": "BRAVES_LP_HOUR_",
+      "kind": "var",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3898,
+      "directRefs": [],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesParseParadeSlots_": {
+      "name": "bravesParseParadeSlots_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3899,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3921
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4058
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4082
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesSickSlots_": {
+      "name": "bravesSickSlots_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3918,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4086
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesEnsureArchiveTabs_": {
+      "name": "bravesEnsureArchiveTabs_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3926,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4047
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4078
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 4094
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesForceTextCols_": {
+      "name": "bravesForceTextCols_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3941,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 2398
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3936
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3937
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
+    "bravesAlreadyArchived_": {
+      "name": "bravesAlreadyArchived_",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 3955,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3962
+        },
+        {
+          "file": "apps-script-Code.gs",
+          "line": 3988
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
     "bravesArchiveParade_": {
       "name": "bravesArchiveParade_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3962,
+      "definedAtLine": 3961,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 4069
+          "line": 4068
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4084
+          "line": 4083
         }
       ],
       "stringRefs": [],
@@ -43619,11 +43607,11 @@
       "name": "bravesArchiveParadeText_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3977,
+      "definedAtLine": 3976,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 4067
+          "line": 4066
         }
       ],
       "stringRefs": [],
@@ -43636,15 +43624,15 @@
       "name": "bravesArchiveSick_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 3988,
+      "definedAtLine": 3987,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 4072
+          "line": 4071
         },
         {
           "file": "apps-script-Code.gs",
-          "line": 4088
+          "line": 4087
         }
       ],
       "stringRefs": [],
@@ -43657,11 +43645,11 @@
       "name": "bravesDeleteCap_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 4000,
+      "definedAtLine": 3999,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 4008
+          "line": 4007
         }
       ],
       "stringRefs": [],
@@ -43674,11 +43662,11 @@
       "name": "bravesCheckDeleteRate_",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 4007,
+      "definedAtLine": 4006,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
-          "line": 1340
+          "line": 1339
         }
       ],
       "stringRefs": [],
@@ -43691,24 +43679,7 @@
       "name": "bravesDeleteArchive",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 4024,
-      "directRefs": [
-        {
-          "file": "apps-script-Code.gs",
-          "line": 1364
-        }
-      ],
-      "stringRefs": [],
-      "identRefFiles": [
-        "apps-script-Code.gs"
-      ],
-      "fanIn": 0
-    },
-    "bravesArchiveNow": {
-      "name": "bravesArchiveNow",
-      "kind": "function",
-      "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 4047,
+      "definedAtLine": 4023,
       "directRefs": [
         {
           "file": "apps-script-Code.gs",
@@ -43721,11 +43692,28 @@
       ],
       "fanIn": 0
     },
+    "bravesArchiveNow": {
+      "name": "bravesArchiveNow",
+      "kind": "function",
+      "definedIn": "apps-script-Code.gs",
+      "definedAtLine": 4046,
+      "directRefs": [
+        {
+          "file": "apps-script-Code.gs",
+          "line": 1362
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "apps-script-Code.gs"
+      ],
+      "fanIn": 0
+    },
     "archivePoll": {
       "name": "archivePoll",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 4078,
+      "definedAtLine": 4077,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -43737,7 +43725,7 @@
       "name": "setupBravesArchive",
       "kind": "function",
       "definedIn": "apps-script-Code.gs",
-      "definedAtLine": 4094,
+      "definedAtLine": 4093,
       "directRefs": [],
       "stringRefs": [
         {
@@ -43861,6 +43849,7 @@
       "test/person-card-status.test.js",
       "test/poll-cadence.test.js",
       "test/pull-normalize-conducts.test.js",
+      "test/read-transport.test.js",
       "test/readtabs-batch.test.js",
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
@@ -43905,6 +43894,7 @@
       "test/parade-rn.test.js",
       "test/person-card-status.test.js",
       "test/privacy-hardening.test.js",
+      "test/read-transport.test.js",
       "test/readtabs-batch.test.js",
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
@@ -43946,6 +43936,7 @@
       "test/parade-rn.test.js",
       "test/person-card-status.test.js",
       "test/privacy-hardening.test.js",
+      "test/read-transport.test.js",
       "test/readtabs-batch.test.js",
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
@@ -43987,6 +43978,7 @@
       "test/parade-rn.test.js",
       "test/person-card-status.test.js",
       "test/privacy-hardening.test.js",
+      "test/read-transport.test.js",
       "test/readtabs-batch.test.js",
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
@@ -44307,6 +44299,7 @@
       "test/backend.test.js",
       "test/launch-bootstrap.test.js",
       "test/perf-p2.test.js",
+      "test/read-transport.test.js",
       "test/readtabs-batch.test.js",
       "test/rs-scope-frontend.test.js",
       "test/rs-scope.test.js",
@@ -44351,16 +44344,6 @@
       "test/static.test.js",
       "test/sync.test.js"
     ],
-    "doGet": [
-      "test/backend.test.js",
-      "test/map-markers.test.js",
-      "test/perf-p2.test.js",
-      "test/read-transport.test.js",
-      "test/readtabs-batch.test.js",
-      "test/rs-scope-parade-parity.test.js",
-      "test/rs-scope.test.js",
-      "test/wizard-save-e2e.test.js"
-    ],
     "API.pullAll": [
       "test/backend.test.js",
       "test/launch-bootstrap.test.js",
@@ -44394,6 +44377,13 @@
       "test/backend.test.js",
       "test/duty-unavailable.test.js",
       "test/state.test.js"
+    ],
+    "doGet": [
+      "test/backend.test.js",
+      "test/map-markers.test.js",
+      "test/read-transport.test.js",
+      "test/readtabs-batch.test.js",
+      "test/wizard-save-e2e.test.js"
     ],
     "STATE.email": [
       "test/backend.test.js",
@@ -44461,6 +44451,7 @@
       "test/parade-rn.test.js",
       "test/person-card-status.test.js",
       "test/poll-cadence.test.js",
+      "test/read-transport.test.js",
       "test/readtabs-batch.test.js",
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
@@ -45688,6 +45679,7 @@
     ],
     "STATE.scopeKey": [
       "test/launch-bootstrap.test.js",
+      "test/read-transport.test.js",
       "test/rs-scope-frontend.test.js",
       "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js"
@@ -46131,12 +46123,12 @@
       "test/readtabs-batch.test.js",
       "test/sync.test.js"
     ],
+    "isReadAction": [
+      "test/read-transport.test.js"
+    ],
     "routeRead": [
       "test/read-transport.test.js",
       "test/readtabs-batch.test.js"
-    ],
-    "isReadAction": [
-      "test/read-transport.test.js"
     ],
     "visibleD4Set": [
       "test/render-wiring.test.js"
@@ -49680,7 +49672,7 @@
       {
         "name": "bpClassifyPerson",
         "file": "apps-script-Code.gs",
-        "line": 3187,
+        "line": 3186,
         "length": 265
       },
       {
@@ -49770,7 +49762,7 @@
       {
         "name": "routeAuthedPost",
         "file": "apps-script-Code.gs",
-        "line": 1269,
+        "line": 1268,
         "length": 116
       },
       {
@@ -49788,7 +49780,7 @@
       {
         "name": "replaceConductRows",
         "file": "apps-script-Code.gs",
-        "line": 2529,
+        "line": 2528,
         "length": 110
       },
       {

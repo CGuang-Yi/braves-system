@@ -52,6 +52,21 @@ function loadBackend(opts) {
   return sandbox;
 }
 
+// Drive a read action straight at the backend, the way the app does it: over
+// POST, token in the body. GET no longer answers reads at all, so a test that
+// reaches for doGet is testing a route that does not exist — this exists so no
+// test has to spell the postData envelope out, and so there is one place to
+// change if the transport ever moves again.
+//
+// `params` is the request body minus the token, e.g. { action: "read",
+// tab: "Medical" }. An explicit `auth` in params wins, so a test can drive a
+// non-admin session.
+function readVia(backend, params) {
+  const body = Object.assign({ auth: VALID_TOKEN }, params);
+  const out = backend.doPost({ parameter: {}, postData: { contents: JSON.stringify(body) } });
+  return JSON.parse(out.getContent());
+}
+
 function parseQuery(url) {
   const u = new URL(url);
   return {
@@ -236,6 +251,6 @@ async function flushMicrotasks(rounds) {
 }
 
 module.exports = {
-  loadBackend, makeClient, baseline, makeLaunchClient, flushMicrotasks,
+  loadBackend, makeClient, readVia, baseline, makeLaunchClient, flushMicrotasks,
   VALID_TOKEN, ROOT, FRONTEND_FILES, LAUNCH_FRONTEND_FILES
 };
