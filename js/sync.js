@@ -927,7 +927,9 @@ async function doPing() {
   try {
     syncLog("Pinging...");
     const res = await API.get("ping");
-    if (res.ok) syncLog(`Connected! Tabs: ${res.sheets?.join(", ")}`, "var(--green)");
+    // Liveness only — the backend deliberately no longer reports its tab list
+    // here, so there is nothing to print but the fact that it answered.
+    if (res.ok) syncLog("Connected!", "var(--green)");
     else syncLog(`Error: ${res.error}`, "var(--red)");
   } catch (e) { syncLog(`Failed: ${e.message}`, "var(--red)"); }
 }

@@ -269,19 +269,17 @@ function doGet(e) {
     var tab = e.parameter.tab || "";
     var auth = e.parameter.auth || "";
 
-    // Public action: ping (used by the frontend to verify the URL is reachable).
+    // Public action: ping. This is the ONE action that answers without a token,
+    // so it answers as little as possible — is the deployment reachable, and
+    // what time does it think it is. Nothing about the spreadsheet behind it.
+    //
+    // It used to return the tab list, which was only ever cosmetic (the Sync log
+    // printed it, and readAllTabs pulls from an explicit allow-list, not from
+    // this). A liveness check that describes the schema to anyone holding the
+    // URL is a poor trade for a log line, so the list is gone rather than
+    // filtered. Callers wanting tab names must authenticate.
     if (action === "ping") {
-      // Filter manual/scratch tabs out of the connectivity list so they don't
-      // read as data tabs in the Sync log. They are never pulled — readAllTabs
-      // uses an explicit allow-list — this is purely cosmetic. "Conduct Master"
-      // is a human planning sheet with a banner in row 1 (real headers in row 2),
-      // so it must never be treated as a data tab regardless.
-      var NON_DATA_TABS = { "notes": 1, "Conduct Master": 1 };
-      output = {
-        ok: true,
-        sheets: getTabNames().filter(function (n) { return !NON_DATA_TABS[n]; }),
-        timestamp: new Date().toISOString()
-      };
+      output = { ok: true, timestamp: new Date().toISOString() };
     } else {
       // Every other read resolves the account context behind the token. Any valid
       // role (admin/commander/viewer) may read — read-only enforcement only bites
