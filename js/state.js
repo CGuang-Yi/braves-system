@@ -190,7 +190,8 @@ const TAB_TO_STATE = {
   // Duty list (DUTY_LIST_SPEC.md §3).
   "Duty": "duty",
   "DutyCorrection": "dutyCorrection",
-  "Holidays": "holidays"
+  "Holidays": "holidays",
+  "DutyUnavailable": "dutyUnavailable"
 };
 
 // Company-specific defaults (spec §4). Every value the system used to hardcode
@@ -491,6 +492,9 @@ const STATE = {
   duty: [],
   dutyCorrection: [],
   holidays: [],
+  // Soft unavailability windows (design §4). A planning hint only — it never
+  // reaches the parade classifier.
+  dutyUnavailable: [],
   // Canonical conduct registry: [{id: "c001", name: "Orientation Run"}, ...].
   // Source of truth for the conduct dimension — records on attendance/polar/
   // conductDetail reference entries here via `conductId` instead of carrying
@@ -845,6 +849,23 @@ function normalizeHolidays(rows) {
   }));
 }
 
+// Soft "probably unavailable" windows (design §4). Deliberately NOT part of the
+// medical/leave family: nothing here reaches the parade classifier, and the
+// bounds are inclusive ISO dates compared as plain strings — which is why the
+// sheet columns are text-formatted rather than left to Sheets' date coercion,
+// since "01 Sep 2026" would compare against nothing.
+function normalizeDutyUnavailable(rows) {
+  return (rows || []).map(r => ({
+    id: r.id || "",
+    d4: padD4(r.d4),
+    from: r.from || "",
+    to: r.to || "",
+    note: r.note || "",
+    addedBy: r.addedBy || "",
+    addedAt: r.addedAt || ""
+  }));
+}
+
 // VocFit completion rows (spec §12.3): personId | completionDate | certifyingUnit.
 // d4-pad personId so it joins cleanly with the roster id space.
 function normalizeVocFit(rows) {
@@ -974,6 +995,7 @@ function _saveLocalFlush() {
     leave: STATE.leave, msk: STATE.msk, conducts: STATE.conducts,
     config: STATE.config, vocfit: STATE.vocfit, platoons: STATE.platoons,
     duty: STATE.duty, dutyCorrection: STATE.dutyCorrection, holidays: STATE.holidays,
+    dutyUnavailable: STATE.dutyUnavailable,
     rev: STATE.rev || {}
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
@@ -1078,6 +1100,7 @@ function loadLocal() {
     STATE.duty = normalizeDuty(d.duty);
     STATE.dutyCorrection = normalizeDutyCorrection(d.dutyCorrection);
     STATE.holidays = normalizeHolidays(d.holidays);
+    STATE.dutyUnavailable = normalizeDutyUnavailable(d.dutyUnavailable);
     STATE.rev = (d.rev && typeof d.rev === "object") ? d.rev : {};
   } catch { /* fall through to empty state */ }
 }

@@ -31,7 +31,8 @@ const PULL_ASSIGN = {
   // inherit the dirty-tab skip that stops a launch pull clobbering local edits.
   duty:           d => STATE.duty = normalizeDuty(d),
   dutyCorrection: d => STATE.dutyCorrection = normalizeDutyCorrection(d),
-  holidays:       d => STATE.holidays = normalizeHolidays(d)
+  holidays:       d => STATE.holidays = normalizeHolidays(d),
+  dutyUnavailable: d => STATE.dutyUnavailable = normalizeDutyUnavailable(d)
 };
 
 // Reverse of TAB_TO_STATE (STATE-array-key → sheet name), used by pullAll to test
