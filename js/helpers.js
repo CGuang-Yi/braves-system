@@ -1187,7 +1187,10 @@ function buildSickStats(rangeStartIso, rangeEndIso) {
   const hasRange = !!(rangeStartIso || rangeEndIso);
   const per = {};
   (STATE.medical || []).forEach(m => {
-    if (!passesFilter(m.d4, visible)) return;
+    // Report-sick scope (§1.7). These stats are per-person and feed both the
+    // on-screen leaderboard and exportSickStats, so an out-of-scope person here
+    // would put a named accumulated count into a CSV.
+    if (!passesFilter(m.d4, visible) || !inRSScope(m.d4)) return;
     const iso = displayDateToISO(m.date) || "";
     if (hasRange && (!iso || !inRange(iso))) return;
     const p = per[m.d4] || (per[m.d4] = {
@@ -1232,7 +1235,12 @@ function buildSickStats(rangeStartIso, rangeEndIso) {
 function exportSickStats(rangeStartIso, rangeEndIso) {
   const rows = buildSickStats(rangeStartIso, rangeEndIso);
   if (!rows.length) { alert("No report-sick records in the current scope/range to export."); return; }
-  exportCSV(rows, `sick_stats_${todayISO()}.csv`);
+  // Name the report-sick scope in the filename. A one-platoon file that is
+  // indistinguishable on disk from the company's is a reporting error — the
+  // same reasoning as exportScopeSlug() in js/render-statusboard.js.
+  const rs = rsScope();
+  const slug = rs.company ? "" : `_${rs.plt.length ? rs.plt.join("-") : "no-scope"}`;
+  exportCSV(rows, `sick_stats${slug}_${todayISO()}.csv`);
 }
 
 // HA statistics — one row per person in the topbar scope, derived from

@@ -10,7 +10,7 @@ const vm = require("vm");
 const { suite, test, ok } = require("./_tap");
 const { sourceText } = require("./sources");
 
-function loadCtx(rows, tab, platoons) {
+function loadCtx(rows, tab, platoons, rsCompany) {
   const target = {
     console, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map,
     RegExp, isNaN, parseInt, parseFloat, Symbol
@@ -31,6 +31,11 @@ function loadCtx(rows, tab, platoons) {
     platoons: platoons || []
   };
   target.isAdminRole = () => true;
+  // Report-sick scope (spec §1). The sick archive is whole-company generated
+  // message text with no per-person row to filter, so it is withheld entirely
+  // below company scope. These suites assert the COLUMN MAPPING, so they run as
+  // a company-scope viewer unless a case says otherwise.
+  target.rsScope = () => ({ company: rsCompany !== false, plt: rsCompany === false ? ["PLT1"] : [] });
   target.escapeAttr = s => String(s == null ? "" : s);
   target.escapeHTML = s => String(s == null ? "" : s);
   // Minimal DOM: one element whose innerHTML we can read back.
@@ -72,8 +77,8 @@ function loadCtx(rows, tab, platoons) {
   return { ctx, target, getHtml: () => html, drawer, backdrop, body };
 }
 
-function renderWith(rows, tab, scope, platoons) {
-  const { ctx, getHtml } = loadCtx(rows, tab, platoons);
+function renderWith(rows, tab, scope, platoons, rsCompany) {
+  const { ctx, getHtml } = loadCtx(rows, tab, platoons, rsCompany);
   vm.runInContext(
     `_archiveTab = ${JSON.stringify(tab)}; _archiveQuery = ""; _archiveCompare = false; ` +
     `_archiveScope = ${JSON.stringify(scope || "")}; renderArchiveList();`, ctx);
@@ -240,5 +245,31 @@ module.exports = async function run() {
     vm.runInContext(`renderArchiveList(); openArchiveDrawer("parade", 1); renderArchiveList();`, ctx);
     const n = (target.document._listeners.keydown || []).length;
     ok(n === 1, "Escape listeners stacked: " + n);
+  });
+
+  suite("archive list: report-sick scope (spec §1.1)");
+
+  const SICK_ROW = [{ id: 1, timestamp: "2026-08-01T07:30:00.000Z", date: "2026-08-01", slot: "0730", text: "SICK MSG BODY" }];
+
+  await test("a scoped account gets an explanation, never an empty list", () => {
+    // An empty list would read as "no archives exist" — the same false-absence
+    // problem as an empty status-grid row. The server withheld the tab; say so.
+    const html = renderWith(SICK_ROW, "sick", "", [], false);
+    ok(/company-scope accounts only/.test(html), "no explanation rendered: " + html.slice(0, 200));
+    ok(!/SICK MSG BODY/.test(html), "the withheld message text was rendered anyway");
+  });
+
+  await test("a company-scope account still sees the archive", () => {
+    const html = renderWith(SICK_ROW, "sick", "", [], true);
+    ok(!/company-scope accounts only/.test(html), "company scope was blocked");
+  });
+
+  // The PARADE archive is deliberately NOT gated: parade state is ungated per
+  // §1.1, so its archive is the same content by another route.
+  await test("the parade archive is untouched by the report-sick gate", () => {
+    const html = renderWith(
+      [{ id: 1, timestamp: "2026-08-01T07:30:00.000Z", date: "2026-08-01", slot: "0730", type: "FP", scope: "company", text: "PARADE MSG" }],
+      "parade", "", [], false);
+    ok(!/company-scope accounts only/.test(html), "the parade archive was gated");
   });
 };
