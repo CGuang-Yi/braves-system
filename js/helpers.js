@@ -107,6 +107,12 @@ function filterLabel() {
 function personPlatoon(r) {
   if (!r) return "";
   if (r.platoon) return String(r.platoon).trim();
+  // Appointment-coded fourD ("PC2" -> PLT2). Sits BELOW the explicit column and
+  // ABOVE the 4D digit parse, because getPlt deliberately blanks commanders out
+  // as coy-level — right for an OC, wrong for a PC, who is part of a platoon and
+  // whose own 4D says which one. See js/appointment-4d.js.
+  const appt = parseAppointment4D(r.fourD);
+  if (appt) return appt.platoon;
   const p = getPlt(r);
   return p ? "PLT" + p : "";
 }
@@ -116,6 +122,10 @@ function personPlatoon(r) {
 function personSection(r) {
   if (!r) return "";
   if (r.section != null && r.section !== "") return String(r.section).trim();
+  // Same tier as personPlatoon: "SC21" -> section "1", "PC2"/"PS2" -> "Command"
+  // (the org model's value for the Command element — see js/state.js).
+  const appt = parseAppointment4D(r.fourD);
+  if (appt) return appt.section;
   return getSect(r) || "";
 }
 

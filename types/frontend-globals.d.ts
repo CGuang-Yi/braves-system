@@ -20,6 +20,12 @@
 /** js/calc.js — shift an ISO date by whole days, tz-safely. */
 declare function addDaysISO(iso: string, n: number | string): string;
 
+// js/appointment-4d.js — commanders carry their appointment in the fourD column
+// ("SC21"/"PS2"/"PC2"); both the duty rules and the scope filter resolve it
+// through this one parser rather than each growing their own.
+declare function parseAppointment4D(fourD: string): { appointment: string, platoon: string, section: string } | null;
+declare function fourDSortKey(r: any): number;
+
 // js/duty-points.js — the scheduler scores against the same arithmetic the
 // views display, so these are shared rather than reimplemented.
 declare function dutyDayOfWeek(iso: string): number;

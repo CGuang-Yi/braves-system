@@ -19,7 +19,7 @@ const { makeBrowser } = require("./mocks/browser");
 const { expandFiles } = require("./sources");
 
 const FILES = expandFiles(["js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js",
-  "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"]);
+  "js/appointment-4d.js", "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"]);
 
 function load(fx) {
   const browser = makeBrowser();

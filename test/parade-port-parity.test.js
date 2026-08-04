@@ -36,7 +36,10 @@ const { makeBrowser } = require("./mocks/browser");
 // Fixed date: the classifier is date-driven, so a wall-clock TODAY would make
 // this suite rot overnight. Matches parade-classifier.test.js.
 const TODAY = "2026-06-29";           // a Monday
-const PARADE_FILES = ["js/state.js", "js/helpers.js", "js/braves-parade.js"];
+// appointment-4d.js precedes helpers.js because personPlatoon/personSection call
+// parseAppointment4D; without it every test here dies on a ReferenceError rather
+// than comparing anything.
+const PARADE_FILES = ["js/state.js", "js/appointment-4d.js", "js/helpers.js", "js/braves-parade.js"];
 
 // Dates in fixtures MUST be "DD MMM YYYY": the real helpers.js displayDateToISO
 // only parses that shape and returns "" for ISO input, which silently makes a
@@ -44,14 +47,22 @@ const PARADE_FILES = ["js/state.js", "js/helpers.js", "js/braves-parade.js"];
 // The sectionCount guard on each test below is what keeps that mistake honest.
 const clone = o => JSON.parse(JSON.stringify(o));
 
-// Four people across two platoons (platoon is parsed out of the 4D) plus a
-// commander, so the strength blocks and per-platoon sections have real content.
+// Four people across two platoons (platoon is parsed out of the 4D) plus three
+// commanders, so the strength blocks and per-platoon sections have real content.
+//
+// The last two carry APPOINTMENT-CODED 4Ds ("PC2"/"SC21", see js/appointment-4d.js)
+// and they are load-bearing: without them the frontend and the port agree
+// trivially, because nothing in the fixture exercises the derivation and the
+// whole suite passes while the port is unmirrored. A commander with a numeric
+// fourD proves nothing about the code path this file exists to guard.
 const ROSTER = [
   { id: "1411", name: "Alpha One", fourD: "1411", rank: "REC", role: "Recruit", status: "Active" },
   { id: "1422", name: "Bravo Two", fourD: "1422", rank: "PTE", role: "Recruit", status: "Active" },
   { id: "1433", name: "Charlie Three", fourD: "1433", rank: "REC", role: "Recruit", status: "Active" },
   { id: "2411", name: "Echo Five", fourD: "2411", rank: "REC", role: "Recruit", status: "Active" },
-  { id: "0001", name: "Delta Cmdr", fourD: "0001", rank: "CPT", role: "Commander", status: "Active" }
+  { id: "0001", name: "Delta Cmdr", fourD: "0001", rank: "CPT", role: "Commander", status: "Active" },
+  { id: "0002", name: "Foxtrot PC", fourD: "PC2", rank: "LTA", role: "Commander", status: "Active" },
+  { id: "0003", name: "Golf SC", fourD: "SC21", rank: "3SG", role: "Commander", status: "Active" }
 ];
 
 function fixture(over) {

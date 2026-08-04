@@ -7,10 +7,14 @@ function loadEligibility() {
   const sandbox = { module: { exports: {} }, Date, Math, String, Number, Set, Array, Object, JSON, console };
   sandbox.exports = sandbox.module.exports;
   vm.createContext(sandbox);
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, "..", "js", "duty-eligibility.js"), "utf8"),
-    sandbox, { filename: "duty-eligibility.js" }
-  );
+  // appointment-4d.js first: dutyAppointmentOf calls parseAppointment4D as its
+  // middle fallback tier, and this sandbox is the module's whole world.
+  ["appointment-4d.js", "duty-eligibility.js"].forEach(f => {
+    vm.runInContext(
+      fs.readFileSync(path.join(__dirname, "..", "js", f), "utf8"),
+      sandbox, { filename: f }
+    );
+  });
   return sandbox;
 }
 
@@ -275,5 +279,45 @@ module.exports = async function run() {
     eq(e.dutyEligible("COS", "", "2026-08-03", [], CFG, {}).length, 0);
     eq(e.dutyEligible("COS", "", "2026-08-03", null, CFG, {}).length, 0);
     eq(e.dutyPlatoonsFor("PDS", null, CFG).length, 0);
+  });
+
+  suite("duty-eligibility: appointment derived from the fourD code");
+
+  await test("a PC with blank appointment AND blank rankGroup still resolves to PC", () => {
+    // This is the live sheet's exact state: PR #129 added the appointment column
+    // and it was never backfilled, and rankGroup is blank too, so the org-model
+    // fallback resolved "" and the CDO dropdown came up empty.
+    eq(e.dutyAppointmentOf({ role: "Commander", fourD: "PC2", appointment: "", rankGroup: "", section: "" }), "PC");
+  });
+
+  await test("PS and SC codes resolve to their own appointments", () => {
+    eq(e.dutyAppointmentOf({ role: "Commander", fourD: "PS2", appointment: "", rankGroup: "", section: "" }), "PS");
+    eq(e.dutyAppointmentOf({ role: "Commander", fourD: "SC21", appointment: "", rankGroup: "", section: "" }), "SectComd");
+  });
+
+  await test("an explicit appointment column overrides a conflicting fourD code", () => {
+    // Someone who half-finished the manual backfill must not be contradicted.
+    eq(e.dutyAppointmentOf({ role: "Commander", fourD: "PC2", appointment: "PS", rankGroup: "" }), "PS");
+  });
+
+  await test("the org-model fallback still works for a row with no fourD code", () => {
+    // Guards against the new tier swallowing the old one.
+    eq(e.dutyAppointmentOf({ role: "Commander", fourD: "", section: "2", appointment: "" }), "SectComd");
+    eq(e.dutyAppointmentOf({ role: "Commander", fourD: "", section: "Command", rankGroup: "Officer", appointment: "" }), "PC");
+  });
+
+  await test("someone with no appointment signal at all still resolves to blank", () => {
+    // An OC/CSM draws no duty. That is intended, and must not become "PC".
+    eq(e.dutyAppointmentOf({ role: "Commander", fourD: "", section: "", rankGroup: "", appointment: "" }), "");
+  });
+
+  await test("a CDO pool fills from fourD codes alone, with no appointment column", () => {
+    // The end-to-end shape of the bug: eligibility, not just the accessor.
+    const roster = [
+      { id: "0001", role: "Commander", fourD: "PC2", platoon: "", section: "", rankGroup: "", appointment: "", status: "Active" },
+      { id: "0002", role: "Commander", fourD: "PS2", platoon: "", section: "", rankGroup: "", appointment: "", status: "Active" }
+    ];
+    eq(e.dutyEligible("CDO", "", "2026-08-03", roster, CFG, {}), ["0001"]);
+    eq(e.dutyEligible("CDS", "", "2026-08-03", roster, CFG, {}), ["0002"]);
   });
 };

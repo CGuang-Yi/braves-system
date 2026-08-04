@@ -39,7 +39,7 @@ const ROOT = __dirname;
 // than parsed out of the HTML because ESLint config load failures are opaque and
 // this list changes roughly twice a year.
 const FRONTEND_FILES = [
-  "js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js", "js/helpers.js",
+  "js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js", "js/appointment-4d.js", "js/helpers.js",
   "js/sick-history-import.js", "js/duty-points.js", "js/duty-eligibility.js",
   "js/duty-conflicts.js", "js/duty-import.js", "js/duty-schedule.js",
   "js/render.js", "js/render-dashboard.js", "js/render-records.js", "js/render-conducts.js", "js/render-statusboard.js",
@@ -141,7 +141,7 @@ module.exports = [
   // tests, so they end with a `typeof module !== "undefined"` export tail.
   // `module` is genuinely ambient in one of their two homes.
   {
-    files: ["js/calc.js", "js/actions.js", "js/duty-points.js", "js/duty-eligibility.js",
+    files: ["js/calc.js", "js/appointment-4d.js", "js/actions.js", "js/duty-points.js", "js/duty-eligibility.js",
             "js/duty-conflicts.js", "js/duty-import.js", "js/duty-schedule.js"],
     languageOptions: { globals: { module: "readonly" } }
   },

@@ -18,7 +18,7 @@ const { ROOT } = require("./harness");
 const { makeBrowser } = require("./mocks/browser");
 const { expandFiles } = require("./sources");
 
-const FILES = expandFiles(["js/state.js", "js/helpers.js", "js/render.js", "js/braves-parade.js"]);
+const FILES = expandFiles(["js/state.js", "js/appointment-4d.js", "js/helpers.js", "js/render.js", "js/braves-parade.js"]);
 const TODAY = "2026-07-28";
 
 // Offset from TODAY as a "DD MMM YYYY" display date — the only shape

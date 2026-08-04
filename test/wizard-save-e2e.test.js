@@ -43,7 +43,7 @@ const ROOT = path.resolve(__dirname, "..");
 // Real load order (index.html): calc/helpers land before forms; sync lands
 // after forms in the real page too — preserved here so nothing shadows
 // anything the browser wouldn't.
-const WIZARD_FILES = expandFiles(["js/state.js", "js/api.js", "js/calc.js", "js/helpers.js", "js/forms.js", "js/sync.js"]);
+const WIZARD_FILES = expandFiles(["js/state.js", "js/api.js", "js/calc.js", "js/appointment-4d.js", "js/helpers.js", "js/forms.js", "js/sync.js"]);
 
 function parseQuery(url) {
   const u = new URL(url);

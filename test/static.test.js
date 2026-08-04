@@ -67,6 +67,16 @@ module.exports = async function run() {
        "js/duty-conflicts.js must load after js/calc.js");
   });
 
+  // appointment-4d is a leaf that helpers.js and duty-eligibility.js both call.
+  // Loading it later is a ReferenceError on the first render of any scoped view
+  // — a runtime-only failure, since nothing here compiles.
+  await test("appointment-4d loads before both of its callers", () => {
+    ["js/helpers.js", "js/duty-eligibility.js"].forEach(src => {
+      ok(at("js/appointment-4d.js") !== -1 && at("js/appointment-4d.js") < at(src),
+         "js/appointment-4d.js must load before " + src);
+    });
+  });
+
   // duty-schedule is the most dependent of the pure modules: it scores against
   // duty-points, resolves candidates through duty-eligibility, and reuses
   // duty-conflicts' predicates so its costs and the assignment form's warnings

@@ -18,7 +18,7 @@ const { suite, test, ok, eq } = require("./_tap");
 const { sourceText } = require("./sources");
 
 const TODAY = "2026-07-25";
-const BUNDLE = ["js/state.js", "js/calc.js", "js/helpers.js", "js/braves-parade.js"];
+const BUNDLE = ["js/state.js", "js/calc.js", "js/appointment-4d.js", "js/helpers.js", "js/braves-parade.js"];
 
 function load() {
   const target = {
