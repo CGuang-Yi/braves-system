@@ -32,7 +32,8 @@ const PULL_ASSIGN = {
   duty:           d => STATE.duty = normalizeDuty(d),
   dutyCorrection: d => STATE.dutyCorrection = normalizeDutyCorrection(d),
   holidays:       d => STATE.holidays = normalizeHolidays(d),
-  dutyUnavailable: d => STATE.dutyUnavailable = normalizeDutyUnavailable(d)
+  dutyUnavailable: d => STATE.dutyUnavailable = normalizeDutyUnavailable(d),
+  dutyChangeRequest: d => STATE.dutyChangeRequest = normalizeDutyChangeRequest(d)
 };
 
 // Reverse of TAB_TO_STATE (STATE-array-key → sheet name), used by pullAll to test
