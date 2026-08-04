@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-04T12:53:07.674Z",
-  "commit": "a5bf01a",
+  "generatedAt": "2026-08-04T15:15:33.114Z",
+  "commit": "7fd1eca",
   "thresholds": {
     "maxFunctionLines": 100,
     "fanInTop": 25
@@ -29,8 +29,8 @@
     "js/main.js": "2a40108e51245ed38be6cc0335cd46c03841a3915dedfd264271b08f5b919d5a",
     "js/parade-tab.js": "27c6b781a0fa7b6e33ea166daa55262d12df4c5750f243f5fca667c02fde5691",
     "js/render-conducts.js": "91226227478f2ecf7ab25650100f613bc29a3efb0b0283e53d690ca7a39560b1",
-    "js/render-dashboard.js": "5b24a772b0e7dc46d7bfadcfd7ba36f245fb2d0626db6b1a135e7301feb07fab",
-    "js/render-duty.js": "85ab5e05324dde3f1b8d5283ae96239e3d93e27b4904d37bdf2286f768f0ccb9",
+    "js/render-dashboard.js": "1442866c2dafe6bc70062e5a074d2d82438e0b1ac5f699529375b0c826487c48",
+    "js/render-duty.js": "b60b2677405eb4cacdcc2c232f3f0e152f55897f593f37bfae488001d93eddd5",
     "js/render-records.js": "fb4b4c9585699f8e4251e0e938134578409afafd9ea7f5b97cd9938b87073565",
     "js/render-statusboard.js": "9a89b225ccf065ec6f7a8ea962234648a96d8de4329e4b70febd45e6ca67e007",
     "js/render.js": "9192cb3a58567f702cebd44503a9d378aa208a97520119f9237d85e3ef167e48",
@@ -5562,8 +5562,8 @@
     },
     {
       "file": "js/render-dashboard.js",
-      "lines": 1386,
-      "declCount": 43,
+      "lines": 1435,
+      "declCount": 44,
       "callsInto": [
         "js/api.js",
         "js/braves-parade.js",
@@ -5574,6 +5574,7 @@
         "js/helpers.js",
         "js/main.js",
         "js/parade-tab.js",
+        "js/render-duty.js",
         "js/render-statusboard.js",
         "js/render.js",
         "js/state.js",
@@ -5601,302 +5602,309 @@
           "name": "renderDashboard",
           "kind": "function",
           "line": 82,
-          "endLine": 334,
-          "length": 253
+          "endLine": 335,
+          "length": 254
         },
         {
           "name": "_deferredBuilders",
           "kind": "let",
-          "line": 343,
-          "endLine": 343,
+          "line": 344,
+          "endLine": 344,
           "length": 1
         },
         {
           "name": "_lastRenderedNav",
           "kind": "let",
-          "line": 348,
-          "endLine": 348,
+          "line": 349,
+          "endLine": 349,
           "length": 1
         },
         {
           "name": "chartGateMarkup",
           "kind": "function",
-          "line": 349,
-          "endLine": 354,
+          "line": 350,
+          "endLine": 355,
           "length": 6
         },
         {
           "name": "runDeferred",
           "kind": "function",
-          "line": 356,
-          "endLine": 361,
+          "line": 357,
+          "endLine": 362,
           "length": 6
         },
         {
           "name": "loadDashboardCharts",
           "kind": "function",
-          "line": 362,
-          "endLine": 362,
+          "line": 363,
+          "endLine": 363,
           "length": 1
         },
         {
           "name": "loadConductDashCharts",
           "kind": "function",
-          "line": 363,
-          "endLine": 364,
+          "line": 364,
+          "endLine": 365,
           "length": 2
         },
         {
           "name": "setChartPref",
           "kind": "function",
-          "line": 365,
-          "endLine": 381,
+          "line": 366,
+          "endLine": 382,
           "length": 17
         },
         {
           "name": "renderDashMSKCases",
           "kind": "function",
-          "line": 388,
-          "endLine": 474,
+          "line": 389,
+          "endLine": 475,
           "length": 87
         },
         {
           "name": "_mskAnalyticsStart",
-          "kind": "let",
-          "line": 481,
-          "endLine": 481,
-          "length": 1
-        },
-        {
-          "name": "_mskAnalyticsEnd",
           "kind": "let",
           "line": 482,
           "endLine": 482,
           "length": 1
         },
         {
-          "name": "_mskAnalyticsCharts",
-          "kind": "const",
+          "name": "_mskAnalyticsEnd",
+          "kind": "let",
           "line": 483,
           "endLine": 483,
           "length": 1
         },
         {
+          "name": "_mskAnalyticsCharts",
+          "kind": "const",
+          "line": 484,
+          "endLine": 484,
+          "length": 1
+        },
+        {
           "name": "setMSKAnalyticsRange",
           "kind": "function",
-          "line": 485,
-          "endLine": 489,
+          "line": 486,
+          "endLine": 490,
           "length": 5
         },
         {
           "name": "viewMSKRegion",
           "kind": "function",
-          "line": 496,
-          "endLine": 564,
+          "line": 497,
+          "endLine": 565,
           "length": 69
         },
         {
           "name": "renderMSKAnalytics",
           "kind": "function",
-          "line": 566,
-          "endLine": 854,
+          "line": 567,
+          "endLine": 855,
           "length": 289
         },
         {
           "name": "_statusTrendDays",
           "kind": "let",
-          "line": 872,
-          "endLine": 872,
-          "length": 1
-        },
-        {
-          "name": "STATUS_TREND_RANGES",
-          "kind": "const",
           "line": 873,
           "endLine": 873,
           "length": 1
         },
         {
+          "name": "STATUS_TREND_RANGES",
+          "kind": "const",
+          "line": 874,
+          "endLine": 874,
+          "length": 1
+        },
+        {
           "name": "STATUS_TREND_MAX_DAYS",
           "kind": "const",
-          "line": 884,
-          "endLine": 884,
+          "line": 885,
+          "endLine": 885,
           "length": 1
         },
         {
           "name": "statusTrendWindowDays",
           "kind": "function",
-          "line": 892,
-          "endLine": 895,
+          "line": 893,
+          "endLine": 896,
           "length": 4
         },
         {
           "name": "statusTrendFullSpanDays",
           "kind": "function",
-          "line": 897,
-          "endLine": 906,
+          "line": 898,
+          "endLine": 907,
           "length": 10
         },
         {
           "name": "statusTrendRangeLabel",
           "kind": "function",
-          "line": 907,
-          "endLine": 913,
+          "line": 908,
+          "endLine": 914,
           "length": 7
         },
         {
           "name": "statusTrendRangePillsHtml",
           "kind": "function",
-          "line": 914,
-          "endLine": 919,
+          "line": 915,
+          "endLine": 920,
           "length": 6
         },
         {
           "name": "setStatusTrendDays",
           "kind": "function",
-          "line": 926,
-          "endLine": 934,
+          "line": 927,
+          "endLine": 935,
           "length": 9
         },
         {
           "name": "buildStatusTrendChart",
           "kind": "function",
-          "line": 936,
-          "endLine": 994,
+          "line": 937,
+          "endLine": 995,
           "length": 59
         },
         {
           "name": "_dashParadeDate",
-          "kind": "let",
-          "line": 1008,
-          "endLine": 1008,
-          "length": 1
-        },
-        {
-          "name": "_dashParadeLookahead",
           "kind": "let",
           "line": 1009,
           "endLine": 1009,
           "length": 1
         },
         {
-          "name": "setDashParadeDate",
-          "kind": "function",
+          "name": "_dashParadeLookahead",
+          "kind": "let",
           "line": 1010,
           "endLine": 1010,
           "length": 1
         },
         {
-          "name": "setDashParadeType",
+          "name": "setDashParadeDate",
           "kind": "function",
           "line": 1011,
-          "endLine": 1017,
+          "endLine": 1011,
+          "length": 1
+        },
+        {
+          "name": "setDashParadeType",
+          "kind": "function",
+          "line": 1012,
+          "endLine": 1018,
           "length": 7
         },
         {
           "name": "setDashParadeTime",
           "kind": "function",
-          "line": 1018,
-          "endLine": 1022,
+          "line": 1019,
+          "endLine": 1023,
           "length": 5
         },
         {
           "name": "refreshDashParade",
           "kind": "function",
-          "line": 1019,
-          "endLine": 1022,
+          "line": 1020,
+          "endLine": 1023,
           "length": 4
         },
         {
           "name": "setDashParadeLookahead",
           "kind": "function",
-          "line": 1023,
-          "endLine": 1031,
+          "line": 1024,
+          "endLine": 1032,
           "length": 9
         },
         {
           "name": "dashParadeScope",
           "kind": "function",
-          "line": 1028,
-          "endLine": 1031,
+          "line": 1029,
+          "endLine": 1032,
           "length": 4
         },
         {
           "name": "dashParadeMeta",
           "kind": "function",
-          "line": 1032,
-          "endLine": 1040,
+          "line": 1033,
+          "endLine": 1041,
           "length": 9
         },
         {
           "name": "dashParadeBodyHtml",
           "kind": "function",
-          "line": 1044,
-          "endLine": 1054,
+          "line": 1045,
+          "endLine": 1055,
           "length": 11
         },
         {
           "name": "renderDashParade",
           "kind": "function",
-          "line": 1056,
-          "endLine": 1089,
+          "line": 1057,
+          "endLine": 1090,
           "length": 34
         },
         {
           "name": "copyDashParadeText",
           "kind": "function",
-          "line": 1095,
-          "endLine": 1100,
+          "line": 1096,
+          "endLine": 1101,
           "length": 6
         },
         {
           "name": "renderDashLeaveOut",
           "kind": "function",
-          "line": 1112,
-          "endLine": 1150,
+          "line": 1113,
+          "endLine": 1151,
           "length": 39
         },
         {
           "name": "renderLeave",
           "kind": "function",
-          "line": 1152,
-          "endLine": 1186,
+          "line": 1153,
+          "endLine": 1187,
           "length": 35
         },
         {
           "name": "toggleLeaveTimeline",
           "kind": "function",
-          "line": 1194,
-          "endLine": 1202,
+          "line": 1195,
+          "endLine": 1203,
           "length": 9
         },
         {
           "name": "renderLeaveTimeline",
           "kind": "function",
-          "line": 1204,
-          "endLine": 1283,
+          "line": 1205,
+          "endLine": 1284,
           "length": 80
+        },
+        {
+          "name": "renderDashDuty",
+          "kind": "function",
+          "line": 1300,
+          "endLine": 1332,
+          "length": 33
         },
         {
           "name": "renderDashAppointments",
           "kind": "function",
-          "line": 1285,
-          "endLine": 1345,
+          "line": 1334,
+          "endLine": 1394,
           "length": 61
         },
         {
           "name": "renderDashProfileCards",
           "kind": "function",
-          "line": 1347,
-          "endLine": 1385,
+          "line": 1396,
+          "endLine": 1434,
           "length": 39
         }
       ]
     },
     {
       "file": "js/render-duty.js",
-      "lines": 317,
-      "declCount": 20,
+      "lines": 338,
+      "declCount": 21,
       "callsInto": [
         "js/actions.js",
         "js/duty-eligibility.js",
@@ -5909,6 +5917,7 @@
       "calledBy": [
         "js/forms-duty.js",
         "js/forms-reports.js",
+        "js/render-dashboard.js",
         "js/render.js"
       ],
       "vmCheck": {
@@ -5974,87 +5983,94 @@
           "length": 9
         },
         {
+          "name": "dutyDaySlots",
+          "kind": "function",
+          "line": 74,
+          "endLine": 82,
+          "length": 9
+        },
+        {
           "name": "dutyDatesInMonth",
           "kind": "function",
-          "line": 65,
-          "endLine": 73,
+          "line": 86,
+          "endLine": 94,
           "length": 9
         },
         {
           "name": "DUTY_DOW_LABELS",
           "kind": "const",
-          "line": 75,
-          "endLine": 75,
+          "line": 96,
+          "endLine": 96,
           "length": 1
         },
         {
           "name": "dutyNameChip",
           "kind": "function",
-          "line": 90,
-          "endLine": 98,
+          "line": 111,
+          "endLine": 119,
           "length": 9
         },
         {
           "name": "renderDuty",
           "kind": "function",
-          "line": 100,
-          "endLine": 137,
+          "line": 121,
+          "endLine": 158,
           "length": 38
         },
         {
           "name": "dutyGridHTML",
           "kind": "function",
-          "line": 140,
-          "endLine": 192,
+          "line": 161,
+          "endLine": 213,
           "length": 53
         },
         {
           "name": "dutyOverallHTML",
           "kind": "function",
-          "line": 195,
-          "endLine": 237,
+          "line": 216,
+          "endLine": 258,
           "length": 43
         },
         {
           "name": "dutyLogHTML",
           "kind": "function",
-          "line": 240,
-          "endLine": 268,
+          "line": 261,
+          "endLine": 289,
           "length": 29
         },
         {
           "name": "dutyRangePicker",
           "kind": "function",
-          "line": 270,
-          "endLine": 279,
+          "line": 291,
+          "endLine": 300,
           "length": 10
         },
         {
           "name": "setDutyView",
           "kind": "function",
-          "line": 285,
-          "endLine": 285,
+          "line": 306,
+          "endLine": 306,
           "length": 1
         },
         {
           "name": "setDutyRange",
           "kind": "function",
-          "line": 286,
-          "endLine": 292,
+          "line": 307,
+          "endLine": 313,
           "length": 7
         },
         {
           "name": "setDutySort",
           "kind": "function",
-          "line": 288,
-          "endLine": 292,
+          "line": 309,
+          "endLine": 313,
           "length": 5
         },
         {
           "name": "stepDutyMonth",
           "kind": "function",
-          "line": 294,
-          "endLine": 300,
+          "line": 315,
+          "endLine": 321,
           "length": 7
         }
       ]
@@ -7086,11 +7102,11 @@
         "apps-script-Code.gs",
         "js/forms-duty.js",
         "js/forms-reports.js",
+        "js/render-dashboard.js",
         "js/render-duty.js",
         "js/main.js",
         "js/forms-records.js",
         "js/forms-conducts.js",
-        "js/render-dashboard.js",
         "js/render-conducts.js",
         "js/forms-admin.js",
         "js/api.js",
@@ -10230,7 +10246,7 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 302
+          "line": 323
         }
       ],
       "stringRefs": [],
@@ -11484,7 +11500,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1171
+          "line": 1172
         },
         {
           "file": "js/render-records.js",
@@ -12977,7 +12993,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1047
+          "line": 1048
         },
         {
           "file": "apps-script-Code.gs",
@@ -13414,7 +13430,11 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 948
+          "line": 949
+        },
+        {
+          "file": "js/render-dashboard.js",
+          "line": 1308
         }
       ],
       "stringRefs": [],
@@ -14222,7 +14242,7 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 93
+          "line": 114
         }
       ],
       "stringRefs": [],
@@ -14240,7 +14260,7 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 95
+          "line": 116
         }
       ],
       "stringRefs": [],
@@ -14565,11 +14585,11 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 144
+          "line": 165
         },
         {
           "file": "js/render-duty.js",
-          "line": 197
+          "line": 218
         }
       ],
       "stringRefs": [],
@@ -14604,7 +14624,7 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 149
+          "line": 170
         }
       ],
       "stringRefs": [],
@@ -14627,7 +14647,7 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 151
+          "line": 172
         }
       ],
       "stringRefs": [],
@@ -14700,7 +14720,7 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 243
+          "line": 264
         }
       ],
       "stringRefs": [],
@@ -14793,11 +14813,11 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 196
+          "line": 217
         },
         {
           "file": "js/render-duty.js",
-          "line": 241
+          "line": 262
         }
       ],
       "stringRefs": [],
@@ -14849,7 +14869,7 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 198
+          "line": 219
         }
       ],
       "stringRefs": [],
@@ -16357,7 +16377,7 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 310
+          "line": 331
         }
       ],
       "stringRefs": [],
@@ -16447,7 +16467,7 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 315
+          "line": 336
         }
       ],
       "stringRefs": [],
@@ -16536,11 +16556,11 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 312
+          "line": 333
         },
         {
           "file": "js/render-duty.js",
-          "line": 313
+          "line": 334
         }
       ],
       "stringRefs": [
@@ -16597,7 +16617,7 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 314
+          "line": 335
         }
       ],
       "stringRefs": [],
@@ -16614,7 +16634,7 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 311
+          "line": 332
         }
       ],
       "stringRefs": [],
@@ -17176,7 +17196,7 @@
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1332
+          "line": 1381
         }
       ],
       "identRefFiles": [
@@ -17210,7 +17230,7 @@
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 449
+          "line": 450
         }
       ],
       "identRefFiles": [
@@ -17240,7 +17260,7 @@
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 467
+          "line": 468
         }
       ],
       "identRefFiles": [
@@ -17274,15 +17294,15 @@
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 432
+          "line": 433
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 549
+          "line": 550
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 714
+          "line": 715
         }
       ],
       "identRefFiles": [
@@ -17316,7 +17336,7 @@
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1332
+          "line": 1381
         }
       ],
       "identRefFiles": [
@@ -17512,19 +17532,19 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1129
+          "line": 1130
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1141
+          "line": 1142
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1171
+          "line": 1172
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         }
       ],
       "identRefFiles": [
@@ -19736,7 +19756,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 562
+          "line": 563
         }
       ],
       "stringRefs": [],
@@ -20126,43 +20146,43 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 265
+          "line": 266
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 275
+          "line": 276
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 444
+          "line": 445
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 728
+          "line": 729
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 745
+          "line": 746
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1137
+          "line": 1138
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1261
+          "line": 1262
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1333
+          "line": 1382
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1380
+          "line": 1429
         },
         {
           "file": "js/render-records.js",
@@ -20364,15 +20384,15 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 446
+          "line": 447
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1315
+          "line": 1364
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1331
+          "line": 1380
         },
         {
           "file": "js/render-records.js",
@@ -20848,11 +20868,11 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 664
+          "line": 665
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1165
+          "line": 1166
         },
         {
           "file": "js/render-records.js",
@@ -21010,7 +21030,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 929
+          "line": 930
         }
       ],
       "stringRefs": [],
@@ -21055,15 +21075,15 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 499
+          "line": 500
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 577
+          "line": 578
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1153
+          "line": 1154
         },
         {
           "file": "js/render-records.js",
@@ -21124,39 +21144,39 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 391
+          "line": 392
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 505
+          "line": 506
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 510
+          "line": 511
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 594
+          "line": 595
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 613
+          "line": 614
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1119
+          "line": 1120
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1156
+          "line": 1157
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1291
+          "line": 1340
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1304
+          "line": 1353
         },
         {
           "file": "js/render-records.js",
@@ -21249,19 +21269,19 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 664
+          "line": 665
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1061
+          "line": 1062
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1165
+          "line": 1166
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1185
+          "line": 1186
         },
         {
           "file": "js/render-records.js",
@@ -21416,11 +21436,11 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 93
+          "line": 114
         },
         {
           "file": "js/render-duty.js",
-          "line": 96
+          "line": 117
         },
         {
           "file": "js/render-records.js",
@@ -21549,15 +21569,15 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 93
+          "line": 114
         },
         {
           "file": "js/render-duty.js",
-          "line": 96
+          "line": 117
         },
         {
           "file": "js/render-duty.js",
-          "line": 96
+          "line": 117
         },
         {
           "file": "js/render-records.js",
@@ -21976,39 +21996,39 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 265
+          "line": 266
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 275
+          "line": 276
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 446
+          "line": 447
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 446
+          "line": 447
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 547
+          "line": 548
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 715
+          "line": 716
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 730
+          "line": 731
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 746
+          "line": 747
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1334
+          "line": 1383
         },
         {
           "file": "js/render-records.js",
@@ -22172,55 +22192,55 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 265
+          "line": 266
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 275
+          "line": 276
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 446
+          "line": 447
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 548
+          "line": 549
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 716
+          "line": 717
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 731
+          "line": 732
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 747
+          "line": 748
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1138
+          "line": 1139
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1261
+          "line": 1262
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1335
+          "line": 1384
         },
         {
           "file": "js/render-duty.js",
-          "line": 91
+          "line": 112
         },
         {
           "file": "js/render-duty.js",
-          "line": 204
+          "line": 225
         },
         {
           "file": "js/render-records.js",
@@ -22740,7 +22760,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 314
+          "line": 315
         },
         {
           "file": "js/render-records.js",
@@ -23012,15 +23032,15 @@
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1142
+          "line": 1143
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1332
+          "line": 1381
         },
         {
           "file": "js/render-records.js",
@@ -23246,7 +23266,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 905
+          "line": 906
         }
       ],
       "stringRefs": [],
@@ -23481,7 +23501,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 949
+          "line": 950
         },
         {
           "file": "js/render-records.js",
@@ -23533,7 +23553,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 258
+          "line": 259
         }
       ],
       "stringRefs": [],
@@ -23561,7 +23581,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 257
+          "line": 258
         }
       ],
       "stringRefs": [],
@@ -23584,7 +23604,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1303
+          "line": 1352
         },
         {
           "file": "js/render-records.js",
@@ -23627,11 +23647,11 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 260
+          "line": 261
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 272
+          "line": 273
         },
         {
           "file": "js/render-records.js",
@@ -23693,7 +23713,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 263
+          "line": 264
         }
       ],
       "stringRefs": [],
@@ -23731,27 +23751,27 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1139
+          "line": 1140
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1139
+          "line": 1140
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1139
+          "line": 1140
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         },
         {
           "file": "js/render-records.js",
@@ -23898,11 +23918,11 @@
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 309
+          "line": 310
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1373
+          "line": 1422
         },
         {
           "file": "js/render-records.js",
@@ -24207,7 +24227,7 @@
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 951
+          "line": 952
         }
       ],
       "stringRefs": [],
@@ -25529,11 +25549,11 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 486
+          "line": 487
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 487
+          "line": 488
         }
       ],
       "stringRefs": [],
@@ -25942,10 +25962,6 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 261
-        },
-        {
-          "file": "js/render-dashboard.js",
           "line": 262
         },
         {
@@ -25954,79 +25970,79 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 265
+          "line": 264
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 273
+          "line": 266
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 273
+          "line": 274
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 275
+          "line": 274
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 393
+          "line": 276
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 421
+          "line": 394
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 421
+          "line": 422
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 425
+          "line": 422
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 432
+          "line": 426
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 439
+          "line": 433
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 446
+          "line": 440
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 537
+          "line": 447
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 541
+          "line": 538
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 548
+          "line": 542
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 555
+          "line": 549
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 555
+          "line": 556
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 562
+          "line": 556
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 659
+          "line": 563
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 716
+          "line": 660
         },
         {
           "file": "js/render-dashboard.js",
@@ -26034,115 +26050,127 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 731
+          "line": 718
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 747
+          "line": 732
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1051
+          "line": 748
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1061
+          "line": 1052
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1138
+          "line": 1062
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1141
+          "line": 1139
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1142
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1184
+          "line": 1185
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1255
+          "line": 1185
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1255
+          "line": 1256
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1261
+          "line": 1256
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1335
+          "line": 1262
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1336
+          "line": 1313
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1339
+          "line": 1323
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1373
+          "line": 1384
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1378
+          "line": 1385
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1380
+          "line": 1388
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1380
+          "line": 1422
+        },
+        {
+          "file": "js/render-dashboard.js",
+          "line": 1427
+        },
+        {
+          "file": "js/render-dashboard.js",
+          "line": 1429
+        },
+        {
+          "file": "js/render-dashboard.js",
+          "line": 1429
         },
         {
           "file": "js/render-duty.js",
-          "line": 94
+          "line": 115
         },
         {
           "file": "js/render-duty.js",
-          "line": 97
+          "line": 118
         },
         {
           "file": "js/render-duty.js",
-          "line": 147
+          "line": 168
         },
         {
           "file": "js/render-duty.js",
-          "line": 184
+          "line": 205
         },
         {
           "file": "js/render-duty.js",
-          "line": 222
+          "line": 243
         },
         {
           "file": "js/render-duty.js",
-          "line": 247
+          "line": 268
         },
         {
           "file": "js/render-duty.js",
-          "line": 248
+          "line": 269
         },
         {
           "file": "js/render-duty.js",
-          "line": 249
+          "line": 270
         },
         {
           "file": "js/render-duty.js",
-          "line": 250
+          "line": 271
         },
         {
           "file": "js/render-duty.js",
-          "line": 278
+          "line": 299
         },
         {
           "file": "js/render-records.js",
@@ -26919,67 +26947,67 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 669
+          "line": 670
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 671
+          "line": 672
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1069
+          "line": 1070
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1075
+          "line": 1076
         },
         {
           "file": "js/render-duty.js",
-          "line": 97
+          "line": 118
         },
         {
           "file": "js/render-duty.js",
-          "line": 97
+          "line": 118
         },
         {
           "file": "js/render-duty.js",
-          "line": 156
+          "line": 177
         },
         {
           "file": "js/render-duty.js",
-          "line": 165
+          "line": 186
         },
         {
           "file": "js/render-duty.js",
-          "line": 166
+          "line": 187
         },
         {
           "file": "js/render-duty.js",
-          "line": 166
+          "line": 187
         },
         {
           "file": "js/render-duty.js",
-          "line": 167
+          "line": 188
         },
         {
           "file": "js/render-duty.js",
-          "line": 175
+          "line": 196
         },
         {
           "file": "js/render-duty.js",
-          "line": 253
+          "line": 274
         },
         {
           "file": "js/render-duty.js",
-          "line": 253
+          "line": 274
         },
         {
           "file": "js/render-duty.js",
-          "line": 253
+          "line": 274
         },
         {
           "file": "js/render-duty.js",
-          "line": 255
+          "line": 276
         },
         {
           "file": "js/render-records.js",
@@ -27324,35 +27352,35 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 418
+          "line": 419
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 567
+          "line": 568
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 898
+          "line": 899
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 945
+          "line": 946
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1035
+          "line": 1036
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1045
+          "line": 1046
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1057
+          "line": 1058
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1154
+          "line": 1155
         },
         {
           "file": "js/render-duty.js",
@@ -27360,7 +27388,7 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 312
+          "line": 333
         },
         {
           "file": "js/render-records.js",
@@ -28087,71 +28115,71 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 304
-        },
-        {
-          "file": "js/render-dashboard.js",
           "line": 305
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 418
+          "line": 306
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 506
+          "line": 419
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 511
+          "line": 507
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 595
+          "line": 512
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 602
+          "line": 596
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 617
+          "line": 603
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 901
+          "line": 618
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1120
+          "line": 902
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1120
+          "line": 1121
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1157
+          "line": 1121
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1157
+          "line": 1158
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1289
+          "line": 1158
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1308
+          "line": 1338
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1309
+          "line": 1357
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1325
+          "line": 1358
+        },
+        {
+          "file": "js/render-dashboard.js",
+          "line": 1374
         },
         {
           "file": "js/render-records.js",
@@ -28476,11 +28504,11 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 421
+          "line": 422
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1338
+          "line": 1387
         },
         {
           "file": "js/render-records.js",
@@ -28632,15 +28660,15 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 512
+          "line": 513
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 527
+          "line": 528
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 597
+          "line": 598
         }
       ],
       "stringRefs": [],
@@ -28662,27 +28690,27 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 430
+          "line": 431
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 522
+          "line": 523
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 533
+          "line": 534
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 634
+          "line": 635
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 656
+          "line": 657
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 713
+          "line": 714
         }
       ],
       "stringRefs": [],
@@ -30358,7 +30386,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1049
+          "line": 1050
         }
       ],
       "stringRefs": [],
@@ -30384,15 +30412,15 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1037
+          "line": 1038
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1046
+          "line": 1047
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1058
+          "line": 1059
         }
       ],
       "stringRefs": [],
@@ -30552,7 +30580,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1098
+          "line": 1099
         }
       ],
       "stringRefs": [],
@@ -30591,7 +30619,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1099
+          "line": 1100
         }
       ],
       "stringRefs": [],
@@ -31119,7 +31147,7 @@
       "name": "_deferredBuilders",
       "kind": "let",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 343,
+      "definedAtLine": 344,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31133,7 +31161,7 @@
       "name": "_lastRenderedNav",
       "kind": "let",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 348,
+      "definedAtLine": 349,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31145,7 +31173,7 @@
       "name": "chartGateMarkup",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 349,
+      "definedAtLine": 350,
       "directRefs": [
         {
           "file": "js/render-conducts.js",
@@ -31153,7 +31181,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 290
+          "line": 291
         }
       ],
       "stringRefs": [],
@@ -31167,15 +31195,15 @@
       "name": "runDeferred",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 356,
+      "definedAtLine": 357,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 362
+          "line": 363
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 363
+          "line": 364
         }
       ],
       "stringRefs": [],
@@ -31188,12 +31216,12 @@
       "name": "loadDashboardCharts",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 362,
+      "definedAtLine": 363,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 290
+          "line": 291
         }
       ],
       "identRefFiles": [
@@ -31205,7 +31233,7 @@
       "name": "loadConductDashCharts",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 363,
+      "definedAtLine": 364,
       "directRefs": [],
       "stringRefs": [
         {
@@ -31222,7 +31250,7 @@
       "name": "setChartPref",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 365,
+      "definedAtLine": 366,
       "directRefs": [],
       "stringRefs": [
         {
@@ -31231,7 +31259,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 352
+          "line": 353
         },
         {
           "file": "js/render-statusboard.js",
@@ -31254,11 +31282,11 @@
       "name": "renderDashMSKCases",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 388,
+      "definedAtLine": 389,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 292
+          "line": 293
         }
       ],
       "stringRefs": [],
@@ -31271,7 +31299,7 @@
       "name": "_mskAnalyticsStart",
       "kind": "let",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 481,
+      "definedAtLine": 482,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31283,7 +31311,7 @@
       "name": "_mskAnalyticsEnd",
       "kind": "let",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 482,
+      "definedAtLine": 483,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31295,7 +31323,7 @@
       "name": "_mskAnalyticsCharts",
       "kind": "const",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 483,
+      "definedAtLine": 484,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31307,16 +31335,16 @@
       "name": "setMSKAnalyticsRange",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 485,
+      "definedAtLine": 486,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 669
+          "line": 670
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 671
+          "line": 672
         }
       ],
       "identRefFiles": [
@@ -31328,11 +31356,11 @@
       "name": "viewMSKRegion",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 496,
+      "definedAtLine": 497,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 811
+          "line": 812
         }
       ],
       "stringRefs": [],
@@ -31345,7 +31373,7 @@
       "name": "renderMSKAnalytics",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 566,
+      "definedAtLine": 567,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -31362,7 +31390,7 @@
       "name": "_statusTrendDays",
       "kind": "let",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 872,
+      "definedAtLine": 873,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31374,7 +31402,7 @@
       "name": "STATUS_TREND_RANGES",
       "kind": "const",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 873,
+      "definedAtLine": 874,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31386,7 +31414,7 @@
       "name": "STATUS_TREND_MAX_DAYS",
       "kind": "const",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 884,
+      "definedAtLine": 885,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31398,15 +31426,15 @@
       "name": "statusTrendWindowDays",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 892,
+      "definedAtLine": 893,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 909
+          "line": 910
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 944
+          "line": 945
         }
       ],
       "stringRefs": [],
@@ -31419,19 +31447,19 @@
       "name": "statusTrendFullSpanDays",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 897,
+      "definedAtLine": 898,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 894
-        },
-        {
-          "file": "js/render-dashboard.js",
-          "line": 910
+          "line": 895
         },
         {
           "file": "js/render-dashboard.js",
           "line": 911
+        },
+        {
+          "file": "js/render-dashboard.js",
+          "line": 912
         }
       ],
       "stringRefs": [],
@@ -31444,15 +31472,15 @@
       "name": "statusTrendRangeLabel",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 907,
+      "definedAtLine": 908,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 283
+          "line": 284
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 931
+          "line": 932
         }
       ],
       "stringRefs": [],
@@ -31465,15 +31493,15 @@
       "name": "statusTrendRangePillsHtml",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 914,
+      "definedAtLine": 915,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 284
+          "line": 285
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 933
+          "line": 934
         }
       ],
       "stringRefs": [],
@@ -31486,12 +31514,12 @@
       "name": "setStatusTrendDays",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 926,
+      "definedAtLine": 927,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 917
+          "line": 918
         }
       ],
       "identRefFiles": [
@@ -31503,15 +31531,15 @@
       "name": "buildStatusTrendChart",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 936,
+      "definedAtLine": 937,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 295
+          "line": 296
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 929
+          "line": 930
         }
       ],
       "stringRefs": [],
@@ -31524,7 +31552,7 @@
       "name": "_dashParadeDate",
       "kind": "let",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1008,
+      "definedAtLine": 1009,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31536,7 +31564,7 @@
       "name": "_dashParadeLookahead",
       "kind": "let",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1009,
+      "definedAtLine": 1010,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -31548,12 +31576,12 @@
       "name": "setDashParadeDate",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1010,
+      "definedAtLine": 1011,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1069
+          "line": 1070
         }
       ],
       "identRefFiles": [
@@ -31565,12 +31593,12 @@
       "name": "setDashParadeType",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1011,
+      "definedAtLine": 1012,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1069
+          "line": 1070
         }
       ],
       "identRefFiles": [
@@ -31582,12 +31610,12 @@
       "name": "setDashParadeTime",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1018,
+      "definedAtLine": 1019,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1075
+          "line": 1076
         }
       ],
       "identRefFiles": [
@@ -31599,11 +31627,11 @@
       "name": "refreshDashParade",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1019,
+      "definedAtLine": 1020,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1018
+          "line": 1019
         }
       ],
       "stringRefs": [],
@@ -31616,12 +31644,12 @@
       "name": "setDashParadeLookahead",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1023,
+      "definedAtLine": 1024,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1082
+          "line": 1083
         }
       ],
       "identRefFiles": [
@@ -31633,19 +31661,19 @@
       "name": "dashParadeScope",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1028,
+      "definedAtLine": 1029,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1033
+          "line": 1034
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1047
+          "line": 1048
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1059
+          "line": 1060
         }
       ],
       "stringRefs": [],
@@ -31658,11 +31686,11 @@
       "name": "dashParadeMeta",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1032,
+      "definedAtLine": 1033,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1099
+          "line": 1100
         }
       ],
       "stringRefs": [],
@@ -31675,15 +31703,15 @@
       "name": "dashParadeBodyHtml",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1044,
+      "definedAtLine": 1045,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1021
+          "line": 1022
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1087
+          "line": 1088
         }
       ],
       "stringRefs": [],
@@ -31696,11 +31724,11 @@
       "name": "renderDashParade",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1056,
+      "definedAtLine": 1057,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 279
+          "line": 280
         }
       ],
       "stringRefs": [],
@@ -31713,12 +31741,12 @@
       "name": "copyDashParadeText",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1095,
+      "definedAtLine": 1096,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1051
+          "line": 1052
         }
       ],
       "identRefFiles": [
@@ -31730,11 +31758,11 @@
       "name": "renderDashLeaveOut",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1112,
+      "definedAtLine": 1113,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 278
+          "line": 279
         }
       ],
       "stringRefs": [],
@@ -31747,7 +31775,7 @@
       "name": "renderLeave",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1152,
+      "definedAtLine": 1153,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -31764,12 +31792,12 @@
       "name": "toggleLeaveTimeline",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1194,
+      "definedAtLine": 1195,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1265
+          "line": 1266
         }
       ],
       "identRefFiles": [
@@ -31781,11 +31809,28 @@
       "name": "renderLeaveTimeline",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1204,
+      "definedAtLine": 1205,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1182
+          "line": 1183
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/render-dashboard.js"
+      ],
+      "fanIn": 0
+    },
+    "renderDashDuty": {
+      "name": "renderDashDuty",
+      "kind": "function",
+      "definedIn": "js/render-dashboard.js",
+      "definedAtLine": 1300,
+      "directRefs": [
+        {
+          "file": "js/render-dashboard.js",
+          "line": 241
         }
       ],
       "stringRefs": [],
@@ -31798,7 +31843,7 @@
       "name": "renderDashAppointments",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1285,
+      "definedAtLine": 1334,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
@@ -31815,11 +31860,11 @@
       "name": "renderDashProfileCards",
       "kind": "function",
       "definedIn": "js/render-dashboard.js",
-      "definedAtLine": 1347,
+      "definedAtLine": 1396,
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 291
+          "line": 292
         }
       ],
       "stringRefs": [],
@@ -31904,23 +31949,23 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 141
+          "line": 162
         },
         {
           "file": "js/render-duty.js",
-          "line": 196
+          "line": 217
         },
         {
           "file": "js/render-duty.js",
-          "line": 241
+          "line": 262
         },
         {
           "file": "js/render-duty.js",
-          "line": 295
+          "line": 316
         },
         {
           "file": "js/render-duty.js",
-          "line": 315
+          "line": 336
         }
       ],
       "stringRefs": [],
@@ -31942,7 +31987,11 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 142
+          "line": 76
+        },
+        {
+          "file": "js/render-duty.js",
+          "line": 163
         }
       ],
       "stringRefs": [],
@@ -31960,7 +32009,11 @@
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 143
+          "line": 75
+        },
+        {
+          "file": "js/render-duty.js",
+          "line": 164
         }
       ],
       "stringRefs": [],
@@ -31969,15 +32022,32 @@
       ],
       "fanIn": 0
     },
+    "dutyDaySlots": {
+      "name": "dutyDaySlots",
+      "kind": "function",
+      "definedIn": "js/render-duty.js",
+      "definedAtLine": 74,
+      "directRefs": [
+        {
+          "file": "js/render-dashboard.js",
+          "line": 1310
+        }
+      ],
+      "stringRefs": [],
+      "identRefFiles": [
+        "js/render-dashboard.js"
+      ],
+      "fanIn": 1
+    },
     "dutyDatesInMonth": {
       "name": "dutyDatesInMonth",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 65,
+      "definedAtLine": 86,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 148
+          "line": 169
         }
       ],
       "stringRefs": [],
@@ -31990,7 +32060,7 @@
       "name": "DUTY_DOW_LABELS",
       "kind": "const",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 75,
+      "definedAtLine": 96,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -32002,37 +32072,42 @@
       "name": "dutyNameChip",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 90,
+      "definedAtLine": 111,
       "directRefs": [
         {
           "file": "js/forms-duty.js",
           "line": 238
         },
         {
-          "file": "js/render-duty.js",
-          "line": 160
+          "file": "js/render-dashboard.js",
+          "line": 1315
         },
         {
           "file": "js/render-duty.js",
-          "line": 204
+          "line": 181
         },
         {
           "file": "js/render-duty.js",
-          "line": 247
+          "line": 225
+        },
+        {
+          "file": "js/render-duty.js",
+          "line": 268
         }
       ],
       "stringRefs": [],
       "identRefFiles": [
         "js/forms-duty.js",
+        "js/render-dashboard.js",
         "js/render-duty.js"
       ],
-      "fanIn": 1
+      "fanIn": 2
     },
     "renderDuty": {
       "name": "renderDuty",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 100,
+      "definedAtLine": 121,
       "directRefs": [
         {
           "file": "js/render.js",
@@ -32049,11 +32124,11 @@
       "name": "dutyGridHTML",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 140,
+      "definedAtLine": 161,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 122
+          "line": 143
         }
       ],
       "stringRefs": [],
@@ -32066,11 +32141,11 @@
       "name": "dutyOverallHTML",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 195,
+      "definedAtLine": 216,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 123
+          "line": 144
         }
       ],
       "stringRefs": [],
@@ -32083,11 +32158,11 @@
       "name": "dutyLogHTML",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 240,
+      "definedAtLine": 261,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 124
+          "line": 145
         }
       ],
       "stringRefs": [],
@@ -32100,15 +32175,15 @@
       "name": "dutyRangePicker",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 270,
+      "definedAtLine": 291,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 234
+          "line": 255
         },
         {
           "file": "js/render-duty.js",
-          "line": 263
+          "line": 284
         }
       ],
       "stringRefs": [],
@@ -32121,11 +32196,11 @@
       "name": "setDutyView",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 285,
+      "definedAtLine": 306,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 303
+          "line": 324
         }
       ],
       "stringRefs": [],
@@ -32138,11 +32213,11 @@
       "name": "setDutyRange",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 286,
+      "definedAtLine": 307,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 304
+          "line": 325
         }
       ],
       "stringRefs": [],
@@ -32155,11 +32230,11 @@
       "name": "setDutySort",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 288,
+      "definedAtLine": 309,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 305
+          "line": 326
         }
       ],
       "stringRefs": [],
@@ -32172,11 +32247,11 @@
       "name": "stepDutyMonth",
       "kind": "function",
       "definedIn": "js/render-duty.js",
-      "definedAtLine": 294,
+      "definedAtLine": 315,
       "directRefs": [
         {
           "file": "js/render-duty.js",
-          "line": 306
+          "line": 327
         }
       ],
       "stringRefs": [],
@@ -33337,7 +33412,7 @@
       "stringRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 1171
+          "line": 1172
         }
       ],
       "identRefFiles": [
@@ -33788,19 +33863,15 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 365
+          "line": 366
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 378
+          "line": 379
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 488
-        },
-        {
-          "file": "js/render-dashboard.js",
-          "line": 1010
+          "line": 489
         },
         {
           "file": "js/render-dashboard.js",
@@ -33808,23 +33879,27 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1023
+          "line": 1012
+        },
+        {
+          "file": "js/render-dashboard.js",
+          "line": 1024
         },
         {
           "file": "js/render-duty.js",
-          "line": 285
+          "line": 306
         },
         {
           "file": "js/render-duty.js",
-          "line": 286
+          "line": 307
         },
         {
           "file": "js/render-duty.js",
-          "line": 291
+          "line": 312
         },
         {
           "file": "js/render-duty.js",
-          "line": 299
+          "line": 320
         },
         {
           "file": "js/render-records.js",
@@ -35468,6 +35543,7 @@
         "js/duty-eligibility.js",
         "js/duty-points.js",
         "js/duty-schedule.js",
+        "js/render-dashboard.js",
         "js/render-duty.js",
         "js/state.js"
       ],
@@ -35838,17 +35914,22 @@
           "line": 354
         },
         {
+          "file": "js/render-dashboard.js",
+          "line": 1302
+        },
+        {
           "file": "js/render-duty.js",
-          "line": 101
+          "line": 122
         }
       ],
       "stringRefs": [],
       "identRefFiles": [
         "js/forms-duty.js",
         "js/forms-reports.js",
+        "js/render-dashboard.js",
         "js/render-duty.js"
       ],
-      "fanIn": 3
+      "fanIn": 4
     },
     "loadDirty": {
       "name": "loadDirty",
@@ -36663,7 +36744,7 @@
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 365
+          "line": 366
         }
       ],
       "stringRefs": [],
@@ -36688,11 +36769,11 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 373
+          "line": 374
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 377
+          "line": 378
         },
         {
           "file": "js/render-statusboard.js",
@@ -37620,6 +37701,10 @@
           "line": 187
         },
         {
+          "file": "js/render-dashboard.js",
+          "line": 1301
+        },
+        {
           "file": "js/render.js",
           "line": 138
         },
@@ -37815,11 +37900,11 @@
         },
         {
           "file": "js/render-duty.js",
-          "line": 111
+          "line": 132
         },
         {
           "file": "js/render-duty.js",
-          "line": 145
+          "line": 166
         }
       ],
       "stringRefs": [],
@@ -37843,7 +37928,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 392
+          "line": 393
         },
         {
           "file": "js/render-records.js",
@@ -37935,19 +38020,19 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 391
+          "line": 392
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 505
+          "line": 506
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 510
+          "line": 511
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 616
+          "line": 617
         },
         {
           "file": "js/render-statusboard.js",
@@ -37991,7 +38076,7 @@
       "directRefs": [
         {
           "file": "js/render-dashboard.js",
-          "line": 392
+          "line": 393
         },
         {
           "file": "js/render-records.js",
@@ -39524,7 +39609,7 @@
         },
         {
           "file": "js/render-dashboard.js",
-          "line": 1171
+          "line": 1172
         },
         {
           "file": "js/render-records.js",
@@ -43125,6 +43210,7 @@
     "registerActions": [
       "test/actions.test.js",
       "test/bookin-incamp-status.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/static.test.js"
     ],
@@ -43136,6 +43222,7 @@
     "PULL_ASSIGN.duty": [
       "test/appointment-4d.test.js",
       "test/backend.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/duty-caps.test.js",
       "test/duty-conflicts.test.js",
       "test/duty-eligibility.test.js",
@@ -43152,6 +43239,7 @@
     "STATE.duty": [
       "test/appointment-4d.test.js",
       "test/backend.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/duty-caps.test.js",
       "test/duty-conflicts.test.js",
       "test/duty-eligibility.test.js",
@@ -43198,6 +43286,7 @@
       "test/bookin-incamp-status.test.js",
       "test/conduct-class-seq.test.js",
       "test/csv-importers.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-import.test.js",
       "test/edit-preserves-bookin.test.js",
@@ -43223,6 +43312,7 @@
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/save-local-debounce.test.js",
       "test/sick-history-dedup.test.js",
       "test/state.test.js",
@@ -43237,6 +43327,7 @@
       "test/backend.test.js",
       "test/bookin-incamp-status.test.js",
       "test/csv-importers.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-eligibility.test.js",
       "test/duty-schedule.test.js",
@@ -43263,6 +43354,7 @@
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/save-local-debounce.test.js",
       "test/status-trend.test.js",
@@ -43274,6 +43366,7 @@
       "test/backend.test.js",
       "test/bookin-incamp-status.test.js",
       "test/csv-importers.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-eligibility.test.js",
       "test/duty-schedule.test.js",
@@ -43300,6 +43393,7 @@
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/save-local-debounce.test.js",
       "test/status-trend.test.js",
@@ -43311,6 +43405,7 @@
       "test/backend.test.js",
       "test/bookin-incamp-status.test.js",
       "test/csv-importers.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-eligibility.test.js",
       "test/duty-schedule.test.js",
@@ -43337,6 +43432,7 @@
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/save-local-debounce.test.js",
       "test/status-trend.test.js",
@@ -43346,11 +43442,13 @@
     "STATE.platoons": [
       "test/appointment-4d.test.js",
       "test/archive-list.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/gas-medical-normalizer.test.js",
       "test/launch-bootstrap.test.js",
       "test/list-exports.test.js",
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/sync.test.js"
     ],
@@ -43358,6 +43456,7 @@
       "test/appointment-4d.test.js",
       "test/backend.test.js",
       "test/bookin-incamp-status.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-caps.test.js",
       "test/duty-eligibility.test.js",
@@ -43381,6 +43480,7 @@
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/wizard-paste.test.js",
@@ -43400,6 +43500,7 @@
       "test/btn-feedback.test.js",
       "test/conduct-class-seq.test.js",
       "test/csv-importers.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-conflicts.test.js",
       "test/edit-preserves-bookin.test.js",
@@ -43417,6 +43518,7 @@
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/section-bento.test.js",
       "test/sick-history-dedup.test.js",
@@ -43435,6 +43537,7 @@
       "test/conduct-class-seq.test.js",
       "test/conduct-export.test.js",
       "test/csv-importers.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-eligibility.test.js",
       "test/ha.test.js",
@@ -43445,6 +43548,7 @@
       "test/privacy-hardening.test.js",
       "test/readtabs-batch.test.js",
       "test/render-wiring.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/section-bento.test.js",
       "test/sick-history-dedup.test.js",
@@ -43521,6 +43625,7 @@
     "BP_SECTION_LABELS.status": [
       "test/archive-list.test.js",
       "test/bookin-incamp-status.test.js",
+      "test/dashboard-duty-card.test.js",
       "test/dashboard-strength.test.js",
       "test/duty-conflicts.test.js",
       "test/duty-eligibility.test.js",
@@ -43546,6 +43651,7 @@
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/sick-history-dedup.test.js",
@@ -43562,6 +43668,7 @@
       "test/archive-list.test.js",
       "test/duty-caps.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js"
     ],
     "API.post": [
@@ -43672,6 +43779,7 @@
       "test/map-markers.test.js",
       "test/perf-p2.test.js",
       "test/readtabs-batch.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/wizard-save-e2e.test.js"
     ],
@@ -43682,6 +43790,7 @@
       "test/privacy-hardening.test.js",
       "test/readtabs-batch.test.js",
       "test/roster-write-safety.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/save-local-debounce.test.js"
@@ -43694,6 +43803,7 @@
       "test/privacy-hardening.test.js",
       "test/readtabs-batch.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/sync.test.js"
@@ -43739,6 +43849,7 @@
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/save-local-debounce.test.js",
       "test/sick-history-dedup.test.js",
@@ -43776,6 +43887,7 @@
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/sick-history-dedup.test.js",
       "test/sync.test.js"
     ],
@@ -43806,6 +43918,7 @@
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/sick-history-dedup.test.js",
       "test/sync.test.js"
     ],
@@ -43869,6 +43982,7 @@
       "test/person-card-status.test.js",
       "test/render-wiring.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/sick-history-dedup.test.js",
@@ -43897,6 +44011,7 @@
       "test/person-card-status.test.js",
       "test/render-wiring.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/sick-history-dedup.test.js",
@@ -43925,6 +44040,7 @@
       "test/person-card-status.test.js",
       "test/render-wiring.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/sick-history-dedup.test.js",
@@ -43947,6 +44063,7 @@
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/sick-history-dedup.test.js",
       "test/status-enum.test.js",
       "test/status-trend.test.js",
@@ -43966,6 +44083,7 @@
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/sick-history-dedup.test.js",
       "test/status-enum.test.js",
       "test/status-trend.test.js",
@@ -43984,6 +44102,7 @@
       "test/mr-format.test.js",
       "test/parade-lookahead.test.js",
       "test/render-wiring.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js",
       "test/sync.test.js",
       "test/wizard-save-e2e.test.js"
@@ -44032,7 +44151,8 @@
       "test/parade-rn.test.js",
       "test/person-card-status.test.js",
       "test/roster-write-safety.test.js",
-      "test/rs-omit-on-status.test.js"
+      "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js"
     ],
     "configGet": [
       "test/bookin-incamp-status.test.js",
@@ -44069,6 +44189,7 @@
       "test/person-card-status.test.js",
       "test/render-wiring.test.js",
       "test/rs-omit-on-status.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/rs-scope.test.js",
       "test/sick-history-dedup.test.js",
@@ -44212,6 +44333,7 @@
       "test/parade-port-parity.test.js",
       "test/privacy-hardening.test.js",
       "test/render-wiring.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope-write.test.js",
       "test/wizard-paste.test.js",
       "test/wizard-save-e2e.test.js"
@@ -44250,6 +44372,7 @@
       "test/person-participation.test.js",
       "test/render-wiring.test.js",
       "test/roster-write-safety.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/wizard-save-e2e.test.js"
     ],
     "parseParticipantIds": [
@@ -44405,6 +44528,67 @@
     "importSOC": [
       "test/csv-importers.test.js"
     ],
+    "dutyGridColumns": [
+      "test/dashboard-duty-card.test.js"
+    ],
+    "STATE.caps": [
+      "test/dashboard-duty-card.test.js",
+      "test/duty-caps.test.js",
+      "test/list-exports.test.js",
+      "test/perf-p2.test.js",
+      "test/privacy-hardening.test.js",
+      "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
+      "test/rs-scope-write.test.js",
+      "test/rs-scope.test.js",
+      "test/state.test.js"
+    ],
+    "dutyPlatoonsFor": [
+      "test/dashboard-duty-card.test.js",
+      "test/duty-eligibility.test.js"
+    ],
+    "activePlatoons": [
+      "test/dashboard-duty-card.test.js",
+      "test/log-conduct-wizard.test.js",
+      "test/rs-omit-on-status.test.js",
+      "test/section-bento.test.js"
+    ],
+    "normalizeRoster": [
+      "test/dashboard-duty-card.test.js",
+      "test/dashboard-strength.test.js",
+      "test/roster-write-safety.test.js"
+    ],
+    "STATE.config": [
+      "test/dashboard-duty-card.test.js",
+      "test/duty-eligibility.test.js",
+      "test/duty-import.test.js",
+      "test/duty-schedule.test.js",
+      "test/edit-preserves-bookin.test.js",
+      "test/gas-medical-normalizer.test.js",
+      "test/ha.test.js",
+      "test/launch-bootstrap.test.js",
+      "test/list-exports.test.js",
+      "test/map-markers.test.js",
+      "test/parade-port-parity.test.js",
+      "test/person-card-status.test.js",
+      "test/roster-write-safety.test.js",
+      "test/rs-scope-parade-parity.test.js"
+    ],
+    "dutyConfig": [
+      "test/dashboard-duty-card.test.js"
+    ],
+    "dutyDaySlots": [
+      "test/dashboard-duty-card.test.js"
+    ],
+    "renderDashDuty": [
+      "test/dashboard-duty-card.test.js"
+    ],
+    "DEFAULT_CONFIG.dutyTypes": [
+      "test/dashboard-duty-card.test.js",
+      "test/duty-eligibility.test.js",
+      "test/duty-points.test.js",
+      "test/duty-schedule.test.js"
+    ],
     "filteredRoster": [
       "test/dashboard-strength.test.js",
       "test/render-wiring.test.js"
@@ -44425,10 +44609,6 @@
       "test/roster-write-safety.test.js",
       "test/status-trend.test.js"
     ],
-    "normalizeRoster": [
-      "test/dashboard-strength.test.js",
-      "test/roster-write-safety.test.js"
-    ],
     "normalizeMedical": [
       "test/dashboard-strength.test.js",
       "test/gas-medical-normalizer.test.js"
@@ -44439,7 +44619,8 @@
       "test/launch-bootstrap.test.js",
       "test/list-exports.test.js",
       "test/person-card-status.test.js",
-      "test/roster-write-safety.test.js"
+      "test/roster-write-safety.test.js",
+      "test/rs-scope-parade-parity.test.js"
     ],
     "currentMedicalEffectiveAll": [
       "test/dashboard-strength.test.js",
@@ -44453,16 +44634,6 @@
     ],
     "canPlanDuty": [
       "test/duty-caps.test.js",
-      "test/state.test.js"
-    ],
-    "STATE.caps": [
-      "test/duty-caps.test.js",
-      "test/list-exports.test.js",
-      "test/perf-p2.test.js",
-      "test/privacy-hardening.test.js",
-      "test/rs-scope-frontend.test.js",
-      "test/rs-scope-write.test.js",
-      "test/rs-scope.test.js",
       "test/state.test.js"
     ],
     "API": [
@@ -44535,25 +44706,6 @@
     "dutyAppointmentOf": [
       "test/duty-eligibility.test.js"
     ],
-    "DEFAULT_CONFIG.dutyTypes": [
-      "test/duty-eligibility.test.js",
-      "test/duty-points.test.js",
-      "test/duty-schedule.test.js"
-    ],
-    "STATE.config": [
-      "test/duty-eligibility.test.js",
-      "test/duty-import.test.js",
-      "test/duty-schedule.test.js",
-      "test/edit-preserves-bookin.test.js",
-      "test/gas-medical-normalizer.test.js",
-      "test/ha.test.js",
-      "test/launch-bootstrap.test.js",
-      "test/list-exports.test.js",
-      "test/map-markers.test.js",
-      "test/parade-port-parity.test.js",
-      "test/person-card-status.test.js",
-      "test/roster-write-safety.test.js"
-    ],
     "DEFAULT_CONFIG.dutyExtraEligible": [
       "test/duty-eligibility.test.js",
       "test/duty-schedule.test.js"
@@ -44562,9 +44714,6 @@
       "test/duty-eligibility.test.js"
     ],
     "dutyCanonAppointment": [
-      "test/duty-eligibility.test.js"
-    ],
-    "dutyPlatoonsFor": [
       "test/duty-eligibility.test.js"
     ],
     "DEFAULT_CONFIG.dutyPlatoonColours": [
@@ -44660,7 +44809,8 @@
       "test/list-exports.test.js"
     ],
     "bookedInBy": [
-      "test/edit-preserves-bookin.test.js"
+      "test/edit-preserves-bookin.test.js",
+      "test/rs-scope-parade-parity.test.js"
     ],
     "submitMedical": [
       "test/edit-preserves-bookin.test.js",
@@ -44756,6 +44906,7 @@
       "test/log-conduct-wizard.test.js",
       "test/person-participation.test.js",
       "test/render-wiring.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/sync.test.js",
       "test/wizard-save-e2e.test.js"
     ],
@@ -44765,6 +44916,7 @@
       "test/log-conduct-wizard.test.js",
       "test/person-participation.test.js",
       "test/render-wiring.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/sync.test.js",
       "test/wizard-save-e2e.test.js"
     ],
@@ -44870,6 +45022,7 @@
     "STATE.scopeKey": [
       "test/launch-bootstrap.test.js",
       "test/rs-scope-frontend.test.js",
+      "test/rs-scope-parade-parity.test.js",
       "test/rs-scope.test.js"
     ],
     "applyRoleUI": [
@@ -44948,13 +45101,16 @@
     ],
     "STATE.filterPlt": [
       "test/list-exports.test.js",
-      "test/render-wiring.test.js"
+      "test/render-wiring.test.js",
+      "test/rs-scope-parade-parity.test.js"
     ],
     "STATE.filterSect": [
-      "test/list-exports.test.js"
+      "test/list-exports.test.js",
+      "test/rs-scope-parade-parity.test.js"
     ],
     "STATE.filterRole": [
-      "test/list-exports.test.js"
+      "test/list-exports.test.js",
+      "test/rs-scope-parade-parity.test.js"
     ],
     "exportLeaveList": [
       "test/list-exports.test.js"
@@ -44991,11 +45147,6 @@
     "getName": [
       "test/log-conduct-wizard.test.js",
       "test/sync.test.js"
-    ],
-    "activePlatoons": [
-      "test/log-conduct-wizard.test.js",
-      "test/rs-omit-on-status.test.js",
-      "test/section-bento.test.js"
     ],
     "wizRecomputeParticipants": [
       "test/log-conduct-wizard.test.js"
@@ -45179,7 +45330,8 @@
     ],
     "generateBravesParadeState": [
       "test/parade-port-parity.test.js",
-      "test/render-wiring.test.js"
+      "test/render-wiring.test.js",
+      "test/rs-scope-parade-parity.test.js"
     ],
     "generateRSFormat": [
       "test/parade-port-parity.test.js",
@@ -47506,10 +47658,6 @@
         "file": "js/render-duty.js"
       },
       {
-        "name": "dutyGridColumns",
-        "file": "js/render-duty.js"
-      },
-      {
         "name": "dutyIndexByDate",
         "file": "js/render-duty.js"
       },
@@ -48071,10 +48219,6 @@
       },
       {
         "name": "configGetJSON",
-        "file": "js/state.js"
-      },
-      {
-        "name": "dutyConfig",
         "file": "js/state.js"
       },
       {
@@ -48852,7 +48996,7 @@
       {
         "name": "renderMSKAnalytics",
         "file": "js/render-dashboard.js",
-        "line": 566,
+        "line": 567,
         "length": 289
       },
       {
@@ -48871,7 +49015,7 @@
         "name": "renderDashboard",
         "file": "js/render-dashboard.js",
         "line": 82,
-        "length": 253
+        "length": 254
       },
       {
         "name": "buildFitnessReportHTML",
@@ -49139,7 +49283,7 @@
     "loadOrder": [
       {
         "src": "styles.css",
-        "version": 136,
+        "version": 137,
         "order": 0
       },
       {
@@ -49224,7 +49368,7 @@
       },
       {
         "src": "js/render-dashboard.js",
-        "version": 3,
+        "version": 4,
         "order": 17
       },
       {
@@ -49299,7 +49443,7 @@
       },
       {
         "src": "js/render-duty.js",
-        "version": 5,
+        "version": 6,
         "order": 32
       },
       {
@@ -49533,6 +49677,7 @@
       {
         "cls": "badge-orange",
         "usedIn": [
+          "js/render-dashboard.js",
           "js/render-duty.js",
           "js/sync.js"
         ]
@@ -50290,6 +50435,42 @@
         "cls": "duty-cell",
         "usedIn": [
           "js/render-duty.js"
+        ]
+      },
+      {
+        "cls": "dash-duty",
+        "usedIn": [
+          "js/render-dashboard.js"
+        ]
+      },
+      {
+        "cls": "dash-duty__head",
+        "usedIn": [
+          "js/render-dashboard.js"
+        ]
+      },
+      {
+        "cls": "dash-duty__slot",
+        "usedIn": [
+          "js/render-dashboard.js"
+        ]
+      },
+      {
+        "cls": "dash-duty__label",
+        "usedIn": [
+          "js/render-dashboard.js"
+        ]
+      },
+      {
+        "cls": "dash-duty__who",
+        "usedIn": [
+          "js/render-dashboard.js"
+        ]
+      },
+      {
+        "cls": "dash-duty__gap",
+        "usedIn": [
+          "js/render-dashboard.js"
         ]
       },
       {
