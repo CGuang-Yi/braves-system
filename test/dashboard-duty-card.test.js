@@ -11,7 +11,8 @@ const { sourceText } = require("./sources");
 
 const BUNDLE = [
   "js/state.js", "js/calc.js", "js/appointment-4d.js", "js/helpers.js",
-  "js/duty-points.js", "js/duty-eligibility.js", "js/render-duty.js"
+  "js/duty-points.js", "js/duty-eligibility.js", "js/duty-unavailable.js",
+  "js/render-duty.js"
 ];
 
 // has:()=>true so a free identifier from a file we did not load reads undefined

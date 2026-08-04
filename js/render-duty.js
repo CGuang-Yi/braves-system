@@ -118,6 +118,25 @@ function dutyNameChip(d4, cfg) {
   return `<span class="duty-chip" style="background:${escapeAttr(colour)};color:${fg}" title="${escapeAttr(title)}">${escapeHTML(label)}</span>`;
 }
 
+// The soft-unavailability marker for one assignment (design §4.3).
+//
+// Planner-only, unlike the assignment itself: the flag is a planning signal
+// nobody else can act on, and the note ("exam period", "pending course
+// nomination") is the person's own business rather than the company's.
+//
+// Every overlapping window's note goes into the tooltip, not just the first.
+// Two flags legitimately overlap, and naming one of them would state the wrong
+// reason for the highlight — worse than stating no reason at all.
+function dutyUnavailMark(idx, d4, iso) {
+  if (!d4 || !canPlanDuty()) return "";
+  const flags = duFlagsOn(idx, d4, iso);
+  if (!flags.length) return "";
+  const why = flags
+    .map(f => (f.note || "Potentially unavailable") + " (" + f.from + " → " + f.to + ")")
+    .join("\n");
+  return ` <span class="duty-unavail-mark" title="${escapeAttr(why)}">⚠</span>`;
+}
+
 function renderDuty(el) {
   const cfg = dutyConfig();
 
@@ -163,6 +182,9 @@ function dutyGridHTML(cfg) {
   const cols = dutyGridColumns(cfg);
   const idx = dutyIndexByDate(STATE.duty);
   const holidays = indexHolidays(STATE.holidays);
+  // Built once per render, not per cell: the grid is ~31 rows × one column per
+  // slot, and a per-cell lookup would be a full pass over every flag for each.
+  const unavail = duIndexByPerson(STATE.dutyUnavailable);
   const canPlan = canPlanDuty();
 
   const head = cols.map(c => `<th>${escapeHTML(c.label)}</th>`).join("");
@@ -178,12 +200,16 @@ function dutyGridHTML(cfg) {
       : "";
     const cells = cols.map(c => {
       const d4 = idx[iso] && idx[iso][c.dutyType + "|" + c.platoon];
-      const inner = d4 ? dutyNameChip(d4, cfg) : '<span style="color:var(--muted)">—</span>';
+      const mark = dutyUnavailMark(unavail, d4, iso);
+      const inner = d4
+        ? dutyNameChip(d4, cfg) + mark
+        : '<span style="color:var(--muted)">—</span>';
+      const cls = mark ? " duty-unavail" : "";
       // A planner gets the whole cell as a target — including the empty ones,
       // since filling a blank slot is the commonest action on this screen and
       // an empty cell is exactly where the click needs to land.
-      if (!canPlan) return `<td>${inner}</td>`;
-      return `<td class="duty-cell" data-action="dutyAssign" data-date="${escapeAttr(iso)}"
+      if (!canPlan) return `<td class="${cls.trim()}">${inner}</td>`;
+      return `<td class="duty-cell${cls}" data-action="dutyAssign" data-date="${escapeAttr(iso)}"
         data-type="${escapeAttr(c.dutyType)}" data-platoon="${escapeAttr(c.platoon)}"
         title="Assign ${escapeAttr(c.label)}">${inner}</td>`;
     }).join("");
