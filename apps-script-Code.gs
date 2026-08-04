@@ -800,6 +800,81 @@ function hasCap(ctx, cap) {
   return parseCaps(ctx.caps).indexOf(String(cap).toLowerCase()) !== -1;
 }
 
+// ─── REPORT-SICK SCOPE (spec §1 / addendum A8) ─────────────
+// Commanders see their own platoon's accumulated medical history; admins and
+// granted accounts see the company. This is the ONLY enforcement — the client
+// helpers in js/state.js decide which panels to draw, nothing more.
+//
+// A scope is {company: bool, plt: {PLT1: 1, …}}. `plt` is a plain object, NOT a
+// Set: the test sandbox (test/harness.js) does not provide Set or Map to the
+// backend, so a Set here would pass in Apps Script and throw in CI.
+//
+// Caps arrive lowercased from parseCaps ("rs:plt:plt2") while roster platoon
+// codes are uppercase ("PLT2"), so every key is uppercased on the way in. Miss
+// that and the grant silently matches nothing, which looks exactly like a
+// commander who was never granted anything.
+var RS_SCOPED_TABS = { Medical: 1, MSK: 1 };
+var RS_PLT_CAP_PREFIX = "rs:plt:";
+var RS_COMPANY_CAP = "rs:company";
+
+function rsScopeOf_(ctx) {
+  var scope = { company: false, plt: {} };
+  if (!ctx) return scope;                       // no context → sees nothing
+  if (isAdmin(ctx)) { scope.company = true; return scope; }
+
+  var caps = parseCaps(ctx.caps);
+  var granted = false;
+  for (var i = 0; i < caps.length; i++) {
+    if (caps[i] === RS_COMPANY_CAP) { scope.company = true; return scope; }
+    if (caps[i].indexOf(RS_PLT_CAP_PREFIX) === 0) {
+      var key = caps[i].slice(RS_PLT_CAP_PREFIX.length).toUpperCase();
+      if (key) { scope.plt[key] = 1; granted = true; }
+    }
+  }
+  if (granted) return scope;
+
+  // No explicit grant → the caller's own platoon, resolved from the roster.
+  // An unresolvable personId leaves the scope EMPTY rather than widening it.
+  var own = rsPlatoonIndex_()[bravesPadD4_(ctx.personId)];
+  if (own) scope.plt[own] = 1;
+  return scope;
+}
+
+// Canonical, ordering-independent string for a scope. Used as the wire
+// `scopeKey`: the client compares it for equality and re-pulls Medical/MSK when
+// it changes, which is what makes a narrowed grant bite on a device holding a
+// wide cache.
+function rsScopeKey_(scope) {
+  if (!scope) return "";
+  if (scope.company) return "company";
+  var keys = [];
+  for (var k in scope.plt) keys.push(k);
+  keys.sort();
+  return keys.join("|");
+}
+
+// Padded-4D → uppercase platoon key, built from the Roster tab. personPlatoon
+// already implements the explicit-column → appointment-4D → 4D-parse fallback
+// chain; this only pads the key and uppercases the value so lookups are
+// total-order safe against a caller passing 11, "11" or "0011".
+function rsPlatoonIndex_() {
+  var rows = readTab("Roster");
+  var idx = {};
+  if (!rows || !rows.length || rows.error) return idx;
+  for (var i = 0; i < rows.length; i++) {
+    var p = personPlatoon(rows[i]);
+    if (p) idx[bravesPadD4_(rows[i].id)] = String(p).toUpperCase();
+  }
+  return idx;
+}
+
+function rsPersonInScope_(scope, d4, idx) {
+  if (!scope) return false;
+  if (scope.company) return true;
+  var p = idx[bravesPadD4_(d4)];
+  return !!p && !!scope.plt[p];
+}
+
 // ── Login + failed-attempt throttling ────────────────────
 
 function handleLogin(body) {
