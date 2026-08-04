@@ -125,4 +125,43 @@ module.exports = async function run() {
     }
     ok(offenders.length === 0, "tracked-tab writes missing a nearby bumpRev:\n   " + offenders.join("\n   "));
   });
+
+  // Mobile button feedback (Layer A). Two failure classes, both invisible to
+  // every other check in this repo because CSS has no automated coverage:
+  //  (a) no :active rule → a tap produces no visible change at all;
+  //  (b) an unguarded :hover → on touch it sticks after the tap and the
+  //      last-tapped button stays lit, which is worse than no feedback.
+  const css = fs.readFileSync(path.join(ROOT, "styles.css"), "utf8");
+
+  await test("controls have :active press states", () => {
+    for (const sel of [".btn:active", ".nav-btn:active", ".btn-icon:active"]) {
+      ok(css.indexOf(sel) !== -1, "styles.css is missing a press state for " + sel);
+    }
+  });
+
+  await test("every :hover rule sits inside @media (hover: hover)", () => {
+    // Blank out comments first — the block below is *documented* with prose that
+    // names :hover, and flagging an explanation as if it were a rule would only
+    // teach the next person to write vaguer comments. Spaces (not deletion)
+    // keep line numbers true so the failure message still points at real lines.
+    let rest = css.replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, " "));
+    let guard;
+    const re = /@media\s*\(hover:\s*hover\)\s*\{/;
+    while ((guard = re.exec(rest)) !== null) {
+      // Walk braces from the block opener to find its matching close.
+      let i = guard.index + guard[0].length, depth = 1;
+      while (i < rest.length && depth > 0) {
+        if (rest[i] === "{") depth++;
+        else if (rest[i] === "}") depth--;
+        i++;
+      }
+      rest = rest.slice(0, guard.index) + rest.slice(i);
+    }
+    const stray = rest.split("\n")
+      .map((l, n) => ({ l, n: n + 1 }))
+      .filter(x => x.l.indexOf(":hover") !== -1);
+    ok(stray.length === 0,
+      "unguarded :hover sticks after a tap on touch devices — move to @media (hover: hover): "
+      + stray.map(x => "line " + x.n).join(", "));
+  });
 };

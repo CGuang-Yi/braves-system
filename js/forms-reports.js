@@ -582,13 +582,10 @@ async function copyReportToClipboard() {
   const ta = document.getElementById("rep-text");
   const btn = document.getElementById("rep-copy-btn");
   const text = ta.value;
+  if (!unsyncedCopyGuard("report")) return;
   try {
     await navigator.clipboard.writeText(text);
-    if (btn) {
-      const original = btn.textContent;
-      btn.textContent = "✓ Copied!";
-      setTimeout(() => { btn.textContent = original; }, 1800);
-    }
+    if (btn) btnDone(btn, "✓ Copied!");
   } catch {
     // Fallback: select all in the textarea so the user can manually Cmd+C.
     ta.focus(); ta.select();

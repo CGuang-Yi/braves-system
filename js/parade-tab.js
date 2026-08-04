@@ -260,7 +260,7 @@ async function paradeCopyString(text, btnId, taId) {
   const btn = btnId ? document.getElementById(btnId) : null;
   try {
     await navigator.clipboard.writeText(text);
-    if (btn) { const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => { btn.textContent = o; }, 1800); }
+    if (btn) btnDone(btn, "✓ Copied!");
   } catch {
     const ta = document.getElementById(taId || "parade-text");
     if (ta) { ta.value = text; ta.focus(); ta.select(); }
@@ -272,6 +272,9 @@ async function paradeCopyString(text, btnId, taId) {
 async function copyParadeText() {
   const ta = document.getElementById("parade-text");
   if (!ta) return;
+  // Before the archive call below, not after: archiving is the "this is what
+  // was sent" record, and a copy the user cancelled was never sent.
+  if (!unsyncedCopyGuard("parade state")) return;
   await paradeCopyString(ta.value, "parade-copy-btn");
   archiveParadeSnapshot(ta.value);
 }
@@ -311,6 +314,7 @@ function archiveParadeSnapshot(text, meta) {
 // Copy a single platoon/HQ block's standalone parade-state text. Reads the
 // current toolbar state (type/date/time) so it always matches what's shown.
 async function copyParadeBlock(code, btnId) {
+  if (!unsyncedCopyGuard("platoon parade state")) return;
   const text = generateBravesParadeState({ level: "platoon", platoon: code }, _paradeType, paradeCurrentDateISO(), _paradeTime, paradeLookaheadOpts());
   await paradeCopyString(text, btnId);
 }

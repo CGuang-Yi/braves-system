@@ -620,6 +620,10 @@ module.exports = async function run() {
     // though this suite never exercises that view — stub it false, matching
     // the other context loaders in this file.
     target.isCommander = () => false;
+    // saveLogConductWizard shows a busy state on the Save button. btnBusy lives
+    // in helpers.js, which loads before forms.js in index.html but is not in
+    // this sandbox — stub it to its contract: returns the restore closure.
+    target.btnBusy = () => () => {};
     // Real collaborators — loaded from source so behavior can't drift from
     // the shipped merge/HA-tag logic.
     vm.runInContext(

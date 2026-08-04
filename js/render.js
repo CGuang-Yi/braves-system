@@ -106,9 +106,18 @@ function setArchiveCmp(side, val) { if (side === "left") _cmpLeft = +val; else _
 
 async function doArchiveNow(kind) {
   if (!STATE.apiUrl || !STATE.authToken) { alert("Not connected to the sheet — can't archive."); return; }
+  // After the connectivity guard, so a disconnected early-return never enters
+  // the busy state at all. Restored in a `finally`: this function has five exit
+  // paths, and a missed one leaves the button permanently disabled — a worse
+  // bug than the missing feedback this is fixing.
+  const restoreBtn = btnBusy(null, "Archiving…");
   try {
     const res = await API.archiveNow(kind);
-    if (res && res.error) { alert("Archive failed: " + res.error); return; }
+    // Restore before the blocking alert, not just in the finally — an alert
+    // freezes the thread, so a button still reading "Archiving…" behind the
+    // dialog looks broken for as long as the dialog is up. btnRestore no-ops
+    // the second time, so the finally below stays a harmless backstop.
+    if (res && res.error) { restoreBtn(); alert("Archive failed: " + res.error); return; }
     await doPull();            // refresh STATE.paradeArchive / sickArchive
     render();
     const a = (res && res.archived) || {};
@@ -118,7 +127,10 @@ async function doArchiveNow(kind) {
       : `Nothing new for ${res.date} ${res.slot} — that slot is already archived.`);
   } catch (e) {
     if (e.name === "AuthError" && typeof handleAuthFailure === "function") { handleAuthFailure(); return; }
+    restoreBtn();
     alert("Archive error: " + e.message);
+  } finally {
+    restoreBtn();
   }
 }
 

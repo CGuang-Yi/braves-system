@@ -1120,6 +1120,13 @@ async function saveLogConductWizard() {
     return;
   }
 
+  // After the last validation early-return — all four fire before any work, so
+  // a rejected save never flashes a busy state. Note the window is short by
+  // design: the sheet pushes below go through autoSync FIRE-AND-FORGET, so what
+  // this actually covers is the synchronous row build plus the awaited
+  // clipboard write, not a network round trip.
+  const restoreBtn = btnBusy(null, "Saving…");
+
   const totals = computeLogConductTotals();
   const displayDate = isoToDisplayDate(w.date);
   const time = pad4Time(w.time || "");
@@ -1262,12 +1269,17 @@ async function saveLogConductWizard() {
     const medMsg = newMedicalRows.length
       ? `\n\n${newMedicalRows.length} Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} auto-created — update the status on the Medical tab once MO clears.`
       : "";
+    // Before the alert, which blocks the thread: a button still reading
+    // "Saving…" and disabled behind a modal dialog looks broken for as long as
+    // the dialog is up.
+    restoreBtn();
     alert(`Saved & syncing. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} created.${medMsg}\n\nChat-format message copied to clipboard${navigator.clipboard ? "" : " (or shown in fallback prompt)"}.`);
   } else {
     const changeNote = priorDetailCount !== detailRows.length ? ` (was ${priorDetailCount}).` : "";
     const medNote = newMedicalRows.length
       ? `\n\n${newMedicalRows.length} new Pending Medical row${newMedicalRows.length === 1 ? "" : "s"} added.`
       : "";
+    restoreBtn();
     alert(`Saved & syncing. ${detailRows.length} conduct-detail row${detailRows.length === 1 ? "" : "s"} total.${changeNote}${medNote}`);
   }
 }
@@ -1334,6 +1346,10 @@ function buildConductChatFormat(attendanceId) {
 async function copyConductChatFormat(attendanceId, silent) {
   const text = buildConductChatFormat(attendanceId);
   if (!text) { alert("Couldn't find that conduct."); return; }
+  // silent=true is the post-save invocation (saveLogConductWizard), where the
+  // user is mid-save, already gets the wizard's own alert, and has just
+  // written — a pull is not the relevant risk there and a second dialog is noise.
+  if (!silent && !unsyncedCopyGuard("conduct chat message")) return;
   try {
     await navigator.clipboard.writeText(text);
     if (!silent) alert("Chat-format message copied to clipboard. Paste into WhatsApp.");

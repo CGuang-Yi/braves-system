@@ -1033,10 +1033,17 @@ function exportCSV(data, filename) { downloadCSVText(Papa.unparse(data), filenam
 // names and its semicolon-separated list cells — round-tripping that through
 // Papa.unparse would only re-derive what it already has.
 function downloadCSVText(csv, filename) {
-  const blob = new Blob([csv], { type: "text/csv" });
+  // Excel on Windows opens a BOM-less .csv using the system ANSI codepage, not
+  // UTF-8 — so every multi-byte character in an export mojibakes. Exports here
+  // really do carry them: "·"/"—" in platoon·section groupings, "★" in Gold★,
+  // "–" in leave date ranges. The BOM is what tells Excel to decode as UTF-8.
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+  // No explicit button: the delegated capture in btnFeedback resolves whichever
+  // .btn is mid-click, so this one line acknowledges all 14 export call sites.
+  btnDone(null, "✓ Exported");
 }
 
 // Feature 20 — Class Progression export. `rows` arrives ALREADY filtered by the
@@ -1084,10 +1091,15 @@ function conductProgressionCSV(rows, held, partByD4, seriesName) {
   return lines.join("\n");
 }
 function exportJSON(data, filename) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  // charset only — deliberately NO BOM, unlike the CSV path above. importBackup
+  // (js/forms-admin.js) restores with a bare JSON.parse, which throws on a
+  // leading U+FEFF; a BOM here would mean backups this app can write and never
+  // read back. Nothing opens a .json backup in Excel, so it gains nothing.
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+  btnDone(null, "✓ Exported");
 }
 
 // ── Reusable per-tab list search + sort (Medical / IPPT / HA / Conduct) ───────
@@ -1972,5 +1984,73 @@ function haProjectDouble(ha) {
   return sim
     ? { relevant: true, attained: false, reachable: true, days: sim.days, dateIso: sim.dateIso, projectedDates: sim.projectedDates }
     : { relevant: true, attained: false, reachable: false, days: 0, projectedDates: [] };
+}
+
+// ── Button feedback ──────────────────────────────────────────────────────────
+// Most buttons here are still inline `onclick="foo()"` — the data-action
+// migration in js/actions.js is incremental — so a handler has no `this` and no
+// `event` and cannot reach its own button. Rather than thread one through ~100
+// call sites, a single delegated listener records the clicked button and the
+// helpers below fall back to it.
+//
+// CAPTURE phase, so this runs before the target's own inline onclick and the
+// handler already sees the right button.
+//
+// The clear on the next macrotask is the load-bearing part: handlers run
+// SYNCHRONOUSLY off the click and see the button, while an async continuation
+// resolving later sees null and no-ops — instead of decorating whatever button
+// happened to be clicked last, minutes ago.
+//
+// Registration is guarded on `document` existing: this file is the pure-utility
+// layer and several tests (test/ha.test.js, test/calc.test.js) load it into a
+// bare sandbox with no DOM at all. A hard top-level document reference would
+// throw at LOAD time there and take the whole file down with it.
+let _lastClickedBtn = null;
+if (typeof document !== "undefined" && document.addEventListener) {
+  document.addEventListener("click", e => {
+    const t = e && e.target;
+    const btn = t && t.closest && t.closest(".btn, .nav-btn, .btn-icon");
+    if (!btn) return;
+    _lastClickedBtn = btn;
+    setTimeout(() => { _lastClickedBtn = null; }, 0);
+  }, true);
+}
+
+function btnFeedback(btn) { return btn || _lastClickedBtn || null; }
+
+// The original label is stashed ON the element rather than in a Map, so a
+// re-render that throws the node away can't leak an entry.
+function btnBusy(btn, label) {
+  btn = btnFeedback(btn);
+  if (!btn) return () => {};
+  // Only stash if nothing is stashed yet — a second btnBusy must NOT record
+  // "Saving…" as the original, or restore() would hand back the busy text.
+  if (btn._btnOrig == null) btn._btnOrig = btn.textContent;
+  if (btn._btnTimer) { clearTimeout(btn._btnTimer); btn._btnTimer = null; }
+  btn.textContent = label || "…";
+  btn.disabled = true;
+  return () => btnRestore(btn);
+}
+
+function btnRestore(btn) {
+  if (!btn || btn._btnOrig == null) return;
+  if (btn._btnTimer) { clearTimeout(btn._btnTimer); btn._btnTimer = null; }
+  btn.textContent = btn._btnOrig;
+  btn._btnOrig = null;
+  btn.disabled = false;
+}
+
+// Transient success label. Generalises the "✓ Copied!" that was hand-written
+// twice (js/parade-tab.js, js/forms-reports.js); 1800ms is their timing, kept
+// so the feel doesn't change. Re-enables, so a btnBusy → btnDone handoff on the
+// success path leaves the button usable.
+function btnDone(btn, label) {
+  btn = btnFeedback(btn);
+  if (!btn) return;
+  if (btn._btnOrig == null) btn._btnOrig = btn.textContent;
+  if (btn._btnTimer) clearTimeout(btn._btnTimer);
+  btn.textContent = label || "✓ Done";
+  btn.disabled = false;
+  btn._btnTimer = setTimeout(() => { btn._btnTimer = null; btnRestore(btn); }, 1800);
 }
 
