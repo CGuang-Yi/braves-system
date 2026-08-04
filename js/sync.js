@@ -718,6 +718,13 @@ async function drainTab(tabName) {
 //   { type: "upsert",         row         } → API.upsertRow (id-based, cross-device safe)
 //   { type: "delete",         id          } → API.deleteRowById
 //   { type: "replace",        data        } → API.pushTab (full overwrite, bulk only)
+//
+// Deliberately NOT here: the duty-change-request decision (design §3.3). It is
+// atomic across TWO tabs — it writes Duty rows and flips the request's status in
+// one backend call — and this queue is per-tab. Routing it through here would
+// mean reapplyMode silently no-opping it on a conflict, and the retry re-firing
+// a decision the server has already applied. It goes through API.post directly
+// from js/forms-duty.js, followed by a pull of both tabs.
 function dispatchWrite(tabName, mode) {
   if (!STATE.authToken) return Promise.reject(new Error("Not authenticated"));
   // `mode.imported` (bulk import) rides through to the POST body so the backend

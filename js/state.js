@@ -191,7 +191,8 @@ const TAB_TO_STATE = {
   "Duty": "duty",
   "DutyCorrection": "dutyCorrection",
   "Holidays": "holidays",
-  "DutyUnavailable": "dutyUnavailable"
+  "DutyUnavailable": "dutyUnavailable",
+  "DutyChangeRequest": "dutyChangeRequest"
 };
 
 // Company-specific defaults (spec §4). Every value the system used to hardcode
@@ -495,6 +496,11 @@ const STATE = {
   // Soft unavailability windows (design §4). A planning hint only — it never
   // reaches the parade classifier.
   dutyUnavailable: [],
+  // Proposed changes to the duty roster (design §3). Submitted by any commander,
+  // decided by a duty planner. `status` is server-owned — the client never
+  // writes it, because the backend refuses any write to this tab that is not an
+  // append or the submitter withdrawing their own row.
+  dutyChangeRequest: [],
   // Canonical conduct registry: [{id: "c001", name: "Orientation Run"}, ...].
   // Source of truth for the conduct dimension — records on attendance/polar/
   // conductDetail reference entries here via `conductId` instead of carrying
@@ -866,6 +872,36 @@ function normalizeDutyUnavailable(rows) {
   }));
 }
 
+// Duty change requests (design §3). Both 4D columns are padded at the read
+// boundary like every other 4D-bearing tab — Sheets drops leading zeros on the
+// way out as well as on the way in, so "0042" arrives as 42 and would join
+// against nothing in the roster.
+//
+// `status` defaults to Pending rather than "": a row that somehow reached the
+// sheet without one is an undecided request, and defaulting it to blank would
+// hide it from both the pending list and the decided list at once.
+function normalizeDutyChangeRequest(rows) {
+  return (rows || []).map(r => ({
+    id: r.id || "",
+    submittedBy: padD4(r.submittedBy),
+    submittedAt: r.submittedAt || "",
+    date: r.date || "",
+    dutyType: r.dutyType || "",
+    platoon: r.platoon || "",
+    kind: r.kind || "",
+    fromD4: padD4(r.fromD4),
+    toD4: padD4(r.toD4),
+    swapDate: r.swapDate || "",
+    swapDutyType: r.swapDutyType || "",
+    swapPlatoon: r.swapPlatoon || "",
+    reason: r.reason || "",
+    status: r.status || "Pending",
+    decidedBy: padD4(r.decidedBy),
+    decidedAt: r.decidedAt || "",
+    decisionNote: r.decisionNote || ""
+  }));
+}
+
 // VocFit completion rows (spec §12.3): personId | completionDate | certifyingUnit.
 // d4-pad personId so it joins cleanly with the roster id space.
 function normalizeVocFit(rows) {
@@ -996,6 +1032,7 @@ function _saveLocalFlush() {
     config: STATE.config, vocfit: STATE.vocfit, platoons: STATE.platoons,
     duty: STATE.duty, dutyCorrection: STATE.dutyCorrection, holidays: STATE.holidays,
     dutyUnavailable: STATE.dutyUnavailable,
+    dutyChangeRequest: STATE.dutyChangeRequest,
     rev: STATE.rev || {}
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
@@ -1101,6 +1138,7 @@ function loadLocal() {
     STATE.dutyCorrection = normalizeDutyCorrection(d.dutyCorrection);
     STATE.holidays = normalizeHolidays(d.holidays);
     STATE.dutyUnavailable = normalizeDutyUnavailable(d.dutyUnavailable);
+    STATE.dutyChangeRequest = normalizeDutyChangeRequest(d.dutyChangeRequest);
     STATE.rev = (d.rev && typeof d.rev === "object") ? d.rev : {};
   } catch { /* fall through to empty state */ }
 }

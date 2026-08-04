@@ -552,3 +552,249 @@ function deleteDutyUnavail(id) {
   saveLocal(); render();
   if (STATE.apiUrl) autoSync("DutyUnavailable", { type: "delete", id });
 }
+
+// ── Change requests (design §3) ───────────────────────────────────────────────
+//
+// Submission is open to any commander; deciding needs the `duty` capability.
+// Both halves are enforced server-side (dcrGuardWrite_ / handleDecideDutyRequest)
+// — the checks here only decide what to draw, per the reasoning in js/state.js
+// about `duty` generally: hiding UI from a real planner is the failure that
+// matters, and a stale-caps commander seeing a button and getting a rejection is
+// annoying rather than a hole.
+
+// The slot a request is being filed against, so the kind picker and the preview
+// agree on what they are looking at without re-parsing the DOM. Mirrors the
+// _dutyEditing pattern above.
+let _dutyRequesting = null;
+
+function dcrPersonOptions(dutyType, platoon, isoDate, selected) {
+  const cfg = dutyConfig();
+  return dutyEligible(dutyType, platoon || "", isoDate, STATE.roster, cfg, {})
+    .map(d4 => `<option value="${escapeAttr(d4)}"${d4 === selected ? " selected" : ""}>${escapeHTML(displayPersonLabel(d4))}</option>`)
+    .join("");
+}
+
+function dcrSlotOptions(cfg, selDutyType, selPlatoon) {
+  // Derived from the same dutyGridColumns() the month grid uses, so nothing here
+  // is hardcoded to a platoon count (DUTY_LIST_SPEC.md §1.1).
+  return dutyGridColumns(cfg).map(c => {
+    const val = c.dutyType + "|" + (c.platoon || "");
+    const sel = c.dutyType === selDutyType && (c.platoon || "") === (selPlatoon || "");
+    return `<option value="${escapeAttr(val)}"${sel ? " selected" : ""}>${escapeHTML(c.label)}</option>`;
+  }).join("");
+}
+
+function openDutyRequestForm(isoDate, dutyType, platoon) {
+  if (!canWrite()) return;
+  const cfg = dutyConfig();
+  const existing = isoDate && dutyType ? dutyRowAt(isoDate, dutyType, platoon) : null;
+  _dutyRequesting = {
+    date: isoDate || todayISO(),
+    dutyType: dutyType || "",
+    platoon: platoon || "",
+    fromD4: existing ? existing.d4 : ""
+  };
+
+  openModal("Request a duty change", `
+    <form onsubmit="event.preventDefault(); submitDutyRequest(); return false">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="form-group">
+          <label>What kind of change</label>
+          <select id="f-dcr-kind" onchange="renderDutyRequestFields()" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
+            <option value="reassign">Reassign — someone else takes it</option>
+            <option value="add">Add — fill an empty slot</option>
+            <option value="remove">Remove — take someone off it</option>
+            <option value="swap">Swap — trade two duties</option>
+          </select>
+        </div>
+        ${formField("f-dcr-date", "Date of the duty", "date", "", `required value="${escapeAttr(_dutyRequesting.date)}" min="2020-01-01" max="2099-12-31" onchange="renderDutyRequestFields()"`)}
+        <div class="form-group">
+          <label>Which duty</label>
+          <select id="f-dcr-slot" onchange="renderDutyRequestFields()" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
+            ${dcrSlotOptions(cfg, _dutyRequesting.dutyType, _dutyRequesting.platoon)}
+          </select>
+        </div>
+        <div id="dcr-kind-fields"></div>
+        ${formField("f-dcr-reason", "Reason", "text", "", `required maxlength="200" placeholder="why this change is needed"`)}
+        <p style="font-size:11px;color:var(--muted);margin:-4px 0 0">
+          Required. A request without a reason cannot be judged, so the server refuses one too.
+        </p>
+        <div id="dcr-conflict-box"></div>
+        <button type="submit" class="btn btn-primary">Submit request</button>
+      </div>
+    </form>`);
+  renderDutyRequestFields();
+}
+
+// The per-kind fields are re-rendered rather than shown/hidden, because the
+// person pickers depend on the slot: eligibility for PDS 2 is a different list
+// from eligibility for CDO, and a stale list would offer someone who cannot hold
+// the duty at all.
+function renderDutyRequestFields() {
+  const box = document.getElementById("dcr-kind-fields");
+  if (!box || !_dutyRequesting) return;
+  const cfg = dutyConfig();
+  const kind = gv("f-dcr-kind");
+  const [dutyType, platoon] = (gv("f-dcr-slot") || "|").split("|");
+  const date = gv("f-dcr-date");
+  const held = dutyRowAt(date, dutyType, platoon);
+
+  const currently = held
+    ? `<p style="font-size:12px;color:var(--muted);margin:0">Currently: <strong>${escapeHTML(displayPersonLabel(held.d4))}</strong></p>`
+    : `<p style="font-size:12px;color:var(--orange);margin:0">This slot is currently unassigned.</p>`;
+
+  let fields = "";
+  if (kind === "add" || kind === "reassign") {
+    fields = `<div class="form-group"><label>Should be taken by</label>
+      <select id="f-dcr-to" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
+        <option value="">—</option>${dcrPersonOptions(dutyType, platoon, date, "")}
+      </select></div>`;
+  } else if (kind === "swap") {
+    fields = `
+      <div class="form-group"><label>Swap with</label>
+        <select id="f-dcr-to" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
+          <option value="">—</option>${dcrPersonOptions(dutyType, platoon, date, "")}
+        </select></div>
+      ${formField("f-dcr-swapdate", "Their duty's date", "date", "", `required value="${escapeAttr(date)}" min="2020-01-01" max="2099-12-31"`)}
+      <div class="form-group"><label>Their duty</label>
+        <select id="f-dcr-swapslot" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
+          ${dcrSlotOptions(cfg, dutyType, platoon)}
+        </select></div>`;
+  }
+  box.innerHTML = currently + fields;
+  previewDutyRequestConflicts();
+}
+
+// The submitter sees the same conflict warnings a planner would (design §3.2).
+// Advisory only — there is no state in which this disables Submit, matching the
+// assignment form and js/duty-conflicts.js's stated design.
+function previewDutyRequestConflicts() {
+  const box = document.getElementById("dcr-conflict-box");
+  if (!box) return;
+  const req = readDutyRequestForm();
+  if (!req || !req.toD4) { box.innerHTML = ""; return; }
+  const list = dutyConflictsFor({
+    d4: req.toD4, date: req.date, dutyType: req.dutyType, platoon: req.platoon, id: ""
+  });
+  box.innerHTML = list.length
+    ? list.map(c => `<div style="border:1px solid var(--border);border-left:3px solid var(--orange);border-radius:6px;padding:8px;margin-bottom:6px;font-size:12px">${escapeHTML(c.message)}</div>`).join("")
+      + '<p style="font-size:11px;color:var(--muted);margin:0">Warnings only — you can still submit.</p>'
+    : '<p style="color:var(--muted);font-size:12px">No conflicts.</p>';
+}
+
+function readDutyRequestForm() {
+  const [dutyType, platoon] = (gv("f-dcr-slot") || "|").split("|");
+  const [swapDutyType, swapPlatoon] = (gv("f-dcr-swapslot") || "|").split("|");
+  const kind = gv("f-dcr-kind");
+  const date = gv("f-dcr-date");
+  const held = dutyRowAt(date, dutyType, platoon);
+  return {
+    kind,
+    date,
+    dutyType,
+    platoon: platoon || "",
+    // fromD4 is read from the roster, not from a field: it is whoever actually
+    // holds the slot, and letting the submitter assert it would let a request
+    // name the wrong person on a slot that changed hands since it was opened.
+    fromD4: held ? held.d4 : "",
+    toD4: gv("f-dcr-to"),
+    swapDate: kind === "swap" ? gv("f-dcr-swapdate") : "",
+    swapDutyType: kind === "swap" ? (swapDutyType || "") : "",
+    swapPlatoon: kind === "swap" ? (swapPlatoon || "") : "",
+    reason: gv("f-dcr-reason").trim()
+  };
+}
+
+function submitDutyRequest() {
+  if (!canWrite()) return;
+  const req = readDutyRequestForm();
+  const problems = dcrValidate(req);
+  if (problems.length) { alert(problems.join("\n")); return; }
+
+  const row = Object.assign({
+    id: nextId(),
+    submittedBy: STATE.personId || "",
+    submittedAt: new Date().toISOString(),
+    status: "Pending",
+    decidedBy: "", decidedAt: "", decisionNote: ""
+  }, req);
+  // status/submittedBy are sent for the local optimistic row's benefit only —
+  // the server overwrites both from the token regardless of what arrives.
+  (STATE.dutyChangeRequest = STATE.dutyChangeRequest || []).push(row);
+
+  saveLocal(); closeModal(); render();
+  if (STATE.apiUrl) autoSync("DutyChangeRequest", { type: "append", row });
+}
+
+function withdrawDutyRequest(id) {
+  const r = (STATE.dutyChangeRequest || []).find(x => String(x.id) === String(id));
+  if (!r) return;
+  if (!confirm("Withdraw this request?")) return;
+  STATE.dutyChangeRequest = (STATE.dutyChangeRequest || []).filter(x => String(x.id) !== String(id));
+  saveLocal(); render();
+  if (STATE.apiUrl) autoSync("DutyChangeRequest", { type: "delete", id });
+}
+
+// ── Deciding ─────────────────────────────────────────────────────────────────
+//
+// NOT an autoSync mode. The decision is atomic across two tabs — it writes the
+// Duty row(s) and flips the request's status in one backend call — and autoSync's
+// queue is per-tab: reapplyMode would silently no-op it on a conflict and the
+// retry would re-fire a decision the server already applied. So it posts
+// directly and re-pulls both tabs from the server's answer.
+
+function openDutyDecideForm(id) {
+  if (!canPlanDuty()) return;
+  const req = (STATE.dutyChangeRequest || []).find(x => String(x.id) === String(id));
+  if (!req) return;
+
+  // What approving would actually do, computed by the same dcrDutyMutations the
+  // backend will run. Showing it is the point: "Approve" on a swap is otherwise
+  // a button whose effect the decider has to hold in their head.
+  const mut = dcrDutyMutations(req, STATE.duty);
+  const effect = [
+    ...mut.upserts.map(u => `${escapeHTML(u.dutyType + (u.platoon ? " " + u.platoon.replace(/^PLT/, "") : ""))} on ${escapeHTML(u.date)} → <strong>${escapeHTML(displayPersonLabel(u.d4))}</strong>`),
+    ...mut.deletes.map(() => `<strong>Clears the slot</strong>`)
+  ];
+
+  openModal("Decide request", `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <p style="margin:0;font-size:13px">${escapeHTML(dcrLabel(req, displayPersonLabel))}</p>
+      <p style="margin:0;font-size:12px;color:var(--muted)">Reason given: ${escapeHTML(req.reason)}</p>
+      <div style="border:1px solid var(--border);border-radius:6px;padding:8px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Approving would:</div>
+        ${effect.length ? effect.map(e => `<div style="font-size:12px">${e}</div>`).join("") : '<div style="font-size:12px;color:var(--orange)">Nothing — the slot no longer matches this request.</div>'}
+      </div>
+      ${formField("f-dcr-note", "Note (optional)", "text", "", `maxlength="200"`)}
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn btn-primary" data-action="dutyDecideApprove" data-id="${escapeAttr(req.id)}">Approve &amp; apply</button>
+        <button type="button" class="btn btn-danger" data-action="dutyDecideReject" data-id="${escapeAttr(req.id)}">Reject</button>
+      </div>
+    </div>`);
+}
+
+async function decideDutyRequest(id, decision) {
+  if (!canPlanDuty()) return;
+  const note = gv("f-dcr-note").trim();
+  closeModal();
+  try {
+    const res = await API.post({
+      action: "decideDutyRequest", tab: "DutyChangeRequest",
+      id, decision, decisionNote: note
+    });
+    // The backend answers errors as {error} inside a 200 (see js/api.js) — it
+    // does not throw, so this check is the only thing standing between a refusal
+    // and a UI that claims success.
+    if (!res || res.error) {
+      alert(res && res.error ? res.error : "The decision could not be saved.");
+      return;
+    }
+    // Re-pull both tabs rather than patching STATE by hand: approving mutates
+    // Duty rows this client never saw (a slot someone else filled meanwhile),
+    // and the server's copy is the one that matters.
+    await API.pullTabs(["DutyChangeRequest", "Duty"]);
+    saveLocal(); render();
+  } catch (e) {
+    alert("The decision could not be saved: " + (e && e.message ? e.message : e));
+  }
+}

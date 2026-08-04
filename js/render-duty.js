@@ -152,7 +152,11 @@ function renderDuty(el) {
   const showLog = canPlanDuty();
   if (_dutyView === "log" && !showLog) _dutyView = "grid";
 
-  const tabDefs = [["grid", "Month grid"], ["overall", "Overall duties"], ["unavail", "Unavailable"]];
+  // The pending count rides on the tab label rather than a separate banner: a
+  // queue nobody is told about is a queue that quietly grows.
+  const pendingCount = dcrPending(STATE.dutyChangeRequest).length;
+  const tabDefs = [["grid", "Month grid"], ["overall", "Overall duties"], ["unavail", "Unavailable"],
+    ["requests", "Requests" + (pendingCount ? ` (${pendingCount})` : "")]];
   if (showLog) tabDefs.push(["log", "Corrections log"]);
   const tabs = tabDefs
     .map(([k, label]) =>
@@ -163,6 +167,7 @@ function renderDuty(el) {
   if (_dutyView === "grid") body = dutyGridHTML(cfg);
   else if (_dutyView === "overall") body = dutyOverallHTML(cfg);
   else if (_dutyView === "unavail") body = dutyUnavailHTML(cfg);
+  else if (_dutyView === "requests") body = dutyRequestsHTML(cfg);
   else body = dutyLogHTML(cfg);
 
   el.innerHTML = `
@@ -366,6 +371,53 @@ function dutyUnavailHTML(cfg) {
     </table></div>`;
 }
 
+// ── Change requests (design §3) ──────────────────────────────────────────────
+//
+// Everyone sees this view; only a `duty` cap holder sees the Decide button.
+// That asymmetry is deliberate — a submitter needs to see what happened to their
+// request, and the queue being visible is also what keeps it from silently
+// growing. Pending first and oldest first (dcrPending), so the thing that has
+// been waiting longest is the thing you see.
+function dutyRequestsHTML(cfg) {
+  const canPlan = canPlanDuty();
+  const pending = dcrPending(STATE.dutyChangeRequest);
+  const decided = dcrDecided(STATE.dutyChangeRequest);
+  const me = STATE.personId || "";
+
+  const row = (r, isPending) => {
+    const mine = String(r.submittedBy || "") === String(me);
+    return `<tr>
+      <td style="white-space:nowrap">${escapeHTML((r.submittedAt || "").slice(0, 10))}</td>
+      <td>${escapeHTML(dcrLabel(r, displayPersonLabel))}</td>
+      <td>${escapeHTML(r.reason || "")}</td>
+      <td>${dutyNameChip(r.submittedBy, cfg)}</td>
+      <td>${isPending
+        ? '<span class="badge">Pending</span>'
+        : `<span class="badge">${escapeHTML(r.status)}</span>${r.decisionNote ? ` <span style="font-size:11px;color:var(--muted)">${escapeHTML(r.decisionNote)}</span>` : ""}`}</td>
+      <td style="text-align:right;white-space:nowrap">${isPending ? `
+        ${canPlan ? `<button type="button" class="btn btn-primary" style="font-size:10px" data-action="dutyRequestDecide" data-id="${escapeAttr(r.id)}">Decide</button>` : ""}
+        ${mine ? `<button type="button" class="btn btn-danger" style="font-size:10px" data-action="dutyRequestWithdraw" data-id="${escapeAttr(r.id)}">Withdraw</button>` : ""}`
+        : ""}</td>
+    </tr>`;
+  };
+
+  const body = (pending.map(r => row(r, true)).join("") + decided.map(r => row(r, false)).join(""))
+    || `<tr><td colspan="6" style="color:var(--muted)">No change requests.</td></tr>`;
+
+  return `
+    <p style="color:var(--muted);margin:0 0 10px;font-size:12px">
+      Proposed changes to the duty roster. Anyone can submit one; a duty planner approves it, and
+      approving <em>applies</em> it to the roster in the same step. A reason is always required.
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-primary" data-action="dutyRequestNew">+ Request a change</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Submitted</th><th>Change</th><th>Reason</th><th>By</th><th>Status</th><th></th></tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+}
+
 function dutyRangePicker(range) {
   const opts = [["month", "Month"], ["cycle", "Cycle"], ["all", "All time"]]
     .map(([k, label]) =>
@@ -417,5 +469,13 @@ registerActions({
   // Read-only view toggle, so it is NOT planner-gated: anyone reading the list
   // may want to see what has already lapsed.
   dutyUnavailExpired: el => setDutyShowExpired(el.dataset.value),
-  dutyAutoPlan: () => openDutySchedulerForm(dutyMonthAnchor())
+  dutyAutoPlan: () => openDutySchedulerForm(dutyMonthAnchor()),
+  // Change requests (design §3). dutyRequestNew is deliberately NOT planner-
+  // gated — submitting is open to every commander, and that is the whole point
+  // of the feature; the handler re-checks canWrite() and the server enforces.
+  dutyRequestNew: () => openDutyRequestForm("", "", ""),
+  dutyRequestWithdraw: el => withdrawDutyRequest(el.dataset.id),
+  dutyRequestDecide: el => openDutyDecideForm(el.dataset.id),
+  dutyDecideApprove: el => decideDutyRequest(el.dataset.id, "approve"),
+  dutyDecideReject: el => decideDutyRequest(el.dataset.id, "reject")
 });
