@@ -149,6 +149,13 @@ const LS_ROLE_KEY = "braves-role";
 const LS_PERSONID_KEY = "braves-personid";
 const LS_EMAIL_KEY = "braves-email";
 const LS_DIRTY_KEY = "cougar-dirty-tabs";
+// Report-sick scope key (js/state.js SCOPE_KEY_KEY). Lives in its own key, like
+// role/caps, so it is NOT part of the cachedState snapshot. A device that has
+// run this build holds one; a device whose cache predates the gate does not, and
+// that difference is real — an absent key forces a one-time Medical/MSK re-pull
+// on the next launch, which is exactly what should happen to a cache populated
+// before the gate existed.
+const LS_SCOPE_KEY = "braves-rs-scope-key";
 
 // Unlike makeClient, the session (authToken/role/…) and any cached STATE
 // (roster/rev — what loadLocal() will hydrate) must be seeded into
@@ -193,6 +200,7 @@ function makeLaunchClient(backend, opts) {
   if (opts.email) browser.globals.localStorage.setItem(LS_EMAIL_KEY, opts.email);
   if (opts.cachedState) browser.globals.localStorage.setItem(LS_STORAGE_KEY, JSON.stringify(opts.cachedState));
   if (opts.dirty) browser.globals.localStorage.setItem(LS_DIRTY_KEY, JSON.stringify(opts.dirty));
+  if (opts.scopeKey) browser.globals.localStorage.setItem(LS_SCOPE_KEY, opts.scopeKey);
 
   const sandbox = Object.assign({
     console: quietConsole, JSON, Math, Date, String, Number, Array, Object, Boolean, Set, Map, RegExp, Promise,

@@ -284,7 +284,17 @@ function doGet(e) {
         output = readAllTabs(ctx);              // ctx → AuditLog included only for admins
       } else if (action === "revCheck") {
         // Cheap "what changed?" poll — just the per-tab revisions, no row data.
-        output = { ok: true, revs: getAllRevs(), timestamp: new Date().toISOString() };
+        //
+        // `revs` values stay NUMBERS. Folding the report-sick scope into the
+        // Medical/MSK rev as "<rev>:<key>" was considered and rejected: it breaks
+        // two live call sites — js/sync.js filters changed tabs with
+        // Number(a) > Number(b) (NaN, so the tab reads as never-changed) and
+        // js/api.js round-trips the rev back as baseRev, which withRevLock also
+        // coerces (NaN, so every whole-tab write is rejected as a conflict). The
+        // scope therefore travels as its own additive field; a client that
+        // ignores it behaves exactly as before.
+        output = { ok: true, revs: getAllRevs(), scopeKey: rsScopeKey_(rsScopeOf_(ctx)),
+                   timestamp: new Date().toISOString() };
       } else if (action === "read" && tab) {
         if (tab === "AuditLog" && ctx.role !== "admin") {
           output = { error: "Not authorised", code: 403 };
@@ -292,10 +302,13 @@ function doGet(e) {
           output = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
         } else if (tab === "Accounts") {
           output = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+        } else if (tab === "SickArchive" && !rsScopeOf_(ctx).company) {
+          output = { rows: [], rev: getRev(tab) };
         } else {
           // Single-tab read for partial pulls; carries the tab's current revision
           // so the client can baseline it. (Untracked tabs report rev 1.)
-          output = { rows: readTab(tab), rev: getRev(tab) };
+          output = { rows: rsApplyReadScope_(tab, readTab(tab), ctx), rev: getRev(tab),
+                     scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
         }
       } else if (action === "readTabs" && e.parameter.tabs) {
         // Batched partial pull (SYNC_PERF_IMPROVEMENTS_SPEC.md P2-1): N tabs in ONE
@@ -321,11 +334,13 @@ function doGet(e) {
             tabsOut[rt] = { error: "Not authorised", code: 403 };  // archives: commander + admin (Fix1B)
           } else if (rt === "Accounts") {
             tabsOut[rt] = { error: "Not authorised", code: 403 };  // never expose hashes via raw read
+          } else if (rt === "SickArchive" && !rsScopeOf_(ctx).company) {
+            tabsOut[rt] = { rows: [], rev: getRev(rt) };
           } else {
-            tabsOut[rt] = { rows: readTab(rt), rev: getRev(rt) };
+            tabsOut[rt] = { rows: rsApplyReadScope_(rt, readTab(rt), ctx), rev: getRev(rt) };
           }
         }
-        output = { ok: true, tabs: tabsOut };
+        output = { ok: true, tabs: tabsOut, scopeKey: rsScopeKey_(rsScopeOf_(ctx)) };
       } else {
         output = { error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, readTabs&tabs=A,B, or ping" };
       }
@@ -800,6 +815,214 @@ function hasCap(ctx, cap) {
   return parseCaps(ctx.caps).indexOf(String(cap).toLowerCase()) !== -1;
 }
 
+// ─── REPORT-SICK SCOPE (spec §1 / addendum A8) ─────────────
+// Commanders see their own platoon's accumulated medical history; admins and
+// granted accounts see the company. This is the ONLY enforcement — the client
+// helpers in js/state.js decide which panels to draw, nothing more.
+//
+// A scope is {company: bool, plt: {PLT1: 1, …}}. `plt` is a plain object, NOT a
+// Set: the test sandbox (test/harness.js) does not provide Set or Map to the
+// backend, so a Set here would pass in Apps Script and throw in CI.
+//
+// Caps arrive lowercased from parseCaps ("rs:plt:plt2") while roster platoon
+// codes are uppercase ("PLT2"), so every key is uppercased on the way in. Miss
+// that and the grant silently matches nothing, which looks exactly like a
+// commander who was never granted anything.
+var RS_SCOPED_TABS = { Medical: 1, MSK: 1 };
+var RS_PLT_CAP_PREFIX = "rs:plt:";
+var RS_COMPANY_CAP = "rs:company";
+
+function rsScopeOf_(ctx) {
+  var scope = { company: false, plt: {} };
+  if (!ctx) return scope;                       // no context → sees nothing
+  if (isAdmin(ctx)) { scope.company = true; return scope; }
+
+  var caps = parseCaps(ctx.caps);
+  var granted = false;
+  for (var i = 0; i < caps.length; i++) {
+    if (caps[i] === RS_COMPANY_CAP) { scope.company = true; return scope; }
+    if (caps[i].indexOf(RS_PLT_CAP_PREFIX) === 0) {
+      var key = caps[i].slice(RS_PLT_CAP_PREFIX.length).toUpperCase();
+      if (key) { scope.plt[key] = 1; granted = true; }
+    }
+  }
+  if (granted) return scope;
+
+  // No explicit grant → the caller's own platoon, resolved from the roster.
+  // An unresolvable personId leaves the scope EMPTY rather than widening it.
+  var own = rsPlatoonIndex_()[bravesPadD4_(ctx.personId)];
+  if (own) scope.plt[own] = 1;
+  return scope;
+}
+
+// Canonical, ordering-independent string for a scope. Used as the wire
+// `scopeKey`: the client compares it for equality and re-pulls Medical/MSK when
+// it changes, which is what makes a narrowed grant bite on a device holding a
+// wide cache.
+function rsScopeKey_(scope) {
+  if (!scope) return "";
+  if (scope.company) return "company";
+  var keys = [];
+  for (var k in scope.plt) keys.push(k);
+  keys.sort();
+  return keys.join("|");
+}
+
+// Padded-4D → uppercase platoon key, built from the Roster tab. personPlatoon
+// already implements the explicit-column → appointment-4D → 4D-parse fallback
+// chain; this only pads the key and uppercases the value so lookups are
+// total-order safe against a caller passing 11, "11" or "0011".
+function rsPlatoonIndex_() {
+  var rows = readTab("Roster");
+  var idx = {};
+  if (!rows || !rows.length || rows.error) return idx;
+  for (var i = 0; i < rows.length; i++) {
+    var p = personPlatoon(rows[i]);
+    if (p) idx[bravesPadD4_(rows[i].id)] = String(p).toUpperCase();
+  }
+  return idx;
+}
+
+function rsPersonInScope_(scope, d4, idx) {
+  if (!scope) return false;
+  if (scope.company) return true;
+  var p = idx[bravesPadD4_(d4)];
+  return !!p && !!scope.plt[p];
+}
+
+// The gate is a DATE CUT, not field redaction. Redacting `reason` was rejected:
+// classifyURTI() derives from it, the sick-report generator prints it, the
+// classifier exists in two copies (js/braves-parade.js and the hand-port below),
+// and spec §1.1 makes reason company-visible anyway.
+//
+// A Medical row is OPERATIONAL when any of:
+//   • it carries no bookInDate            — PR #65: an ended-but-unbooked MC
+//                                            stays under ATT C, and such a row
+//                                            can be arbitrarily old
+//   • endDate is blank                    — open-ended, still running
+//   • endDate >= today - RS_GHOST_TAIL_DAYS — the MC+1/MC+2, LD+1/LD+2 recovery
+//                                            tags are derived at render time
+//                                            from a CLOSED record
+// Otherwise it is history. Parade state only ever consults operational rows, so
+// nothing downstream of the classifier changes — that is the whole reason this
+// is a date filter and not a person filter.
+//
+// The bookInDate clause is the one that silently breaks parade state if removed,
+// and the failure looks like a CORRECT parade state with people missing from it.
+var RS_GHOST_TAIL_DAYS = 2;
+
+function rsRowIsOperational_(tabName, row, todayIso) {
+  if (!row) return false;
+  // MSK carries no endDate/bookInDate — `cleared` is its live/closed flag.
+  if (tabName === "MSK") {
+    var c = row.cleared;
+    if (c === true) return false;
+    return String(c == null ? "" : c).trim().toUpperCase() !== "TRUE";
+  }
+  // Checked BEFORE the date parse, so a row whose endDate is unparseable garbage
+  // still resolves through the cheap, unambiguous path.
+  if (!String(row.bookInDate == null ? "" : row.bookInDate).trim()) return true;
+  var end = displayDateToISO(row.endDate || "");
+  if (!end) return true;
+  return end >= bpAddDaysISO(todayIso, -RS_GHOST_TAIL_DAYS);
+}
+
+// The single read chokepoint. Called from all three read routes so a new route
+// cannot forget the gate by omission — if you add a fourth, call this from it.
+//
+// The archive cron is deliberately NOT routed through here: it runs unattended
+// with no user context and must keep seeing everything, or the archived parade
+// state and sick report would be silently truncated to one platoon.
+function rsApplyReadScope_(tabName, rows, ctx) {
+  if (!RS_SCOPED_TABS[tabName]) return rows;
+  if (!rows || !rows.length || rows.error) return rows;
+  var scope = rsScopeOf_(ctx);
+  if (scope.company) return rows;
+
+  var idx = rsPlatoonIndex_();
+  // todayISO(), not bravesTodayISO_(): the latter routes through
+  // Utilities.formatDate, which the test harness stubs to a fixed display date
+  // ("01 Jan 2026") regardless of the format string — so the cut would compare
+  // an ISO endDate against a display today and silently keep everything. This
+  // one is plain JS and behaves identically in Apps Script and under test.
+  var today = todayISO();
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (rsPersonInScope_(scope, rows[i].d4, idx) ||
+        rsRowIsOperational_(tabName, rows[i], today)) {
+      out.push(rows[i]);
+    }
+  }
+  return out;
+}
+
+// Write-side enforcement (spec §1.5). Two guards, both required:
+//
+//  1. Row-level writes are PERMITTED and scope-checked. Commanders keep logging,
+//     editing and deleting their own platoon's report-sick records — the daily
+//     workflow is untouched. On an upsert the check runs against BOTH the
+//     incoming row's subject and the existing row's subject, so a scoped caller
+//     cannot re-point someone else's record at their own platoon and capture it.
+//
+//  2. The whole-tab replace is HARD-BLOCKED below company scope. Not a filter,
+//     not a merge — a refusal. writeTab derives headers from Object.keys(data[0])
+//     and replaces the entire tab, so a scoped account holding a filtered Medical
+//     array would delete every other platoon's rows. That is silent, total,
+//     cross-platoon data loss and it is the single most dangerous consequence of
+//     filtering on the wire.
+function rsGuardWrite_(tabName, action, body, ctx) {
+  if (!RS_SCOPED_TABS[tabName]) return null;
+  var scope = rsScopeOf_(ctx);
+  if (scope.company) return null;
+
+  if (action === "write" || action === "replaceConductRows") {
+    return { error: "Scoped accounts cannot replace a tab. Ask an admin, or edit rows individually.", code: 403 };
+  }
+  // updateRow/deleteRow address a row by SHEET INDEX, so the subject cannot be
+  // resolved from the request alone without re-reading and trusting the index.
+  // Refuse rather than guess — nothing in the app uses them for Medical/MSK.
+  if (action === "updateRow" || action === "deleteRow") {
+    return { error: "Out of scope for that platoon.", code: 403 };
+  }
+
+  var idx = rsPlatoonIndex_();
+  var subjects = [];
+  if (action === "append" && body.row) subjects.push(body.row.d4);
+  if (action === "appendMany" && body.rows) {
+    for (var i = 0; i < body.rows.length; i++) subjects.push(body.rows[i].d4);
+  }
+  if (action === "upsertRow" && body.row) {
+    subjects.push(body.row.d4);
+    var existingU = rsFindRowById_(tabName, body.row.id);
+    if (existingU) subjects.push(existingU.d4);   // capture defence
+  }
+  if (action === "deleteRowById") {
+    var existingD = rsFindRowById_(tabName, body.id);
+    // A missing row is not a scope failure — let the normal delete path report it.
+    if (existingD) subjects.push(existingD.d4);
+  }
+
+  for (var j = 0; j < subjects.length; j++) {
+    if (!rsPersonInScope_(scope, subjects[j], idx)) {
+      return { error: "Out of scope for that platoon.", code: 403 };
+    }
+  }
+  return null;
+}
+
+// MSK has no `id` column (schema: timestamp | d4 | …), so an id lookup there
+// simply finds nothing and the incoming row's own d4 is the only subject — which
+// is correct, because the frontend addresses MSK rows by timestamp, not id.
+function rsFindRowById_(tabName, id) {
+  var rows = readTab(tabName);
+  if (!rows || !rows.length || rows.error) return null;
+  var target = String(id == null ? "" : id).trim();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].id == null ? "" : rows[i].id).trim() === target) return rows[i];
+  }
+  return null;
+}
+
 // ── Login + failed-attempt throttling ────────────────────
 
 function handleLogin(body) {
@@ -1057,6 +1280,12 @@ function routeAuthedPost(action, tab, body, ctx) {
     }
   }
 
+  // Report-sick platoon scope (spec §1.5). Sits with the duty gate above for the
+  // same reason: canWrite has already passed, and this restricts a subset of tabs
+  // further. Reads are gated separately, in doGet/readAllTabs.
+  var rsGuard = rsGuardWrite_(tab, action, body, ctx);
+  if (rsGuard) return rsGuard;
+
   // Mass-deletion safety net (Misc B1): commanders are capped at N single-row
   // deletes per rolling hour (default 30, Config key `commanderDeleteCap`).
   // Admins are exempt. Only single-row deletes count — full-tab `write`/replace,
@@ -1175,7 +1404,7 @@ function handleSetAccountCaps(body, ctx) {
 
   var caps = parseCaps(body.caps);
   for (var i = 0; i < caps.length; i++) {
-    if (KNOWN_CAPS.indexOf(caps[i]) === -1) return { error: "Unknown capability '" + caps[i] + "'." };
+    if (!rsCapIsKnown_(caps[i])) return { error: "Unknown capability '" + caps[i] + "'." };
   }
   var written = writeAccountCaps(email, caps.join(","));
   if (written && written.error) return written;
@@ -1186,8 +1415,17 @@ function handleSetAccountCaps(body, ctx) {
 }
 
 // The allowlist exists so a typo ("dutty") fails loudly at the point of granting
-// rather than silently producing an account that can never plan anything.
-var KNOWN_CAPS = ["duty"];
+// rather than silently producing an account that can never plan anything. The
+// same reasoning is why `rs:plt:` validates its KEY as well as its prefix: an
+// empty key would be accepted, stored, and match no platoon forever.
+var KNOWN_CAPS = ["duty", "rs:company"];
+
+function rsCapIsKnown_(cap) {
+  var c = String(cap == null ? "" : cap).trim().toLowerCase();
+  if (KNOWN_CAPS.indexOf(c) !== -1) return true;
+  if (c.indexOf(RS_PLT_CAP_PREFIX) !== 0) return false;
+  return c.slice(RS_PLT_CAP_PREFIX.length).length > 0;
+}
 
 function writeAccountCaps(email, capsCsv) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Accounts");
@@ -1982,12 +2220,22 @@ function readAllTabs(ctx) {
   // both need to review/compare. Empty arrays when the tabs don't exist yet.
   if (canWrite(ctx)) {
     result.paradeArchive = ss.getSheetByName("ParadeArchive") ? readTab("ParadeArchive") : [];
-    result.sickArchive = ss.getSheetByName("SickArchive") ? readTab("SickArchive") : [];
+    // Sick-archive rows are whole-company generated message text — there is no
+    // per-person row to filter and no way to redact one platoon out of a
+    // rendered message. Withheld entirely below company scope.
+    result.sickArchive = (rsScopeOf_(ctx).company && ss.getSheetByName("SickArchive"))
+      ? readTab("SickArchive") : [];
   }
+
+  // Report-sick scope (spec §1). Applied here rather than inside readTab so the
+  // archive cron and other internal readTab callers stay unfiltered.
+  result.medical = rsApplyReadScope_("Medical", result.medical, ctx);
+  result.msk = rsApplyReadScope_("MSK", result.msk, ctx);
 
   result.timestamp = new Date().toISOString();
   result.sheetName = ss.getName();
   result.revs = getAllRevs();   // per-tab revisions so the client can baseline
+  result.scopeKey = rsScopeKey_(rsScopeOf_(ctx));
   return result;
 }
 

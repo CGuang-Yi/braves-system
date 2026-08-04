@@ -182,7 +182,7 @@ function renderArchive(el) {
     <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
       <div style="display:flex;gap:4px">
         <button class="btn ${_archiveTab === "parade" ? "btn-primary" : ""}" onclick="setArchiveTab('parade')">Parade State (${(STATE.paradeArchive || []).length})</button>
-        <button class="btn ${_archiveTab === "sick" ? "btn-primary" : ""}" onclick="setArchiveTab('sick')">Report Sick (${(STATE.sickArchive || []).length})</button>
+        ${rsScope().company ? `<button class="btn ${_archiveTab === "sick" ? "btn-primary" : ""}" onclick="setArchiveTab('sick')">Report Sick (${(STATE.sickArchive || []).length})</button>` : ""}
         ${_archiveTab === "parade" ? `<button class="btn ${_archiveCompare ? "btn-primary" : ""}" onclick="setArchiveCompareMode(${!_archiveCompare})" title="Compare two archived parade states line-by-line">⇄ Compare</button>` : ""}
       </div>
       ${_archiveTab === "parade" ? `<select id="archive-scope" onchange="setArchiveScope(this.value)" title="Filter archived parade states by scope"
@@ -203,6 +203,16 @@ function renderArchiveList() {
   const host = document.getElementById("archive-list");
   if (!host) return;
   if (_archiveTab === "parade" && _archiveCompare) { renderArchiveCompare(host); return; }
+  // Sick-archive rows are whole-company generated message text — there is no
+  // per-person row to filter, so the server withholds the tab entirely below
+  // company scope. Say that, rather than render an empty list that reads as
+  // "no archives exist" (the same false-absence problem as an empty grid row).
+  if (_archiveTab === "sick" && !rsScope().company) {
+    host.innerHTML = `<div style="font-size:12px;color:var(--muted);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:4px;padding:10px 12px">
+      Report-sick archives are visible to company-scope accounts only.
+    </div>`;
+    return;
+  }
   const rows = (_archiveTab === "parade" ? STATE.paradeArchive : STATE.sickArchive) || [];
   const q = _archiveQuery.trim().toLowerCase();
   // Newest first by timestamp (ISO); fall back to insertion order.

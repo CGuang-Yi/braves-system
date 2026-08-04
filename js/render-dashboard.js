@@ -386,8 +386,13 @@ if (typeof window !== "undefined") {
 // the timeline of exercises they've logged. Cleared cases are hidden by
 // default behind a toggle.
 function renderDashMSKCases(visible) {
-  const scoped = STATE.msk.filter(m => passesFilter(m.d4, visible));
-  if (!scoped.length) return "";
+  // Report-sick scope (§1.7): per-person MSK cards name the person and their
+  // injury, so out-of-scope people are withheld and stated as a count instead.
+  const scoped = STATE.msk.filter(m => passesFilter(m.d4, visible) && inRSScope(m.d4));
+  const scopeNote = rsScope().company ? "" : rsOutOfScopeCounts()
+    .map(x => `<div style="font-size:11px;color:var(--muted);padding:4px 0">${escapeHTML(x.platoon)} — ${x.count} pax · MSK cases outside your scope</div>`)
+    .join("");
+  if (!scoped.length) return scopeNote;
 
   // Group by d4. Per-d4: active if ANY row is not cleared. Cleared if all
   // are cleared.
@@ -464,7 +469,8 @@ function renderDashMSKCases(visible) {
 
   return `<h3 style="font-size:13px;color:var(--muted);margin:16px 0 8px">🦵 Active MSK Cases <span style="color:var(--dim);font-weight:400">(${active.length}${cleared.length ? ` active · ${cleared.length} cleared` : ""}) <span style="font-size:10px;font-style:italic;color:var(--dim)">— scroll to see all</span></span></h3>
     ${activeCards}
-    ${clearedSection}`;
+    ${clearedSection}
+    ${scopeNote}`;
 }
 
 // ── MSK ANALYTICS PAGE ───────────────────────────────────
@@ -492,14 +498,16 @@ function viewMSKRegion(region) {
   const endIso = _mskAnalyticsEnd;
   const visible = visibleD4Set();
 
+  // This view renders one NAMED card per affected person with their injury
+  // text, so both source layers carry the report-sick scope.
   const inWindowReport = m => {
     if ((m.type || "").toLowerCase().indexOf("report") < 0) return false;
-    if (!passesFilter(m.d4, visible)) return false;
+    if (!passesFilter(m.d4, visible) || !inRSScope(m.d4)) return false;
     const iso = displayDateToISO(m.timestamp) || String(m.timestamp || "").slice(0, 10);
     return iso && iso >= startIso && iso <= endIso;
   };
   const inWindowCD = c => {
-    if (!passesFilter(c.d4, visible)) return false;
+    if (!passesFilter(c.d4, visible) || !inRSScope(c.d4)) return false;
     const iso = displayDateToISO(c.date);
     return iso && iso >= startIso && iso <= endIso && isMSKReason(c.reason);
   };
@@ -603,6 +611,9 @@ function renderMSKAnalytics(el) {
   const reportRows = STATE.msk.filter(m => {
     if ((m.type || "").toLowerCase().indexOf("report") < 0) return false;
     if (!passesFilter(m.d4, visible)) return false;
+    // Report-sick scope: this feeds the most-affected-personnel breakdown,
+    // which names people.
+    if (!inRSScope(m.d4)) return false;
     const iso = displayDateToISO(m.timestamp) || String(m.timestamp || "").slice(0, 10);
     return iso && iso >= startIso && iso <= endIso;
   });

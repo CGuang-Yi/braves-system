@@ -105,9 +105,16 @@ module.exports = async function run() {
   await test("non-duty tabs are unaffected", () => {
     const b = loadBackend();
     seedDuty(b);
-    b.db.seed("Medical", ["id", "reason"], []);
+    b.db.seed("Medical", ["id", "d4", "reason"], []);
+    // Medical is report-sick-scoped (rsGuardWrite_), so the commander must
+    // resolve to a platoon and the row must name someone in it — otherwise this
+    // asserts nothing about the DUTY gate, which is what it exists to test.
+    b.db.seed("Roster", ["id", "name", "role", "platoon"], [
+      ["0001", "PC", "Commander", "PLT1"],
+      ["1101", "REC", "Recruit", "PLT1"]
+    ]);
     const tok = session(b, "commander", "");
-    ok(post(b, tok, { action: "append", tab: "Medical", row: { id: "m1", reason: "fever" } }).ok,
+    ok(post(b, tok, { action: "append", tab: "Medical", row: { id: "m1", d4: "1101", reason: "fever" } }).ok,
        "Medical write still accepted");
   });
 

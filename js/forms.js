@@ -309,9 +309,19 @@ function openPerson(d4) {
   // Count is deduped per date so a recruit with multiple medical entries on
   // the same day (e.g. wizard auto-Pending + manual MC + manual Excuse) only
   // shows as one report-sick event.
-  const rsClickable = med.length > 0;
+  // Report-sick scope (spec §1.1). The server already withheld this person's
+  // accumulated history — what reaches STATE for an out-of-scope person is only
+  // their OPERATIONAL rows, the ones parade state needs. Rendering those as
+  // "Medical History (2)" would therefore be a lie in the most damaging
+  // direction: it reads as a complete record that happens to be short.
+  //
+  // Their CURRENT status stays visible throughout: §1.1 makes today's picture
+  // ungated, and the badge comes from rosterDisplayStatus(), which reads exactly
+  // those operational rows.
+  const rsInScope = inRSScope(d4);
+  const rsClickable = med.length > 0 && rsInScope;
   const medDays = new Set(med.map(m => m.date)).size;
-  html += `<div class="stats-row"><div class="stat" ${rsClickable ? `onclick="toggleReportSickPatterns('${d4}')" style="cursor:pointer" title="Click to see patterns (unique days — multiple medical rows on the same day count as 1)"` : ""}><label>RSIs ${rsClickable ? '<span style="color:var(--dim);font-size:9px">▾ patterns</span>' : ''}</label><div class="val" style="color:${medDays > 1 ? 'var(--red)' : 'var(--muted)'}">${medDays}</div></div>`;
+  html += `<div class="stats-row"><div class="stat" ${rsClickable ? `onclick="toggleReportSickPatterns('${d4}')" style="cursor:pointer" title="Click to see patterns (unique days — multiple medical rows on the same day count as 1)"` : ""}><label>RSIs ${rsClickable ? '<span style="color:var(--dim);font-size:9px">▾ patterns</span>' : ''}</label><div class="val" style="color:${rsInScope && medDays > 1 ? 'var(--red)' : 'var(--muted)'}">${rsInScope ? medDays : "—"}</div></div>`;
   html += `<div class="stat"><label>IPPT Best</label><div class="val" style="color:var(--orange)">${ippts.length ? Math.max(...ippts.map(i => +i.score)) : "—"}</div></div>`;
   html += `<div class="stat"><label>SOCs</label><div class="val" style="color:var(--purple)">${socs.length}</div></div></div>`;
   html += `<div id="rs-patterns" style="display:none"></div>`;
@@ -378,7 +388,12 @@ function openPerson(d4) {
     html += socs.map(s => `<div style="background:var(--surface2);border-radius:6px;padding:8px 12px;border:1px solid var(--border);text-align:center"><div style="font-size:10px;color:var(--muted)">SOC ${s.socNum}</div><div class="mono" style="font-size:16px;font-weight:700;color:var(--purple)">${socDurationDisplay(s.time)}</div>${pcBtns("openSOCForm", "soc", s.id, "SOC entry")}</div>`).join("");
     html += `</div>`;
   }
-  if (med.length) {
+  if (!rsInScope) {
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">Medical History</h4>
+      <div style="font-size:12px;color:var(--muted);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:4px;padding:8px 12px">
+        History outside your scope.
+      </div>`;
+  } else if (med.length) {
     const today = todayISO();
     // Sort newest-first by startDate (falling back to date logged) so the
     // most recent / currently-relevant entries are at the top.
@@ -430,8 +445,16 @@ function openPerson(d4) {
   // Self-reported via Google Form (separate from medical layer). Shows
   // injury reports + exercise log timeline + whether the case is currently
   // cleared. Helps a sergeant get the full physio picture in one glance.
-  const mskRows = STATE.msk.filter(m => m.d4 === d4);
-  if (mskRows.length) {
+  // Same report-sick scope as the medical history above — MSK is the other
+  // gated tab, and an out-of-scope person's cleared cases were withheld server
+  // side, so a timeline built from what's left would misrepresent the case.
+  const mskRows = rsInScope ? STATE.msk.filter(m => m.d4 === d4) : [];
+  if (!rsInScope) {
+    html += `<h4 style="font-size:12px;color:var(--muted);margin:12px 0 8px">MSK / Physio</h4>
+      <div style="font-size:12px;color:var(--muted);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:4px;padding:8px 12px">
+        History outside your scope.
+      </div>`;
+  } else if (mskRows.length) {
     const tsOf = r => String(r.timestamp || "");
     const injuries = mskRows.filter(r => (r.type || "").toLowerCase().includes("report"))
       .sort((a, b) => tsOf(a) < tsOf(b) ? 1 : -1);
@@ -648,6 +671,11 @@ function toggleReportSickPatterns(d4) {
   if (!panel) return;
   if (panel.style.display !== "none") { panel.style.display = "none"; panel.innerHTML = ""; return; }
 
+  // Belt-and-braces: the trigger is already hidden for an out-of-scope person
+  // (openPerson), but this is the pattern-analysis panel — the single most
+  // sensitive surface in the card — so it refuses on its own rather than
+  // trusting a caller.
+  if (!inRSScope(d4)) return;
   const med = STATE.medical.filter(m => m.d4 === d4);
   if (!med.length) return;
 

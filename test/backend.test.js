@@ -168,9 +168,16 @@ module.exports = async function run() {
 
   await test("commander's NORMAL write (no imported flag) is unaffected", () => {
     const b = loadBackend();
-    b.db.seed("Medical", ["id", "reason"], []);
+    b.db.seed("Medical", ["id", "d4", "reason"], []);
+    // Medical is report-sick-scoped (rsGuardWrite_), so the commander must
+    // resolve to a platoon and the row must name someone in it — otherwise this
+    // asserts nothing about the IMPORT gate, which is what it exists to test.
+    b.db.seed("Roster", ["id", "name", "role", "platoon"], [
+      ["0001", "PC", "Commander", "PLT1"],
+      ["1101", "REC", "Recruit", "PLT1"]
+    ]);
     const r = postAs(b, mkToken(b, "commander"),
-      { action: "upsertRow", tab: "Medical", row: { id: 1, reason: "fever" }, baseRev: b.getRev("Medical") });
+      { action: "upsertRow", tab: "Medical", row: { id: 1, d4: "1101", reason: "fever" }, baseRev: b.getRev("Medical") });
     ok(r.ok && !r.conflict, "commander single-row edit still applies");
     eq(b.db.rowsOf("Medical").length, 1, "row written");
   });

@@ -372,23 +372,109 @@ async function doRemoveAccount(emailEnc) {
   }
 }
 
-// ── Grant / revoke the duty-planning capability (admin) ──
-// A capability, not a role — see DUTY_LIST_SPEC.md §9 and hasCap() in state.js.
-// `duty` is the only one today, so this is a toggle rather than a caps editor;
-// a second capability turns it into a picker.
-async function doToggleDutyCap(emailEnc, hasIt) {
+// ── Edit an account's capabilities (admin) ───────────────
+// Capabilities, not roles — see DUTY_LIST_SPEC.md §9 and hasCap() in state.js.
+// This was a single duty toggle until report-sick scoping added a second and
+// third capability; a toggle that submitted `"duty"` or `""` would have silently
+// wiped an account's rs grants on every use, because setAccountCaps REPLACES the
+// whole caps cell rather than merging into it.
+//
+// The full set is submitted every time, which is why the editor must render the
+// account's CURRENT caps as its initial state — anything it fails to show, it
+// erases.
+function openCapsEditor(emailEnc) {
   const email = decodeURIComponent(emailEnc);
-  const granting = !hasIt;
-  if (!confirm(`${granting ? "Grant" : "Revoke"} duty planning for ${email}?`)) return;
+  const acct = (STATE.accounts || []).find(a => String(a.email || "").toLowerCase() === email.toLowerCase());
+  if (!acct) { alert("Account not found — refresh the admin panel."); return; }
+  const caps = (acct.caps || []).map(c => String(c).toLowerCase());
+  const hasDuty = caps.indexOf("duty") !== -1;
+  const hasCompanyRS = caps.indexOf("rs:company") !== -1;
+  // Stored lowercased by the backend's parseCaps; platoon codes are uppercase.
+  const grantedPlts = caps.filter(c => c.indexOf("rs:plt:") === 0).map(c => c.slice(7).toUpperCase());
+
+  const pltBoxes = activePlatoons().map(p => `
+    <label style="display:inline-flex;align-items:center;gap:5px;margin:0 10px 6px 0;font-size:12px">
+      <input type="checkbox" class="caps-plt" value="${escapeAttr(p.code)}"${grantedPlts.indexOf(String(p.code).toUpperCase()) !== -1 ? " checked" : ""}>
+      ${escapeHTML(p.displayName || p.code)}
+    </label>`).join("");
+
+  openModal(`Capabilities — ${email}`, `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Capabilities sit alongside the role. This account is a <strong>${escapeHTML(acct.role || "")}</strong>.
+    </div>
+
+    <label style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+      <input type="checkbox" id="caps-duty"${hasDuty ? " checked" : ""}> Duty planning
+    </label>
+
+    <div style="border-top:1px solid var(--border);padding-top:10px">
+      <div style="font-weight:600;font-size:12px;margin-bottom:6px">Report sick history</div>
+      <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <input type="checkbox" id="caps-rs-company"${hasCompanyRS ? " checked" : ""}> Whole company
+      </label>
+      <div id="caps-plt-wrap" style="${hasCompanyRS ? "opacity:.45;pointer-events:none" : ""}">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">…or specific platoons:</div>
+        ${pltBoxes || '<div style="font-size:11px;color:var(--muted)">No platoons on the roster yet.</div>'}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">
+        With none of these set, the account sees only its own platoon (resolved from the roster).
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;font-size:11px;color:var(--muted)">
+      Capabilities apply at that account's <strong>next login</strong>. Widening takes effect when
+      they sign in again; to narrow someone <strong>immediately</strong>, revoke their sessions as well.
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn" onclick="doRevokeSessionsFor('${encodeURIComponent(email)}')">Revoke sessions</button>
+      <button class="btn btn-success" onclick="doSaveAccountCaps('${encodeURIComponent(email)}')">Save</button>
+    </div>
+  `);
+
+  // rs:company supersedes the per-platoon grants; letting both be set would
+  // produce a cap string that reads as more specific than it actually is.
+  document.getElementById("caps-rs-company").addEventListener("change", e => {
+    const wrap = document.getElementById("caps-plt-wrap");
+    wrap.style.opacity = e.target.checked ? ".45" : "";
+    wrap.style.pointerEvents = e.target.checked ? "none" : "";
+  });
+}
+
+async function doSaveAccountCaps(emailEnc) {
+  const email = decodeURIComponent(emailEnc);
+  const caps = [];
+  if (document.getElementById("caps-duty").checked) caps.push("duty");
+  if (document.getElementById("caps-rs-company").checked) {
+    caps.push("rs:company");
+  } else {
+    document.querySelectorAll(".caps-plt:checked").forEach(el => caps.push("rs:plt:" + el.value));
+  }
+  const capsCsv = caps.join(",");
   try {
-    // Caps are snapshotted onto the token at login, so a revoke doesn't reach a
-    // device that is already signed in. Say so rather than let an admin assume
-    // it took effect immediately — revoking their tokens is the way to force it.
-    const res = await API.setAccountCaps(email, granting ? "duty" : "");
-    if (res && res.ok) {
-      refreshAdminData();
-      if (!granting) alert(`Duty planning revoked for ${email}.\n\nAny device they're already signed in on keeps it until they sign in again — revoke their sessions below to apply it now.`);
-    } else alert((res && res.error) || "Could not update capabilities.");
+    const res = await API.setAccountCaps(email, capsCsv);
+    // The backend returns {error} inside a 200 — an unknown capability lands
+    // here, not in a catch.
+    if (!res || res.error) { alert((res && res.error) || "Could not update capabilities."); return; }
+    closeModal();
+    syncLog(`Capabilities for ${email}: ${capsCsv || "(none)"}`, "var(--green)");
+    refreshAdminData();
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    alert("Network error: " + e.message);
+  }
+}
+
+// The other half of the next-login caveat: without this, narrowing a grant does
+// nothing to a device that is already signed in.
+async function doRevokeSessionsFor(emailEnc) {
+  const email = decodeURIComponent(emailEnc);
+  if (!confirm(`Revoke every active session for ${email}?\n\nThey will have to sign in again, which is what makes a narrowed capability apply immediately.`)) return;
+  try {
+    const res = await API.revokeAllForEmail(email);
+    if (!res || res.error) { alert((res && res.error) || "Could not revoke sessions."); return; }
+    syncLog(`Revoked all sessions for ${email}`, "var(--orange)");
+    refreshAdminData();
   } catch (e) {
     if (e.name === "AuthError") { handleAuthFailure(); return; }
     alert("Network error: " + e.message);
