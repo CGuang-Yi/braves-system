@@ -448,8 +448,8 @@ function conductPicker({ inputId, selectedId = "", onChange = "" }) {
     <input type="hidden" id="${inputId}" value="${escapeAttr(selectedId)}">
     <select onchange="${onChangeJS}" style="width:100%;padding:7px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px">
       <option value="" ${selectedId ? "" : "selected"}>— pick a conduct —</option>
-      ${opts.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${escapeAttr(c.name)}</option>`).join("")}
       <option value="__new__">+ New conduct…</option>
+      ${opts.map(c => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${escapeAttr(c.name)}</option>`).join("")}
     </select>
   `;
 }
@@ -476,9 +476,11 @@ function handleConductPickerChange(inputId, selectEl) {
       const newOpt = document.createElement("option");
       newOpt.value = id;
       newOpt.textContent = name;
-      const newConductOpt = [...selectEl.options].find(o => o.value === "__new__");
-      if (newConductOpt) selectEl.insertBefore(newOpt, newConductOpt);
-      else selectEl.appendChild(newOpt);
+      // Append. "+ New conduct…" sits at the TOP of the list (right under the
+      // placeholder) so it stays reachable without scrolling past a long
+      // registry — so inserting before it, as this used to do, would now file
+      // every new conduct above the real ones instead of among them.
+      selectEl.appendChild(newOpt);
     }
     selectEl.value = id;
   } else {

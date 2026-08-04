@@ -52,7 +52,8 @@
  *   Roster:     4d | name | age | status | notes | phone | email |
  *               ration | allergies | msk | highest education level |
  *               motorcycle license | height | weight | role | rank |
- *               leaveQuota | platoon | section | rankGroup | fourD
+ *               leaveQuota | platoon | section | rankGroup | fourD |
+ *               appointment
  *               (the column may be named "4d" or "id" — the frontend mirrors
  *                whichever is present into r.id at pull time. height in cm,
  *                weight in kg — BMI is computed client-side. role ∈
@@ -66,7 +67,14 @@
  *                rankGroup ∈ {Officer, WOSPEC, Enlistee} (strength split);
  *                fourD = display 4D (e.g. 1411), blank for no-4D personnel —
  *                separate from `id`, which stays the primary key and may be a
- *                short text code (OC, PC1…) for no-4D personnel.)
+ *                short text code (OC, PC1…) for no-4D personnel.
+ *                appointment ∈ {PC, PS, SectComd, blank} — duty-list eligibility
+ *                (DUTY_LIST_SPEC.md §5): CDO draws PCs, CDS draws PSs, COS and
+ *                PDS draw section commanders. It exists because `section` cannot
+ *                separate PC from PS — it reads "Command" for both. Blank falls
+ *                back to the org model client-side, which resolves a numbered
+ *                section to SectComd but leaves "Command" ambiguous, so PCs and
+ *                PSs are the rows actually worth backfilling.)
  *   Medical:    id | d4 | date | reason | location | status | startDate | endDate |
  *               type | urtiType | mrTiming | visitId | origin | bookInDate
  *               (origin ∈ {manual, conductLog}: "conductLog" = auto-created as a
@@ -655,11 +663,18 @@ var AUDIT_READALL_MAX_ROWS = 500;
 // Apps Script's execution limits, on their CPU not ours — and each round is a
 // separate Utilities.* bridge call, far more expensive than a native HMAC, so
 // the usable ceiling here is well below the 600k+ you would pick on an ordinary
-// server. 10k lands around a second per login on a typical project.
+// server.
 // **Run bravesBenchmarkKdf() in the Apps Script editor after deploying** and tune
 // this to taste: the count is stored inside each hash, so raising or lowering it
 // invalidates nothing.
-var PBKDF2_ITERATIONS = 10000;
+//
+// MEASURED on this project (2026-08-04, bravesBenchmarkKdf): ~1.67 ms per
+// iteration — 10k took 16,650 ms per login. That is ~16x slower than the "about
+// a second at 10k" this comment used to guess, because each round is a separate
+// Utilities.* bridge call rather than a native HMAC. Do not re-derive the guess;
+// re-run the benchmark if the project moves. 2000 buys ~3.3 s per login, which
+// is the accepted ceiling here given how rarely people log in.
+var PBKDF2_ITERATIONS = 2000;
 var PBKDF2_PREFIX = "pbkdf2$sha256$";   // pbkdf2$sha256$<iters>$<hex>
 
 // PBKDF2 with dkLen == hLen, i.e. exactly one block (T_1), which is all we need
@@ -1637,6 +1652,7 @@ function bravesMigrateMrTiming() {
 //
 // What it does:
 //   • Roster      — adds the Step-2 Braves columns (platoon, section, rankGroup, fourD)
+//                   and `appointment` (duty-list eligibility, DUTY_LIST_SPEC.md §5)
 //   • Medical     — adds the §6 columns (location, type, urtiType, mrTiming, visitId, origin, bookInDate)
 //   • Appointments— adds outOfCamp (parade-state "Camp:" line depends on it)
 //   • Leave        — adds isInCamp (the "In Camp" override; strength calc depends on it), bookInDate
@@ -1651,7 +1667,7 @@ function bravesMigrateSchema() {
 
   // Append-only column additions to existing tabs (no-ops if the column exists).
   ensureTabWithHeaders_(ss, "Roster",
-    ["platoon", "section", "rankGroup", "fourD"]);
+    ["platoon", "section", "rankGroup", "fourD", "appointment"]);
   ensureTabWithHeaders_(ss, "Medical",
     ["location", "type", "urtiType", "mrTiming", "visitId", "origin", "bookInDate", "time", "outOfCamp"]);
   ensureTabWithHeaders_(ss, "Appointments",
