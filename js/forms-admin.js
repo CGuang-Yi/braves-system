@@ -422,6 +422,158 @@ async function submitResetPassword(emailEnc) {
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// ORD DEPROVISIONING  (BACKEND_MIGRATION_REVIEW.md §4.6 item 4 / §4.7.7)
+// ═══════════════════════════════════════════════════════
+// The mechanism to remove a departed member's access already existed
+// (removeAccount → revokeAllTokensForEmail); what did not exist was any LINK
+// from "this person has ORD'd" to "therefore revoke their access". Nothing
+// prompted, nothing reconciled, so an ORD'd member simply kept their account.
+//
+// This is the reconcile-on-load half, which the review calls sufficient on its
+// own: every account whose personId maps to a departed roster row is surfaced in
+// the admin panel with a one-click removal. The other half the review sketches —
+// prompt at the moment the status changes — has no hook in this app, because
+// roster status is not editable in the UI at all; departures are entered
+// directly in the Sheet. Reconciliation is therefore the ONLY place the link can
+// live here, which is also why it must be visible rather than buried.
+//
+// Note the ordering dependency the review flags (§4.7.7 point 3): removing the
+// account is bounded by the token lifetime, not by the removal — a live session
+// keeps working until its token expires. That is why SESSION_TTL_MS went from 30
+// days to 7 in the same change; removeAccount also revokes tokens outright, so
+// the residual window applies only to accounts an admin has not yet actioned.
+function departedAccounts() {
+  if (typeof BP_DEPARTED_STATUSES === "undefined") return [];
+  return (STATE.accounts || []).map(a => {
+    const pid = a.personId ? padD4(a.personId) : "";
+    if (!pid) return null;
+    const person = STATE.roster.find(r => r.id === pid);
+    if (!person) return null;
+    const status = String(person.status || "").trim();
+    if (!BP_DEPARTED_STATUSES.has(status)) return null;
+    return { email: a.email, personId: pid, name: person.name || "", status };
+  }).filter(Boolean);
+}
+
+// ═══════════════════════════════════════════════════════
+// RETENTION  (BACKEND_MIGRATION_REVIEW.md §4.6 item 6 / §4.5)
+// ═══════════════════════════════════════════════════════
+// "Nothing purges departed personnel" — the system knows perfectly well who has
+// ORD'd and keeps their medical history forever anyway. The policy implemented
+// here, in full:
+//
+//   Health and availability records (Medical, MSK, Appointments, Leave) for a
+//   person whose roster status is a departure are deleted once RETENTION_DAYS
+//   have passed with no activity. The Roster row itself is KEPT — it is what
+//   lets the app badge historical records as belonging to a departed member, it
+//   is the smallest possible remnant, and deleting it would orphan every
+//   aggregate that references the 4D. Fitness records (IPPT/RM/SOC/Polar) are
+//   also kept: they are unit performance history, not health data.
+//
+// The retention clock is DAYS SINCE THE PERSON'S MOST RECENT DATED RECORD, not
+// days since departure — because there is no departure-date column anywhere in
+// the schema (see the Roster header comment in apps-script-Code.gs) and adding
+// one would need a bravesMigrateSchema() run plus manual backfill for everyone
+// who has already left. Last activity is a conservative proxy: it can only ever
+// be LATER than the real departure, so it never purges early. If a departure
+// date is added to the schema later, switch this to use it.
+const RETENTION_DAYS = 90;
+
+// Every dated health/availability row for a 4D, tagged with its tab so the purge
+// can dispatch deletes per tab. Kept as one list so the review UI and the purge
+// cannot disagree about scope.
+function retentionRowsFor(d4) {
+  const pick = (arr, tab) => (arr || []).filter(r => r.d4 === d4).map(r => ({ tab, row: r }));
+  return [].concat(
+    pick(STATE.medical, "Medical"),
+    pick(STATE.msk, "MSK"),
+    pick(STATE.appointments, "Appointments"),
+    pick(STATE.leave, "Leave")
+  );
+}
+
+// Any date-ish field on a row, as an ISO string. Rows carry dates in several
+// shapes ("17 May 2026" from Sheets, ISO from forms) and under several names,
+// so this is deliberately permissive — the cost of missing a date is that the
+// person looks MORE recently active than they are, i.e. purged later, which is
+// the safe direction to be wrong in.
+function retentionRowLatestISO(row) {
+  const fields = ["date", "startDate", "endDate", "start", "end", "reviewDate", "injuryDate"];
+  let latest = "";
+  fields.forEach(f => {
+    const v = row[f];
+    if (!v) return;
+    const iso = /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0, 10)
+      : (typeof displayDateToISO === "function" ? displayDateToISO(v) : "");
+    if (iso && iso > latest) latest = iso;
+  });
+  return latest;
+}
+
+// Departed people who still hold purgeable records, newest-activity first.
+// `overdue` is the subset the purge acts on.
+function retentionCandidates() {
+  if (typeof BP_DEPARTED_STATUSES === "undefined") return [];
+  const today = todayISO();
+  return (STATE.roster || [])
+    .filter(p => BP_DEPARTED_STATUSES.has(String(p.status || "").trim()))
+    .map(p => {
+      const rows = retentionRowsFor(p.id);
+      let lastActivity = "";
+      rows.forEach(({ row }) => {
+        const iso = retentionRowLatestISO(row);
+        if (iso && iso > lastActivity) lastActivity = iso;
+      });
+      const days = lastActivity ? daysBetween(lastActivity, today) : null;
+      return {
+        id: p.id, name: p.name || "", status: String(p.status || "").trim(),
+        count: rows.length, lastActivity, days,
+        // No dated row at all → nothing to date it by. Treated as overdue only
+        // when there is something to purge, since an undated health record for a
+        // departed member is exactly as stale as a very old one.
+        overdue: rows.length > 0 && (days === null || days >= RETENTION_DAYS)
+      };
+    })
+    .filter(c => c.count > 0)
+    .sort((a, b) => String(b.lastActivity).localeCompare(String(a.lastActivity)));
+}
+
+// Destructive, admin-only, and typed-confirmation gated. Deletes go through the
+// ordinary per-row autoSync delete primitive rather than a bulk server call, so
+// each one is OCC-guarded and lands in the audit log like any other write —
+// a purge should be as reviewable afterwards as it was deliberate beforehand.
+async function doRetentionPurge() {
+  if (!isAdminRole()) { alert("Admin only."); return; }
+  const overdue = retentionCandidates().filter(c => c.overdue);
+  if (!overdue.length) { alert("Nothing is past the retention window."); return; }
+  const rowTotal = overdue.reduce((n, c) => n + c.count, 0);
+  const typed = prompt(
+    `Permanently delete ${rowTotal} health record(s) — Medical, MSK, Appointments and Leave — ` +
+    `for ${overdue.length} departed personnel with no activity in ${RETENTION_DAYS}+ days?\n\n` +
+    `Roster rows and fitness records are kept. This cannot be undone from the app; the Sheet's ` +
+    `own version history is the only recovery path.\n\nType PURGE to confirm:`
+  );
+  if (String(typed || "").trim().toUpperCase() !== "PURGE") return;
+
+  const byTab = { Medical: [], MSK: [], Appointments: [], Leave: [] };
+  overdue.forEach(c => retentionRowsFor(c.id).forEach(({ tab, row }) => byTab[tab].push(row.id)));
+
+  const stateKey = { Medical: "medical", MSK: "msk", Appointments: "appointments", Leave: "leave" };
+  let deleted = 0;
+  Object.keys(byTab).forEach(tab => {
+    const ids = new Set(byTab[tab]);
+    if (!ids.size) return;
+    STATE[stateKey[tab]] = STATE[stateKey[tab]].filter(r => !ids.has(r.id));
+    deleted += ids.size;
+    if (STATE.apiUrl) ids.forEach(id => autoSync(tab, { type: "delete", id }));
+  });
+  saveLocal();
+  render();
+  alert(`Purged ${deleted} record(s) for ${overdue.length} departed personnel.` +
+        (STATE.apiUrl ? "\n\nDeletions are queued to the Sheet — watch the sync indicator." : ""));
+}
+
 // ── Token / session revocation (admin) ───────────────────
 async function doRevokeToken(token, emailEnc) {
   const email = decodeURIComponent(emailEnc || "");

@@ -102,6 +102,18 @@ const API = {
   },
   async revokeAllForEmail(targetEmail) { return this.post({ action: "revokeAllForEmail", targetEmail }); },
   async revokeAllTokens() { return this.post({ action: "revokeAllTokens" }); },
+  // ── Offline data grants (BACKEND_MIGRATION_REVIEW.md §4.7.5a) ──
+  // The server copy is for VISIBILITY and revoke-on-next-contact only; the
+  // client-side expiry is the enforcement, so every one of these is best-effort
+  // and a failure never blocks the local decision.
+  async registerOfflineGrant(deviceId, expiresAt) {
+    return this.post({ action: "registerOfflineGrant", deviceId, expiresAt });
+  },
+  async checkOfflineGrant(deviceId) { return this.post({ action: "checkOfflineGrant", deviceId }); },
+  async revokeOfflineGrant(deviceId, targetEmail) {
+    return this.post({ action: "revokeOfflineGrant", deviceId, targetEmail });
+  },
+  async listOfflineGrants() { return this.post({ action: "listOfflineGrants" }); },
   // ── Archive (Item 1): manual snapshot. kind: "parade"|"sick"|"both". ──
   async archiveNow(kind, opts) { return this.post({ action: "archiveNow", kind, ...(opts || {}) }); },
   // Delete one archived message (admin-only). Matches on the unique timestamp,

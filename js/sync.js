@@ -35,6 +35,7 @@ function renderSync(el) {
       </div>
       <div id="sync-log" class="sync-log card" style="padding:10px"></div>
     </div>
+    ${offlineGrantCardHtml()}
     <div class="card" style="margin-top:16px">
       <h3 style="color:var(--accent)">⚡ Display / Performance</h3>
       <p style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.5">
@@ -92,6 +93,111 @@ function renderSync(el) {
   if (isAdminRole()) renderAdminPanel();
 }
 
+// ── Offline data grant (BACKEND_MIGRATION_REVIEW.md §4.7.5a) ─────
+// Per-device, per-account, expiring permission for this browser to keep a copy
+// of the company's data on disk. Off → the app still works, it just has to be
+// online at launch. See the block comment above OFFLINE_GRANT_KEY in state.js
+// for why this, and not encryption, is the mitigation that matters.
+
+function offlineGrantCardHtml() {
+  if (!STATE.authToken) return "";
+  const st = currentOfflineGrantStatus();
+  const held = (typeof _offlineGrantVerdict !== "undefined" && _offlineGrantVerdict === "held");
+  const auto = st.state === "active" && (loadOfflineGrant() || {}).auto;
+
+  let statusLine;
+  if (st.state === "active") {
+    const when = new Date(st.expiresAt).toLocaleString();
+    statusLine = `<span style="color:var(--green);font-weight:600">✓ On</span>
+      <span style="font-size:12px;color:var(--muted)">expires ${escapeHTML(when)} · ${st.daysLeft} day${st.daysLeft === 1 ? "" : "s"} left</span>`;
+  } else if (st.state === "expired") {
+    statusLine = `<span style="color:var(--orange);font-weight:600">⏳ Expired</span>
+      <span style="font-size:12px;color:var(--muted)">the cached copy on this device was deleted</span>`;
+  } else if (st.state === "revoked") {
+    statusLine = `<span style="color:var(--red);font-weight:600">⛔ Revoked by an admin</span>
+      <span style="font-size:12px;color:var(--muted)">the cached copy on this device was deleted</span>`;
+  } else {
+    statusLine = `<span style="color:var(--muted);font-weight:600">○ Off</span>
+      <span style="font-size:12px;color:var(--muted)">nothing is stored on this device</span>`;
+  }
+
+  return `
+    <div class="card" style="margin-top:16px">
+      <h3 style="color:var(--accent)">📴 Offline access on this device</h3>
+      <p style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.55">
+        With this on, the app keeps a copy of the roster, medical and conduct data in this
+        browser so it opens instantly and works with no signal. That copy is real personnel
+        data sitting on this device — so it is <strong>opt-in, time-limited and wiped</strong>
+        when the grant ends or you sign out. With it off the app still works normally; it just
+        needs a connection when you open it.
+      </p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">${statusLine}</div>
+      ${auto ? `<div style="font-size:11px;color:var(--muted);background:var(--card-alt,#8882);border-radius:6px;padding:8px;margin-bottom:10px;line-height:1.5">
+        This device already held a cached copy from before offline access became a choice, so a
+        ${OFFLINE_GRANT_DEFAULT_DAYS}-day grant was issued automatically rather than deleting your data mid-deployment.
+        Renew it below if you still need it.
+      </div>` : ""}
+      ${held ? `<div style="font-size:11px;color:var(--orange);background:#F5A62322;border:1px solid #F5A62344;border-radius:6px;padding:8px;margin-bottom:10px;line-height:1.5">
+        <strong>Wipe deferred.</strong> The grant has ended but this device still has unpushed
+        changes, so the copy was kept rather than discarding your edits. Push them
+        (<em>Sheet Sync → Push All</em>, or the retry prompt at launch) and the wipe happens on the next launch.
+      </div>` : ""}
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${OFFLINE_GRANT_DAY_OPTIONS.map(d => `<button class="btn" onclick="doGrantOffline(${d})">${st.state === "active" ? "Renew" : "Turn on"} · ${d} day${d === 1 ? "" : "s"}</button>`).join("")}
+        ${st.state === "active" ? `<button class="btn btn-danger" onclick="doRevokeOfflineHere()">Turn off &amp; wipe now</button>` : ""}
+      </div>
+      <p style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.5">
+        Admins can see which devices hold a grant and revoke one, but a revocation only lands
+        when that device is next online — the expiry above is what bounds a device nobody can reach.
+      </p>
+    </div>`;
+}
+
+async function doGrantOffline(days) {
+  grantOffline(days);
+  saveLocalNow();               // materialise the cache immediately, so "on" means on
+  // Best-effort registration for the admin-review list. A failure here must not
+  // block the grant: the client-side expiry is the enforcement, the server copy
+  // is visibility. Say so rather than pretending the grant failed.
+  try {
+    await API.registerOfflineGrant(offlineDeviceId(), (loadOfflineGrant() || {}).expiresAt);
+  } catch (e) {
+    syncLog(`Offline grant saved on this device, but the admin list couldn't be updated: ${e.message}`, "var(--orange)");
+  }
+  render();
+}
+
+async function doRevokeOfflineHere() {
+  if (STATE.dirty && STATE.dirty.size) {
+    if (!confirm(`This device has unpushed changes in: ${[...STATE.dirty].join(", ")}.\n\nWiping now discards them. Push first (Sheet Sync → Push All), or press OK to wipe anyway.`)) return;
+  }
+  clearOfflineGrant();
+  wipeLocalDataCache();
+  try { await API.revokeOfflineGrant(offlineDeviceId()); } catch (e) { /* local wipe already done */ }
+  syncLog("Offline copy deleted from this device.", "var(--green)");
+  render();
+}
+
+// Launch-time check-in: the honest half of "force deletion" (§4.7.5a). An admin
+// revocation cannot reach an offline device — it lands here, the next time the
+// device talks to the server, and the wipe happens before anything is rendered
+// from cache on the following launch. Silent no-op when there is no grant.
+async function checkOfflineGrantRevocation() {
+  if (!hasOfflineGrant() || !STATE.authToken) return;
+  try {
+    const res = await API.checkOfflineGrant(offlineDeviceId());
+    if (res && res.revoked) {
+      markOfflineGrantRevoked();
+      if (STATE.dirty && STATE.dirty.size) {
+        syncLog("An admin revoked this device's offline copy — push your unsynced changes; the copy is deleted on the next launch.", "var(--orange)");
+        return;
+      }
+      wipeLocalDataCache();
+      syncLog("An admin revoked this device's offline copy — it has been deleted.", "var(--orange)");
+    }
+  } catch (e) { /* offline or unsupported backend — expiry still bounds it */ }
+}
+
 // ── Admin panel (accounts · sessions · audit log) ────────
 // Visible only to admins (also CSS-gated via .admin-only). Account + session
 // lists are fetched on demand; the audit log arrives with the admin pull.
@@ -108,9 +214,18 @@ function renderAdminPanel() {
   const host = document.getElementById("admin-panel");
   if (!host) return;
 
+  // ORD reconciliation (§4.7.7): accounts belonging to people the roster says
+  // have left. Computed at render time from data already in STATE, so it costs
+  // nothing and cannot go stale relative to what the admin is looking at.
+  const departed = (typeof departedAccounts === "function") ? departedAccounts() : [];
+  const departedByEmail = new Map(departed.map(d => [String(d.email).toLowerCase(), d]));
+
   const accountsRows = (STATE.accounts || []).map(a => `
-    <tr>
-      <td>${escapeHTML(a.email || "")}</td>
+    <tr${departedByEmail.has(String(a.email || "").toLowerCase()) ? ' style="background:#F8514911"' : ""}>
+      <td>${escapeHTML(a.email || "")}${(() => {
+        const d = departedByEmail.get(String(a.email || "").toLowerCase());
+        return d ? ` <span class="badge badge-red" title="${escapeAttr(d.name + " — roster status: " + d.status)}">${escapeHTML(d.status)}</span>` : "";
+      })()}</td>
       <td><span class="badge badge-accent">${escapeHTML(a.role || "")}</span>${
         // Admins hold every capability implicitly (hasCap in the backend), so
         // showing a grantable "duty" chip on an admin row would imply the
@@ -161,11 +276,22 @@ function renderAdminPanel() {
           <button class="btn btn-primary" onclick="openAddAccountForm()">+ Add Account</button>
         </span>
       </div>
+      ${departed.length ? `<div style="background:#F8514922;border:1px solid #F8514944;border-radius:6px;padding:10px;margin-bottom:10px;font-size:12px;line-height:1.55">
+        <strong style="color:var(--red)">⚠ ${departed.length} account${departed.length === 1 ? "" : "s"} belong${departed.length === 1 ? "s" : ""} to departed personnel.</strong>
+        Removing an account deletes it and revokes every session it holds. Their device keeps whatever
+        it already cached until that copy's offline grant expires — which is what the grant is for.
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          ${departed.map(d => `<button class="btn btn-danger" style="font-size:10px" onclick="doRemoveAccount('${encodeURIComponent(d.email)}')">Remove ${escapeHTML(d.email)} (${escapeHTML(d.status)})</button>`).join("")}
+        </div>
+      </div>` : ""}
       <div class="table-wrap"><table>
         <thead><tr><th>Email</th><th>Role</th><th>PersonID</th><th>Added by</th><th></th></tr></thead>
         <tbody>${accountsRows || `<tr><td colspan="5" style="color:var(--dim)">No accounts loaded — click Refresh.</td></tr>`}</tbody>
       </table></div>
     </div>
+
+    ${offlineGrantsAdminHtml()}
+    ${retentionAdminHtml()}
 
     <div class="card" style="margin-bottom:14px">
       <div style="display:flex;align-items:center;margin-bottom:10px">
@@ -192,11 +318,109 @@ function renderAdminPanel() {
   if (!_adminLoaded) { _adminLoaded = true; refreshAdminData(); }
 }
 
+// Admin view of which devices hold an offline copy (§4.7.5a "admin review").
+// The state wording here is load-bearing and deliberately unflattering: a
+// revoked grant is "pending device check-in", never "wiped", because an admin
+// who believes a phone has been wiped when it has not is worse off than one who
+// knows it hasn't.
+function offlineGrantsAdminHtml() {
+  const grants = STATE.offlineGrants || [];
+  const rows = grants.map(g => {
+    const label = g.state === "active"
+      ? `<span class="badge badge-green">active</span>`
+      : g.state === "revoked"
+        ? `<span class="badge badge-orange" title="The device wipes when it is next online. It has not necessarily done so yet.">revoked — pending device check-in</span>`
+        : `<span class="badge">expired</span>`;
+    return `<tr>
+      <td>${escapeHTML(g.email || "")}</td>
+      <td class="mono" style="font-size:10px">${escapeHTML(String(g.deviceId || "").slice(0, 8))}…</td>
+      <td style="font-size:10px;color:var(--muted)">${g.expiresAt ? new Date(g.expiresAt).toLocaleString() : ""}</td>
+      <td>${label}</td>
+      <td style="text-align:right">${g.state === "active"
+        ? `<button class="btn btn-danger" style="font-size:10px" onclick="doAdminRevokeOfflineGrant('${encodeURIComponent(g.deviceId)}','${encodeURIComponent(g.email || "")}')">Revoke</button>`
+        : ""}</td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <div class="card" style="margin-bottom:14px">
+      <h4 style="font-size:13px;margin-bottom:6px">Offline copies on devices (${grants.length})</h4>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.55">
+        Devices currently permitted to keep company data stored locally. Revoking tells that device
+        to delete its copy <strong>the next time it is online</strong> — it is not a remote wipe and
+        cannot reach a phone that stays offline. The expiry column is the control that does not
+        depend on contact.
+      </p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Email</th><th>Device</th><th>Expires</th><th>State</th><th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5" style="color:var(--dim)">No devices hold an offline copy.</td></tr>`}</tbody>
+      </table></div>
+    </div>`;
+}
+
+async function doAdminRevokeOfflineGrant(deviceIdEnc, emailEnc) {
+  const deviceId = decodeURIComponent(deviceIdEnc);
+  const email = decodeURIComponent(emailEnc || "");
+  if (!confirm(`Revoke the offline copy on this device${email ? " (" + email + ")" : ""}?\n\nThe device deletes its copy the next time it connects. If it never connects again, the grant's expiry is what removes it.`)) return;
+  try {
+    const res = await API.revokeOfflineGrant(deviceId, email);
+    if (res && res.ok) refreshAdminData();
+    else alert((res && res.error) || "Could not revoke the grant.");
+  } catch (e) {
+    if (e.name === "AuthError") { handleAuthFailure(); return; }
+    alert("Network error: " + e.message);
+  }
+}
+
+// Retention review (§4.6 item 6). Read-only until the admin explicitly purges;
+// see doRetentionPurge in forms-admin.js for the policy this reflects.
+function retentionAdminHtml() {
+  const cands = (typeof retentionCandidates === "function") ? retentionCandidates() : [];
+  const overdue = cands.filter(c => c.overdue);
+  const rows = cands.map(c => `
+    <tr${c.overdue ? ' style="background:#F5A62311"' : ""}>
+      <td class="mono" style="font-size:10px">${escapeHTML(c.id)}</td>
+      <td>${escapeHTML(c.name)}</td>
+      <td><span class="badge badge-red">${escapeHTML(c.status)}</span></td>
+      <td style="text-align:right">${c.count}</td>
+      <td style="font-size:10px;color:var(--muted)">${c.lastActivity ? escapeHTML(c.lastActivity) + ` (${c.days}d)` : "no dated record"}</td>
+      <td>${c.overdue ? `<span class="badge badge-orange">past retention</span>` : `<span class="badge" style="color:var(--dim)">within window</span>`}</td>
+    </tr>`).join("");
+
+  return `
+    <div class="card" style="margin-bottom:14px">
+      <h4 style="font-size:13px;margin-bottom:6px">Retention — departed personnel (${cands.length})</h4>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.55">
+        Health and availability records (Medical, MSK, Appointments, Leave) still held for people the
+        roster marks as departed. Policy: purge after <strong>${typeof RETENTION_DAYS === "number" ? RETENTION_DAYS : 90} days</strong>
+        with no activity. Roster rows and fitness records are kept — the roster row is what lets the
+        app label historical data as belonging to someone who has left. The clock runs from each
+        person's most recent dated record, because the schema has no departure date; that can only
+        make a purge <em>later</em> than the true departure, never earlier.
+      </p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>4D</th><th>Name</th><th>Status</th><th style="text-align:right">Records</th><th>Last activity</th><th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="6" style="color:var(--dim)">No departed personnel hold purgeable records.</td></tr>`}</tbody>
+      </table></div>
+      ${overdue.length
+        ? `<button class="btn btn-danger" style="margin-top:10px" onclick="doRetentionPurge()">🗑 Purge ${overdue.reduce((n, c) => n + c.count, 0)} record(s) for ${overdue.length} departed personnel</button>`
+        : `<p style="font-size:11px;color:var(--dim);margin-top:8px">Nothing is past the retention window.</p>`}
+    </div>`;
+}
+
 async function refreshAdminData() {
   try {
-    const [acc, tok] = await Promise.all([API.listAccounts(), API.listTokens()]);
+    // Offline grants are best-effort: an older backend deployment has no such
+    // action, and that must degrade to an empty list rather than blanking the
+    // accounts and sessions the admin actually came here for.
+    const [acc, tok, grants] = await Promise.all([
+      API.listAccounts(),
+      API.listTokens(),
+      API.listOfflineGrants().catch(() => null)
+    ]);
     if (acc && acc.accounts) STATE.accounts = acc.accounts;
     if (tok && tok.tokens) STATE.tokens = tok.tokens;
+    STATE.offlineGrants = (grants && grants.grants) ? grants.grants : [];
     renderAdminPanel();
   } catch (e) {
     if (e.name === "AuthError") { handleAuthFailure(); return; }
@@ -667,14 +891,28 @@ async function confirmStaleness(tabName) {
 
 async function signOut() {
   if (!confirm("Sign out from this device? You'll need to log in again with your account.")) return;
-  // P3-2: flush any debounced saveLocal() before dropping the session — the
-  // next launch on this device (possibly a different account) starts with
-  // loadLocal(), so make sure the on-disk cache reflects the last edits.
-  if (typeof saveLocalNow === "function") saveLocalNow();
+  // Sign-out now wipes the cached data (below), which makes unpushed edits a
+  // real loss rather than a deferred push — so ask before destroying them. The
+  // dirty MARKERS survive a wipe, but the rows they refer to live in the cache.
+  if (STATE.dirty && STATE.dirty.size) {
+    if (!confirm(
+      `You still have unpushed changes in: ${[...STATE.dirty].join(", ")}.\n\n` +
+      `Signing out deletes this device's local copy, so those edits would be lost.\n\n` +
+      `Cancel = stay signed in and push them first (recommended).  OK = sign out and discard.`
+    )) return;
+  }
+  // P3-2 note: the old flush-before-sign-out (saveLocalNow) is deliberately gone
+  // — the cache is about to be deleted, so writing it out first was pointless
+  // work on the way to the same place.
   // Best-effort server-side token invalidation, then clear the local session and
   // return to the login screen regardless of the network result.
   try { await API.logout(); } catch (e) { /* clear locally anyway */ }
   _adminLoaded = false;
+  // Sign-out is a handover boundary — the next person to open this browser must
+  // not inherit a plaintext mirror of the company's medical data (§4.6 item 3).
+  // The grant goes with it, so signing back in is an explicit opt-in again.
+  clearOfflineGrant();
+  wipeLocalDataCache();
   clearSession();
   if (typeof applyRoleUI === "function") applyRoleUI();
   showLogin();

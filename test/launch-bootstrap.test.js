@@ -49,7 +49,12 @@ module.exports = async function run() {
 
     await flushMicrotasks();
     const actions = warm.fetchSpy.map(r => r.action);
-    eq(actions, ["revCheck"], "exactly one revCheck request and nothing else");
+    // checkOfflineGrant rides along on every launch that holds an offline grant
+    // (BACKEND_MIGRATION_REVIEW.md §4.7.5a): it is the revoke-on-next-contact
+    // check-in, and this cached device auto-granted itself on the upgrade path.
+    // It is a POST alongside the pull, not part of it — the P1-1 property under
+    // test (one cheap revCheck, no read/readAll) is unchanged.
+    eq(actions, ["revCheck", "checkOfflineGrant"], "exactly one revCheck, plus the offline-grant check-in");
     ok(!actions.includes("read"), "no partial read");
     ok(!actions.includes("readAll"), "no full readAll");
   });
@@ -145,6 +150,9 @@ module.exports = async function run() {
     await flushMicrotasks();
 
     const actions = client.fetchSpy.map(r => r.action);
-    eq(actions, ["readAll"], "no rev baseline → cold-path full pull, not the warm incremental path");
+    // Trailing checkOfflineGrant as above — this device has cached rows, so the
+    // upgrade path issued it a grant, so it checks in. The assertion that matters
+    // is the leading readAll: the cold path, not the warm incremental one.
+    eq(actions, ["readAll", "checkOfflineGrant"], "no rev baseline → cold-path full pull, not the warm incremental path");
   });
 };

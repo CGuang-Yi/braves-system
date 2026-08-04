@@ -163,17 +163,47 @@ module.exports = async function run() {
       "saveLocal() was flushed synchronously BEFORE forceResync's pull started replacing local state");
   });
 
-  await test("signOut flushes saveLocal() synchronously before clearing the session", async () => {
+  // BACKEND_MIGRATION_REVIEW.md §4.6 item 3: signOut USED to flush the debounced
+  // cache to disk so the next launch on this device could pick it up. That is
+  // exactly the wrong behaviour at a handover boundary — the next person to open
+  // the browser would inherit a plaintext mirror of the company's medical data.
+  // It now wipes instead, and drops the offline grant with it.
+  await test("signOut wipes the cached data and the offline grant, rather than flushing them to disk", async () => {
     const backend = loadBackend();
     const A = makeClient(backend);
-    A.sb.STATE.roster = [{ id: 1, name: "Unsynced Before Signout" }];
-    A.sb.saveLocal();   // scheduled, not yet flushed
-    eq(A.sb.localStorage.getItem(STORAGE_KEY), null, "nothing persisted yet (still debounced)");
+    A.sb.STATE.roster = [{ id: 1, name: "Cached Before Signout" }];
+    A.sb.saveLocalNow();   // a real, persisted cache to sign out on top of
+    ok(A.sb.localStorage.getItem(STORAGE_KEY), "precondition: the cache is on disk");
 
-    await A.sb.signOut();   // mock confirm() -> true; API.logout() best-effort against the real backend
+    await A.sb.signOut();   // mock confirm() -> true
 
-    const raw = A.sb.localStorage.getItem(STORAGE_KEY);
-    ok(raw, "signOut forced a synchronous flush");
-    eq(JSON.parse(raw).roster[0].name, "Unsynced Before Signout");
+    eq(A.sb.localStorage.getItem(STORAGE_KEY), null, "the cached data was deleted, not persisted");
+    eq(A.sb.localStorage.getItem("braves-offline-grant"), null,
+      "the offline grant went with it — signing back in is an explicit opt-in again");
+  });
+
+  // The other half of the same change: with no grant, ordinary edits must not
+  // repopulate the cache. Otherwise the wipe is decorative — the next saveLocal()
+  // would put everything straight back.
+  await test("saveLocal() writes nothing while this device holds no offline grant", () => {
+    const backend = loadBackend();
+    const A = makeClient(backend, { noOfflineGrant: true });
+    A.sb.STATE.roster = [{ id: 1, name: "Should Not Persist" }];
+    A.sb.saveLocalNow();
+    eq(A.sb.localStorage.getItem(STORAGE_KEY), null, "no grant → no on-disk copy");
+
+    A.sb.grantOffline(7);
+    A.sb.saveLocalNow();
+    ok(A.sb.localStorage.getItem(STORAGE_KEY), "granting turns caching back on");
+
+    // Expiry is enforced client-side with no server contact — the lost-device case.
+    A.sb.localStorage.setItem("braves-offline-grant", JSON.stringify({
+      deviceId: "d", email: "", grantedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: "2026-01-08T00:00:00.000Z"
+    }));
+    A.sb.STATE.roster = [{ id: 1, name: "After Expiry" }];
+    A.sb.saveLocalNow();
+    eq(A.sb.localStorage.getItem(STORAGE_KEY), null,
+      "a lapsed grant both blocks the write and clears what was already there");
   });
 };
