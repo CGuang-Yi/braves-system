@@ -18,6 +18,11 @@ const ROLE_KEY = "braves-role";
 const PERSONID_KEY = "braves-personid";
 const EMAIL_KEY = "braves-email";
 const CAPS_KEY = "braves-caps";
+// The report-sick scope key the server last reported (js/sync.js, rsApplyScopeKey).
+// Cached alongside the session keys so a narrowing grant — or a different account
+// signing in on a shared device — reads as a changed Medical/MSK tab and re-pulls
+// rather than reusing a wider cache.
+const SCOPE_KEY_KEY = "braves-rs-scope-key";
 
 // Capabilities travel as a comma-separated string (that is the Accounts column's
 // shape) and are held as a lowercased array. Mirrors parseCaps() in
@@ -463,6 +468,7 @@ const STATE = {
   // any network call — doesn't briefly hide the planner UI from a planner.
   // Purely cosmetic either way: the server gate is the enforcement.
   caps: parseCapsCSV(localStorage.getItem(CAPS_KEY)),
+  scopeKey: localStorage.getItem(SCOPE_KEY_KEY) || "",
   personId: localStorage.getItem(PERSONID_KEY) || "",
   email: localStorage.getItem(EMAIL_KEY) || "",
   // Admin-panel data, loaded on demand from the backend (never cached to disk):
@@ -1098,6 +1104,11 @@ function setSession(token, role, personId, email, caps) {
   put(PERSONID_KEY, STATE.personId);
   put(EMAIL_KEY, STATE.email);
   put(CAPS_KEY, STATE.caps.join(","));
+  // Never inherit the previous account's report-sick scope. Cleared rather than
+  // recomputed: the server stamps the real key on the next pull, and an empty
+  // cached key guarantees that pull treats Medical/MSK as changed.
+  STATE.scopeKey = "";
+  put(SCOPE_KEY_KEY, "");
 }
 function clearSession() {
   setSession("", "", "", "");
@@ -1123,6 +1134,56 @@ function hasCap(cap) {
   return (STATE.caps || []).indexOf(String(cap).toLowerCase()) !== -1;
 }
 const canPlanDuty = () => isAdminRole() || hasCap("duty");
+
+// Report-sick scope (spec §1 / addendum A8). EVERYTHING HERE IS COSMETIC, for
+// exactly the reason the duty caps above are: the server is the gate (the
+// rs*_ block in apps-script-Code.gs), and it has already withheld the rows
+// before they reach STATE. These helpers only decide whether a panel draws a
+// person's row or a per-platoon count line.
+//
+// That distinction is the point. An out-of-scope person rendered as an EMPTY row
+// reads as "never reported sick" — a false statement about a real person — so
+// the panels collapse them to an honest count instead.
+//
+// Caps arrive lowercased from parseCapsCSV ("rs:plt:plt2"); roster platoon codes
+// are uppercase ("PLT2"). Normalise or the grant matches nothing.
+function rsScope() {
+  if (isAdminRole() || hasCap("rs:company")) return { company: true, plt: [] };
+  const granted = (STATE.caps || [])
+    .filter(c => c.indexOf("rs:plt:") === 0)
+    .map(c => c.slice(7).toUpperCase())
+    .filter(Boolean);
+  if (granted.length) return { company: false, plt: [...new Set(granted)] };
+  // No explicit grant → own platoon. An unresolvable personId fails CLOSED:
+  // a thin log prompts someone to fix the roster, whereas failing open would
+  // hand out the whole company silently.
+  const me = (STATE.roster || []).find(r => padD4(r.id) === padD4(STATE.personId));
+  const own = me ? String(personPlatoon(me) || "").toUpperCase() : "";
+  return { company: false, plt: own ? [own] : [] };
+}
+
+function inRSScope(d4) {
+  const s = rsScope();
+  if (s.company) return true;
+  const r = (STATE.roster || []).find(x => padD4(x.id) === padD4(d4));
+  const p = r ? String(personPlatoon(r) || "").toUpperCase() : "";
+  return !!p && s.plt.indexOf(p) !== -1;
+}
+
+// Withheld people grouped by platoon, for the count lines the gated panels draw
+// in place of rows. Empty for a company-scope viewer, so a caller can branch on
+// `.length` without also checking the scope.
+function rsOutOfScopeCounts() {
+  const s = rsScope();
+  if (s.company) return [];
+  const by = {};
+  (STATE.roster || []).forEach(r => {
+    const p = String(personPlatoon(r) || "").toUpperCase();
+    if (!p || s.plt.indexOf(p) !== -1) return;
+    by[p] = (by[p] || 0) + 1;
+  });
+  return Object.keys(by).sort().map(p => ({ platoon: p, count: by[p] }));
+}
 
 function loadFilter() {
   try {
