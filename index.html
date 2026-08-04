@@ -128,7 +128,7 @@
   Plain scripts (not modules) so this works under file:// too.
   Load order matters: state → api → ippt-scoring → calc → appointment-4d → helpers →
   sick-history-import → duty-points → duty-eligibility → duty-conflicts → duty-import →
-  duty-schedule →
+  duty-schedule → duty-unavailable →
   render* → forms* → braves-parade → actions → parade-tab → render-duty →
   sync → main. The render-* and forms-* files are SPLITS of two former monoliths,
   not independent modules: they share the one global scope, and their tags must
@@ -138,10 +138,13 @@
   tab view; it calls bp* globals from braves-parade at runtime, so load it after
   braves-parade. actions is the delegated event dispatcher; any file calling
   registerActions() must load after it.
-  duty-points/duty-eligibility/duty-conflicts/duty-import are DOM-free pure modules (the duty
-  list's arithmetic, eligibility rules, conflict detection and workbook parser).
-  Only duty-conflicts has a dependency — addDaysISO from calc.js — so all four
-  load after calc and before the views that use them. render-duty is the Duty
+  duty-points/duty-eligibility/duty-conflicts/duty-import/duty-unavailable are DOM-free pure
+  modules (the duty list's arithmetic, eligibility rules, conflict detection, workbook parser
+  and soft-unavailability window matching).
+  Only duty-conflicts has a dependency — addDaysISO from calc.js — so all five
+  load after calc and before the views that use them. duty-unavailable has no
+  dependency at all; its only ordering requirement is before render-duty and
+  render-dashboard, both of which draw its highlight. render-duty is the Duty
   List tab view — it sits with parade-tab rather than the other render-* files
   because it calls registerActions(), so it must load after actions. forms-duty
   is the duty list's write half; like render-duty it is a NEW file rather than a
@@ -164,6 +167,7 @@
 <script src="js/duty-conflicts.js?v=1"></script>
 <script src="js/duty-import.js?v=1"></script>
 <script src="js/duty-schedule.js?v=4"></script>
+<script src="js/duty-unavailable.js?v=1"></script>
 <script src="js/render.js?v=180"></script>
 <script src="js/render-dashboard.js?v=4"></script>
 <script src="js/render-records.js?v=2"></script>
