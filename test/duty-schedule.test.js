@@ -192,9 +192,80 @@ module.exports = async function run() {
   await test("fairness is reported before AND after, so a bad proposal can be rejected", () => {
     const r = S.proposeDutySchedule(WEEK, [], ROSTER, PLATOONS, CFG, {}, {});
     ok(r.fairnessBefore && r.fairnessAfter, "both present");
-    eq(r.fairnessBefore.n, 0, "nothing on the books beforehand");
-    ok(r.fairnessAfter.n > 0, "people carry points afterwards");
     ok(typeof r.fairnessAfter.spread === "number", "spread is reported");
+    // Both readings are taken over the SAME population — the people a slot in
+    // this range could go to. Sampling only those who hold a row (the old
+    // Object.keys(byPerson)) put "before" and "after" on different populations,
+    // which is what made the comparison meaningless. See the next test.
+    eq(r.fairnessBefore.n, r.fairnessAfter.n, "the two readings must be the same sample");
+    eq(r.fairnessBefore.spread, 0, "nothing on the books ⇒ everyone genuinely on zero");
+    eq(r.fairnessBefore.max, 0, "and nobody carries points yet");
+  });
+
+  // The regression that motivated the population fix. Before it, the modal read
+  // "spread 0 → spread 11" and told the planner to reject a proposal that had in
+  // fact CLOSED a 15-point gap, because the three commanders on zero were absent
+  // from the "before" sample entirely.
+  await test("evening out a hogged period is reported as an improvement, not a regression", () => {
+    const range = { from: "2026-09-07", to: "2026-09-18" };
+    // 0003 has taken every COS in the first week; 0004 and 0005 have nothing.
+    const hogged = ["07", "08", "09", "10", "11"].map((d, i) => (
+      { id: "h" + i, date: "2026-09-" + d, dutyType: "COS", platoon: "", d4: "0003" }));
+
+    const r = S.proposeDutySchedule(range, hogged, ROSTER, PLATOONS, CFG, {}, {});
+
+    ok(r.fairnessBefore.spread > 0,
+       "the starting state is lopsided and must be reported as such, got " + JSON.stringify(r.fairnessBefore));
+    eq(r.fairnessBefore.min, 0, "the commanders holding nothing are part of the sample");
+    ok(r.fairnessAfter.spread < r.fairnessBefore.spread,
+       "spreading the load must READ as an improvement: " +
+       JSON.stringify(r.fairnessBefore) + " -> " + JSON.stringify(r.fairnessAfter));
+  });
+
+  // Dead roster rows must not reach into the live roster's fairness. The medians
+  // that drive pointsAboveMedian were sampled over dutyBasePool(), which applies
+  // no dutyIsActive filter — so departed commanders sat at zero forever, pinned
+  // the median to 0 and flattened the penalty into a constant, at which point the
+  // greedy tie-break rather than the objective picked the assignee.
+  await test("departed commanders cannot influence the proposal they can never be part of", () => {
+    // One platoon's four section commanders, COS scoring and PDS free — the
+    // shape where the median actually carries the objective, so a sunk median is
+    // visible in the output rather than absorbed by the hard constraints.
+    const cfg = Object.assign({}, CFG, {
+      dutyTypes: [
+        { name: "COS", scope: "company", pointWeight: 1, appointments: ["SectComd"] },
+        { name: "PDS", scope: "platoon", pointWeight: null, appointments: ["SectComd"] }
+      ]
+    });
+    const live = [1, 2, 3, 4].map(n => (
+      { id: "001" + n, role: "Commander", platoon: "PLT1", section: String(n),
+        appointment: "SectComd", status: "Active" }));
+    // Six commanders who have LEFT. Still role Commander on the roster, which is
+    // how a departed row actually looks — roster.status carries active-vs-departed.
+    const ghosts = live.concat([5, 6, 7, 8, 9].map(n => (
+      { id: "001" + n, role: "Commander", platoon: "PLT1", section: "1",
+        appointment: "SectComd", status: "Departed" }))
+      .concat([{ id: "0020", role: "Commander", platoon: "PLT1", section: "1",
+        appointment: "SectComd", status: "Departed" }]));
+    const MONTH = { from: "2026-09-01", to: "2026-09-30" };
+
+    const a = S.proposeDutySchedule(MONTH, [], live, ["PLT1"], cfg, {}, {});
+    const b = S.proposeDutySchedule(MONTH, [], ghosts, ["PLT1"], cfg, {}, {});
+
+    b.proposals.forEach(p => {
+      ok(live.some(r2 => r2.id === p.d4), "a departed commander was scheduled: " + p.d4);
+    });
+    // The real damage was never a wrong assignee — dutyEligible always refused
+    // them. It was that six people who could never hold a duty sat in the median
+    // sample at zero, pinning the median to 0 and flattening pointsAboveMedian
+    // into a constant, at which point the greedy tie-break rather than the
+    // fairness objective chose. Pre-fix this took the spread across the four live
+    // commanders from 18 to 33, one of them ending the month on 1 point.
+    eq(JSON.stringify(b.proposals.map(p => p.d4)),
+       JSON.stringify(a.proposals.map(p => p.d4)),
+       "the roster must be byte-for-byte the one produced without the departed rows");
+    eq(b.fairnessAfter.spread, a.fairnessAfter.spread,
+       "and the reported spread must not move either");
   });
 
   // Acceptance case, and the one that drove both ordering rules. A full month

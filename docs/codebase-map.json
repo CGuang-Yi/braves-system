@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-04T15:15:33.114Z",
-  "commit": "7fd1eca",
+  "generatedAt": "2026-08-04T17:44:01.282Z",
+  "commit": "40cf028",
   "thresholds": {
     "maxFunctionLines": 100,
     "fanInTop": 25
@@ -15,10 +15,10 @@
     "js/duty-eligibility.js": "d3a6d7616181a8ba8394cd6bd4f2fdc0b3b8f8dc2bb2e2dd89cbfcee03eb129b",
     "js/duty-import.js": "2a7076b1f5d046f2624003aac2b7592e872d9f892b790eac9ca90914d3b3ff18",
     "js/duty-points.js": "4f53e4f4cf7ec3a7cdf22422d39e3b603c4425f20a415f410945fb1d17ba7842",
-    "js/duty-schedule.js": "36e43e6225a914f879afdae0b0c8f1cc32646fdac3b7692ad49bd3ba24a91208",
+    "js/duty-schedule.js": "ba5f184e59568be31223b7e05c79d2297b16ae6c02fe3ca86445c6fad4f950c6",
     "js/forms-admin.js": "3d291c2bf97c19adac6a0d11054553d431f0c42c3fdcd5202bcd9c6595763529",
     "js/forms-conducts.js": "85f964805010bd18ccdd3b247ccd845f1da46da30b25d6f57876d959a0982370",
-    "js/forms-duty.js": "55444a960d0e5bd6268fb5769def31761a1d5578ed672ed0bc0dfc3322929e5a",
+    "js/forms-duty.js": "e494c7274c34043dec5ba9b1c9660fd09815822804904b7a9b9590a5bf3e6758",
     "js/forms-import.js": "4c782c6edfeba448bb576354565ba33d2f45225703323523fb8d398111834025",
     "js/forms-records.js": "3cdac0d5849a50f75f0de722c9a53f1a647f09791b65aaa5de2b2d9afb1e80f4",
     "js/forms-reports.js": "f36f7893692d422a34e4f74a14c17256abf200eb1dc22d6146414767e701d259",
@@ -27,7 +27,7 @@
     "js/helpers.js": "6928125480f929874e36af29621116e636be039c198fc269f5043583c717eafb",
     "js/ippt-scoring.js": "a4250164db725d973506558679f97f036f4e62659807b7a1c42f3759a6165db4",
     "js/main.js": "2a40108e51245ed38be6cc0335cd46c03841a3915dedfd264271b08f5b919d5a",
-    "js/parade-tab.js": "27c6b781a0fa7b6e33ea166daa55262d12df4c5750f243f5fca667c02fde5691",
+    "js/parade-tab.js": "96fdb1274b16c15664b0eda588eb3e44c8611e159b41bbaf67cb525d40cfa67d",
     "js/render-conducts.js": "91226227478f2ecf7ab25650100f613bc29a3efb0b0283e53d690ca7a39560b1",
     "js/render-dashboard.js": "1442866c2dafe6bc70062e5a074d2d82438e0b1ac5f699529375b0c826487c48",
     "js/render-duty.js": "b60b2677405eb4cacdcc2c232f3f0e152f55897f593f37bfae488001d93eddd5",
@@ -1476,7 +1476,7 @@
     },
     {
       "file": "js/duty-schedule.js",
-      "lines": 361,
+      "lines": 411,
       "declCount": 12,
       "callsInto": [
         "js/calc.js",
@@ -1502,78 +1502,78 @@
         {
           "name": "dutyFairnessOf",
           "kind": "function",
-          "line": 71,
-          "endLine": 77,
-          "length": 7
+          "line": 87,
+          "endLine": 95,
+          "length": 9
         },
         {
           "name": "DUTY_SCHED_DEFAULT_WEIGHTS",
           "kind": "const",
-          "line": 79,
-          "endLine": 83,
+          "line": 97,
+          "endLine": 101,
           "length": 5
         },
         {
           "name": "DUTY_SCHED_DEFAULT_WEIGHTS.pointsAboveMedian",
           "kind": "method",
-          "line": 80,
-          "endLine": 80,
+          "line": 98,
+          "endLine": 98,
           "length": 1
         },
         {
           "name": "DUTY_SCHED_DEFAULT_WEIGHTS.sameTypeConsecutive",
           "kind": "method",
-          "line": 81,
-          "endLine": 81,
+          "line": 99,
+          "endLine": 99,
           "length": 1
         },
         {
           "name": "DUTY_SCHED_DEFAULT_WEIGHTS.adjacentToLeave",
           "kind": "method",
-          "line": 82,
-          "endLine": 82,
+          "line": 100,
+          "endLine": 100,
           "length": 1
         },
         {
           "name": "dutySchedWeights",
           "kind": "function",
-          "line": 85,
-          "endLine": 93,
+          "line": 103,
+          "endLine": 111,
           "length": 9
         },
         {
           "name": "dutySoftCost",
           "kind": "function",
-          "line": 99,
-          "endLine": 154,
+          "line": 117,
+          "endLine": 172,
           "length": 56
         },
         {
           "name": "dutyHardBlocked",
           "kind": "function",
-          "line": 159,
-          "endLine": 163,
+          "line": 177,
+          "endLine": 181,
           "length": 5
         },
         {
           "name": "proposeDutySchedule",
           "kind": "function",
-          "line": 184,
-          "endLine": 290,
-          "length": 107
+          "line": 202,
+          "endLine": 340,
+          "length": 139
         },
         {
           "name": "dutyRationale",
           "kind": "function",
-          "line": 295,
-          "endLine": 299,
+          "line": 345,
+          "endLine": 349,
           "length": 5
         },
         {
           "name": "dutyRepair",
           "kind": "function",
-          "line": 308,
-          "endLine": 353,
+          "line": 358,
+          "endLine": 403,
           "length": 46
         }
       ]
@@ -2069,7 +2069,7 @@
     },
     {
       "file": "js/forms-duty.js",
-      "lines": 467,
+      "lines": 479,
       "declCount": 23,
       "callsInto": [
         "js/braves-parade.js",
@@ -2188,70 +2188,70 @@
           "name": "showDutyProposal",
           "kind": "function",
           "line": 229,
-          "endLine": 278,
-          "length": 50
+          "endLine": 290,
+          "length": 62
         },
         {
           "name": "dropDutyProposal",
           "kind": "function",
-          "line": 280,
-          "endLine": 284,
+          "line": 292,
+          "endLine": 296,
           "length": 5
         },
         {
           "name": "commitDutyProposal",
           "kind": "function",
-          "line": 286,
-          "endLine": 305,
+          "line": 298,
+          "endLine": 317,
           "length": 20
         },
         {
           "name": "openDutyCorrectionForm",
           "kind": "function",
-          "line": 309,
-          "endLine": 358,
+          "line": 321,
+          "endLine": 370,
           "length": 50
         },
         {
           "name": "syncDutyCorrectionDelta",
           "kind": "function",
-          "line": 363,
-          "endLine": 369,
+          "line": 375,
+          "endLine": 381,
           "length": 7
         },
         {
           "name": "submitDutyCorrection",
           "kind": "function",
-          "line": 371,
-          "endLine": 399,
+          "line": 383,
+          "endLine": 411,
           "length": 29
         },
         {
           "name": "deleteDutyCorrection",
           "kind": "function",
-          "line": 401,
-          "endLine": 409,
+          "line": 413,
+          "endLine": 421,
           "length": 9
         },
         {
           "name": "openDutyHolidayForm",
           "kind": "function",
-          "line": 418,
-          "endLine": 439,
+          "line": 430,
+          "endLine": 451,
           "length": 22
         },
         {
           "name": "submitDutyHoliday",
           "kind": "function",
-          "line": 441,
-          "endLine": 456,
+          "line": 453,
+          "endLine": 468,
           "length": 16
         },
         {
           "name": "deleteDutyHoliday",
           "kind": "function",
-          "line": 458,
-          "endLine": 466,
+          "line": 470,
+          "endLine": 478,
           "length": 9
         }
       ]
@@ -5087,7 +5087,7 @@
     },
     {
       "file": "js/parade-tab.js",
-      "lines": 667,
+      "lines": 685,
       "declCount": 40,
       "callsInto": [
         "js/actions.js",
@@ -5379,15 +5379,15 @@
         {
           "name": "paradeEndActiveContributors",
           "kind": "function",
-          "line": 601,
-          "endLine": 629,
-          "length": 29
+          "line": 603,
+          "endLine": 647,
+          "length": 45
         },
         {
           "name": "upsertLocal",
           "kind": "function",
-          "line": 633,
-          "endLine": 637,
+          "line": 651,
+          "endLine": 655,
           "length": 5
         }
       ]
@@ -10242,7 +10242,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 649
+          "line": 667
         },
         {
           "file": "js/render-duty.js",
@@ -13406,19 +13406,19 @@
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 127
+          "line": 145
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 128
+          "line": 146
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 142
+          "line": 160
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 142
+          "line": 160
         },
         {
           "file": "js/render-conducts.js",
@@ -13938,19 +13938,19 @@
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 129
+          "line": 147
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 161
+          "line": 179
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 332
+          "line": 382
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 333
+          "line": 383
         }
       ],
       "stringRefs": [],
@@ -13972,11 +13972,11 @@
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 149
+          "line": 167
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 149
+          "line": 167
         }
       ],
       "stringRefs": [],
@@ -14178,21 +14178,16 @@
           "line": 138
         },
         {
-          "file": "js/duty-schedule.js",
-          "line": 199
-        },
-        {
           "file": "js/forms-duty.js",
-          "line": 327
+          "line": 339
         }
       ],
       "stringRefs": [],
       "identRefFiles": [
         "js/duty-eligibility.js",
-        "js/duty-schedule.js",
         "js/forms-duty.js"
       ],
-      "fanIn": 2
+      "fanIn": 1
     },
     "dutyEligible": {
       "name": "dutyEligible",
@@ -14202,7 +14197,7 @@
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 240
+          "line": 226
         },
         {
           "file": "js/forms-duty.js",
@@ -14505,7 +14500,7 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 349
+          "line": 361
         }
       ],
       "stringRefs": [],
@@ -14616,11 +14611,11 @@
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 120
+          "line": 138
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 274
+          "line": 324
         },
         {
           "file": "js/render-duty.js",
@@ -14686,11 +14681,11 @@
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 105
+          "line": 123
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 271
+          "line": 321
         }
       ],
       "stringRefs": [],
@@ -14716,7 +14711,7 @@
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 196
+          "line": 214
         },
         {
           "file": "js/render-duty.js",
@@ -14857,15 +14852,15 @@
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 203
+          "line": 254
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 208
+          "line": 259
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 288
+          "line": 338
         },
         {
           "file": "js/render-duty.js",
@@ -14888,7 +14883,7 @@
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 232
+          "line": 217
         }
       ],
       "stringRefs": [],
@@ -14901,15 +14896,15 @@
       "name": "dutyFairnessOf",
       "kind": "function",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 71,
+      "definedAtLine": 87,
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 203
+          "line": 254
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 288
+          "line": 338
         }
       ],
       "stringRefs": [],
@@ -14922,7 +14917,7 @@
       "name": "DUTY_SCHED_DEFAULT_WEIGHTS",
       "kind": "const",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 79,
+      "definedAtLine": 97,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -14934,7 +14929,7 @@
       "name": "DUTY_SCHED_DEFAULT_WEIGHTS.pointsAboveMedian",
       "kind": "method",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 80,
+      "definedAtLine": 98,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -14947,7 +14942,7 @@
       "name": "DUTY_SCHED_DEFAULT_WEIGHTS.sameTypeConsecutive",
       "kind": "method",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 81,
+      "definedAtLine": 99,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -14960,7 +14955,7 @@
       "name": "DUTY_SCHED_DEFAULT_WEIGHTS.adjacentToLeave",
       "kind": "method",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 82,
+      "definedAtLine": 100,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [
@@ -14973,11 +14968,11 @@
       "name": "dutySchedWeights",
       "kind": "function",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 85,
+      "definedAtLine": 103,
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 217
+          "line": 268
         }
       ],
       "stringRefs": [],
@@ -14990,15 +14985,15 @@
       "name": "dutySoftCost",
       "kind": "function",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 99,
+      "definedAtLine": 117,
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 256
+          "line": 306
         },
         {
           "file": "js/duty-schedule.js",
-          "line": 316
+          "line": 366
         }
       ],
       "stringRefs": [],
@@ -15011,11 +15006,11 @@
       "name": "dutyHardBlocked",
       "kind": "function",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 159,
+      "definedAtLine": 177,
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 254
+          "line": 304
         }
       ],
       "stringRefs": [],
@@ -15028,7 +15023,7 @@
       "name": "proposeDutySchedule",
       "kind": "function",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 184,
+      "definedAtLine": 202,
       "directRefs": [
         {
           "file": "js/forms-duty.js",
@@ -15046,11 +15041,11 @@
       "name": "dutyRationale",
       "kind": "function",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 295,
+      "definedAtLine": 345,
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 279
+          "line": 329
         }
       ],
       "stringRefs": [],
@@ -15063,11 +15058,11 @@
       "name": "dutyRepair",
       "kind": "function",
       "definedIn": "js/duty-schedule.js",
-      "definedAtLine": 308,
+      "definedAtLine": 358,
       "directRefs": [
         {
           "file": "js/duty-schedule.js",
-          "line": 283
+          "line": 333
         }
       ],
       "stringRefs": [],
@@ -16505,7 +16500,7 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 283
+          "line": 295
         }
       ],
       "stringRefs": [],
@@ -16518,7 +16513,7 @@
       "name": "dropDutyProposal",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 280,
+      "definedAtLine": 292,
       "directRefs": [],
       "stringRefs": [
         {
@@ -16535,12 +16530,12 @@
       "name": "commitDutyProposal",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 286,
+      "definedAtLine": 298,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/forms-duty.js",
-          "line": 271
+          "line": 283
         }
       ],
       "identRefFiles": [
@@ -16552,7 +16547,7 @@
       "name": "openDutyCorrectionForm",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 309,
+      "definedAtLine": 321,
       "directRefs": [
         {
           "file": "js/render-duty.js",
@@ -16579,12 +16574,12 @@
       "name": "syncDutyCorrectionDelta",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 363,
+      "definedAtLine": 375,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/forms-duty.js",
-          "line": 344
+          "line": 356
         }
       ],
       "identRefFiles": [
@@ -16596,12 +16591,12 @@
       "name": "submitDutyCorrection",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 371,
+      "definedAtLine": 383,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/forms-duty.js",
-          "line": 339
+          "line": 351
         }
       ],
       "identRefFiles": [
@@ -16613,7 +16608,7 @@
       "name": "deleteDutyCorrection",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 401,
+      "definedAtLine": 413,
       "directRefs": [
         {
           "file": "js/render-duty.js",
@@ -16630,7 +16625,7 @@
       "name": "openDutyHolidayForm",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 418,
+      "definedAtLine": 430,
       "directRefs": [
         {
           "file": "js/render-duty.js",
@@ -16647,12 +16642,12 @@
       "name": "submitDutyHoliday",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 441,
+      "definedAtLine": 453,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/forms-duty.js",
-          "line": 421
+          "line": 433
         }
       ],
       "identRefFiles": [
@@ -16664,12 +16659,12 @@
       "name": "deleteDutyHoliday",
       "kind": "function",
       "definedIn": "js/forms-duty.js",
-      "definedAtLine": 458,
+      "definedAtLine": 470,
       "directRefs": [],
       "stringRefs": [
         {
           "file": "js/forms-duty.js",
-          "line": 435
+          "line": 447
         }
       ],
       "identRefFiles": [
@@ -17504,7 +17499,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 663
+          "line": 681
         }
       ],
       "stringRefs": [
@@ -19648,15 +19643,15 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 257
+          "line": 269
         },
         {
           "file": "js/forms-duty.js",
-          "line": 339
+          "line": 351
         },
         {
           "file": "js/forms-duty.js",
-          "line": 421
+          "line": 433
         },
         {
           "file": "js/forms-import.js",
@@ -19826,23 +19821,23 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 289
-        },
-        {
-          "file": "js/forms-duty.js",
           "line": 301
         },
         {
           "file": "js/forms-duty.js",
-          "line": 397
+          "line": 313
         },
         {
           "file": "js/forms-duty.js",
-          "line": 451
+          "line": 409
         },
         {
           "file": "js/forms-duty.js",
-          "line": 464
+          "line": 463
+        },
+        {
+          "file": "js/forms-duty.js",
+          "line": 476
         },
         {
           "file": "js/forms-import.js",
@@ -19940,7 +19935,7 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 274
+          "line": 286
         },
         {
           "file": "js/forms-import.js",
@@ -20120,7 +20115,7 @@
         },
         {
           "file": "js/parade-tab.js",
-          "line": 658
+          "line": 676
         },
         {
           "file": "js/render-statusboard.js",
@@ -22108,15 +22103,15 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 328
+          "line": 340
         },
         {
           "file": "js/forms-duty.js",
-          "line": 332
+          "line": 344
         },
         {
           "file": "js/forms-duty.js",
-          "line": 405
+          "line": 417
         },
         {
           "file": "js/forms-records.js",
@@ -22322,11 +22317,11 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 292
+          "line": 304
         },
         {
           "file": "js/forms-duty.js",
-          "line": 385
+          "line": 397
         },
         {
           "file": "js/forms-import.js",
@@ -23325,7 +23320,7 @@
         },
         {
           "file": "js/parade-tab.js",
-          "line": 605
+          "line": 620
         },
         {
           "file": "apps-script-Code.gs",
@@ -24871,23 +24866,23 @@
       "directRefs": [
         {
           "file": "js/forms-duty.js",
-          "line": 344
+          "line": 356
         },
         {
           "file": "js/forms-duty.js",
-          "line": 349
+          "line": 361
         },
         {
           "file": "js/forms-duty.js",
-          "line": 354
+          "line": 366
         },
         {
           "file": "js/forms-duty.js",
-          "line": 424
+          "line": 436
         },
         {
           "file": "js/forms-duty.js",
-          "line": 425
+          "line": 437
         },
         {
           "file": "js/forms-records.js",
@@ -25105,35 +25100,35 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 373
+          "line": 385
         },
         {
           "file": "js/forms-duty.js",
-          "line": 375
+          "line": 387
         },
         {
           "file": "js/forms-duty.js",
-          "line": 377
+          "line": 389
         },
         {
           "file": "js/forms-duty.js",
-          "line": 386
+          "line": 398
         },
         {
           "file": "js/forms-duty.js",
-          "line": 388
+          "line": 400
         },
         {
           "file": "js/forms-duty.js",
-          "line": 390
+          "line": 402
         },
         {
           "file": "js/forms-duty.js",
-          "line": 443
+          "line": 455
         },
         {
           "file": "js/forms-duty.js",
-          "line": 444
+          "line": 456
         },
         {
           "file": "js/forms-records.js",
@@ -25630,23 +25625,23 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 260
+          "line": 272
         },
         {
           "file": "js/forms-duty.js",
-          "line": 261
+          "line": 273
         },
         {
           "file": "js/forms-duty.js",
-          "line": 317
+          "line": 329
         },
         {
           "file": "js/forms-duty.js",
-          "line": 328
+          "line": 340
         },
         {
           "file": "js/forms-duty.js",
-          "line": 332
+          "line": 344
         },
         {
           "file": "js/forms-import.js",
@@ -26483,39 +26478,39 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 317
+          "line": 329
         },
         {
           "file": "js/forms-duty.js",
-          "line": 328
+          "line": 340
         },
         {
           "file": "js/forms-duty.js",
-          "line": 333
+          "line": 345
         },
         {
           "file": "js/forms-duty.js",
-          "line": 341
+          "line": 353
         },
         {
           "file": "js/forms-duty.js",
-          "line": 344
+          "line": 356
         },
         {
           "file": "js/forms-duty.js",
-          "line": 354
+          "line": 366
         },
         {
           "file": "js/forms-duty.js",
-          "line": 424
+          "line": 436
         },
         {
           "file": "js/forms-duty.js",
-          "line": 425
+          "line": 437
         },
         {
           "file": "js/forms-duty.js",
-          "line": 435
+          "line": 447
         },
         {
           "file": "js/forms-import.js",
@@ -27184,11 +27179,11 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 344
+          "line": 356
         },
         {
           "file": "js/forms-duty.js",
-          "line": 424
+          "line": 436
         },
         {
           "file": "js/forms-records.js",
@@ -27607,11 +27602,15 @@
         },
         {
           "file": "js/parade-tab.js",
-          "line": 612
+          "line": 624
         },
         {
           "file": "js/parade-tab.js",
-          "line": 620
+          "line": 630
+        },
+        {
+          "file": "js/parade-tab.js",
+          "line": 638
         },
         {
           "file": "js/render-conducts.js",
@@ -28083,15 +28082,19 @@
         },
         {
           "file": "js/parade-tab.js",
-          "line": 618
+          "line": 616
         },
         {
           "file": "js/parade-tab.js",
-          "line": 618
+          "line": 636
         },
         {
           "file": "js/parade-tab.js",
-          "line": 625
+          "line": 636
+        },
+        {
+          "file": "js/parade-tab.js",
+          "line": 643
         },
         {
           "file": "js/render-conducts.js",
@@ -30243,7 +30246,7 @@
         },
         {
           "file": "js/parade-tab.js",
-          "line": 602
+          "line": 604
         }
       ],
       "stringRefs": [],
@@ -30260,7 +30263,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 650
+          "line": 668
         }
       ],
       "stringRefs": [],
@@ -30277,7 +30280,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 651
+          "line": 669
         }
       ],
       "stringRefs": [],
@@ -30294,7 +30297,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 652
+          "line": 670
         }
       ],
       "stringRefs": [],
@@ -30311,7 +30314,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 653
+          "line": 671
         }
       ],
       "stringRefs": [],
@@ -30328,7 +30331,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 654
+          "line": 672
         }
       ],
       "stringRefs": [],
@@ -30598,7 +30601,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 655
+          "line": 673
         }
       ],
       "stringRefs": [],
@@ -30637,7 +30640,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 656
+          "line": 674
         }
       ],
       "stringRefs": [],
@@ -30688,7 +30691,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 657
+          "line": 675
         }
       ],
       "stringRefs": [],
@@ -30722,7 +30725,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 665
+          "line": 683
         }
       ],
       "stringRefs": [],
@@ -30756,7 +30759,7 @@
       "directRefs": [
         {
           "file": "js/parade-tab.js",
-          "line": 664
+          "line": 682
         }
       ],
       "stringRefs": [],
@@ -30769,7 +30772,7 @@
       "name": "paradeEndActiveContributors",
       "kind": "function",
       "definedIn": "js/parade-tab.js",
-      "definedAtLine": 601,
+      "definedAtLine": 603,
       "directRefs": [
         {
           "file": "js/parade-tab.js",
@@ -30786,7 +30789,7 @@
       "name": "upsertLocal",
       "kind": "function",
       "definedIn": "js/parade-tab.js",
-      "definedAtLine": 633,
+      "definedAtLine": 651,
       "directRefs": [],
       "stringRefs": [],
       "identRefFiles": [],
@@ -33711,23 +33714,23 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 301
+          "line": 313
         },
         {
           "file": "js/forms-duty.js",
-          "line": 397
+          "line": 409
         },
         {
           "file": "js/forms-duty.js",
-          "line": 407
+          "line": 419
         },
         {
           "file": "js/forms-duty.js",
-          "line": 451
+          "line": 463
         },
         {
           "file": "js/forms-duty.js",
-          "line": 464
+          "line": 476
         },
         {
           "file": "js/forms-import.js",
@@ -35903,7 +35906,7 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 311
+          "line": 323
         },
         {
           "file": "js/forms-reports.js",
@@ -37404,23 +37407,23 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 301
+          "line": 313
         },
         {
           "file": "js/forms-duty.js",
-          "line": 397
+          "line": 409
         },
         {
           "file": "js/forms-duty.js",
-          "line": 407
+          "line": 419
         },
         {
           "file": "js/forms-duty.js",
-          "line": 451
+          "line": 463
         },
         {
           "file": "js/forms-duty.js",
-          "line": 464
+          "line": 476
         },
         {
           "file": "js/forms-import.js",
@@ -37864,31 +37867,31 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 287
+          "line": 299
         },
         {
           "file": "js/forms-duty.js",
-          "line": 310
+          "line": 322
         },
         {
           "file": "js/forms-duty.js",
-          "line": 372
+          "line": 384
         },
         {
           "file": "js/forms-duty.js",
-          "line": 402
+          "line": 414
         },
         {
           "file": "js/forms-duty.js",
-          "line": 419
+          "line": 431
         },
         {
           "file": "js/forms-duty.js",
-          "line": 442
+          "line": 454
         },
         {
           "file": "js/forms-duty.js",
-          "line": 459
+          "line": 471
         },
         {
           "file": "js/main.js",
@@ -39201,23 +39204,23 @@
         },
         {
           "file": "js/forms-duty.js",
-          "line": 304
+          "line": 316
         },
         {
           "file": "js/forms-duty.js",
-          "line": 398
+          "line": 410
         },
         {
           "file": "js/forms-duty.js",
-          "line": 408
+          "line": 420
         },
         {
           "file": "js/forms-duty.js",
-          "line": 455
+          "line": 467
         },
         {
           "file": "js/forms-duty.js",
-          "line": 465
+          "line": 477
         },
         {
           "file": "js/forms-import.js",
@@ -43212,6 +43215,7 @@
       "test/bookin-incamp-status.test.js",
       "test/dashboard-duty-card.test.js",
       "test/parade-grid-multistatus.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/static.test.js"
     ],
     "openPerson": [
@@ -43301,6 +43305,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43344,6 +43349,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43383,6 +43389,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43422,6 +43429,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43469,6 +43477,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43642,6 +43651,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
@@ -43822,6 +43832,7 @@
       "test/gas-medical-normalizer.test.js",
       "test/parade-classifier.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/render-wiring.test.js"
     ],
@@ -43840,6 +43851,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43880,6 +43892,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43911,6 +43924,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -43963,6 +43977,7 @@
     ],
     "paradeEndActiveContributors": [
       "test/bookin-incamp-status.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/render-wiring.test.js"
     ],
     "SB_CELL.MC": [
@@ -43977,6 +43992,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
@@ -44006,6 +44022,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
@@ -44035,6 +44052,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
@@ -44060,6 +44078,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
       "test/rs-omit-on-status.test.js",
@@ -44080,6 +44099,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-port-parity.test.js",
       "test/person-card-status.test.js",
       "test/rs-omit-on-status.test.js",
@@ -44116,6 +44136,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -44129,6 +44150,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -44146,6 +44168,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -44160,6 +44183,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-port-parity.test.js",
       "test/parade-rn.test.js",
@@ -44170,6 +44194,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/parade-rn.test.js",
       "test/rs-omit-on-status.test.js"
@@ -44209,6 +44234,7 @@
       "test/parade-classifier.test.js",
       "test/parade-grid-multistatus.test.js",
       "test/parade-lookahead.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/parade-multisection.test.js",
       "test/readtabs-batch.test.js",
       "test/wizard-paste.test.js"
@@ -44222,16 +44248,19 @@
       "test/bookin-incamp-status.test.js",
       "test/leave-bulk.test.js",
       "test/log-conduct-wizard.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/render-wiring.test.js"
     ],
     "paradeCurrentDateISO": [
-      "test/bookin-incamp-status.test.js"
+      "test/bookin-incamp-status.test.js",
+      "test/parade-ma-bookin.test.js"
     ],
     "todayISO": [
       "test/bookin-incamp-status.test.js",
       "test/ha.test.js",
       "test/list-exports.test.js",
       "test/log-conduct-wizard.test.js",
+      "test/parade-ma-bookin.test.js",
       "test/person-card-status.test.js",
       "test/render-wiring.test.js",
       "test/status-trend.test.js"
@@ -44711,7 +44740,8 @@
       "test/duty-schedule.test.js"
     ],
     "dutyEligible": [
-      "test/duty-eligibility.test.js"
+      "test/duty-eligibility.test.js",
+      "test/duty-schedule.test.js"
     ],
     "dutyCanonAppointment": [
       "test/duty-eligibility.test.js"
@@ -44796,6 +44826,12 @@
       "test/duty-schedule.test.js"
     ],
     "proposeDutySchedule": [
+      "test/duty-schedule.test.js"
+    ],
+    "dutyBasePool": [
+      "test/duty-schedule.test.js"
+    ],
+    "dutyIsActive": [
       "test/duty-schedule.test.js"
     ],
     "dutyRationale": [
@@ -46126,15 +46162,7 @@
         "file": "js/duty-eligibility.js"
       },
       {
-        "name": "dutyIsActive",
-        "file": "js/duty-eligibility.js"
-      },
-      {
         "name": "dutyExtraSet",
-        "file": "js/duty-eligibility.js"
-      },
-      {
-        "name": "dutyBasePool",
         "file": "js/duty-eligibility.js"
       },
       {
@@ -49060,6 +49088,12 @@
         "length": 158
       },
       {
+        "name": "proposeDutySchedule",
+        "file": "js/duty-schedule.js",
+        "line": 202,
+        "length": 139
+      },
+      {
         "name": "confirmConductImport",
         "file": "js/forms-import.js",
         "line": 515,
@@ -49118,12 +49152,6 @@
         "file": "js/forms-reports.js",
         "line": 957,
         "length": 109
-      },
-      {
-        "name": "proposeDutySchedule",
-        "file": "js/duty-schedule.js",
-        "line": 184,
-        "length": 107
       },
       {
         "name": "openMedicalForm",
@@ -49358,7 +49386,7 @@
       },
       {
         "src": "js/duty-schedule.js",
-        "version": 3,
+        "version": 4,
         "order": 15
       },
       {
@@ -49423,7 +49451,7 @@
       },
       {
         "src": "js/forms-duty.js",
-        "version": 3,
+        "version": 4,
         "order": 28
       },
       {
@@ -49438,7 +49466,7 @@
       },
       {
         "src": "js/parade-tab.js",
-        "version": 28,
+        "version": 29,
         "order": 31
       },
       {
@@ -50075,6 +50103,7 @@
         "usedIn": [
           "index.html",
           "js/api.js",
+          "js/duty-schedule.js",
           "js/forms-admin.js",
           "js/forms-conducts.js",
           "js/forms-import.js",

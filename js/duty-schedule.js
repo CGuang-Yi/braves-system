@@ -68,8 +68,26 @@ function dutySlotsInRange(range, cfg, platoons) {
 // planner can see whether the proposal actually improved anything rather than
 // taking "the computer did it" on faith — a proposal that makes the spread
 // worse is one they should reject, and they can only know that if it is shown.
-function dutyFairnessOf(totals) {
-  const vals = Object.keys(totals.byPerson).map(k => totals.byPerson[k].total).sort((a, b) => a - b);
+//
+// `population` is REQUIRED for that comparison to mean anything, and its absence
+// was a real bug. dutyTotals only creates an entry for someone who HOLDS a row,
+// so sampling Object.keys(byPerson) silently drops everyone on zero — and zero
+// is precisely the under-loaded end the spread is supposed to measure. The two
+// readings were then taken over different populations: on a fresh month "before"
+// was n=0/spread 0 and "after" was the real spread, so every proposal read as
+// having made things worse, against a modal that tells the planner to reject it
+// if it did. With one person holding a week of COS and three others on nothing,
+// "before" was n=1/spread 0 while the truth was a spread of 15.
+//
+// Passing the population makes both readings the same sample, so the comparison
+// is between two states of one distribution rather than between two distributions.
+// People outside it are excluded even if they hold rows in range: a departed or
+// transferred commander's history is real, but the spread answers "is this shared
+// evenly between the people it is being shared between", and they are not one.
+function dutyFairnessOf(totals, population) {
+  const by = totals.byPerson;
+  const ids = population && population.length ? population.map(String) : Object.keys(by);
+  const vals = ids.map(k => (by[k] ? by[k].total : 0)).sort((a, b) => a - b);
   if (!vals.length) return { n: 0, min: 0, max: 0, median: 0, spread: 0 };
   const mid = Math.floor(vals.length / 2);
   const median = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
@@ -196,11 +214,44 @@ function proposeDutySchedule(range, existing, roster, platoons, cfg, holidays, o
     r && r.d4 && (!o.regenerate || !dutyInRange(r.date, range)));
   const rows = kept.slice();
 
-  const pool = dutyBasePool(roster, cfg).map(r => String(r.id));
+  const slots = dutySlotsInRange(range, cfg, platoons);
+
+  // Eligibility per slot, resolved once up front. Memoised because many slots
+  // share a (type, platoon) pair — a 30-day month asks the same question thirty
+  // times — and keyed on the date as well, so the cache cannot go stale if the
+  // date ever starts mattering to dutyEligible.
+  const eligCache = {};
+  const eligibleFor = slot => {
+    const k = slot.dutyType + "|" + slot.platoon + "|" + slot.date;
+    if (!eligCache[k]) eligCache[k] = dutyEligible(slot.dutyType, slot.platoon, slot.date, roster, cfg, {});
+    return eligCache[k];
+  };
+
+  // THE POOL IS WHOEVER A SLOT IN THIS RANGE COULD ACTUALLY GO TO — the union of
+  // the eligible lists, not dutyBasePool().
+  //
+  // dutyBasePool is "commanders plus Config opt-ins" and applies neither the
+  // dutyIsActive filter nor the appointment rule; dutyEligible applies both. So
+  // the base pool carries every departed commander still sitting on the roster,
+  // and anyone whose appointment no configured duty type asks for. None of them
+  // can ever be assigned, yet each sat in the median sample at zero forever.
+  // That drags the median to 0 and flattens pointsAboveMedian — with the penalty
+  // equal for everyone the objective stops discriminating between candidates and
+  // the greedy tie-break takes over. Measured on a 30-day month with four live
+  // section commanders, adding six DEPARTED rows that were never assigned
+  // anything took the real point spread across the live four from 18 to 33, one
+  // of them ending the month on 1 point and another on 34. Dead roster rows must
+  // not be able to reach into the live roster's fairness.
+  const pool = [];
+  const inPool = {};
+  slots.forEach(s => eligibleFor(s).forEach(d4 => {
+    if (!inPool[d4]) { inPool[d4] = 1; pool.push(d4); }
+  }));
+
   const leaveSpans = {};
   pool.forEach(d4 => { leaveSpans[d4] = leaveSpansFor(d4); });
 
-  const fairnessBefore = dutyFairnessOf(dutyTotals(rows, corrections, cfg, hol, range));
+  const fairnessBefore = dutyFairnessOf(dutyTotals(rows, corrections, cfg, hol, range), pool);
 
   // Running projections, seeded from what is already on the books in the range
   // so the scheduler evens out the WHOLE period rather than only the part it
@@ -229,7 +280,6 @@ function proposeDutySchedule(range, existing, roster, platoons, cfg, holidays, o
   };
 
   const proposals = [], unfilled = [];
-  const slots = dutySlotsInRange(range, cfg, platoons);
 
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i];
@@ -237,7 +287,7 @@ function proposeDutySchedule(range, existing, roster, platoons, cfg, holidays, o
     if (rows.some(r => r.date === slot.date && r.dutyType === slot.dutyType &&
                        (r.platoon || "") === slot.platoon)) continue;
 
-    const eligible = dutyEligible(slot.dutyType, slot.platoon, slot.date, roster, cfg, {});
+    const eligible = eligibleFor(slot);
     if (!eligible.length) {
       unfilled.push({ date: slot.date, dutyType: slot.dutyType, platoon: slot.platoon,
                       reason: "nobody is eligible for this slot" });
@@ -285,7 +335,7 @@ function proposeDutySchedule(range, existing, roster, platoons, cfg, holidays, o
     median: median(), weekendMedian: weekendMedian(), dutiesMedian: dutiesMedian()
   });
 
-  const fairnessAfter = dutyFairnessOf(dutyTotals(rows, corrections, cfg, hol, range));
+  const fairnessAfter = dutyFairnessOf(dutyTotals(rows, corrections, cfg, hol, range), pool);
   return { proposals, unfilled, fairnessBefore, fairnessAfter, swaps: repaired };
 }
 

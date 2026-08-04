@@ -253,7 +253,19 @@ function showDutyProposal() {
        </ul>`
     : "";
 
-  const f = (x) => `spread ${x.spread} (${x.min}–${x.max}, median ${x.median})`;
+  const f = (x) => `spread ${x.spread} (${x.min}–${x.max}, median ${x.median}, ${x.n} eligible)`;
+  // "If the spread got worse, reject this" is only advice worth following when
+  // there was something to compare against. On an unplanned period everyone sits
+  // on zero, so the baseline spread is 0 and ANY roster — including the fairest
+  // one obtainable — reads as having made it worse. Telling the planner to reject
+  // on that basis is telling them to reject every first proposal of every month,
+  // so say plainly that there is no comparison to make instead.
+  const noBaseline = !r.fairnessBefore.max && !r.fairnessBefore.min;
+  const advice = noBaseline
+    ? `Nothing was on the books for this period, so there is no before/after to compare —
+       everyone starts on zero and any roster at all widens the spread. Judge the figures
+       on their own.`
+    : `If the spread got worse, reject this.`;
   openModal("Proposed duties", `
     <div style="display:flex;flex-direction:column;gap:10px">
       <p style="font-size:12px;margin:0">
@@ -261,7 +273,7 @@ function showDutyProposal() {
         Fairness after: <strong>${escapeHTML(f(r.fairnessAfter))}</strong>
       </p>
       <p style="font-size:11px;color:var(--muted);margin:0">
-        If the spread got worse, reject this. Drop anything you disagree with, then Save
+        ${advice} Drop anything you disagree with, then Save
         the rest — dropped rows are simply not written.
       </p>
       ${gaps}
