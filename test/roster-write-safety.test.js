@@ -119,7 +119,7 @@ module.exports = async function run() {
   suite("Roster row writes: submitCommander pushes the whole row");
 
   const FILES = expandFiles(["js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js",
-    "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"]);
+    "js/appointment-4d.js", "js/helpers.js", "js/sick-history-import.js", "js/render.js", "js/forms.js", "js/braves-parade.js"]);
 
   function loadFrontend(fx) {
     const browser = makeBrowser();

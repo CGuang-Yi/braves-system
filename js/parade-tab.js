@@ -418,10 +418,9 @@ function renderParadePlatoon(host, code) {
   // them first — force them last so they sit at the bottom (still 4D-ordered among
   // themselves). Name breaks ties (e.g. a commander with no numeric 4D).
   const isCmdr = r => isCommander(r.id);
-  const fourDNum = r => { const n = parseInt(String(r.fourD || r.id || "").replace(/\D/g, ""), 10); return Number.isFinite(n) ? n : Infinity; };
   rows.sort((a, b) =>
     ((isCmdr(a.r) ? 1 : 0) - (isCmdr(b.r) ? 1 : 0))
-    || (fourDNum(a.r) - fourDNum(b.r))
+    || (fourDSortKey(a.r) - fourDSortKey(b.r))
     || String(getName(a.r.id)).localeCompare(String(getName(b.r.id))));
 
   const body = rows.map(x => {

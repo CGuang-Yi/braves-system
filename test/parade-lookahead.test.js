@@ -62,7 +62,12 @@ function ctxWith(over) {
     rankGroupOf: () => "Enlistee"
   };
   vm.createContext(sandbox);
-  const src = fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8")
+  // The REAL appointment-4d.js rather than a fourDSortKey stub: it is a pure
+  // dependency-free leaf, so loading it costs nothing and a stub could only
+  // diverge from what braves-parade actually sorts with in the browser.
+  const src = fs.readFileSync(path.join(__dirname, "..", "js", "appointment-4d.js"), "utf8")
+    + "\n"
+    + fs.readFileSync(path.join(__dirname, "..", "js", "braves-parade.js"), "utf8")
     + "\n;this.bpClassifyPerson = bpClassifyPerson; this.bpStrength = bpStrength;"
     + " this.bpBuildBlock = bpBuildBlock; this.bpGridCell = bpGridCell;\n";
   vm.runInContext(src, sandbox, { filename: "braves-parade.js" });

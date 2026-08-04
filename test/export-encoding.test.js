@@ -23,7 +23,7 @@ function load() {
   }, browser.globals);
   sb.globalThis = sb;
   vm.createContext(sb);
-  for (const f of ["js/state.js", "js/helpers.js"]) {
+  for (const f of ["js/state.js", "js/appointment-4d.js", "js/helpers.js"]) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), "utf8"), sb, { filename: f });
   }
   const cap = {};

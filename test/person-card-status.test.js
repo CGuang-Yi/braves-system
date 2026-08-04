@@ -23,7 +23,7 @@ const { ROOT } = require("./harness");
 const { makeBrowser } = require("./mocks/browser");
 const { sourceText } = require("./sources");
 
-const FILES = ["js/state.js", "js/helpers.js", "js/braves-parade.js"];
+const FILES = ["js/state.js", "js/appointment-4d.js", "js/helpers.js", "js/braves-parade.js"];
 
 // Fixed "today" so the suite can't rot overnight: every window below is chosen
 // relative to this date. Dates must be "DD MMM YYYY" — displayDateToISO returns

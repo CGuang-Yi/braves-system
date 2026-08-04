@@ -673,11 +673,11 @@ function bpBuildBlock(people, dateIso, type, opts) {
 
   // Collect entries per section across all people. Iterate in ascending 4D order
   // so every section's rows come out 4D-sorted (people are pushed section-by-section
-  // in this loop's order, so ordering the loop orders the rows). Non-numeric 4Ds
-  // sort last.
-  const bp4DNum = r => { const n = parseInt(String(r.fourD || r.id || ""), 10); return Number.isFinite(n) ? n : Infinity; };
+  // in this loop's order, so ordering the loop orders the rows). Rows with no
+  // number anywhere sort last; a commander whose fourD is an appointment code
+  // falls through to the 00xx id, which is what fourDSortKey is for.
   const buckets = { alOil: [], mr: [], reportingSick: [], attC: [], status: [], others: [] };
-  [...people].sort((a, b) => bp4DNum(a) - bp4DNum(b)).forEach(r => {
+  [...people].sort((a, b) => fourDSortKey(a) - fourDSortKey(b)).forEach(r => {
     if (!bpIsActive(r)) return;
     const c = bpClassifyPerson(r, dateIso, null, { lookaheadDays: opts.lookaheadDays });
     // A person is listed under EVERY section their classification populates —

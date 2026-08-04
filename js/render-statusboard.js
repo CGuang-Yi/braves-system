@@ -80,11 +80,13 @@ function renderSBLeaderboard() {
     return { r, rsi: c.rsi, rso: c.rso, total: c.rsi + c.rso };
   });
   const byName = (a, b) => String(a.r.name || "").localeCompare(String(b.r.name || ""));
-  const fourDNum = x => { const n = parseInt(String(x.r.fourD || x.r.id || ""), 10); return Number.isFinite(n) ? n : Infinity; };
+  // 4D order via the shared key (js/appointment-4d.js). A commander's fourD is an
+  // appointment code, not a number, so this must fall through to the id rather
+  // than degrade to Infinity and dump every commander at the bottom.
   if (_sbSort === "Total") rows = rows.filter(x => x.total > 0).sort((a, b) => b.total - a.total || byName(a, b));
   else if (_sbSort === "RSI") rows = rows.filter(x => x.total > 0).sort((a, b) => b.rsi - a.rsi || b.total - a.total);
   else if (_sbSort === "RSO") rows = rows.filter(x => x.total > 0).sort((a, b) => b.rso - a.rso || b.total - a.total);
-  else rows = rows.sort((a, b) => fourDNum(a) - fourDNum(b) || byName(a, b)); // 4D
+  else rows = rows.sort((a, b) => fourDSortKey(a.r) - fourDSortKey(b.r) || byName(a, b)); // 4D
 
   const shown = _sbCollapsed ? [] : (_sbShowAll ? rows : rows.slice(0, 3));
   const tab = m => `<button onclick="sbSetSort('${m}')" style="padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:${_sbSort === m ? "var(--accent)" : "var(--surface)"};color:${_sbSort === m ? "#fff" : "var(--text)"};font-size:11px;cursor:pointer">${m}</button>`;
