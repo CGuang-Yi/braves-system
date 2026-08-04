@@ -11,8 +11,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v7 of both actions runs on the node24 action runtime; v4 ran on node20,
+      # which GitHub has deprecated and warns about on every run. `node-version`
+      # below is the Node the TESTS run under and is a separate axis — it stays
+      # pinned to the active LTS line.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       # Zero dependencies — nothing to install. This runs the sync test suite:
