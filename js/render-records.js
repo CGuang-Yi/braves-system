@@ -239,6 +239,29 @@ function renderConductDetail(el) {
     </div>`;
 }
 
+// Report-sick scope notice (spec §1.7). STATE.medical already holds only what
+// this account may see — the server withheld the rest — so every stat tile above
+// is already honest about the rows present. What is MISSING is any acknowledgement
+// that people are absent from the list at all, and a log that silently omits two
+// platoons reads as a company-wide log with very few report sicks.
+//
+// Counts only: no names, nothing identifying. One line per withheld platoon.
+function medScopeNoticeHTML() {
+  const s = rsScope();
+  if (s.company) return "";
+  const out = rsOutOfScopeCounts()
+    .map(x => `${escapeHTML(x.platoon)} — ${x.count} pax · history outside your scope`)
+    .join(" · ");
+  // An empty scope means the roster could not resolve this account's platoon.
+  // Name the cause and the fix rather than showing a blank log with no reason.
+  const where = s.plt.length
+    ? `Scoped to ${escapeHTML(s.plt.join(", "))}.`
+    : "Scoped to no platoon — ask an admin to check your roster entry.";
+  return `<div style="font-size:11px;color:var(--muted);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:4px;padding:6px 10px;margin-bottom:10px">
+    ${where}${out ? " " + out : ""}
+  </div>`;
+}
+
 // Report Sick Log date-range filter (by the REPORTED date). Both bounds
 // optional; ISO strings straight from the <input type="date"> controls, which
 // live in the toolbar (outside #med-results) so they survive a rows-only re-render.
@@ -327,7 +350,7 @@ function renderMedical(el) {
       <h2 class="tab-title" style="font-size:18px;font-weight:700">Report Sick Log${isFilterActive() ? ` <span style="color:var(--accent);font-size:13px">[${filterLabel()}: ${scoped.length}/${STATE.medical.length}]</span>` : ""}</h2>
       <div class="tab-actions">
         <button class="btn" onclick="exportMCList()" title="Export everyone currently on MC in this scope to CSV (Warded is not MC — it appears in the Status Board export). The scope is in the filename.">⭳<span class="btn-label"> MC list CSV</span></button>
-        <button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻<span class="btn-label"> Re-push all</span></button>
+        ${rsScope().company ? `<button class="btn btn-success" onclick="pushTab('Medical',STATE.medical)" title="Full re-write of this tab. Useful after manual sheet edits or to recover from a sync failure — normal edits auto-push.">↻<span class="btn-label"> Re-push all</span></button>` : ""}
         <label class="btn admin-only" style="cursor:pointer" title="Admin: import a colour-coded RSI/RSO REC sheet (xlsx). Cell fill colour = status, text = reason. Previews before committing.">📥<span class="btn-label"> Import Sick History (xlsx)</span><input type="file" accept=".xlsx" onchange="importSickHistoryXLSX(this)" style="display:none"></label>
         ${listSearchInput("medical", "Search name / 4D…")}
         <span id="med-date-filter" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${medDatesActive() ? "var(--accent)" : "var(--muted)"};border:1px solid ${medDatesActive() ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:2px 6px" title="Filter the list by reported date">
@@ -345,6 +368,7 @@ function renderMedical(el) {
       <div class="stat"><label>Recovering</label><div class="val" style="color:var(--orange)">${ghostCount}${inlineBreakdown(recoveringSplit)}</div></div>
       <div class="stat"><label>Pending</label><div class="val" style="color:var(--muted)">${pendingCount}${inlineBreakdown(pendingSplit)}</div></div>
     </div>
+    ${medScopeNoticeHTML()}
     <div id="med-results"></div>`;
   registerListRenderer("medical", renderMedicalRows);
   renderMedicalRows();
