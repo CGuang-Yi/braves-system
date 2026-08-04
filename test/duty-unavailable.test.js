@@ -216,4 +216,58 @@ module.exports = async function run() {
     ok(!/duty-unavail/.test(g("dutyGridHTML")(g("dutyConfig")())),
       "the grid highlighted a cell with no flag behind it");
   });
+
+  suite("duty unavailability: panel");
+
+  await test("the panel lists live flags with person, window and note", () => {
+    const { g, S } = loadView();
+    seedView(g, S);
+    const html = g("dutyUnavailHTML")(g("dutyConfig")());
+    ok(/Alpha/.test(html), "the person is not named");
+    ok(/2026-09-01/.test(html) && /2026-09-05/.test(html), "the window bounds are not shown");
+    ok(/exam period/.test(html), "the note is not shown");
+  });
+
+  await test("expired flags are hidden until asked for", () => {
+    const { g, S } = loadView();
+    seedView(g, S);
+    S.dutyUnavailable = g("normalizeDutyUnavailable")([
+      { id: "u1", d4: "0011", from: "2020-01-01", to: "2020-01-05", note: "ancient history" }
+    ]);
+    const html = g("dutyUnavailHTML")(g("dutyConfig")());
+    ok(!/ancient history/.test(html),
+      "an expired flag was listed by default — the list would never prune itself");
+    ok(/Show expired \(1\)/.test(html), "the toggle does not say how many are hidden");
+    // The module flag is set directly rather than through setDutyShowExpired:
+    // that setter ends in render(), which redraws the whole app and needs a real
+    // DOM. What matters here is what the panel draws in each state; the button's
+    // own data-value below is what proves the two are wired together.
+    ok(/data-action="dutyUnavailExpired" data-value="1"/.test(html),
+      "the toggle does not ask for the opposite state");
+    g("_dutyShowExpired = true");
+    const shown = g("dutyUnavailHTML")(g("dutyConfig")());
+    ok(/ancient history/.test(shown), "showing expired did not reveal the lapsed window");
+    ok(/expired<\/span>/.test(shown), "a lapsed window is not marked as expired in the list");
+    ok(/data-value="0"/.test(shown), "the toggle does not offer to hide them again");
+  });
+
+  await test("a non-planner gets no add or delete controls", () => {
+    const { g, S } = loadView([]);
+    seedView(g, S);
+    const html = g("dutyUnavailHTML")(g("dutyConfig")());
+    ok(!/dutyUnavailNew/.test(html), "a non-planner was offered the add control");
+    ok(!/dutyUnavailDelete/.test(html), "a non-planner was offered a delete control");
+    // The list itself stays readable: the grid highlight already implies the
+    // flags exist, and showing the highlight while hiding its explanation is
+    // the worse of the two.
+    ok(/exam period/.test(html), "a non-planner cannot see why a duty is highlighted");
+  });
+
+  await test("a planner gets both controls", () => {
+    const { g, S } = loadView();
+    seedView(g, S);
+    const html = g("dutyUnavailHTML")(g("dutyConfig")());
+    ok(/dutyUnavailNew/.test(html), "a planner was not offered the add control");
+    ok(/dutyUnavailDelete/.test(html), "a planner was not offered a delete control");
+  });
 };
