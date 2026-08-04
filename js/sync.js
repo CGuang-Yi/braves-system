@@ -228,16 +228,20 @@ function renderAdminPanel() {
       })()}</td>
       <td><span class="badge badge-accent">${escapeHTML(a.role || "")}</span>${
         // Admins hold every capability implicitly (hasCap in the backend), so
-        // showing a grantable "duty" chip on an admin row would imply the
-        // toggle below does something for them. It doesn't.
-        (a.role !== "admin" && (a.caps || []).indexOf("duty") !== -1)
-          ? ' <span class="badge badge-orange" title="Can plan duties">duty</span>' : ""}</td>
+        // showing grantable chips on an admin row would imply the editor below
+        // does something for them. It doesn't.
+        a.role === "admin" ? "" : (a.caps || []).map(c => {
+          const cap = String(c).toLowerCase();
+          if (cap === "duty") return ' <span class="badge badge-orange" title="Can plan duties">duty</span>';
+          if (cap === "rs:company") return ' <span class="badge badge-orange" title="Sees company-wide report sick history">RS: company</span>';
+          if (cap.indexOf("rs:plt:") === 0) return ` <span class="badge badge-orange" title="Sees this platoon's report sick history">RS: ${escapeHTML(cap.slice(7).toUpperCase())}</span>`;
+          return "";
+        }).join("")}</td>
       <td class="mono" style="font-size:10px">${escapeHTML(a.personId || "—")}</td>
       <td style="font-size:10px;color:var(--muted)">${escapeHTML(a.addedBy || "")}</td>
       <td style="text-align:right;white-space:nowrap">
         ${a.role === "admin" ? "" :
-          `<button class="btn" style="font-size:10px" onclick="doToggleDutyCap('${encodeURIComponent(a.email)}',${(a.caps || []).indexOf("duty") !== -1})">${
-            (a.caps || []).indexOf("duty") !== -1 ? "Revoke duty" : "Grant duty"}</button>`}
+          `<button class="btn" style="font-size:10px" onclick="openCapsEditor('${encodeURIComponent(a.email)}')">Capabilities</button>`}
         <button class="btn" style="font-size:10px" onclick="openResetPasswordForm('${encodeURIComponent(a.email)}')">Reset PW</button>
         <button class="btn btn-danger" style="font-size:10px" onclick="doRemoveAccount('${encodeURIComponent(a.email)}')">Remove</button>
       </td>
