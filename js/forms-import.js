@@ -561,10 +561,14 @@ function confirmConductImport() {
     totUnmatched += p.parsed.filter(x => !x.resolvedId).length;
 
     const detailRows = [];
-    fallout.forEach(x => detailRows.push({ id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Fallout", reason: x.remarks || "" }));
+    // CSV rows carry no per-person drop-out time, but the key must still be
+    // present: writeTab builds the sheet's headers from the first row, so an
+    // import landing first would drop eventTime for the whole tab.
+    fallout.forEach(x => detailRows.push({ id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Fallout", reason: x.remarks || "", eventTime: "" }));
     statusAbsent.forEach(x => detailRows.push({
       id: nextId(), date, time, conductId, d4: x.resolvedId, type: "Status",
-      reason: x.status === "Other" ? (x.remarks || "Other") : x.status + (x.remarks ? ` — ${x.remarks}` : "")
+      reason: x.status === "Other" ? (x.remarks || "Other") : x.status + (x.remarks ? ` — ${x.remarks}` : ""),
+      eventTime: ""
     }));
 
     // C2: those who reported sick should already be logged. For each MC row

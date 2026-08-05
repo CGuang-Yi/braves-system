@@ -1007,7 +1007,7 @@ function buildStatusTrendChart(scopedIds) {
 // Not role-gated. A viewer can read and copy; only the archive side effect is
 // commander+admin, and archiveParadeSnapshot enforces that itself.
 let _dashParadeDate = "", _dashParadeType = "", _dashParadeTime = "";
-let _dashParadeLookahead = 7;      // days; Infinity = "All". Session-scoped, like the tab's.
+let _dashParadeLookahead = 0;      // days; 0 = off (today only), Infinity = "All". Session-scoped, like the tab's.
 function setDashParadeDate(v) { _dashParadeDate = v; render(); }
 function setDashParadeType(v) { _dashParadeType = v; render(); }
 // Time is the one control bound to `oninput` — a full render() rebuilds
@@ -1078,7 +1078,7 @@ function renderDashParade() {
       <div class="form-group" style="margin:0">
         <label style="font-size:11px;color:var(--muted)" title="How far ahead to list absences that have not started yet">Lookahead</label><br>
         <div class="filter-role-group">
-          ${[["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
+          ${[["0", "Off"], ["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
             const on = (v === "all") ? _dashParadeLookahead === Infinity : Number(v) === _dashParadeLookahead;
             return `<button type="button" class="role-btn${on ? " active" : ""}" onclick="setDashParadeLookahead('${v}')">${l}</button>`;
           }).join("")}

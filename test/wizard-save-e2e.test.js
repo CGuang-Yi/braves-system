@@ -284,6 +284,17 @@ module.exports = async function run() {
     const rs1303 = detail.find(d => d.type === "ReportSick" && d.d4 === "1303");
     ok(rs1303 && rs1303.reason === "cough", "ReportSick row built for the already-has-medical recruit too");
 
+    // writeTab derives the sheet's headers from Object.keys(data[0]) — one row
+    // missing eventTime silently strips the column from the WHOLE pushed sheet,
+    // so this asserts the key's PRESENCE on every row type, including the ones
+    // where it is always blank. A value check would pass while a Status row
+    // built elsewhere quietly dropped the column for everyone.
+    detail.forEach(r => ok(
+      Object.prototype.hasOwnProperty.call(r, "eventTime"),
+      `every ConductDetail row must carry eventTime; ${r.type} row for ${r.d4} does not`));
+    ok(fallout.eventTime === "" || /^\d{4}$/.test(fallout.eventTime),
+      "a fallout's eventTime is blank or 4 digits, never a raw partial");
+
     const med1302 = client.sb.STATE.medical.filter(m => m.d4 === "1302");
     eq(med1302.length, 1, "exactly one auto-created Medical row for the recruit with no prior medical entry");
     eq(med1302[0].status, "Pending");

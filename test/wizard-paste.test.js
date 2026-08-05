@@ -15,6 +15,10 @@ function loadCtx() {
   const ctx = vm.createContext(new Proxy(target, { has: () => true, get: (t, k) => t[k] }));
   vm.runInContext(sourceText("forms"),
     ctx, { filename: "forms.js" });
+  // nowHHMM lives in helpers.js, outside the forms bundle (see Task 4 in
+  // log-conduct-wizard.test.js) — applyPastedAbsentees now calls it to stamp
+  // genuinely new fallout/reportSick rows, so it needs a stub here too.
+  vm.runInContext("nowHHMM = function(){ return '0000'; };", ctx);
   return ctx;
 }
 const ROSTER = [{ id: "0123" }, { id: "0124" }, { id: "0125" }];
