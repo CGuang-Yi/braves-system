@@ -1370,6 +1370,25 @@ function pad4Time(t) {
   return "0" + s + "00";                        // "7"   → "0700"
 }
 
+// Current wall-clock time as a 4-digit "HHMM" string — the form every time
+// field in this app stores ("0730"), and what pad4Time normalizes toward.
+//
+// A named helper rather than an inline `new Date()` at the call site because
+// the conduct wizard stamps a fallout's time from it, and the wizard tests
+// need to control that stamp. forms-wizard.js is loaded into a vm sandbox
+// WITHOUT helpers.js, so nowHHMM is a free identifier there and a test can
+// replace it with a fixed value — no monkey-patching of the sandbox's global
+// Date, which other suites sharing that sandbox would also see.
+//
+// Note there are older open-coded copies of this same pattern (js/forms.js's
+// time prefill, js/forms-reports.js's default message time). They are
+// deliberately NOT swept into this helper: they are working code outside this
+// change's scope, and the repo's convention is not to refactor idly.
+function nowHHMM() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, "0") + String(d.getMinutes()).padStart(2, "0");
+}
+
 // Display-only formatter: normalize a clock time and append "Hrs", e.g.
 // "0530" → "0530 Hrs", "0700-2100" → "0700-2100 Hrs". Empty → "". This is
 // strictly for rendering (parade states, tables) — never persist its output;
