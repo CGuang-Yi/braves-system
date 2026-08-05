@@ -264,6 +264,31 @@
  *                highlight on the duty grid and the dashboard duty card.
  *                d4/from/to are in WRITE_TEXT_COLS_BY_TAB: Sheets would otherwise
  *                coerce "0042" to 42 and re-serve the dates as "01 Sep 2026".)
+ *   DutyChangeRequest: id | submittedBy | submittedAt | date | dutyType | platoon |
+ *                kind | fromD4 | toD4 | swapDate | swapDutyType | swapPlatoon |
+ *                reason | status | decidedBy | decidedAt | decisionNote
+ *               (Proposed changes to the duty roster, design §3. `kind` is one of
+ *                add | remove | reassign | swap; `status` is Pending | Approved |
+ *                Rejected.
+ *
+ *                The swap* triple is the COUNTERPARTY's slot and is blank for
+ *                every other kind. It exists because a swap needs two slots and
+ *                the primary date/dutyType/platoon triple only describes one:
+ *                a trade between two different dates cannot be expressed
+ *                otherwise, and inferring the second slot from the counterparty's
+ *                other duties resolves ambiguously and silently whenever they
+ *                hold more than one.
+ *
+ *                WRITES ARE SPLIT BY ACTION, not by tab — see dcrGuardWrite_.
+ *                Any commander may `append` (submit); `status` and the decided*
+ *                columns are server-owned and only ever change through the
+ *                decideDutyRequest action, which needs the `duty` capability.
+ *                upsertRow is refused outright: without that refusal a submitter
+ *                could simply upsert their own row to Approved, which would make
+ *                the whole approval gate decorative.
+ *
+ *                fromD4/toD4/date/swapDate are in WRITE_TEXT_COLS_BY_TAB, same
+ *                coercion trap as above.)
  */
 
 var FRONTEND_BASE_URL = "https://cguang-yi.github.io/braves-system/";
@@ -1072,6 +1097,205 @@ function rsFindRowById_(tabName, id) {
   return null;
 }
 
+// ─── DUTY CHANGE REQUESTS (design §3) ──────────────────────
+//
+// Write-side enforcement for the DutyChangeRequest tab. This tab is deliberately
+// NOT in the duty-capability tab gate below: design §3.2 says any commander may
+// submit, and adding it there would make submission planner-only, which is the
+// one thing the feature must not be.
+//
+// So the split is by ACTION, not by tab:
+//
+//   append           — any canWrite caller. The server owns `status` and the
+//                      decided* columns regardless of what the body carried.
+//   deleteRowById    — the submitter's own row (withdraw), or a duty planner.
+//   decideDutyRequest— duty capability only; the ONLY path that sets a status.
+//   everything else  — refused. There is no legitimate caller.
+//
+// That last line is the load-bearing one. If upsertRow were permitted here, a
+// commander could submit a request and then upsert their own row to
+// status:"Approved" — the approval gate would still exist and would still be
+// enforced on decideDutyRequest, and would still be completely pointless,
+// because the roster reads status off the row. Refusing the generic mutations
+// is what makes "status only ever changes through decideDutyRequest" a fact
+// rather than an intention.
+function dcrGuardWrite_(tabName, action, body, ctx) {
+  if (tabName !== "DutyChangeRequest") return null;
+
+  if (action === "append") {
+    if (!body || !body.row) return { error: "Nothing to submit.", code: 400 };
+    // Design §3.2: the reason is the entire point of the feature, and a
+    // client-side `required` attribute is a suggestion — this is the only place
+    // the rule is actually enforced. Whitespace does not count as a reason.
+    var reason = String(body.row.reason == null ? "" : body.row.reason).trim();
+    if (!reason) return { error: "A reason is required.", code: 400 };
+    if (DCR_KINDS.indexOf(String(body.row.kind || "")) === -1) {
+      return { error: "Unknown change kind.", code: 400 };
+    }
+    // Server-owned columns, overwritten whatever the client sent. submittedBy
+    // comes off the token rather than the body so a request cannot be filed
+    // under someone else's name.
+    body.row.reason      = reason;
+    body.row.submittedBy = (ctx && ctx.personId) || "";
+    body.row.status      = "Pending";
+    body.row.decidedBy   = "";
+    body.row.decidedAt   = "";
+    body.row.decisionNote = "";
+    return null;
+  }
+
+  if (action === "deleteRowById") {
+    if (hasCap(ctx, "duty")) return null;
+    var existing = rsFindRowById_("DutyChangeRequest", body && body.id);
+    // A missing row is not a permission failure — let the normal delete path
+    // report it as not-found rather than as a refusal, which would be a
+    // confusing thing to tell someone withdrawing an already-gone request.
+    if (!existing) return null;
+    if (String(existing.submittedBy || "") !== String((ctx && ctx.personId) || "")) {
+      return { error: "You can only withdraw your own request.", code: 403 };
+    }
+    if (String(existing.status || "Pending") !== "Pending") {
+      return { error: "That request has already been decided.", code: 400 };
+    }
+    return null;
+  }
+
+  return { error: "Duty change requests are submitted and decided, not edited.", code: 403 };
+}
+
+var DCR_KINDS = ["add", "remove", "reassign", "swap"];
+
+// ── Hand-port of js/duty-request.js's dcrSlotRow + dcrDutyMutations ──────────
+//
+// The archive cron and this approval path run in Apps Script, which cannot load
+// a frontend file, so the rules live in two places — the same arrangement
+// js/braves-parade.js has with its port here. EVERY CHANGE TO
+// js/duty-request.js MUST BE MIRRORED HERE; test/duty-request-port-parity.test.js
+// runs both copies over the same cases and fails on any behavioural difference.
+//
+// Written in the ES5 style the rest of this file uses (var, no arrows) rather
+// than copied verbatim from the frontend.
+function dcrSlotRow(dutyRows, date, dutyType, platoon) {
+  var rows = dutyRows || [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r && r.date === date && r.dutyType === dutyType
+        && (r.platoon || "") === (platoon || "")) return r;
+  }
+  return null;
+}
+
+function dcrDutyMutations(req, dutyRows) {
+  var out = { upserts: [], deletes: [] };
+  if (!req) return out;
+
+  var kind = String(req.kind || "");
+  var primary = dcrSlotRow(dutyRows, req.date, req.dutyType, req.platoon);
+
+  function stamp(row, d4, date, dutyType, platoon) {
+    return {
+      id: row ? row.id : "",          // "" means the caller mints one
+      date: date,
+      dutyType: dutyType,
+      platoon: platoon || "",
+      d4: d4,
+      assignedBy: req.decidedBy || req.submittedBy || "",
+      assignedAt: req.decidedAt || "",
+      source: "request"
+    };
+  }
+
+  if (kind === "add" || kind === "reassign") {
+    if (req.toD4) out.upserts.push(stamp(primary, req.toD4, req.date, req.dutyType, req.platoon));
+  } else if (kind === "remove") {
+    if (primary) out.deletes.push(primary.id);
+  } else if (kind === "swap") {
+    var other = dcrSlotRow(dutyRows, req.swapDate, req.swapDutyType, req.swapPlatoon);
+    var primaryHolder = primary ? primary.d4 : req.fromD4;
+    var otherHolder = other ? other.d4 : req.toD4;
+    if (otherHolder) {
+      out.upserts.push(stamp(primary, otherHolder, req.date, req.dutyType, req.platoon));
+    }
+    if (primaryHolder) {
+      out.upserts.push(stamp(other, primaryHolder, req.swapDate, req.swapDutyType, req.swapPlatoon));
+    }
+  }
+  return out;
+}
+
+// Approve or reject a request. Approving APPLIES it — the Duty row(s) and the
+// request's status change in this one call, under one lock.
+//
+// Two calls would be simpler and are wrong (design §3.3): between them the
+// request would read Approved while the roster still disagreed, and the roster
+// is what people turn up for. The window is small and the consequence of losing
+// the race is somebody standing a duty nobody recorded.
+function handleDecideDutyRequest(body, ctx) {
+  if (!hasCap(ctx, "duty")) return { error: "Duty capability required.", code: 403 };
+
+  var decision = String(body.decision || "");
+  if (decision !== "approve" && decision !== "reject") {
+    return { error: "Decision must be approve or reject.", code: 400 };
+  }
+
+  // getDataLock() — the SAME lock withRevLock takes, not a fresh script lock.
+  // A different lock would serialise this action against itself and nothing
+  // else, so an ordinary Duty upsert could interleave between the mutations and
+  // the status flip, which is precisely the window this exists to close.
+  var lock = getDataLock();
+  try { lock.waitLock(15000); }
+  catch (e) { return { error: "Server busy, please retry", code: 503 }; }
+  try {
+    // Re-read INSIDE the lock. The copy the deciding client is looking at may be
+    // seconds old, and two planners deciding the same request from two devices
+    // is exactly the case this has to survive.
+    var req = rsFindRowById_("DutyChangeRequest", body.id);
+    if (!req) return { error: "That request no longer exists.", code: 404 };
+    if (String(req.status || "Pending") !== "Pending") {
+      return { error: "That request has already been decided.", code: 409 };
+    }
+
+    var dutyRes = null;
+    if (decision === "approve") {
+      // ONE definition of what each kind means, mirrored from
+      // js/duty-request.js and guarded against drift by
+      // test/duty-request-port-parity.test.js. The submitter's preview and this
+      // must agree exactly; if they drift, the visible symptom is a roster that
+      // does not match what was approved.
+      var mutations = dcrDutyMutations(req, readTab("Duty"));
+      for (var i = 0; i < mutations.deletes.length; i++) {
+        deleteRowById("Duty", mutations.deletes[i]);
+      }
+      for (var j = 0; j < mutations.upserts.length; j++) {
+        var row = mutations.upserts[j];
+        // dcrDutyMutations leaves id "" when the slot was empty — it does not
+        // know how ids are minted. upsertRow refuses a blank id outright, so
+        // filling it here is required, not tidiness. Same shape as the
+        // frontend's nextId(): a timestamp-seeded value wide enough that two
+        // approvals in the same second do not collide.
+        if (!row.id) row.id = "dcr" + new Date().getTime() + "-" + j;
+        row.assignedAt = row.assignedAt || new Date().toISOString();
+        upsertRow("Duty", row);
+      }
+      if (mutations.deletes.length || mutations.upserts.length) {
+        dutyRes = { rev: bumpRev("Duty") };
+      }
+    }
+    // A rejection writes NOTHING to Duty and does not bump its revision — every
+    // other client would otherwise re-pull an unchanged tab.
+
+    req.status       = decision === "approve" ? "Approved" : "Rejected";
+    req.decidedBy    = (ctx && ctx.personId) || "";
+    req.decidedAt    = new Date().toISOString();
+    req.decisionNote = String(body.decisionNote == null ? "" : body.decisionNote).trim();
+    upsertRow("DutyChangeRequest", req);
+
+    return { ok: true, request: req, rev: bumpRev("DutyChangeRequest"), duty: dutyRes };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // ── Login + failed-attempt throttling ────────────────────
 
 function handleLogin(body) {
@@ -1159,7 +1383,7 @@ function clearFailedAttempts(email) {
 // atomic, since Apps Script web apps do NOT serialize concurrent requests.
 var REV_TABS = ["Roster", "Medical", "Attendance", "IPPT", "RouteMarch", "SOC",
   "PolarFlow", "ConductDetail", "Appointments", "Leave", "MSK", "Conducts",
-  "Duty", "DutyCorrection", "Holidays", "DutyUnavailable"];
+  "Duty", "DutyCorrection", "Holidays", "DutyUnavailable", "DutyChangeRequest"];
 
 function getRev(tabName) {
   var p = PropertiesService.getScriptProperties();
@@ -1336,6 +1560,16 @@ function routeAuthedPost(action, tab, body, ctx) {
   var rsGuard = rsGuardWrite_(tab, action, body, ctx);
   if (rsGuard) return rsGuard;
 
+  // Duty change requests (design §3.2/§3.3). Same placement and the same reason
+  // as the two gates above: canWrite has passed, and this restricts one tab
+  // further — but by ACTION rather than wholesale, because submitting is open
+  // to every commander while deciding is not. See dcrGuardWrite_.
+  //
+  // It also MUTATES body.row on an append, forcing the server-owned columns, so
+  // it must run before the write dispatch below rather than alongside it.
+  var dcrGuard = dcrGuardWrite_(tab, action, body, ctx);
+  if (dcrGuard) return dcrGuard;
+
   // Mass-deletion safety net (Misc B1): commanders are capped at N single-row
   // deletes per rolling hour (default 30, Config key `commanderDeleteCap`).
   // Admins are exempt. Only single-row deletes count — full-tab `write`/replace,
@@ -1367,6 +1601,7 @@ function routeAuthedPost(action, tab, body, ctx) {
   else if (action === "sendEmail")                               res = sendEmailHelper(body);
   else if (action === "getEmailInfo")                            res = getEmailInfoHelper();
   else if (action === "analyzePhoto")                            res = analyzePhotoHelper(body);
+  else if (action === "decideDutyRequest" && body.id !== undefined) res = handleDecideDutyRequest(body, ctx);
   else if (action === "archiveNow")                              res = bravesArchiveNow(body, ctx);
   else if (action === "deleteArchive")                           res = bravesDeleteArchive(body, ctx);
   else return { error: "Invalid request" };
@@ -1985,6 +2220,10 @@ function bravesMigrateSchema() {
     ["date", "name", "tentative"]);
   ensureTabWithHeaders_(ss, "DutyUnavailable",
     ["id", "d4", "from", "to", "note", "addedBy", "addedAt"]);
+  ensureTabWithHeaders_(ss, "DutyChangeRequest",
+    ["id", "submittedBy", "submittedAt", "date", "dutyType", "platoon", "kind",
+     "fromD4", "toD4", "swapDate", "swapDutyType", "swapPlatoon", "reason",
+     "status", "decidedBy", "decidedAt", "decisionNote"]);
 
   // Duty-planning capability (DUTY_LIST_SPEC.md §9.2). A comma-separated `caps`
   // column on Accounts, NOT a fourth role: a duty planner also needs ordinary
@@ -2240,7 +2479,8 @@ function readAllTabs(ctx) {
     "Duty": "duty",
     "DutyCorrection": "dutyCorrection",
     "Holidays": "holidays",
-    "DutyUnavailable": "dutyUnavailable"
+    "DutyUnavailable": "dutyUnavailable",
+    "DutyChangeRequest": "dutyChangeRequest"
   };
 
   var result = {};
@@ -2338,7 +2578,7 @@ function readAllTabs(ctx) {
 // update silently APPENDS a duplicate person instead. Both header spellings are
 // listed because the sheet may name the column "4d" or "id" (see SHEET TABS at
 // the top of this file); forceTextColsForRange_ skips the ones that don't exist.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time", "eventTime"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"], DutyUnavailable: ["d4", "from", "to"] };
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time", "eventTime"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"], DutyUnavailable: ["d4", "from", "to"], DutyChangeRequest: ["fromD4", "toD4", "date", "swapDate"] };
 
 // Which sheet column holds a tab's row key, in preference order. Default is the
 // literal "id" column that nextId()-keyed tabs use. Roster is the exception: the
