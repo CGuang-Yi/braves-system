@@ -174,7 +174,12 @@ function submitConductDetail() {
     conductId,
     d4: gv("f-d4"),
     type: gv("f-type"),
-    reason: gv("f-reason")
+    reason: gv("f-reason"),
+    // This form offers no eventTime input — it is a wizard-captured field. An
+    // EDIT must therefore preserve the existing value rather than blanking it;
+    // a new row simply has none. The key is always present for the writeTab
+    // whole-sheet-header reason.
+    eventTime: (editId && STATE.conductDetail.find(d => d.id === editId)?.eventTime) || ""
   };
   if (editId) {
     const idx = STATE.conductDetail.findIndex(d => d.id === editId);
