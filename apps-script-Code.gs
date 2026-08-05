@@ -131,7 +131,15 @@
  *               (the live sheet keys conducts by `conductId` per the registry
  *                model; the z1–z5/recovery zone columns are OCR-populated and may
  *                be absent on sheets that predate them.)
- *   ConductDetail: id | date | time | conductId | d4 | type | reason
+ *   ConductDetail: id | date | time | conductId | d4 | type | reason | eventTime
+ *               (TWO different times, deliberately. `time` is the CONDUCT's time
+ *                and is part of the (date, time, conductId) key the log-conduct
+ *                wizard matches stored rows on — never write a per-person value
+ *                into it. `eventTime` is when THAT PERSON dropped out, autofilled
+ *                from the clock when the wizard's + Add is pressed and editable
+ *                after; blank on every row type but Fallout and ReportSick, and
+ *                blank on rows predating the column. Both are in
+ *                WRITE_TEXT_COLS_BY_TAB — "0730" would otherwise land as 730.)
  *               (one row per non-participating recruit per conduct.
  *                type ∈ {Status, PXP, RSI, Fallout, ReportSick}:
  *                  Status     = pre-existing status absence (MC/LD/Excuse/Leave/Off).
@@ -1954,6 +1962,8 @@ function bravesMigrateSchema() {
     ["outOfCamp"]);
   ensureTabWithHeaders_(ss, "Leave",
     ["isInCamp", "isInCampReviewed", "bookInDate"]);
+  ensureTabWithHeaders_(ss, "ConductDetail",
+    ["eventTime"]);
 
   // Reference tabs (created with headers if absent; missing tab → [] on frontend).
   ensureTabWithHeaders_(ss, "Platoons",
@@ -2328,7 +2338,7 @@ function readAllTabs(ctx) {
 // update silently APPENDS a duplicate person instead. Both header spellings are
 // listed because the sheet may name the column "4d" or "id" (see SHEET TABS at
 // the top of this file); forceTextColsForRange_ skips the ones that don't exist.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"], DutyUnavailable: ["d4", "from", "to"] };
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time", "eventTime"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"], DutyUnavailable: ["d4", "from", "to"] };
 
 // Which sheet column holds a tab's row key, in preference order. Default is the
 // literal "id" column that nextId()-keyed tabs use. Roster is the exception: the
