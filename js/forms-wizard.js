@@ -129,8 +129,12 @@ function openLogConductWizard(attendanceId) {
       // RSI is intentionally skipped — the wizard doesn't manage RSI anymore.
       // Legacy RSI rows pass through untouched on save (see saveLogConductWizard).
       if (d.type !== "RSI") _logConduct.originalDetailIds.push(d.id);
-      if (d.type === "Fallout") _logConduct.fallout.push({ d4: d.d4, reason: d.reason || "" });
-      else if (d.type === "ReportSick") _logConduct.reportSick.push({ d4: d.d4, reason: d.reason || "" });
+      // eventTime falls back to "" rather than to the conduct's `time` or to the
+      // clock: rows written before the column existed genuinely have no
+      // drop-out time, and inventing one would assert something false about
+      // when that person fell out.
+      if (d.type === "Fallout") _logConduct.fallout.push({ d4: d.d4, reason: d.reason || "", eventTime: d.eventTime || "" });
+      else if (d.type === "ReportSick") _logConduct.reportSick.push({ d4: d.d4, reason: d.reason || "", eventTime: d.eventTime || "" });
     });
     // Gross reconstruction of the participant snapshot: the stored field is
     // NET (Present list, absentees excluded per CSV convention — see the
@@ -360,11 +364,22 @@ function renderLogConductWizard() {
   `).join("") : `<div style="color:var(--muted);font-size:11px;padding:8px 10px;background:var(--surface);border:1px dashed var(--border);border-radius:6px;text-align:center">No recruits on medical status for this date.</div>`;
 
   const sectionList = (key, label, helpText, color) => {
+    // Only fallout/reportSick carry a drop-out time. The grid template and the
+    // cell are driven by the SAME flag — a 5-column template with a 4-column
+    // row would silently push the ✕ button out of its track.
+    const timed = WIZ_TIMED_SECTIONS.includes(key);
+    const cols = timed
+      ? "28px minmax(0,1fr) minmax(0,1fr) 64px 32px"
+      : "28px minmax(0,1fr) minmax(0,1fr) 32px";
     const rows = (w[key] || []).map((row, i) => `
-      <div class="lc-wiz-bulk-row" style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 32px;gap:8px;align-items:center;padding:8px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
+      <div class="lc-wiz-bulk-row" style="display:grid;grid-template-columns:${cols};gap:8px;align-items:center;padding:8px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);box-sizing:border-box">
         <span class="mono" style="color:var(--muted);font-size:12px;font-weight:700">${String(i + 1).padStart(2, "0")}</span>
         <div style="min-width:0">${personSearchBox({ boxId: `wiz-${key}-d4-${i}`, onPickFn: "wizPickRow", roleFilter: "Recruit", selected: row.d4, placeholder: "Search name / 4D…" })}</div>
         <input type="text" value="${escapeAttr(row.reason)}" placeholder="reason" oninput="wizUpdateRowReason('${key}', ${i}, this.value)" style="min-width:0;width:100%;padding:7px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
+        ${timed ? `<input type="text" value="${escapeAttr(row.eventTime || "")}" placeholder="HHMM" maxlength="4" inputmode="numeric"
+          title="Time they dropped out — filled in when this row was added, editable"
+          oninput="wizUpdateRowEventTime('${key}', ${i}, this.value)"
+          style="min-width:0;width:100%;padding:7px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;font-size:12px;text-align:center;box-sizing:border-box">` : ""}
         <button type="button" class="btn btn-icon btn-danger" onclick="wizRemoveRow('${key}', ${i})" title="Remove" style="padding:4px 8px">✕</button>
       </div>
     `).join("");
@@ -1212,11 +1227,17 @@ async function saveLogConductWizard() {
   // (This non-participation type was formerly mislabelled "PX"; PX now means a
   // genuine, non-absent stretch activity.)
   const detailRows = [];
+  // Every ConductDetail row below carries eventTime, including the ones for
+  // which it is always blank. writeTab derives the sheet's headers from
+  // Object.keys(data[0]) — a single row missing the key drops the column from
+  // the ENTIRE pushed sheet, not just that row.
   w.status.filter(s => s.notParticipating).forEach(s => {
-    detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: s.d4, type: "Status", reason: s.reason || "" });
+    detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: s.d4, type: "Status", reason: s.reason || "", eventTime: "" });
   });
-  w.fallout.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "Fallout", reason: r.reason || "" }));
-  w.reportSick.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "ReportSick", reason: r.reason || "" }));
+  // pad4Time normalizes once here rather than on every keystroke, so a
+  // half-typed "7" is not rewritten to "0700" under the user's cursor.
+  w.fallout.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "Fallout", reason: r.reason || "", eventTime: pad4Time(r.eventTime || "") }));
+  w.reportSick.forEach(r => detailRows.push({ id: nextId(), date: displayDate, time, conductId: w.conductId, d4: r.d4, type: "ReportSick", reason: r.reason || "", eventTime: pad4Time(r.eventTime || "") }));
 
   // Auto-create a "Pending" Medical row for each Report Sick that doesn't
   // already have a medical entry on this date. Pending = waiting for MO

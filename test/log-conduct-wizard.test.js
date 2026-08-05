@@ -1186,4 +1186,60 @@ module.exports = async function run() {
     eq(rows[0].eventTime, "0830", "the preserved row keeps its original drop-out time");
     eq(rows[0].reason, "twisted ankle", "and its reason, as before");
   });
+
+  suite("conduct wizard: event time round-trips and reaches the saved rows");
+
+  await test("re-opening a conduct restores each row's stored eventTime", () => {
+    const { target, ctx } = loadCtx();
+    target.nowHHMM = () => "9999";   // a value nothing should pick up on reload
+    target.renderLogConductWizard = () => {};
+    // bindWizardEnterToSave (armed by openLogConductWizard) attaches a keydown
+    // listener to #modal-overlay — stub just enough DOM for that to be a no-op.
+    target.document = { getElementById: () => ({ addEventListener: () => {} }) };
+    target.parseParticipantIds = participants =>
+      String(participants == null ? "" : participants).split(",").map(s => s.trim()).filter(Boolean);
+    target.STATE = {
+      attendance: [{ id: "A1", date: "26 May 2026", time: "0800", conductId: "c1" }],
+      conductDetail: [
+        { id: "d1", date: "26 May 2026", time: "0800", conductId: "c1", d4: "1234", type: "Fallout", reason: "ankle", eventTime: "0845" },
+        { id: "d2", date: "26 May 2026", time: "0800", conductId: "c1", d4: "1235", type: "ReportSick", reason: "", eventTime: "0912" }
+      ],
+      roster: [], medical: []
+    };
+    vm.runInContext("openLogConductWizard('A1');", ctx);
+    const f = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.fallout)", ctx));
+    const rs = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.reportSick)", ctx));
+    eq(f[0].eventTime, "0845", "fallout time restored, not re-stamped from the clock");
+    eq(rs[0].eventTime, "0912", "report-sick time restored");
+  });
+
+  await test("a stored row predating the column reloads as blank, not as the conduct time", () => {
+    // Backfilling from the conduct's own time would assert something false:
+    // that we know when this person dropped out. Blank honestly says we don't.
+    const { target, ctx } = loadCtx();
+    target.nowHHMM = () => "9999";
+    target.renderLogConductWizard = () => {};
+    target.document = { getElementById: () => ({ addEventListener: () => {} }) };
+    target.parseParticipantIds = participants =>
+      String(participants == null ? "" : participants).split(",").map(s => s.trim()).filter(Boolean);
+    target.STATE = {
+      attendance: [{ id: "A1", date: "26 May 2026", time: "0800", conductId: "c1" }],
+      conductDetail: [
+        { id: "d1", date: "26 May 2026", time: "0800", conductId: "c1", d4: "1234", type: "Fallout", reason: "" }
+      ],
+      roster: [], medical: []
+    };
+    vm.runInContext("openLogConductWizard('A1');", ctx);
+    const f = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.fallout)", ctx));
+    eq(f[0].eventTime, "", "no time is invented for a pre-existing row");
+  });
+
+  await test("the rendered fallout row carries a time input wired to wizUpdateRowEventTime", () => {
+    // sectionList is view code with no DOM harness, so this asserts on the
+    // generated markup string — the same technique render-wiring.test.js uses.
+    const src = require("./sources").sourceText("forms");
+    ok(/wizUpdateRowEventTime\('\$\{key\}', \$\{i\}, this\.value\)/.test(src),
+      "the section row no longer wires its time input to wizUpdateRowEventTime");
+    ok(/function wizUpdateRowEventTime\(/.test(src), "wizUpdateRowEventTime is not defined");
+  });
 };
