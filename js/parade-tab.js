@@ -36,16 +36,22 @@ let _paradeDate = "";              // ISO yyyy-mm-dd; lazily defaulted to today
 let _paradeType = "FP";            // "FP" | "LP"
 let _paradeTime = "";              // free-text HHMM for the company header
 
-// Fix 18: how far forward the parade state looks for not-yet-started absences
-// (spec §8.3 — default 7d). Session-scoped like _paradeDate / _paradeType and
-// deliberately NOT persisted, so a commander who widened it once to plan the
-// month doesn't silently keep a month-wide parade state tomorrow morning.
+// (default OFF). Session-scoped like _paradeDate / _paradeType and deliberately
+// NOT persisted, so a commander who widened it once to plan the month doesn't
+// silently keep a month-wide parade state tomorrow morning.
+//
+// Default 0 = today-only, matching bpClassifyPerson's own default. The horizon
+// is strictly opt-in: "who is away right now" is the ordinary morning question,
+// and a non-zero default silently counts people who are present today but
+// booked away later in the week. Note this is NOT spec-mandated in either
+// direction — an earlier comment here cited "spec §8.3" for a 7d default, but
+// the string "lookahead" appears nowhere in MD_Docs/.
 //
 // This is the ONLY place the horizon lives. bpClassifyPerson defaults it off, so
 // every other consumer of the classifier — the Status Board grid, the Dashboard
 // tables, the sick-report generators, the archiver — keeps
 // strict today-only semantics without knowing this variable exists.
-let _paradeLookahead = 7;          // days; Infinity = "All"
+let _paradeLookahead = 0;          // days; 0 = off (today only), Infinity = "All"
 
 // Item 19: once the user picks a parade type by hand, we stop auto-flipping to
 // LP for the rest of the session (manual choice wins). Reset only on reload.
@@ -190,7 +196,7 @@ function renderParade(el) {
         <div class="form-group" style="margin:0">
           <label style="font-size:11px;color:var(--muted)" title="How far ahead to list absences that have not started yet">Lookahead</label><br>
           <div class="filter-role-group">
-            ${[["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
+            ${[["0", "Off"], ["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
               const on = (v === "all") ? _paradeLookahead === Infinity : Number(v) === _paradeLookahead;
               return `<button type="button" class="role-btn${on ? " active" : ""}" data-action="paradeLookahead" data-value="${v}">${l}</button>`;
             }).join("")}
