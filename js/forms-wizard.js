@@ -28,8 +28,13 @@
 //                              // tell a participant change (keep the user's ticks)
 //                              // from a date change (re-derive from that day)
 //     rsi:        [{ d4, reason }],   // reported sick at FP (no participation)
-//     fallout:    [{ d4, reason }],   // dropped out mid-conduct, didn't go to MO
-//     reportSick: [{ d4, reason }],   // dropped out mid-conduct AND went to MO
+//     fallout:    [{ d4, reason, eventTime }],   // dropped out mid-conduct, didn't go to MO
+//     reportSick: [{ d4, reason, eventTime }],   // dropped out mid-conduct AND went to MO
+//                                 // eventTime: "HHMM", when THEY dropped out —
+//                                 // autofilled from the clock on + Add, editable
+//                                 // after, and blank on rows predating the field.
+//                                 // Distinct from `time` above, which is the
+//                                 // CONDUCT's time and is a stored-row join key.
 //     participants:   [],      // gross accumulated 4D snapshot (source of truth
 //                               // for totals + checklist; NET is computed at save)
 //     addedGroups:    [],      // [{label, value}] display-only chips
@@ -45,6 +50,15 @@ let _logConduct = null;
 // Personnel checklist even when no status is active on the date. Same set the §8
 // parade classifier keys off the visit date (js/braves-parade.js).
 const MED_VISIT_TYPES = ["RSI", "RSO", "MR", "MA"];
+
+// The wizard sections whose rows carry a drop-out time. Both are "dropped out
+// mid-conduct" events — a Report Sick is a fallout that went on to the MO — so
+// the time means the same thing on each. RSI is absent because the wizard no
+// longer manages RSI rows at all (see openLogConductWizard).
+//
+// Declared up here rather than beside wizAddRow because sectionList (~line 348)
+// reads it too, and a const is in the TDZ until its declaration runs.
+const WIZ_TIMED_SECTIONS = ["fallout", "reportSick"];
 
 // Enter-to-save for the conduct wizard. The wizard is a plain <div> (not a
 // <form>), so Enter does nothing by default. We bind ONE keydown listener on the
@@ -605,7 +619,12 @@ function wizUpdateStatusReason(d4, v) {
   if (row) row.reason = v;
 }
 function wizAddRow(section) {
-  _logConduct[section].push({ d4: "", reason: "" });
+  // Stamped at ADD time, not at save time: the sergeant is normally logging
+  // this live as it happens, so the clock now is the best available guess at
+  // when the person actually dropped out. It is only a default — the field is
+  // editable, for the case where a batch is entered after the fact.
+  const eventTime = WIZ_TIMED_SECTIONS.includes(section) ? nowHHMM() : "";
+  _logConduct[section].push({ d4: "", reason: "", eventTime });
   renderLogConductWizard();
 }
 function wizRemoveRow(section, idx) {
@@ -628,6 +647,15 @@ function wizPickRow(d4, boxId) {
 function wizUpdateRowReason(section, idx, v) {
   if (!_logConduct[section][idx]) return;
   _logConduct[section][idx].reason = v;
+}
+// Mirrors wizUpdateRowReason, including its missing-row guard: a render/state
+// race that addresses a removed index must be a no-op, not a throw that takes
+// the wizard down mid-edit. Deliberately NOT pad4Time-normalized on every
+// keystroke — that would rewrite "7" to "0700" while the user is still typing
+// "0745". Normalization happens once, at save (see saveLogConductWizard).
+function wizUpdateRowEventTime(section, idx, v) {
+  if (!_logConduct[section][idx]) return;
+  _logConduct[section][idx].eventTime = v;
 }
 
 // Recompute _logConduct.participants from importedBaseline + every added
@@ -715,7 +743,10 @@ function applyPastedAbsentees(dest, matched) {
     _logConduct[bucket] = _logConduct[bucket] || [];
     applied.forEach(d4 => {
       if (!_logConduct[bucket].some(x => x.d4 === d4)) {
-        _logConduct[bucket].push(keep[d4] || { d4, reason: "" });
+        // `keep` carries a row that already existed in fallout/reportSick, so
+        // its eventTime is a real observation and survives the move — only a
+        // genuinely NEW row gets stamped with now.
+        _logConduct[bucket].push(keep[d4] || { d4, reason: "", eventTime: nowHHMM() });
       }
     });
   }

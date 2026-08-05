@@ -53,6 +53,19 @@ function loadCtx() {
   return { target, ctx };
 }
 
+// Task 4: a context with the wizard loaded and the clock pinned. nowHHMM lives
+// in helpers.js, which is NOT part of the forms bundle, so it is a free
+// identifier here and stubbing it is a plain global assignment.
+function ctxWithClock(stamp, seed) {
+  const { target, ctx } = loadCtx();
+  target.nowHHMM = () => stamp;
+  target.renderLogConductWizard = () => {};
+  target.STATE = { roster: [], conductDetail: [], attendance: [] };
+  ctx._seed = seed;
+  vm.runInContext("_logConduct = _seed;", ctx);
+  return { target, ctx };
+}
+
 // Run rebuildLogConductStatus for one scenario and return 2415's tick.
 function tickFor(opts) {
   const { target, ctx } = loadCtx();
@@ -1098,5 +1111,79 @@ module.exports = async function run() {
     const rows = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.status)", ctx));
     eq(rows[0].notParticipating, true,
       "statusReviewed applies only to the date it was reviewed on ⇒ MC re-ticks");
+  });
+
+  suite("conduct wizard: fallout/report-sick event time");
+
+  await test("+ Add stamps the current clock time on a fallout row", () => {
+    const { ctx } = ctxWithClock("0930", { fallout: [], reportSick: [], status: [] });
+    vm.runInContext("wizAddRow('fallout');", ctx);
+    const rows = vm.runInContext("JSON.stringify(_logConduct.fallout)", ctx);
+    eq(JSON.parse(rows), [{ d4: "", reason: "", eventTime: "0930" }]);
+  });
+
+  await test("+ Add stamps a report-sick row the same way", () => {
+    const { ctx } = ctxWithClock("1415", { fallout: [], reportSick: [], status: [] });
+    vm.runInContext("wizAddRow('reportSick');", ctx);
+    const rows = vm.runInContext("JSON.stringify(_logConduct.reportSick)", ctx);
+    eq(JSON.parse(rows), [{ d4: "", reason: "", eventTime: "1415" }]);
+  });
+
+  await test("a section that is not time-tracked gets a blank eventTime, not a stamp", () => {
+    // The stamp is keyed off the section, not applied blindly, so a future
+    // caller adding a row to some other bucket cannot silently acquire a
+    // drop-out time it has no meaning for.
+    const { ctx } = ctxWithClock("0930", { fallout: [], reportSick: [], status: [], rsi: [] });
+    vm.runInContext("wizAddRow('rsi');", ctx);
+    const rows = vm.runInContext("JSON.stringify(_logConduct.rsi)", ctx);
+    eq(JSON.parse(rows), [{ d4: "", reason: "", eventTime: "" }]);
+  });
+
+  await test("wizUpdateRowEventTime edits the addressed row and leaves its neighbours alone", () => {
+    const { ctx } = ctxWithClock("0930", {
+      fallout: [{ d4: "1234", reason: "a", eventTime: "0900" },
+                { d4: "1235", reason: "b", eventTime: "0901" }],
+      reportSick: [], status: []
+    });
+    vm.runInContext("wizUpdateRowEventTime('fallout', 1, '1030');", ctx);
+    const rows = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.fallout)", ctx));
+    eq(rows[0].eventTime, "0900", "row 0 untouched");
+    eq(rows[1].eventTime, "1030", "row 1 updated");
+  });
+
+  await test("wizUpdateRowEventTime on a missing index is a silent no-op, not a throw", () => {
+    // Mirrors wizUpdateRowReason's guard. A render/state race that addresses a
+    // removed row must not take the whole wizard down.
+    const { ctx } = ctxWithClock("0930", { fallout: [], reportSick: [], status: [] });
+    vm.runInContext("wizUpdateRowEventTime('fallout', 7, '1030');", ctx);
+    eq(vm.runInContext("_logConduct.fallout.length", ctx), 0);
+  });
+
+  await test("a pasted batch is stamped too — a paste is still an add", () => {
+    const { target, ctx } = ctxWithClock("1100", { fallout: [], reportSick: [], status: [] });
+    target.STATE = { roster: [{ id: "1234" }, { id: "1235" }] };
+    target.parsePastedD4s = () => ({ matched: ["1234", "1235"], unmatched: [] });
+    target.splitPastedForDest = (dest, m) => ({ applied: m, skipped: [] });
+    vm.runInContext("applyPastedAbsentees('fallout', ['1234', '1235']);", ctx);
+    const rows = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.fallout)", ctx));
+    eq(rows.map(r => r.eventTime), ["1100", "1100"]);
+  });
+
+  await test("a paste that MOVES an existing row keeps that row's original time", () => {
+    // applyPastedAbsentees preserves an already-typed reason when someone stays
+    // in the same bucket (the `keep` map). The time they actually dropped out
+    // must survive the same way — re-stamping it to now would overwrite a real
+    // observation with the time of an unrelated paste.
+    const { target, ctx } = ctxWithClock("1200", {
+      fallout: [{ d4: "1234", reason: "twisted ankle", eventTime: "0830" }],
+      reportSick: [], status: []
+    });
+    target.STATE = { roster: [{ id: "1234" }] };
+    target.parsePastedD4s = () => ({ matched: ["1234"], unmatched: [] });
+    target.splitPastedForDest = (dest, m) => ({ applied: m, skipped: [] });
+    vm.runInContext("applyPastedAbsentees('fallout', ['1234']);", ctx);
+    const rows = JSON.parse(vm.runInContext("JSON.stringify(_logConduct.fallout)", ctx));
+    eq(rows[0].eventTime, "0830", "the preserved row keeps its original drop-out time");
+    eq(rows[0].reason, "twisted ankle", "and its reason, as before");
   });
 };
