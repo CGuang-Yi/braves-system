@@ -454,7 +454,7 @@ const MED_STATUS_GROUPS = [
   { label: "Awaiting MO",             options: ["Pending"] },
   { label: "Severe (away from camp)", options: ["MC", "Warded"] },
   { label: "In camp, restricted",     options: ["LD", "RIB (Rest in Bunk)"] },
-  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Camo", "Excuse Loud Noise"] },
+  { label: "Excuses",                 options: ["Excuse Heavy Load", "Excuse Kneeling", "Excuse Squatting", "Excuse Uniform", "Excuse RMJ", "Excuse Swimming", "Excuse Prolonged Standing", "Excuse Upper Limb", "Excuse Lower Limb", "Excuse FLEGS", "Excuse Sunlight", "Excuse Stay In", "Excuse PT", "Excuse Shoes", "Excuse Boots", "Excuse Camo", "Excuse Loud Noise"] },
   { label: "Cleared by MO",           options: ["NIL"] }
 ];
 const MED_STATUSES = MED_STATUS_GROUPS.flatMap(g => g.options);
@@ -477,14 +477,33 @@ function addCustomStatus(name, participates) {
   else { (STATE.customStatuses = STATE.customStatuses || []).push({ name, participates: !!participates }); }
   saveCustomStatuses();
 }
+// Built-in statuses that do NOT restrict training. Everything absent from this
+// map restricts — the safe default, since a status nobody has classified should
+// keep the recruit off the conduct rather than silently onto it.
+//
+// Read the list carefully before editing: "Excuse Sunlight" and "Excuse Shoes"
+// READ permissive and are not — both restrict training and are deliberately
+// absent. This is not a pattern match on the word "Excuse".
+const BUILTIN_STATUS_PARTICIPATES = {
+  "NIL": true,                 // MO cleared, back to active
+  "Excuse Camo": true,
+  "Excuse Uniform": true,
+  "Excuse Loud Noise": true,
+  "Excuse Boots": true
+};
+
 // Does this status mean the recruit normally still participates in conducts?
-// Built-in: only NIL (MO cleared, back to active). Custom: per its saved flag.
+// Resolution order: a commander's saved custom status wins, then the built-in
+// default above, then false. The custom layer comes FIRST so a company that
+// disagrees with a default can override it without a code change —
+// addCustomStatus matches on name case-insensitively, so saving a custom
+// "Excuse Camo" shadows the built-in of the same name.
 // Strips any +N ghost suffix first so "MC+1" resolves to "MC".
 function statusParticipates(status) {
   const base = medStatusBaseFamily(status);
-  if (base === "NIL") return true;
   const c = customStatusByName(base);
-  return c ? !!c.participates : false;
+  if (c) return !!c.participates;
+  return !!BUILTIN_STATUS_PARTICIPATES[base];
 }
 
 // ── Same-status-family collapsing ────────────────────────
