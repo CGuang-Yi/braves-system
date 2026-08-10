@@ -934,6 +934,32 @@ function setStatusTrendDays(v) {
   if (pills) pills.innerHTML = statusTrendRangePillsHtml();
 }
 
+// Series colours are keyed by STATUS, not by series index. They used to be
+// palette[i], and statusTrendSeries sorts by peak count — so a status's colour
+// changed whenever the data did (Excuse read red purely because it was the
+// tallest line, and would have swapped with MC the day MC overtook it).
+//
+// The index palette survives as the FALLBACK, not as the scheme: statuses are
+// user-extensible via "＋ New custom status…", and statusTrendSeries also
+// synthesises an "Other" bucket, so there is no fixed label set to enumerate.
+//
+// The Excuse key is SINGULAR — statusTrendSeries collapses every "Excuse *" into
+// one line labelled "Excuse" (helpers.js), so a map keyed on the individual
+// excuses would never be hit.
+const STATUS_TREND_PALETTE = ["#F85149", "#D29922", "#58A6FF", "#3FB950", "#BC8CFF", "#E3B341", "#43C59E", "#8B949E", "#484F58"];
+const STATUS_TREND_COLORS = {
+  "MC": "#F85149", "Warded": "#F85149",
+  "LD": "#E3B341",
+  "Excuse": "#58A6FF",
+  "RMJ": "#D29922",
+  "RIB (Rest in Bunk)": "#3FB950",
+  "Pending": "#BC8CFF",
+  "NIL": "#43C59E"
+};
+function statusTrendColor(label, i) {
+  return STATUS_TREND_COLORS[label] || STATUS_TREND_PALETTE[i % STATUS_TREND_PALETTE.length];
+}
+
 function buildStatusTrendChart(scopedIds) {
   const canvas = document.getElementById("chart-status");
   if (!canvas) return;
@@ -950,7 +976,6 @@ function buildStatusTrendChart(scopedIds) {
     byDay.push({ iso, entries: currentMedicalEffectiveAll(iso).filter(e => scopedIds.has(e.d4)) });
   }
   const { labels, series } = statusTrendSeries(byDay, DAYS, 8);
-  const palette = ["#F85149", "#D29922", "#58A6FF", "#3FB950", "#BC8CFF", "#E3B341", "#43C59E", "#8B949E", "#484F58"];
   // Past ~6 weeks the per-day dots stop being readable and turn the line into a
   // dotted band, so they are dropped — hover still works (interaction.mode is
   // "index", which doesn't need a visible point to hit). Beyond a year MM/DD
@@ -965,8 +990,8 @@ function buildStatusTrendChart(scopedIds) {
         : iso.slice(5).replace("-", "/")),                          // MM/DD
       datasets: series.map((s, i) => ({
         label: s.label, data: s.data,
-        borderColor: palette[i % palette.length],
-        backgroundColor: palette[i % palette.length] + "22",
+        borderColor: statusTrendColor(s.label, i),
+        backgroundColor: statusTrendColor(s.label, i) + "22",
         tension: 0.3, pointRadius: dense ? 0 : 2, pointHoverRadius: 5, fill: false
       }))
     },
