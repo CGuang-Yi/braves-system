@@ -3552,13 +3552,19 @@ function bpClassifyPerson(r, dateIso, opts) {
       const timing = m.time ? ` (${m.time})` : "";
       out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
     }
-    // An MR (Medical Review) visit is NOT a report-sick and must never surface
-    // here: while awaiting the MO its status is "Pending" and its start date is
-    // today, which would otherwise satisfy the Pending-clause below and
-    // double-list the person as MR *and* RSI. An MR going for review is only an
-    // MR (its own section above). A resolved MR (status MC/LD/…) still flows to
-    // ATT C / STATUS through their own clauses — those don't exclude type MR.
-    const isRS = m.type !== "MR" && (
+    // MR and MA are NOT report-sicks and must never surface here. Both are
+    // booked visits with their own section, and both are naturally logged with
+    // status "Pending" (the MO outcome is unknown until they are seen) on a
+    // start date of the visit day — which is exactly what the Pending-clause
+    // below tests, so without these exclusions each one double-lists as its own
+    // section AND as RSI.
+    //   • MR (Medical Review) → its own MR section above.
+    //   • MA (Medical Appointment) → OTHERS, via the MA branch below. This one
+    //     is a delayed trap: an appointment booked weeks ahead reads correctly
+    //     until the day it comes due, then flips to RSI.
+    // A resolved MR/MA (status MC/LD/…) still flows to ATT C / STATUS through
+    // their own clauses — those don't exclude these types.
+    const isRS = m.type !== "MR" && m.type !== "MA" && (
       (((m.type === "RSI" || m.type === "RSO") && reportedToday) && moPending)
       || (m.status === "Pending" && medStatusActive(m, dateIso)));
     if (isRS) {
