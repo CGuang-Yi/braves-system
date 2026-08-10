@@ -85,41 +85,68 @@ these controls.
 
 ---
 
-## 3 · Status trend chart colours
+## 3 · Dashboard Status Trend chart has no status colours
 
-**Defect.** On the person card's status trend chart, MC and Excuse read wrong.
-The palette is `statusColor` at `js/forms.js:725`, consumed by the Chart.js
-point colours at `js/forms.js:809`.
+**Defect.** The Dashboard's Status Trend line chart
+(`buildStatusTrendChart`, `js/render-dashboard.js:937`) assigns colours by
+**series index**, not by status:
 
-**Current → wanted:**
+```js
+const palette = ["#F85149", "#D29922", "#58A6FF", "#3FB950", "#BC8CFF", …];
+borderColor: palette[i % palette.length]
+```
 
-| Status | Now | Wanted |
-|---|---|---|
-| `MC`, `Warded` | `#F85149` red | unchanged |
-| `LD` | `#D29922` orange | `#E3B341` yellow |
-| every `Excuse *` (20 entries) | `#E3B341` yellow | `#58A6FF` blue |
-| `RIB (Rest in Bunk)` | `#E3B341` yellow | `#BC8CFF` purple |
-| `RMJ` | `#D29922` orange | unchanged |
+`statusTrendSeries` sorts its series by peak count descending
+(`js/helpers.js:980`), so the index — and therefore the colour — is a function
+of the data. Excuse is red today only because it is the largest line; the day MC
+overtakes it, the two swap. This is not a wrong palette, it is the absence of
+one, and it is why the chart currently reads MC as orange and Excuse as red.
 
-`RIB` moves because it currently shares `#E3B341` with the Excuses, and LD is
-taking that value — leaving RIB there would make LD and RIB indistinguishable.
-Purple is what `medTagBadge` (`js/helpers.js:713`) already gives RIB, so this
-moves the chart toward the badge palette rather than inventing a colour.
+**Fix.** A `STATUS_TREND_COLORS` map from series label to colour, with the
+existing index palette kept as the fallback for labels not in it — custom
+statuses and the synthesised `"Other"` bucket must still get a colour.
 
-**Scope.** This chart only. Two other LD/Excuse palettes exist and are **not**
+| Series label | Colour |
+|---|---|
+| `MC`, `Warded` | `#F85149` red |
+| `LD` | `#E3B341` yellow |
+| `Excuse` (the collapsed line) | `#58A6FF` blue |
+| `RMJ` | `#D29922` orange |
+| `RIB (Rest in Bunk)` | `#3FB950` green |
+| `Pending` | `#BC8CFF` purple |
+| `NIL` | `#43C59E` teal |
+| anything else | index palette, as today |
+
+`RIB` and `Pending` keep the colours they happen to have in the current
+screenshot; naming them in the map is what stops those colours moving when the
+data does.
+
+**Note — the label is `Excuse`, singular.** `statusTrendSeries` collapses every
+status beginning with `Excuse` into one line (`js/helpers.js:975`), so the map
+needs one entry, not twenty. The test is `indexOf("Excuse") === 0` and is
+**case-sensitive**: a custom status stored as `"EXCUSE BOOTS"` escapes the
+collapse and draws its own line off the fallback palette. That is existing
+behaviour and is not changed here — but see item 4, which adds a correctly-cased
+`Excuse Boots` built-in that *will* collapse.
+
+**Scope.** This chart only. Three other status palettes exist and are **not**
 touched:
 
+- The person card's own status timeline (`statusColor`, `js/forms.js:725`) — LD
+  orange, Excuse yellow.
 - `medTagBadge` (`js/helpers.js:709`) — LD orange, Excuse purple. Drives badges
   across roster, person card, medical list.
 - Status Board grid (`js/render-statusboard.js:24`) — LD grey, Excuse bronze,
-  with a legend at `js/render-statusboard.js:397`.
+  legend at `js/render-statusboard.js:397`.
 
-The three palettes already disagree with each other on `master`. Reconciling
-them is a larger judgement call about a shared status-colour token and is out of
-scope; this change makes the chart internally coherent, nothing more.
+All four disagree with each other on `master`. Reconciling them behind a shared
+status-colour token is a larger judgement call and is out of scope.
 
-**Verification.** Manual, in a browser, against a person with a mixed status
-history. No automated coverage — the chart is Chart.js output.
+**Verification.** Manual, in a browser, against seeded state with several
+statuses live. Optionally a unit test that the map covers every label
+`statusTrendSeries` can emit for the built-in status list — cheap, and it is
+what would catch a new built-in status silently falling back to the index
+palette.
 
 ---
 
@@ -132,24 +159,39 @@ The conduct wizard reads it to seed the not-participating tick
 conduct. Several excuses do not restrict training at all — Excuse Camo is the
 reported one.
 
-**Fix.** Add a `BUILTIN_STATUS_PARTICIPATES` map beside `statusParticipates`,
-consulted **after** the custom-status override and **before** the `false`
-fallback. Resolution order becomes: custom override → built-in default → false.
+**Fix, part A — a new built-in status.** Add `Excuse Boots` to the Excuses
+group. It must be added at **four** enumeration sites, all of which list the
+excuses by hand:
 
-Participating by default:
+- `STATUS_GROUPS` (`js/helpers.js:457`) — the dropdown's source of truth.
+- `statusOrder` (`js/forms.js:696`) — the person card's status ordering.
+- `statusColor` (`js/forms.js:729`) — the person-card timeline palette, which
+  enumerates every Excuse individually; an omitted entry falls to a default
+  colour.
+- `test/status-enum.test.js:11` — the enum assertion.
+
+Note the company's existing rows are stored as `"EXCUSE BOOTS"` in caps and will
+**not** match the new built-in — they stay a custom status until re-entered.
+That is a data question, not a code one, and this branch does not migrate them.
+
+**Fix, part B — participation defaults.** Add a `BUILTIN_STATUS_PARTICIPATES`
+map beside `statusParticipates`, consulted **after** the custom-status override
+and **before** the `false` fallback. Resolution order becomes: custom override →
+built-in default → false.
+
+Participating by default (does **not** restrict training):
 
 - `Excuse Camo`
-- `Excuse Sunlight`
-- `Excuse Shoes`
 - `Excuse Uniform`
 - `Excuse Loud Noise`
+- `Excuse Boots` (new)
 
-Everything else in `STATUS_GROUPS` (`js/helpers.js:457`) keeps `false`,
-including the excuses that do restrict training — `Excuse PT`, `Excuse Heavy
-Load`, `Excuse Kneeling`, `Excuse Squatting`, `Excuse Swimming`, `Excuse
-Prolonged Standing`, `Excuse Upper Limb`, `Excuse Lower Limb`, `Excuse FLEGS`,
-`Excuse Stay In`, `Excuse RMJ` — plus `MC`, `Warded`, `LD`, `RIB`, `RMJ`,
-`Pending`.
+Everything else in `STATUS_GROUPS` keeps `false` — including `Excuse Sunlight`
+and `Excuse Shoes`, which **do** restrict training, alongside `Excuse PT`,
+`Excuse Heavy Load`, `Excuse Kneeling`, `Excuse Squatting`, `Excuse Swimming`,
+`Excuse Prolonged Standing`, `Excuse Upper Limb`, `Excuse Lower Limb`,
+`Excuse FLEGS`, `Excuse Stay In`, `Excuse RMJ`, and `MC`, `Warded`, `LD`, `RIB`,
+`RMJ`, `Pending`.
 
 The map is a default, not a rule. `addCustomStatus` (`js/helpers.js:472`)
 matches on name case-insensitively, so saving a custom status named
@@ -166,12 +208,15 @@ list — every built-in and custom status, one toggle each, writing through
 change. It is most of this item's work and none of its value today, so it is
 deferred to its own task.
 
-**Verification.** Unit tests on `statusParticipates`: a participating built-in,
-a restrictive built-in, `NIL`, a ghost suffix (`Excuse Camo` has none, but
-`medStatusBaseFamily` stripping must still be exercised), and a custom override
-beating a built-in default in **both** directions — a custom `false` over a
-built-in `true`, and a custom `true` over a built-in `false`. The override
-precedence is the part most likely to regress silently.
+**Verification.** Unit tests on `statusParticipates`: a participating built-in
+(`Excuse Camo`), a restrictive built-in that is easy to get backwards
+(`Excuse Sunlight` — it reads permissive and is not), `NIL`, a ghost suffix
+(`Excuse Camo` has none, but `medStatusBaseFamily` stripping must still be
+exercised), and a custom override beating a built-in default in **both**
+directions — a custom `false` over a built-in `true`, and a custom `true` over a
+built-in `false`. The override precedence is the part most likely to regress
+silently. `test/status-enum.test.js` covers `Excuse Boots` reaching the
+dropdown.
 
 ---
 
@@ -216,12 +261,20 @@ guard is proven not to have swallowed the real case.
 ## Cross-cutting
 
 **Files touched:** `apps-script-Code.gs` (items 1, 5-port), `js/parade-tab.js`
-(2), `js/forms.js` (3), `js/helpers.js` (4), `js/braves-parade.js` (5).
+(2), `js/render-dashboard.js` (3), `js/helpers.js` (4), `js/forms.js` (4),
+`js/braves-parade.js` (5), `test/status-enum.test.js` (4).
 
-**Cache-bust:** `js/parade-tab.js`, `js/forms.js`, `js/helpers.js` and
-`js/braves-parade.js` each need their `?v=` bumped in `index.html`, **after**
-the last edit to each file — bumping early served stale JS for a stretch of the
-2026-08-03 session.
+**Cache-bust:** `js/parade-tab.js`, `js/render-dashboard.js`, `js/helpers.js`,
+`js/forms.js` and `js/braves-parade.js` each need their `?v=` bumped in
+`index.html`, **after** the last edit to each file — bumping early served stale
+JS for a stretch of the 2026-08-03 session.
+
+`js/helpers.js` is the one to watch: item 4 adds `Excuse Boots` to
+`STATUS_GROUPS` there, and `js/forms.js` enumerates the same list. A returning
+user who fetched a new `forms.js` against a cached `helpers.js` would get a
+dropdown and an ordering that disagree. Both bumps are mandatory, not
+cosmetic — this is the exact shape of the `nowHHMM` defect PR #141 had to
+patch after the fact.
 
 **Deploy:** `apps-script-Code.gs` must be redeployed for item 1 to take effect.
 No migration, and no ordering constraint against the frontend: an un-redeployed
@@ -234,7 +287,9 @@ backend simply keeps coercing dates on a feature nobody is using yet.
 
 - Encrypting the localStorage cache — its own spec.
 - A status-participation editor — KIV, see item 4.
-- Reconciling the three LD/Excuse palettes — see item 3.
+- Reconciling the four status palettes behind a shared token — see item 3.
+- Migrating the existing all-caps `"EXCUSE BOOTS"` rows onto the new
+  correctly-cased built-in — see item 4.
 - The dashboard's Lookahead pills — see item 2.
 - `bpGridCell` has no MA branch (`js/braves-parade.js:583`), so an MA-only
   person shows blank on the Status Board grid despite being classified into
