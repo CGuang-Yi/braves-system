@@ -38,7 +38,7 @@ backend (`apps-script-Code.gs`). Zero-dependency TAP test harness under `test/`
   trailer** — see the `no-coauthor-trailer.md` memory.
 - **Do not run `npm run map`.** The codebase map is regenerated only on explicit
   request; `test/map-freshness.test.js` warns by design and never fails.
-- **Verification commands:** `npm test` (expect **1069 passing / 0 failed** at
+- **Verification commands:** `npm test` (expect **1115 passing / 0 failed** at
   baseline, rising as tasks add tests), `npm run lint:errors`, `npm run typecheck`.
 
 ---
@@ -1018,7 +1018,7 @@ tag touched — a script whose file this branch did not edit must not be bumped.
 npm test 2>&1 | tail -3 && npm run lint:errors && npm run typecheck
 ```
 
-Expected: **1089 passing / 0 failed** (1069 baseline + 4 + 4 + 8 + 4), lint
+Expected: **1135 passing / 0 failed** (1115 baseline + 4 + 4 + 8 + 4), lint
 clean, typecheck clean. If the count is short, a test file was not created or
 `test/run.js` did not discover it — it auto-discovers `*.test.js` under `test/`,
 so check the filename suffix.
