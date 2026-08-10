@@ -2578,7 +2578,11 @@ function readAllTabs(ctx) {
 // update silently APPENDS a duplicate person instead. Both header spellings are
 // listed because the sheet may name the column "4d" or "id" (see SHEET TABS at
 // the top of this file); forceTextColsForRange_ skips the ones that don't exist.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time", "eventTime"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"], DutyUnavailable: ["d4", "from", "to"], DutyChangeRequest: ["fromD4", "toD4", "date", "swapDate"] };
+// Duty/DutyCorrection/Holidays `date` is ISO YYYY-MM-DD, not the "01 Jan 2026"
+// form older tabs use. Left in General format Sheets parses it into a real Date
+// and readTab re-serves it as "01 Sep 2026", so the grid's lexicographic date
+// comparisons stop matching. Same class of bug as the leading-zero 4Ds beside it.
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time", "eventTime"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4", "date"], DutyCorrection: ["d4", "date"], Holidays: ["date"], DutyUnavailable: ["d4", "from", "to"], DutyChangeRequest: ["fromD4", "toD4", "date", "swapDate"] };
 
 // Which sheet column holds a tab's row key, in preference order. Default is the
 // literal "id" column that nextId()-keyed tabs use. Roster is the exception: the
