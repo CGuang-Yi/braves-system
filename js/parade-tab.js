@@ -95,7 +95,21 @@ function setParadeScope(v) { _paradeScope = v; refreshParade(); }
 function setParadeDate(v) { _paradeDate = v; refreshParade(); }
 function setParadeType(v) { _paradeType = v; _paradeTypeManual = true; refreshParade(); }
 function setParadeTime(v) { _paradeTime = v; if (_paradeScope === "company") refreshParade(); }
-function setParadeLookahead(v) { _paradeLookahead = (v === "all") ? Infinity : Number(v) || 0; refreshParade(); }
+// The pill toolbar is rendered OUTSIDE #parade-body, so refreshParade() — which
+// only re-renders that div — cannot repaint it. Both the initial render and the
+// setter go through this one function so the ".active" pill and _paradeLookahead
+// cannot disagree. Deliberately not a render(): a full re-render would re-enter
+// paradeAutoTypeInit() and paradeStartLpFlipTimer() on every click.
+const PARADE_LOOKAHEAD_OPTS = [["0", "Off"], ["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]];
+const paradeLookaheadOn = v => (v === "all") ? _paradeLookahead === Infinity : Number(v) === _paradeLookahead;
+function paintLookaheadPills() {
+  const host = document.getElementById("parade-lookahead");
+  if (!host) return;
+  host.querySelectorAll("button[data-value]").forEach(b => {
+    b.classList.toggle("active", paradeLookaheadOn(b.dataset.value));
+  });
+}
+function setParadeLookahead(v) { _paradeLookahead = (v === "all") ? Infinity : Number(v) || 0; paintLookaheadPills(); refreshParade(); }
 // The opts object every parade-side classifier call threads through. Exported as
 // a function rather than the bare variable so the Dashboard's parade textarea
 // (branch 5) picks up the same horizon without reaching into module state.
@@ -195,11 +209,10 @@ function renderParade(el) {
         </div>
         <div class="form-group" style="margin:0">
           <label style="font-size:11px;color:var(--muted)" title="How far ahead to list absences that have not started yet">Lookahead</label><br>
-          <div class="filter-role-group">
-            ${[["0", "Off"], ["7", "7d"], ["14", "14d"], ["30", "30d"], ["all", "All"]].map(([v, l]) => {
-              const on = (v === "all") ? _paradeLookahead === Infinity : Number(v) === _paradeLookahead;
-              return `<button type="button" class="role-btn${on ? " active" : ""}" data-action="paradeLookahead" data-value="${v}">${l}</button>`;
-            }).join("")}
+          <div class="filter-role-group" id="parade-lookahead">
+            ${PARADE_LOOKAHEAD_OPTS.map(([v, l]) =>
+              `<button type="button" class="role-btn${paradeLookaheadOn(v) ? " active" : ""}" data-action="paradeLookahead" data-value="${v}">${l}</button>`
+            ).join("")}
           </div>
         </div>
       </div>

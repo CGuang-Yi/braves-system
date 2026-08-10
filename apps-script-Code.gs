@@ -2578,7 +2578,11 @@ function readAllTabs(ctx) {
 // update silently APPENDS a duplicate person instead. Both header spellings are
 // listed because the sheet may name the column "4d" or "id" (see SHEET TABS at
 // the top of this file); forceTextColsForRange_ skips the ones that don't exist.
-var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time", "eventTime"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4"], DutyCorrection: ["d4"], DutyUnavailable: ["d4", "from", "to"], DutyChangeRequest: ["fromD4", "toD4", "date", "swapDate"] };
+// Duty/DutyCorrection/Holidays `date` is ISO YYYY-MM-DD, not the "01 Jan 2026"
+// form older tabs use. Left in General format Sheets parses it into a real Date
+// and readTab re-serves it as "01 Sep 2026", so the grid's lexicographic date
+// comparisons stop matching. Same class of bug as the leading-zero 4Ds beside it.
+var WRITE_TEXT_COLS_BY_TAB = { Attendance: ["participants", "time"], Appointments: ["time"], ConductDetail: ["time", "eventTime"], Conducts: ["className", "makeupFor"], Medical: ["time"], PolarFlow: ["time"], Roster: ["id", "4d", "4D"], Duty: ["d4", "date"], DutyCorrection: ["d4", "date"], Holidays: ["date"], DutyUnavailable: ["d4", "from", "to"], DutyChangeRequest: ["fromD4", "toD4", "date", "swapDate"] };
 
 // Which sheet column holds a tab's row key, in preference order. Default is the
 // literal "id" column that nextId()-keyed tabs use. Roster is the exception: the
@@ -3548,13 +3552,19 @@ function bpClassifyPerson(r, dateIso, opts) {
       const timing = m.time ? ` (${m.time})` : "";
       out.mr.push(`${rn} - ${m.reason || ""}${timing}`.trim());
     }
-    // An MR (Medical Review) visit is NOT a report-sick and must never surface
-    // here: while awaiting the MO its status is "Pending" and its start date is
-    // today, which would otherwise satisfy the Pending-clause below and
-    // double-list the person as MR *and* RSI. An MR going for review is only an
-    // MR (its own section above). A resolved MR (status MC/LD/…) still flows to
-    // ATT C / STATUS through their own clauses — those don't exclude type MR.
-    const isRS = m.type !== "MR" && (
+    // MR and MA are NOT report-sicks and must never surface here. Both are
+    // booked visits with their own section, and both are naturally logged with
+    // status "Pending" (the MO outcome is unknown until they are seen) on a
+    // start date of the visit day — which is exactly what the Pending-clause
+    // below tests, so without these exclusions each one double-lists as its own
+    // section AND as RSI.
+    //   • MR (Medical Review) → its own MR section above.
+    //   • MA (Medical Appointment) → OTHERS, via the MA branch below. This one
+    //     is a delayed trap: an appointment booked weeks ahead reads correctly
+    //     until the day it comes due, then flips to RSI.
+    // A resolved MR/MA (status MC/LD/…) still flows to ATT C / STATUS through
+    // their own clauses — those don't exclude these types.
+    const isRS = m.type !== "MR" && m.type !== "MA" && (
       (((m.type === "RSI" || m.type === "RSO") && reportedToday) && moPending)
       || (m.status === "Pending" && medStatusActive(m, dateIso)));
     if (isRS) {
