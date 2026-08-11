@@ -43,6 +43,27 @@
   </form>
 </div>
 
+<!-- Cache unlock. Shown ONLY on a cold start (browser restarted) when an
+     encrypted cache is on disk but sessionStorage no longer holds the key. The
+     password here unlocks the local cache; it is NOT a re-login — the 30-day
+     token still handles auth, and the derive runs entirely in-browser so this
+     works offline. -->
+<div id="unlock-overlay" class="login-overlay hidden">
+  <form id="unlock-form" class="login-card" autocomplete="on">
+    <div class="login-brand">
+      <small>40 SAR</small>
+      <h1>Unlock Offline Copy</h1>
+    </div>
+    <p class="login-sub">Your offline copy is encrypted. Enter your password to unlock it — this works without a connection.</p>
+    <label class="login-field">Password
+      <input type="password" id="unlock-password" autocomplete="current-password" placeholder="••••••••">
+    </label>
+    <div id="unlock-error" class="login-error"></div>
+    <button type="submit" id="unlock-submit" class="btn btn-primary login-submit">Unlock</button>
+    <button type="button" id="unlock-skip" class="btn login-submit" style="margin-top:8px">Continue online instead</button>
+  </form>
+</div>
+
 <!-- SIDEBAR -->
 <div id="sidebar">
   <div class="logo">

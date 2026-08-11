@@ -179,6 +179,65 @@ document.addEventListener("click", (e) => {
 function showLogin() { document.getElementById("login-overlay")?.classList.remove("hidden"); }
 function showApp() { document.getElementById("login-overlay")?.classList.add("hidden"); }
 
+// Resolves true if the cache was unlocked, false if the user skipped or gave up.
+// A wrong password NEVER wipes the cache — the approved policy is to retain the
+// ciphertext and retry next launch, because ciphertext without a key leaks
+// nothing and wiping would make one typo cost an offline device its cache.
+function promptCacheUnlock() {
+  return new Promise(resolve => {
+    const overlay = document.getElementById("unlock-overlay");
+    const form = document.getElementById("unlock-form");
+    const err = document.getElementById("unlock-error");
+    const btn = document.getElementById("unlock-submit");
+    if (!overlay || !form) { resolve(false); return; }
+    overlay.classList.remove("hidden");
+
+    const finish = ok => { overlay.classList.add("hidden"); resolve(ok); };
+
+    document.getElementById("unlock-skip").onclick = () => finish(false);
+
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const pw = document.getElementById("unlock-password").value;
+      if (!pw) { err.textContent = "Enter your password."; return; }
+      err.textContent = "";
+      btn.disabled = true; btn.textContent = "Unlocking…";
+      try {
+        await setCacheKeyFromPassword(pw);
+        await loadLocal();
+        // loadLocal leaves STATE empty on a wrong key (decryptCache → null), so
+        // this is how we tell a good password from a bad one WITHOUT storing a
+        // verifier anywhere: either the cache decoded or it did not.
+        if (Array.isArray(STATE.roster) && STATE.roster.length > 0) { finish(true); return; }
+        clearCacheKey();
+        err.textContent = "That password didn't unlock the offline copy. Try again, or continue online.";
+      } catch (ex) {
+        err.textContent = "Could not unlock: " + ex.message;
+      } finally {
+        btn.disabled = false; btn.textContent = "Unlock";
+        document.getElementById("unlock-password").value = "";
+      }
+    };
+  });
+}
+
+// Shown once, on the launch that recovers from an interrupted cache write.
+// Silent auto-recovery is deliberately rejected: the failure mode is invisible
+// staleness, and a user who never learns it happened cannot report that it
+// happens often.
+function showCacheStaleBanner(refreshed) {
+  const host = document.getElementById("content");
+  if (!host) return;
+  const el = document.createElement("div");
+  el.className = "readonly-banner";
+  el.textContent = refreshed
+    ? "Your offline copy was interrupted and may have been out of date. It's been refreshed from the sheet."
+    : "Your offline copy was interrupted and may be out of date. Reconnect to refresh it.";
+  el.onclick = () => el.remove();
+  el.title = "Click to dismiss";
+  host.prepend(el);
+}
+
 // Reflect the signed-in account on the chrome: a body class drives the soft
 // read-only styling for viewers / admin-only visibility, and the sidebar footer
 // shows who's logged in (name when the personId links to a Roster row).
@@ -238,6 +297,10 @@ async function doLogin(e) {
     const res = await API.login(email, password);
     if (res && res.ok && res.authToken) {
       setSession(res.authToken, res.role, res.personId, res.email, res.caps);
+      // The one moment the plaintext password is in hand. Derive the cache key
+      // now and stash it in sessionStorage; the password itself is never stored.
+      // Failure here is non-fatal — the app runs online-only for the session.
+      try { await setCacheKeyFromPassword(password); } catch (e) { console.error("cache key derive failed", e); }
       showApp();
       await pullAndRender();
     } else {
@@ -320,14 +383,35 @@ let _offlineGrantVerdict = "none";
   // must never reach memory, let alone the DOM (§4.7.5a). This is the only code
   // path guaranteed to run ahead of the first render.
   _offlineGrantVerdict = enforceOfflineGrant();
+
+  // Read the torn-write marker BEFORE loading: an interrupted encrypt means
+  // whatever is on disk is behind, so the warm-cache fast path must be skipped
+  // and a full authoritative pull run instead. Cleared immediately — this is a
+  // one-shot recovery, not a sticky state.
+  const cacheWasTorn = cacheFlushWasInterrupted();
+  if (cacheWasTorn) clearCacheFlushMarker();
+
   await loadLocal();
   loadFilter();
   initFilterControls();
   initLoginForm();
 
-  // No token on this device → straight to login (synchronous, before any await,
-  // so there's no flash of the app for an unauthenticated user).
+  // No token on this device → straight to login. (loadLocal() is async now, so
+  // this is no longer strictly before the first await; the login overlay starts
+  // visible-on-demand and nothing has painted the app chrome yet, so there is
+  // still no flash of the app for an unauthenticated user.)
   if (!STATE.authToken) { showLogin(); return; }
+
+  // Have a token but the cache is locked: sessionStorage lost the key when the
+  // browser closed. Offer to unlock — the derive is local, so this works
+  // offline, which is the whole reason the password is an UNLOCK here and not a
+  // re-login. Skipping falls through to the online-only path below.
+  const hasCiphertext = (() => {
+    try { return isCacheCiphertext(localStorage.getItem(STORAGE_KEY) || ""); } catch { return false; }
+  })();
+  if (hasCiphertext && !(await getCacheKey())) {
+    await promptCacheUnlock();
+  }
 
   // Have a token — try to use it. A 401/expired response bounces to login.
   showApp();
@@ -338,7 +422,13 @@ let _offlineGrantVerdict = "none";
   // rev baseline (STATE.rev) — without a baseline there's nothing for
   // autoSyncOnLaunch's revCheck to diff against, so a first-run/cleared-cache
   // device falls through to the same blocking full pull as before (cold path).
-  const warmCache = Array.isArray(STATE.roster) && STATE.roster.length > 0
+  //
+  // cacheWasTorn forces the cold path: an interrupted encrypt means the on-disk
+  // copy is behind whatever was in memory when the tab died, and rendering it as
+  // if it were current is exactly the invisible staleness the marker exists to
+  // catch.
+  const warmCache = !cacheWasTorn
+    && Array.isArray(STATE.roster) && STATE.roster.length > 0
     && STATE.rev && Object.keys(STATE.rev).length > 0;
 
   if (warmCache) {
@@ -356,6 +446,14 @@ let _offlineGrantVerdict = "none";
     afterLaunchSyncSettles();
   } else {
     await pullAndRender();   // cold cache: today's blocking full pull, unchanged
+  }
+
+  // After render() has run on BOTH paths, so a later render can't paint over it.
+  // `refreshed` distinguishes "we recovered for you" from "we couldn't" — the
+  // pull above may have failed offline, in which case the user needs to know the
+  // copy on screen is still the interrupted one.
+  if (cacheWasTorn) {
+    showCacheStaleBanner(Array.isArray(STATE.roster) && STATE.roster.length > 0);
   }
 })();
 
