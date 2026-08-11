@@ -3,27 +3,36 @@
  *
  * WHAT IT ANSWERS
  * ---------------
- * A measured readAll TTFB of ~27.8s breaks down, so far, as:
+ * An instrumented CLONE of readAllTabs() that splits every tab into four phases —
+ * getDataRange / getValues / getDisplayValues / row-shaping — then times
+ * getAllRevs and JSON.stringify. One run attributes the whole request.
  *
- *     formatDate branch   ~7.8s   (formatdate-bench.gs)
- *     sheet I/O           ~8.3s   (legacy-date-scan.gs)
- *     GAS fixed tax       ~2.0s   (SYNC_PERF_IMPROVEMENTS_SPEC.md 8.5)
- *     ------------------------
- *     unaccounted         ~9.7s
+ * ORIGINALLY (2026-08-11, pre-fix) it found the bottleneck: row shaping was
+ * 26,119ms of a 34,929ms readAll (76%), essentially all of it the
+ * Utilities.formatDate + Session.getScriptTimeZone pair inside the loop — two
+ * V8->Java service-bridge calls at ~3.4ms each, once per date cell, ~7,400 cells.
+ * The tell was that cost tracked DATE cells, not total cells: Roster shaped 6,394
+ * cells in 1ms (zero dates), Leave shaped 1,430 in 1,532ms (298 dates).
  *
- * This is an instrumented CLONE of readAllTabs() that splits every tab into four
- * phases — getDataRange / getValues / getDisplayValues / row-shaping — and then
- * times getAllRevs and JSON.stringify. One run attributes the whole request.
+ * NOW (post-fix) its job is VERIFICATION, and the expected reading is:
+ *   - shaping        collapses to double-digit ms
+ *   - getDisplayValues column reads 0 (the call is gone)
+ *   - empty tabs     cost one getLastRow probe, not a full range read
+ *   - sheet I/O      becomes the dominant remaining cost, and is irreducible
+ *                    without fewer tabs or a different backend
+ * It is also the tool that decides when the Supabase question reopens:
+ * READALL_PERF_SPEC.md 5 sets that trigger at sheet I/O above ~10s.
  *
- * It also sizes the three candidate fixes exactly, instead of by inference:
- *   - P2-5 (drop the second read)  = the getDisplayValues column total
- *   - empty-tab guard              = the cost of tabs that turn out to be empty
- *   - shaping cost                 = the row-loop column total
+ * BEWARE RUN-TO-RUN VARIANCE. Two pre-fix runs of this file totalled 34,929ms and
+ * 15,410ms — a 2.3x spread on identical code and data. Take a median of 3-5 runs
+ * and compare against a same-session baseline; never read a single run as truth.
+ * Treat the per-phase SHARES as the robust signal, not the absolute ms.
  *
  * WHY A CLONE AND NOT A WRAPPER: readTab() shapes and returns in one pass, so
  * there is no seam to time from outside. The loop below is copied VERBATIM from
  * readTab (apps-script-Code.gs) — if that function changes, this drifts and the
  * numbers stop describing production. Re-copy before trusting a later run.
+ * Last synced against readTab on 2026-08-11, after the P0/P1/P2 fixes landed.
  *
  * HOW TO RUN
  * ----------
@@ -91,6 +100,8 @@ function readAllPhases() {
   var out = [];
   out.push("=== readAllTabs PHASE BREAKDOWN (role: " + PHASE_ROLE + ") ===");
   out.push("");
+  out.push("  " + phaseDriftCheck_(ss, rowsOut));
+  out.push("");
   out.push("  " + phasePad_("tab", 22) + phasePad_("range", 8) + phasePad_("getValues", 11) +
            phasePad_("getDisplay", 12) + phasePad_("shape", 8) + phasePad_("total", 8) + "rows");
   out.push("  " + phaseRule_(75));
@@ -126,22 +137,90 @@ function readAllPhases() {
   out.push("   code change in readAllTabs can touch.)");
 
   out.push("");
-  out.push("--- What each candidate fix is worth (measured, not inferred) ---");
-  out.push("  P2-5, drop getDisplayValues   " + phasePad_(sum.display + "ms", 10) +
-           phasePct_(sum.display, phaseTotal));
-  out.push("  Empty-tab guard               " + phasePad_(sum.empty + "ms", 10) +
-           phasePct_(sum.empty, phaseTotal) + " (upper bound: a getLastRow probe still costs 1 call)");
+  out.push("--- Post-fix verification (expected readings in brackets) ---");
   out.push("  Row-shaping loop              " + phasePad_(sum.shape + "ms", 10) +
-           phasePct_(sum.shape, phaseTotal) + " (includes the formatDate branch)");
+           phasePct_(sum.shape, phaseTotal) + " [expect double-digit ms]");
+  out.push("  getDisplayValues              " + phasePad_(sum.display + "ms", 10) +
+           phasePct_(sum.display, phaseTotal) + " [expect 0 — the call is gone]");
+  out.push("  Empty-tab probes              " + phasePad_(sum.empty + "ms", 10) +
+           phasePct_(sum.empty, phaseTotal) + " [one getLastRow each, no range read]");
   out.push("  Sheet I/O floor               " + phasePad_((sum.range + sum.values) + "ms", 10) +
-           phasePct_(sum.range + sum.values, phaseTotal) + " (irreducible without fewer tabs)");
+           phasePct_(sum.range + sum.values, phaseTotal) + " [now the dominant cost]");
   out.push("");
-  out.push("  NOTE: shaping and formatDate overlap — formatdate-bench.gs measured");
-  out.push("  the branch at ~7.8s, so shaping-minus-7.8s is the pure loop cost.");
+  out.push("  If shaping is still seconds, the deploy did not take — check that");
+  out.push("  Manage Deployments points at a NEW version. SYNC_PERF 8.5 records a");
+  out.push("  full measurement pass wasted on an un-redeployed backend.");
+  out.push("");
+  out.push("  VARIANCE: two pre-fix runs of this file totalled 34,929ms and");
+  out.push("  15,410ms on identical code. Median 3-5 runs; trust shares over ms.");
+  out.push("");
+  out.push("  Sheet I/O above ~10s is the trigger to reopen the backend-migration");
+  out.push("  question (READALL_PERF_SPEC.md 5). Currently expected 12-18 months out.");
 
   var report = out.join("\n");
   Logger.log(report);
   return report;
+}
+
+/**
+ * DRIFT CHECK — the thing that makes every number above trustworthy.
+ *
+ * This file measures a CLONE of readTab, so its numbers describe production only
+ * for as long as the clone matches. Drift is silent and the report looks just as
+ * confident when it is wrong, so check rather than assume: re-run the REAL
+ * readTab (pasted alongside, from the deployed backend) over the largest tab this
+ * run touched and compare the shaped output.
+ *
+ * Costs one extra tab read. Worth it — a wrong phase split sends someone
+ * optimising the wrong thing for a day, which is exactly what happened before
+ * this file existed.
+ */
+function phaseDriftCheck_(ss, rowsOut) {
+  if (typeof readTab !== "function") {
+    return "DRIFT CHECK: SKIPPED — readTab not in scope. Paste apps-script-Code.gs " +
+           "into this project to enable it; numbers below are UNVERIFIED.";
+  }
+  // Largest non-empty, non-tail entry: most rows = most chances to disagree.
+  var target = null;
+  for (var i = 0; i < rowsOut.length; i++) {
+    var e = rowsOut[i];
+    if (e.isEmpty || e.tab.indexOf("(tail") >= 0) continue;
+    if (!target || e.rowCount > target.rowCount) target = e;
+  }
+  if (!target) return "DRIFT CHECK: SKIPPED — no non-empty tab in this run.";
+
+  var real;
+  try { real = readTab(target.tab); }
+  catch (err) { return "DRIFT CHECK: ERRORED on " + target.tab + " — " + err; }
+  if (!real || real.error) return "DRIFT CHECK: SKIPPED — readTab('" + target.tab + "') errored.";
+
+  var a = JSON.stringify(real), b = JSON.stringify(target.rows);
+  if (a === b) {
+    return "DRIFT CHECK: PASS — clone output identical to readTab('" + target.tab +
+           "', " + target.rowCount + " rows).";
+  }
+  // Locate the first divergence so the failure is actionable, not just "differs".
+  var at = 0;
+  while (at < a.length && at < b.length && a.charAt(at) === b.charAt(at)) at++;
+  return "DRIFT CHECK: *** FAIL *** on " + target.tab + " — clone has diverged from " +
+         "readTab. EVERY NUMBER BELOW IS MEANINGLESS. First difference at char " + at +
+         ": real=" + JSON.stringify(a.substr(at, 40)) + " clone=" + JSON.stringify(b.substr(at, 40)) +
+         ". Re-copy readTab's shaping loop into phaseReadTab_.";
+}
+
+/**
+ * Local copy of formatSheetDate_ (apps-script-Code.gs). Deliberately a COPY and
+ * not a call: this file is pasted in alongside the deployed backend, and calling
+ * the real one would mean a run silently measures whichever version happens to be
+ * pasted rather than the one this clone was written against.
+ */
+var PHASE_MONTHS_ = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function phaseFormatSheetDate_(d) {
+  var day = d.getDate();
+  return (day < 10 ? "0" + day : String(day)) + " " +
+         PHASE_MONTHS_[d.getMonth()] + " " + d.getFullYear();
 }
 
 /** Instrumented clone of readTab(). Shaping loop copied verbatim. */
@@ -150,12 +229,21 @@ function phaseReadTab_(ss, tabName) {
   if (!sheet) return null;
 
   var t0 = new Date().getTime();
+  // P1 guard, mirroring readTab: an empty tab must cost one metadata call here
+  // too, or this tool reports a saving the real code no longer pays for.
+  if (sheet.getLastRow() < 2) {
+    var tEmpty = new Date().getTime();
+    return { tab: tabName, rows: [], rowCount: 0, isEmpty: true,
+             rangeMs: tEmpty - t0, valuesMs: 0, displayMs: 0, shapeMs: 0,
+             totalMs: tEmpty - t0 };
+  }
   var range = sheet.getDataRange();
   var t1 = new Date().getTime();
   var data = range.getValues();
   var t2 = new Date().getTime();
-  var display = range.getDisplayValues();
-  var t3 = new Date().getTime();
+  // getDisplayValues is GONE from readTab (P2). The phase slot stays so the
+  // column still lines up against pre-2026-08-11 runs — it should now read 0.
+  var t3 = t2;
 
   var rows = [];
   if (data.length >= 2) {
@@ -166,11 +254,7 @@ function phaseReadTab_(ss, tabName) {
       for (var j = 0; j < headers.length; j++) {
         if (headers[j]) {
           var val = data[i][j];
-          if (val instanceof Date) {
-            val = val.getFullYear() < 1900
-              ? display[i][j]
-              : Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
-          }
+          if (val instanceof Date) val = phaseFormatSheetDate_(val);
           row[headers[j]] = val;
           if (val !== "" && val !== null && val !== undefined) hasData = true;
         }
@@ -209,8 +293,7 @@ function phaseReadTabTail_(ss, tabName, maxRows) {
   var t1 = new Date().getTime();
   var data = range.getValues();
   var t2 = new Date().getTime();
-  var display = range.getDisplayValues();
-  var t3 = new Date().getTime();
+  var t3 = t2;   // getDisplayValues gone from readTabTail too (P2)
 
   var rows = [];
   for (var i = 0; i < data.length; i++) {
@@ -219,11 +302,7 @@ function phaseReadTabTail_(ss, tabName, maxRows) {
     for (var j = 0; j < headers.length; j++) {
       if (headers[j]) {
         var val = data[i][j];
-        if (val instanceof Date) {
-          val = val.getFullYear() < 1900
-            ? display[i][j]
-            : Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
-        }
+        if (val instanceof Date) val = phaseFormatSheetDate_(val);
         row[headers[j]] = val;
         if (val !== "" && val !== null && val !== undefined) hasData = true;
       }
