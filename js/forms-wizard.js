@@ -60,6 +60,77 @@ const MED_VISIT_TYPES = ["RSI", "RSO", "MR", "MA"];
 // reads it too, and a const is in the TDZ until its declaration runs.
 const WIZ_TIMED_SECTIONS = ["fallout", "reportSick"];
 
+// ── Unsaved-work diff ────────────────────────────────────────────────────────
+//
+// The wizard holds a whole conduct's attendance in memory and persists NOTHING
+// until saveLogConductWizard() runs, so closing it discards everything. The
+// guard below (wizardCloseGuard) warns first — but only when something actually
+// changed.
+//
+// Why a diff and not "are there rows present": edit mode pre-loads every
+// matching conductDetail row into fallout/reportSick BEFORE the user touches
+// anything, so a presence test fires on opening an existing conduct and closing
+// it unchanged. A warning that fires when nothing changed is one users learn to
+// click through, which costs the real cases.
+//
+// A WHITELIST, not a blacklist: a field added to _logConduct later is absent
+// from the diff until someone adds it here deliberately. That fails quiet
+// (a missed warning) rather than loud (a warning on every close), which is the
+// right way round for a confirmation prompt.
+//
+// Excluded on purpose:
+//   showExclCommanders — display-only, reset every open, never persisted.
+//     Toggling a view is not unsaved work.
+//   originalDetailIds / importedBaseline / attendanceId / statusBuiltFor —
+//     bookkeeping set at open (or by rebuildLogConductStatus), never edited.
+const WIZ_SNAPSHOT_FIELDS = [
+  "date", "time", "conductId", "totalOverride", "remarks",
+  "status", "rsi", "fallout", "reportSick", "participants", "addedGroups",
+  "haCounts", "haPeriods"
+];
+
+// Builds the object literal in WIZ_SNAPSHOT_FIELDS order, so JSON.stringify is
+// stable regardless of the key order _logConduct itself happens to carry.
+function wizSnapshot(lc) {
+  if (!lc) return null;
+  const out = {};
+  WIZ_SNAPSHOT_FIELDS.forEach(k => { out[k] = lc[k]; });
+  return out;
+}
+
+// The baseline taken at open. Null means "no wizard, or registration never
+// ran" — wizIsDirty answers false in that case rather than guessing, so a
+// missed registration can never turn into a prompt on every modal close.
+let _logConductBaseline = null;
+
+function wizIsDirty() {
+  if (!_logConduct || _logConductBaseline == null) return false;
+  return JSON.stringify(wizSnapshot(_logConduct)) !== _logConductBaseline;
+}
+
+// Registered with the shared modal infra on open. Returning false vetoes the
+// close; the Cancel button, the ✕ (index.html:121) and a backdrop click all
+// route through closeModal(), so this one function covers every route.
+//
+// The liveness test is deliberately the SAME one bindWizardEnterToSave uses
+// (just below): _logConduct alone cannot tell a live wizard from a stale one,
+// because it is cleared only on a SUCCESSFUL save — not on Cancel and not by a
+// generic closeModal(). Confirming the wizard's own #wiz-remarks is the modal
+// actually on screen is the decisive check, and it is also what makes this
+// inert for the wizard's sub-modals (which replace that DOM on the shared
+// overlay and restore the wizard through the onClose hook).
+function wizardCloseGuard() {
+  if (!_logConduct) return true;
+  if (!document.getElementById("wiz-remarks")) return true;
+  if (!wizIsDirty()) return true;
+  if (!confirm(
+    "This conduct has unsaved changes — status, fallouts and remarks will be lost.\n\n" +
+    "Discard them?"
+  )) return false;
+  clearModalCloseGuard();
+  return true;
+}
+
 // Enter-to-save for the conduct wizard. The wizard is a plain <div> (not a
 // <form>), so Enter does nothing by default. We bind ONE keydown listener on the
 // shared #modal-overlay and self-gate it: it acts only while _logConduct is open
@@ -150,6 +221,11 @@ function openLogConductWizard(attendanceId) {
     _logConduct.haPeriods = Number(a.periods) || 1;
   }
   rebuildLogConductStatus();
+  // Baseline AFTER rebuildLogConductStatus(): that call populates
+  // _logConduct.status from the day's medical layer, so a baseline taken before
+  // it would read dirty on literally every open.
+  _logConductBaseline = JSON.stringify(wizSnapshot(_logConduct));
+  registerModalCloseGuard(wizardCloseGuard);
   renderLogConductWizard();
 }
 
@@ -1296,6 +1372,10 @@ async function saveLogConductWizard() {
   const isNew = !w.attendanceId;
   const priorDetailCount = (w.originalDetailIds || []).length;
   _logConduct = null;
+  // Redundant with the null above (the guard's liveness test would already pass
+  // it through) — explicit anyway, so the teardown does not silently depend on
+  // that coupling if either side changes.
+  clearModalCloseGuard();
   closeModal();
   render();
 
