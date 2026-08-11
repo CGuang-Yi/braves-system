@@ -212,7 +212,9 @@ function applyRoleUI() {
 function handleAuthFailure() {
   // P3-2: same rationale as sync.js signOut() — this is a session-drop path
   // (next launch starts cold with loadLocal()), so flush any debounced
-  // saveLocal() synchronously before clearing the session.
+  // saveLocal() before clearing the session. Fire-and-forget: saveLocalNow() is
+  // async now (it encrypts) and this function is not, so the FLUSH_PENDING_KEY
+  // marker is what covers an interrupted write.
   if (typeof saveLocalNow === "function") saveLocalNow();
   clearSession();
   applyRoleUI();

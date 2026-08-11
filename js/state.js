@@ -423,17 +423,36 @@ function saveCustomStatuses() {
 // Shape: { "1101": "2026-05-27T14:40:25.296Z", ... }.
 // Lives in localStorage so it doesn't get touched by saveLocal / pullAll,
 // which means it survives `localStorage.removeItem(STORAGE_KEY)` resets.
-function loadFitnessSent() {
+//
+// ENCRYPTED, like STORAGE_KEY: it is a map of personnel 4Ds, so it is in scope
+// for the same treatment. That makes both halves async — hence the STATE literal
+// below initialises `fitnessSent` to {} and loadLocal() fills it in. No
+// flush-pending marker here: this is not on the pagehide path, and a torn write
+// costs a "we already sent this one" marker, not data.
+async function loadFitnessSent() {
   try {
     const raw = localStorage.getItem(FITNESS_SENT_KEY);
     if (!raw) return {};
-    const obj = JSON.parse(raw);
+    let json = raw;
+    if (isCacheCiphertext(raw)) {
+      const key = await getCacheKey();
+      if (!key) return {};                 // locked session: no marks, so nothing is skipped
+      json = await decryptCache(key, raw);
+      if (json == null) return {};
+    }
+    const obj = JSON.parse(json);
     return obj && typeof obj === "object" ? obj : {};
   } catch { return {}; }
 }
-function saveFitnessSent(map) {
-  localStorage.setItem(FITNESS_SENT_KEY, JSON.stringify(map || {}));
+async function saveFitnessSent(map) {
+  const key = await getCacheKey();
+  if (!key) return;                        // locked: same write-nothing policy as the main cache
+  localStorage.setItem(FITNESS_SENT_KEY, await encryptCache(key, JSON.stringify(map || {})));
 }
+// The three saveFitnessSent() calls below are deliberately fire-and-forget: it
+// is async now (it encrypts) and these three keep their synchronous signatures
+// because every caller treats the in-memory STATE.fitnessSent as the truth and
+// the persisted copy as a convenience.
 function markFitnessSent(d4, when) {
   if (!d4) return;
   STATE.fitnessSent[String(d4)] = when || new Date().toISOString();
@@ -539,7 +558,9 @@ const STATE = {
   // emailed to them. Drives the "skip already sent" default on bulk send so
   // a session interrupted mid-batch (or a fresh device) can resume without
   // double-sending. Map of d4 → ISO timestamp of last successful send.
-  fitnessSent: loadFitnessSent(),
+  // Filled in by loadLocal(); loadFitnessSent() is async now (it decrypts), and
+  // this literal is evaluated synchronously at script load.
+  fitnessSent: {},
   // Set of sheet-tab names with unpushed local changes (push failed or
   // never attempted). Drives the sidebar "X tabs need retry" warning and
   // the on-launch dirty-restore prompt.
@@ -1071,7 +1092,29 @@ const SAVE_LOCAL_DEBOUNCE_MS = 400;
 let _saveLocalTimer = null;
 let _saveLocalPending = false;
 
+// The in-flight flush, if any. A debounce-armed flush is started by a timer
+// callback, so whoever called saveLocal() has no handle on it — and now that the
+// flush is async, "the timer fired" no longer means "the write landed". This is
+// the handle: saveLocalSettled() waits for the current flush to finish.
+let _saveLocalFlushInFlight = null;
+
+// Every path into the flush goes through here, so the in-flight handle covers
+// the timer, saveLocalNow(), and the pagehide/visibilitychange listeners alike.
 function _saveLocalFlush() {
+  const p = _saveLocalFlushImpl().finally(() => {
+    if (_saveLocalFlushInFlight === p) _saveLocalFlushInFlight = null;
+  });
+  _saveLocalFlushInFlight = p;
+  return p;
+}
+
+function saveLocalSettled() {
+  return _saveLocalFlushInFlight || Promise.resolve();
+}
+
+// ASYNC as of the cache-encryption change: crypto.subtle has no synchronous
+// form. See the saveLocalNow note below for what that costs.
+async function _saveLocalFlushImpl() {
   _saveLocalTimer = null;
   _saveLocalPending = false;
   // §4.7.5a: the grant has to gate the WRITE boundary, not just the read path —
@@ -1080,6 +1123,15 @@ function _saveLocalFlush() {
   // anything a previous grant left behind, so a lapse mid-session cleans up at
   // the next save rather than waiting for the next launch.
   if (!hasOfflineGrant()) { wipeLocalDataCache(); return; }
+
+  // No key this session (unlock cancelled, or a failed unlock) → the app runs
+  // online-only and writes NOTHING. The existing ciphertext on disk is left
+  // exactly as it is: the approved failure policy is "keep it, retry next
+  // launch", because ciphertext without a key leaks nothing and wiping it would
+  // punish one mistyped password with the loss of an outfield cache.
+  const key = await getCacheKey();
+  if (!key) return;
+
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
@@ -1091,7 +1143,24 @@ function _saveLocalFlush() {
     dutyChangeRequest: STATE.dutyChangeRequest,
     rev: STATE.rev || {}
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+  // Bracket the async write with two SYNCHRONOUS markers. A killed encrypt is
+  // otherwise silent, and silent staleness is the worst failure mode here: the
+  // user would keep working from a cache that quietly stopped advancing. Both
+  // calls are synchronous, so the marker lands even if the tab dies a
+  // millisecond later, and the next launch (js/main.js) turns a leftover marker
+  // into an automatic full pull plus a banner.
+  try { localStorage.setItem(FLUSH_PENDING_KEY, "1"); } catch { /* storage blocked */ }
+  const envelope = await encryptCache(key, JSON.stringify(d));
+  localStorage.setItem(STORAGE_KEY, envelope);
+  try { localStorage.removeItem(FLUSH_PENDING_KEY); } catch { /* storage blocked */ }
+}
+
+function cacheFlushWasInterrupted() {
+  try { return localStorage.getItem(FLUSH_PENDING_KEY) === "1"; } catch { return false; }
+}
+
+function clearCacheFlushMarker() {
+  try { localStorage.removeItem(FLUSH_PENDING_KEY); } catch { /* storage blocked */ }
 }
 
 // Debounced entry point — what nearly every call site should keep using.
@@ -1104,13 +1173,26 @@ function saveLocal() {
   _saveLocalTimer = setTimeout(_saveLocalFlush, SAVE_LOCAL_DEBOUNCE_MS);
 }
 
-// Escape hatch: flush synchronously right now, cancelling any pending timer.
-// Use where a synchronous persist genuinely matters (about to sign out /
-// discard local state / navigate away) rather than sprinkling this in place
-// of saveLocal() by default — that would defeat the coalescing above.
-function saveLocalNow() {
+// Escape hatch: flush right now, cancelling any pending timer.
+//
+// ⚠️ NO LONGER SYNCHRONOUS. crypto.subtle has no sync form, so this returns a
+// promise and the pagehide/visibilitychange handlers below cannot await it —
+// the browser may kill the tab mid-encrypt.
+//
+// What that costs, precisely:
+//   NOT at risk — anything durable. saveDirty() is still fully synchronous (the
+//     crash-safe record of which tabs still need pushing), every acked write
+//     already lives on the server, and signOut/forceResync want a wipe or a
+//     discard, which is still a synchronous removeItem.
+//   AT RISK — cache freshness only. The loss window widens from "the 400ms
+//     debounce" to "the 400ms debounce plus one encrypt". Same class of loss as
+//     the debounce already accepted above, slightly wider — not a new one.
+// And it is no longer silent: the FLUSH_PENDING_KEY marker above makes an
+// interrupted flush detectable, and the next launch auto-recovers with a full
+// pull plus a visible banner.
+async function saveLocalNow() {
   if (_saveLocalTimer != null) { clearTimeout(_saveLocalTimer); _saveLocalTimer = null; }
-  _saveLocalFlush();
+  await _saveLocalFlush();
 }
 
 // Last-chance flush on page hide. pagehide fires on normal navigation/close
@@ -1120,8 +1202,12 @@ function saveLocalNow() {
 // window/document as plain objects whose addEventListener is a no-op (no
 // real event ever fires there — tests that need this exercise
 // saveLocalNow()/ctl.flushTimers() explicitly instead).
+//
+// Best-effort now rather than guaranteed — see the note on saveLocalNow above.
+// Deliberately NOT awaited (nothing can await inside these handlers); the
+// FLUSH_PENDING_KEY marker is what covers the failure.
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-  window.addEventListener("pagehide", saveLocalNow);
+  window.addEventListener("pagehide", () => { saveLocalNow(); });
 }
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("visibilitychange", () => {

@@ -155,7 +155,9 @@ function offlineGrantCardHtml() {
 
 async function doGrantOffline(days) {
   grantOffline(days);
-  saveLocalNow();               // materialise the cache immediately, so "on" means on
+  // Materialise the cache immediately, so "on" means on. Awaited now that the
+  // flush encrypts, so the toggle does not report success before the write lands.
+  await saveLocalNow();
   // Best-effort registration for the admin-review list. A failure here must not
   // block the grant: the client-side expiry is the enforcement, the server copy
   // is visibility. Say so rather than pretending the grant failed.
@@ -853,9 +855,9 @@ async function forceResync() {
     "Use this if the device is stuck on \"unsaved\". Local edits that never reached the sheet will be lost."
   )) return;
   // P3-2: flush any debounced saveLocal() before we start tearing down local
-  // state (rev/dirty below, then a full pullAll overwrite) — a synchronous
-  // persist point, not the default debounced path.
-  if (typeof saveLocalNow === "function") saveLocalNow();
+  // state (rev/dirty below, then a full pullAll overwrite). Awaited now that the
+  // flush encrypts — starting the teardown mid-encrypt would race the write.
+  if (typeof saveLocalNow === "function") await saveLocalNow();
   STATE.dirty = new Set();
   _dirtyOps.clear();
   saveDirty();

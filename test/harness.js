@@ -139,7 +139,10 @@ function makeClient(backend, opts) {
     sandbox.grantOffline(7);
   }
 
-  return { sb: sandbox, fetchSpy, ctl: browser.ctl, db: backend.db };
+  // `browser` is exposed so cache tests can reach localStorage/sessionStorage
+  // by the same handle the bootstrap harness uses (browser.globals.*), rather
+  // than relying on them also being merged onto the sandbox.
+  return { sb: sandbox, browser, fetchSpy, ctl: browser.ctl, db: backend.db };
 }
 
 // Convenience: pull a client to a clean baseline (full readAll → STATE.rev set).
