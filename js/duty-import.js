@@ -114,6 +114,26 @@ function dutyRowIsHoliday(sheet, row, holidayFill) {
   return true;
 }
 
+// The sheet's OWN per-person total: column R, keyed by the person in column K.
+// This is the single exception to "I..R are never read" (spec §7.1) and it exists
+// only so the import report can put the two totals side by side. It is never fed
+// into any total — the whole point of the report is that every difference between
+// the sheet's arithmetic and the engine's is attributable (spec §1.3), and you
+// cannot show that without the sheet's own number.
+//
+// Mirrors sheetOwnTotals() in tools/duty-import-run.js deliberately: two
+// implementations of "what the sheet claims" that disagreed would be worse than
+// having none at all.
+function dutySheetClaimedTotals(sheet) {
+  const out = {};
+  for (let r = 2; r <= sheet.maxRow; r++) {
+    const who = sheet.cells["K" + r], val = sheet.cells["R" + r];
+    if (!who || !who.value) continue;
+    out[String(who.value).trim()] = Number(val && val.value) || 0;
+  }
+  return out;
+}
+
 function parseDutyMonthSheet(sheet, cfg) {
   const rows = [], corrections = [], holidays = [], warnings = [];
 
@@ -228,7 +248,8 @@ function parseDutyMonthSheet(sheet, cfg) {
     }
   }
 
-  return { rows: rows, corrections: corrections, holidays: holidays, warnings: warnings };
+  return { rows: rows, corrections: corrections, holidays: holidays, warnings: warnings,
+           claimedTotals: dutySheetClaimedTotals(sheet) };
 }
 
 function parseDutyWorkbook(workbook, cfg) {
@@ -246,9 +267,42 @@ function parseDutyWorkbook(workbook, cfg) {
   return out;
 }
 
+// ── Import merge (spec §7.4) ─────────────────────────────────────────────────
+//
+// Re-importing a month must REPLACE its rows, not append them. The retired
+// tools/duty-import-load.gs appended, which is why re-running it duplicated
+// everything and why it had to be run exactly once, by hand, with care.
+//
+// Doing the merge here rather than in the backend is what keeps the importer
+// free of any Apps Script change: the caller pushes the merged array through
+// autoSync's existing { type: "replace" } mode. It also makes the rule testable
+// without a workbook, a sheet, or a network.
+//
+// Rows outside the imported months never match a key, so they pass through
+// untouched — importing April does not disturb March.
+function dutyMergeImport(existing, incoming, keyOf) {
+  const incomingKeys = {};
+  const inc = incoming || [];
+  for (let i = 0; i < inc.length; i++) incomingKeys[keyOf(inc[i])] = true;
+  const kept = [];
+  const ex = existing || [];
+  for (let i = 0; i < ex.length; i++) {
+    if (!incomingKeys[keyOf(ex[i])]) kept.push(ex[i]);
+  }
+  return kept.concat(inc);
+}
+
+// The three §7.4 import keys. Separate named functions rather than a string
+// argument so a typo is a ReferenceError instead of a silent no-collision.
+function dutyKeyOfDuty(r) { return [r.date, r.dutyType, r.platoon || ""].join("|"); }
+function dutyKeyOfCorrection(r) { return [r.date, r.d4, r.reason || ""].join("|"); }
+function dutyKeyOfHoliday(r) { return String(r.date); }
+
 // Node test export (browser ignores `module`).
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { excelSerialToISO, dutyColNum, dutyColLetter, dutyHeaderToType,
                      dutyNormFill, modalFillForColumn, dutyReasonDelta, dutyRowIsHoliday,
-                     DUTY_SKIP_SHEETS, parseDutyMonthSheet, parseDutyWorkbook };
+                     DUTY_SKIP_SHEETS, parseDutyMonthSheet, parseDutyWorkbook,
+                     dutySheetClaimedTotals, dutyMergeImport, dutyKeyOfDuty,
+                     dutyKeyOfCorrection, dutyKeyOfHoliday };
 }

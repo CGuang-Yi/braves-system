@@ -254,4 +254,80 @@ module.exports = async function run() {
     }), CFG);
     eq(r.holidays.length, 0);
   });
+
+  suite("duty-import: import merge (spec §7.4)");
+
+  await test("dutyMergeImport replaces a colliding Duty row rather than appending", () => {
+    const existing = [
+      { id: "a", date: "2026-04-01", dutyType: "COS", platoon: "", d4: "1101" },
+      { id: "b", date: "2026-04-02", dutyType: "COS", platoon: "", d4: "1102" }
+    ];
+    const incoming = [{ id: "z", date: "2026-04-01", dutyType: "COS", platoon: "", d4: "9999" }];
+    const out = imp.dutyMergeImport(existing, incoming, imp.dutyKeyOfDuty);
+    eq(out.length, 2);
+    eq(out.filter(function (r) { return r.date === "2026-04-01"; }).length, 1);
+    eq(out.filter(function (r) { return r.date === "2026-04-01"; })[0].d4, "9999");
+  });
+
+  await test("dutyMergeImport leaves non-colliding rows alone", () => {
+    const existing = [{ id: "a", date: "2026-03-15", dutyType: "CDO", platoon: "", d4: "1101" }];
+    const incoming = [{ id: "z", date: "2026-04-01", dutyType: "CDO", platoon: "", d4: "9999" }];
+    const out = imp.dutyMergeImport(existing, incoming, imp.dutyKeyOfDuty);
+    eq(out.length, 2);
+    eq(out.filter(function (r) { return r.date === "2026-03-15"; }).length, 1);
+  });
+
+  await test("platoon is part of the Duty key — PDS 1 and PDS 2 do not collide", () => {
+    const existing = [
+      { id: "a", date: "2026-04-01", dutyType: "PDS", platoon: "PLT1", d4: "1101" },
+      { id: "b", date: "2026-04-01", dutyType: "PDS", platoon: "PLT2", d4: "2101" }
+    ];
+    const incoming = [{ id: "z", date: "2026-04-01", dutyType: "PDS", platoon: "PLT1", d4: "9999" }];
+    const out = imp.dutyMergeImport(existing, incoming, imp.dutyKeyOfDuty);
+    eq(out.length, 2);
+    eq(out.filter(function (r) { return r.platoon === "PLT2"; })[0].d4, "2101");
+  });
+
+  await test("re-running the same merge is a no-op", () => {
+    const existing = [{ id: "a", date: "2026-04-01", dutyType: "COS", platoon: "", d4: "1101" }];
+    const incoming = [{ id: "z", date: "2026-04-01", dutyType: "COS", platoon: "", d4: "9999" }];
+    const once = imp.dutyMergeImport(existing, incoming, imp.dutyKeyOfDuty);
+    const twice = imp.dutyMergeImport(once, incoming, imp.dutyKeyOfDuty);
+    eq(twice.length, once.length);
+    eq(JSON.stringify(twice), JSON.stringify(once));
+  });
+
+  await test("correction and holiday keys use their own fields", () => {
+    const corrExisting = [{ id: "a", date: "2026-04-01", d4: "1101", reason: "Extras", delta: 0 }];
+    const corrIncoming = [{ id: "z", date: "2026-04-01", d4: "1101", reason: "Extras", delta: -2 }];
+    const corr = imp.dutyMergeImport(corrExisting, corrIncoming, imp.dutyKeyOfCorrection);
+    eq(corr.length, 1);
+    eq(corr[0].delta, -2);
+
+    const holOut = imp.dutyMergeImport(
+      [{ date: "2026-05-01", name: "Labour Day", tentative: "" }],
+      [{ date: "2026-05-01", name: "Labour Day", tentative: "yes" }],
+      imp.dutyKeyOfHoliday
+    );
+    eq(holOut.length, 1);
+    eq(holOut[0].tentative, "yes");
+  });
+
+  // Column R is the sheet's OWN per-person total, keyed by column K. It is the
+  // only thing right of H that is read as data, and it is read for the
+  // reconciliation report alone — never fed into a total. See the header note in
+  // js/duty-import.js about why I..R are otherwise ignored.
+  await test("claimedTotals reads the sheet's own K/R totals", () => {
+    const r = imp.parseDutyMonthSheet(makeSheet({
+      "K2": { value: "0001", fill: "" }, "R2": { value: 12, fill: "" },
+      "K3": { value: "0002", fill: "" }, "R3": { value: 7, fill: "" }
+    }), CFG);
+    eq(r.claimedTotals["0001"], 12);
+    eq(r.claimedTotals["0002"], 7);
+  });
+
+  await test("claimedTotals is empty when the sheet carries no K column", () => {
+    const r = imp.parseDutyMonthSheet(makeSheet({}), CFG);
+    eq(Object.keys(r.claimedTotals).length, 0);
+  });
 };
