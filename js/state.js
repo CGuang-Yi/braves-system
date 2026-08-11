@@ -1253,14 +1253,50 @@ function enforceOfflineGrant() {
   return "wiped";
 }
 
-function loadLocal() {
+// ASYNC as of the cache-encryption change. Its only caller is bootstrap() in
+// js/main.js, which is already async — and enforceOfflineGrant() must still run
+// BEFORE it, since that is the one path guaranteed to precede the first render.
+async function loadLocal() {
   if (localStorage.getItem(STORAGE_KEY_LEGACY)) {
     localStorage.removeItem(STORAGE_KEY_LEGACY);
   }
+  // The fitness-sent map is encrypted too, and its loader is async for the same
+  // reason. Filled in here rather than in the STATE literal, which is evaluated
+  // synchronously at script load.
+  try { STATE.fitnessSent = await loadFitnessSent(); } catch { /* leave it {} */ }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-    const d = JSON.parse(raw);
+
+    let json = null;
+    if (isCacheCiphertext(raw)) {
+      const key = await getCacheKey();
+      // Locked (no key this session) or unreadable (wrong key / tampered /
+      // unknown version). Either way: load NOTHING and RETAIN the ciphertext.
+      // Leaving STATE empty is what makes bootstrap()'s warmCache test false, so
+      // the device falls through to the blocking full pull — today's behaviour
+      // for a cold cache. Retaining is the approved failure policy: ciphertext
+      // without a key leaks nothing, and wiping would make one mistyped password
+      // cost an offline device its whole cache.
+      if (!key) return;
+      json = await decryptCache(key, raw);
+      if (json == null) return;
+    } else {
+      // Legacy plaintext, written before encryption shipped. There is a valid
+      // 30-day token but no key on this first launch, so the existing plaintext
+      // CANNOT be encrypted in place — and leaving it would let it sit
+      // unencrypted for the token's full life. So: wipe and full-pull once, the
+      // same one-time cost the offline-grant rollout absorbed.
+      //
+      // EXCEPT on a device with unpushed edits: the cached rows are what those
+      // dirty markers refer to, so wiping would turn a privacy feature into data
+      // loss. Same "held" rule enforceOfflineGrant applies. Such a device keeps
+      // its plaintext until the edits drain, then upgrades on the next launch.
+      if (!(STATE.dirty && STATE.dirty.size)) { wipeLocalDataCache(); return; }
+      json = raw;
+    }
+
+    const d = JSON.parse(json);
     STATE.roster = normalizeRoster(d.roster);
     STATE.medical = normalizeMedical(d.medical);
     STATE.attendance = normalizeAttendance(d.attendance);

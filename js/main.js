@@ -320,7 +320,7 @@ let _offlineGrantVerdict = "none";
   // must never reach memory, let alone the DOM (§4.7.5a). This is the only code
   // path guaranteed to run ahead of the first render.
   _offlineGrantVerdict = enforceOfflineGrant();
-  loadLocal();
+  await loadLocal();
   loadFilter();
   initFilterControls();
   initLoginForm();

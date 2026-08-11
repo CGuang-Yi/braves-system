@@ -3,7 +3,7 @@
 // negative controls matter most here: what must NOT happen is a plaintext
 // payload reaching localStorage, or a torn write going unnoticed.
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend, makeClient } = require("./harness");
+const { loadBackend, makeClient, seedCache } = require("./harness");
 
 // The real STORAGE_KEY from js/state.js. Spelled out rather than imported so a
 // rename has to be a deliberate two-place edit.
@@ -83,5 +83,63 @@ module.exports = async function run() {
     ok(!/1101/.test(raw), "the 4D must not appear in plaintext");
     ok(C.sb.isCacheCiphertext(raw), "a v1 envelope");
     eq(await C.sb.loadFitnessSent(), { "1101": "2026-05-27T14:40:25.296Z" });
+  });
+
+  suite("cache encryption: read path and migration");
+
+  const WARM = { roster: [{ d4: "1234", name: "TESTPERSON", rank: "REC" }], rev: { Roster: 5 } };
+
+  // makeClient() has no cachedState option (that lives on makeLaunchClient), and
+  // these cases want loadLocal() driven explicitly rather than via bootstrap —
+  // so seed the two storage slots by hand.
+  function warm(C, seeded) {
+    C.browser.globals.localStorage.setItem(LS, seeded.envelope);
+    C.browser.globals.sessionStorage.setItem("braves-cache-key", seeded.keyB64);
+    return C;
+  }
+
+  await test("a warm encrypted cache decrypts into STATE", async () => {
+    const seeded = await seedCache(WARM);
+    const C = warm(makeClient(loadBackend()), seeded);
+    await C.sb.loadLocal();
+    eq(C.sb.STATE.roster.length, 1);
+    eq(C.sb.STATE.roster[0].name, "TESTPERSON");
+  });
+
+  await test("a locked session leaves STATE empty rather than throwing", async () => {
+    const seeded = await seedCache(WARM);
+    const C = warm(makeClient(loadBackend()), seeded);
+    C.sb.clearCacheKey();
+    await C.sb.loadLocal();
+    eq(C.sb.STATE.roster.length, 0, "nothing loaded");
+    ok(C.browser.globals.localStorage.getItem(LS), "ciphertext RETAINED for the next attempt");
+  });
+
+  await test("a wrong key leaves STATE empty and retains the ciphertext", async () => {
+    const seeded = await seedCache(WARM);
+    const C = warm(makeClient(loadBackend()), seeded);
+    await C.sb.setCacheKeyFromPassword("definitely-not-the-seeded-key");
+    await C.sb.loadLocal();
+    eq(C.sb.STATE.roster.length, 0);
+    ok(C.browser.globals.localStorage.getItem(LS), "never wiped on a bad password");
+  });
+
+  await test("a legacy plaintext cache is wiped, not adopted", async () => {
+    const C = makeClient(loadBackend());
+    C.browser.globals.localStorage.setItem(LS, JSON.stringify(WARM));   // legacy plaintext
+    await C.sb.loadLocal();
+    eq(C.sb.STATE.roster.length, 0, "not loaded");
+    eq(C.browser.globals.localStorage.getItem(LS), null, "wiped, so the next launch full-pulls");
+  });
+
+  await test("a legacy plaintext cache is HELD when the device has unpushed edits", async () => {
+    // Discarding unsynced work to enforce a privacy feature is how privacy
+    // features get switched off permanently — same rule enforceOfflineGrant uses.
+    const C = makeClient(loadBackend());
+    C.browser.globals.localStorage.setItem(LS, JSON.stringify(WARM));   // legacy plaintext
+    C.sb.STATE.dirty = new Set(["Medical"]);
+    await C.sb.loadLocal();
+    eq(C.sb.STATE.roster.length, 1, "loaded, so the dirty rows are not stranded");
+    ok(C.browser.globals.localStorage.getItem(LS), "retained until the edits drain");
   });
 };

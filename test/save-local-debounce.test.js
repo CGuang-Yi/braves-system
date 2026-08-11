@@ -7,7 +7,7 @@
 // window/document event listeners (fired only via ctl.fireWindowEvent /
 // ctl.fireDocumentEvent) instead of silently discarding them.
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend, makeClient, makeLaunchClient } = require("./harness");
+const { loadBackend, makeClient } = require("./harness");
 
 // Mirrors js/state.js's internal `STORAGE_KEY` const — not exported (it's a
 // top-level `const`, same reason harness.js keeps its own LS_STORAGE_KEY
@@ -112,11 +112,17 @@ module.exports = async function run() {
     const cachedState = await readCache(A);
     eq(cachedState.roster[0].name, "Edited mid-burst", "the latest edit reached disk, not a stale one");
 
-    // "Reload" = a fresh launch client whose localStorage starts pre-seeded
-    // with exactly what the pagehide flush wrote — proves loadLocal() (run
-    // synchronously at the top of bootstrap(), before any network call)
-    // round-trips it correctly, not just that setItem fired.
-    const reloaded = makeLaunchClient(backend, { cachedState });
+    // "Reload" = a fresh client handed the ACTUAL ciphertext the pagehide flush
+    // wrote plus the same session key — proves loadLocal() decrypts and
+    // round-trips it, not just that setItem fired. Deliberately the real
+    // envelope rather than a re-encrypted copy: this is the end-to-end path.
+    // loadLocal() is driven directly rather than through a launch client, so
+    // the assertion is about the cache read and not about whether the
+    // background pull has overwritten it yet.
+    const reloaded = makeClient(backend);
+    reloaded.sb.localStorage.setItem(STORAGE_KEY, A.sb.localStorage.getItem(STORAGE_KEY));
+    reloaded.sb.sessionStorage.setItem("braves-cache-key", A.sb.sessionStorage.getItem("braves-cache-key"));
+    await reloaded.sb.loadLocal();
     eq(reloaded.sb.STATE.roster[0].name, "Edited mid-burst",
       "reload from the pagehide-flushed cache sees the edit");
   });
