@@ -99,4 +99,59 @@ module.exports = async function () {
     eq(toISO(f(mk(2026, 12, 25))), "2026-12-25");
     eq(toISO(f(mk(2028, 2, 29))), "2028-02-29");
   });
+
+  // ── End-to-end through the read paths ────────────────────────────────
+  // The unit cases above call formatSheetDate_ directly. These drive real
+  // Date objects through readTab/readTabTail, which is what actually runs.
+  // Worth stating why this isn't redundant: perf-p2.test.js already compares
+  // readTab against readTabTail, but only for EQUALITY with each other — it
+  // passed both before and after this change, because a shared wrong answer
+  // is still equal. Pinning the literal string is what catches that.
+
+  await test("readTab renders Date cells as DD MMM YYYY end-to-end", async () => {
+    const b = loadBackend();
+    b.db.seed("Sample", ["id", "when"], [
+      ["1", new Date(2026, 0, 5)],    // single-digit day → must zero-pad
+      ["2", new Date(2026, 11, 31)],  // year end
+    ]);
+    eq(b.readTab("Sample"), [
+      { id: "1", when: "05 Jan 2026" },
+      { id: "2", when: "31 Dec 2026" },
+    ]);
+  });
+
+  await test("readTabTail agrees with readTab on the literal output", async () => {
+    const b = loadBackend();
+    b.db.seed("Sample", ["id", "when"], [
+      ["1", new Date(2026, 0, 5)],
+      ["2", new Date(2026, 11, 31)],
+    ]);
+    const full = b.readTab("Sample");
+    eq(b.readTabTail("Sample", 500), full, "tail path must not drift from readTab");
+    eq(full[0].when, "05 Jan 2026", "and both must be RIGHT, not merely equal");
+  });
+
+  await test("neither read path calls getDisplayValues any more (P2)", async () => {
+    // The second full-range fetch existed only to serve time-only Date cells
+    // (getFullYear() < 1900). tools/diagnostics/legacy-date-scan.gs found zero
+    // of those across all 23 live tabs, so the read was pure cost — 591ms of a
+    // 15.4s readAll. This asserts it does not creep back in.
+    const b = loadBackend();
+    b.db.seed("Sample", ["id", "when"], [["1", new Date(2026, 0, 5)]]);
+    b.db.spy.getDisplayValues = 0;
+    b.readTab("Sample");
+    eq(b.db.spy.getDisplayValues, 0, "readTab must not re-read the range for display values");
+    b.readTabTail("Sample", 500);
+    eq(b.db.spy.getDisplayValues, 0, "readTabTail must not either");
+  });
+
+  await test("empty and header-only tabs short-circuit before any range read (P1)", async () => {
+    // Twelve of the twenty-three tabs readAllTabs walks are empty, and a
+    // getDataRange + getValues pair costs ~150-185ms each to return nothing.
+    const b = loadBackend();
+    b.db.seed("Empty", ["id", "when"], []);
+    b.db.spy.getValues = 0;
+    eq(b.readTab("Empty"), [], "header-only tab still returns []");
+    eq(b.db.spy.getValues, 0, "and does so without fetching any range");
+  });
 };

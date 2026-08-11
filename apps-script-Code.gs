@@ -2393,7 +2393,6 @@ function readTab(tabName) {
 
   var range = sheet.getDataRange();
   var data = range.getValues();
-  var display = range.getDisplayValues();
   if (data.length < 2) return [];
 
   var headers = data[0].map(function (h) { return String(h).trim(); });
@@ -2405,17 +2404,24 @@ function readTab(tabName) {
     for (var j = 0; j < headers.length; j++) {
       if (headers[j]) {
         var val = data[i][j];
-        // For Date-typed cells:
-        //   • Time-only values (cells on the spreadsheet epoch 1899-12-30) →
-        //     use whatever the sheet *displays*, so the user's chosen format
-        //     (mm:ss, hh:mm, etc.) flows through as-is to the app.
-        //   • Real calendar dates → force "dd MMM yyyy" so locale-quirks in
-        //     the sheet don't change what the app shows.
-        if (val instanceof Date) {
-          val = val.getFullYear() < 1900
-            ? display[i][j]
-            : formatSheetDate_(val);
-        }
+        // Date-typed cells are forced to "dd MMM yyyy" so locale quirks in the
+        // sheet don't change what the app shows.
+        //
+        // This USED to also read range.getDisplayValues() — a second full-range
+        // fetch of every cell — purely to serve time-only cells (values on the
+        // spreadsheet epoch 1899-12-30, where getFullYear() < 1900), which were
+        // passed through as displayed so the user's chosen mm:ss / hh:mm format
+        // survived. tools/diagnostics/legacy-date-scan.gs found ZERO such cells
+        // on any of the 23 tabs (2026-08-11 and again on re-run), so that branch
+        // was unreachable and the second read was pure cost (591ms of a 15.4s
+        // readAll). Both are gone.
+        //
+        // The assumption is data-dependent, not structural: someone hand-typing
+        // "07:30" into a non-text-forced column would now surface as
+        // "30 Dec 1899" rather than "07:30". What keeps that from happening is
+        // WRITE_TEXT_COLS_BY_TAB "@"-forcing the time columns on write, so new
+        // rows stay text. Re-run the scan before assuming it still holds.
+        if (val instanceof Date) val = formatSheetDate_(val);
         row[headers[j]] = val;
         if (val !== "" && val !== null && val !== undefined) hasData = true;
       }
@@ -2429,9 +2435,10 @@ function readTab(tabName) {
 // P2-4: like readTab, but for a tab that can grow without bound (AuditLog) —
 // reads only the header row plus the LAST `maxRows` data rows, via
 // getLastRow() + a tail getRange(), instead of readTab's getDataRange() over
-// the whole sheet. Row shaping (Date/display-value handling, the hasData
-// filter) is copy-identical to readTab so the response shape matches exactly;
-// only the ROW COUNT differs. Order is preserved top-to-bottom (oldest-of-
+// the whole sheet. Row shaping (Date handling, the hasData filter) is
+// copy-identical to readTab so the response shape matches exactly; only the
+// ROW COUNT differs. Keep it that way — a change to readTab's loop that misses
+// this copy makes the admin pull disagree with everyone else's. Order is preserved top-to-bottom (oldest-of-
 // the-tail first), same as a full readTab — the frontend already reverses the
 // list for newest-first display, so this doesn't change that contract.
 function readTabTail(tabName, maxRows) {
@@ -2451,7 +2458,6 @@ function readTabTail(tabName, maxRows) {
 
   var range = sheet.getRange(startRow, 1, nRows, lastCol);
   var data = range.getValues();
-  var display = range.getDisplayValues();
 
   var rows = [];
   for (var i = 0; i < data.length; i++) {
@@ -2460,11 +2466,9 @@ function readTabTail(tabName, maxRows) {
     for (var j = 0; j < headers.length; j++) {
       if (headers[j]) {
         var val = data[i][j];
-        if (val instanceof Date) {
-          val = val.getFullYear() < 1900
-            ? display[i][j]
-            : formatSheetDate_(val);
-        }
+        // Same shaping as readTab, including the dropped display-value read —
+        // see the long comment there for why the time-only branch is gone.
+        if (val instanceof Date) val = formatSheetDate_(val);
         row[headers[j]] = val;
         if (val !== "" && val !== null && val !== undefined) hasData = true;
       }
@@ -2835,17 +2839,20 @@ function replaceConductRows(tabName, match, rows) {
   // yield a Date whose String() ("Mon Jan 01 2099…") never equals the client's
   // "01 Jan 2099", so the delete would silently no-op and every save would
   // DUPLICATE rows. We must normalize each compared cell EXACTLY as readTab does.
+  //
+  // That "EXACTLY" is why normCell dropped its time-only branch when readTab did:
+  // if readTab renders a time-only Date via formatSheetDate_ and this rendered it
+  // via the display string, the two would disagree on precisely those cells and
+  // re-create the duplicate-row bug this block exists to prevent. Sharing
+  // formatSheetDate_ and carrying no extra branch keeps them equal by
+  // construction. Dropping the branch also retires the getDisplayValues() read
+  // here — it fed nothing else — so a wizard save is one full-range fetch, not two.
   var lastRow = sheet.getLastRow();
   if (lastRow >= 2 && idxConduct >= 0) {
     var rng = sheet.getRange(2, 1, lastRow - 1, trimmed.length);
     var grid = rng.getValues();
-    var disp = rng.getDisplayValues();
-    var normCell = function (v, d) {
-      if (v instanceof Date) {
-        return v.getFullYear() < 1900
-          ? d   // time-only cell → whatever the sheet displays (mirrors readTab)
-          : formatSheetDate_(v);   // same formatter readTab uses, so the two cannot drift
-      }
+    var normCell = function (v) {
+      if (v instanceof Date) return formatSheetDate_(v);
       return String(v);
     };
     // The time column newly gets WRITE_TEXT_COLS "@"-forcing, so NEW rows keep
@@ -2853,9 +2860,9 @@ function replaceConductRows(tabName, match, rows) {
     // BEFORE that fix still hold the coerced NUMBER (730 for "0730"), which would
     // no-op the delete and duplicate on re-save. Left-pad a numeric time back to
     // 4 digits so those legacy rows match the client's pad4Time key and clear.
-    var normTime = function (v, d) {
+    var normTime = function (v) {
       if (typeof v === "number") { var s = String(v); return s.length >= 4 ? s : ("000" + s).slice(-4); }
-      return normCell(v, d);
+      return normCell(v);
     };
     // Collect matching row indices first (still descending, i.e. bottom-up)
     // instead of deleting immediately. Matching rows are usually contiguous
@@ -2865,10 +2872,10 @@ function replaceConductRows(tabName, match, rows) {
     // each of which is a separate Sheets API call inside the document lock.
     var matchIdx = [];
     for (var i = grid.length - 1; i >= 0; i--) {
-      var rConduct = normCell(grid[i][idxConduct], disp[i][idxConduct]);
-      var rDate = idxDate >= 0 ? normCell(grid[i][idxDate], disp[i][idxDate]) : "";
-      var rTime = idxTime >= 0 ? normTime(grid[i][idxTime], disp[i][idxTime]) : "";
-      var rType = idxType >= 0 ? normCell(grid[i][idxType], disp[i][idxType]) : "";
+      var rConduct = normCell(grid[i][idxConduct]);
+      var rDate = idxDate >= 0 ? normCell(grid[i][idxDate]) : "";
+      var rTime = idxTime >= 0 ? normTime(grid[i][idxTime]) : "";
+      var rType = idxType >= 0 ? normCell(grid[i][idxType]) : "";
       if (rConduct === mConduct && rDate === mDate && rTime === mTime && rType !== "RSI") {
         matchIdx.push(i);
       }
