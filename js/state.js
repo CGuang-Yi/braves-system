@@ -40,6 +40,15 @@ const DIRTY_KEY = "cougar-dirty-tabs";
 const CUSTOM_STATUS_KEY = "cougar-custom-statuses";
 const DEFER_CHARTS_KEY = "braves-defer-charts"; // chart lazy-load pref: auto|defer|eager
 
+// ── Cache encryption keys ────────────────────────────────────────────────────
+// Salt is PLAINTEXT on purpose (salts are not secret); it only has to be stable
+// per device. The derived key lives in sessionStorage, never in localStorage and
+// never on disk in a form that survives the browser session — that separation is
+// the entire threat model (see js/cache-crypto.js).
+const CACHE_SALT_KEY = "braves-cache-salt";              // localStorage, plaintext
+const CACHE_KEY_SESSION = "braves-cache-key";            // sessionStorage, derived key
+const FLUSH_PENDING_KEY = "braves-cache-flush-pending";  // localStorage, torn-write marker
+
 // ── Offline data grant (BACKEND_MIGRATION_REVIEW.md §4.6 item 3 / §4.7.5a) ──
 //
 // The single largest privacy exposure in this system is not which cloud holds
@@ -1011,6 +1020,53 @@ function mergeAttendanceEdit(existing, entry) {
 // it's the crash-safe record of which tabs still need pushing — and every
 // acked write already lives on the server. A crash inside the window loses at
 // most a few hundred ms of cache freshness, rebuilt on the next pull.
+// ── Cache key holder ─────────────────────────────────────────────────────────
+//
+// The PASSWORD is never stored anywhere. What is stored is the DERIVED key, in
+// sessionStorage, so a same-session reload skips the 250k-round PBKDF2 and the
+// warm-launch path is unchanged. Only a true browser restart finds it gone and
+// prompts to unlock (js/main.js).
+//
+// _cacheKey caches the imported CryptoKey for this page so the per-flush cost is
+// an AES-GCM encrypt, not a key import.
+let _cacheKey = null;
+
+// Minted on first use and kept forever for this device: changing the salt would
+// orphan the existing cache for no benefit.
+function cacheSalt() {
+  let s = "";
+  try { s = localStorage.getItem(CACHE_SALT_KEY) || ""; } catch { /* storage blocked */ }
+  if (!s) {
+    s = newCacheSalt();
+    try { localStorage.setItem(CACHE_SALT_KEY, s); } catch { /* storage blocked */ }
+  }
+  return s;
+}
+
+// Called at login and after a successful password change — the only two moments
+// the plaintext password is in hand.
+async function setCacheKeyFromPassword(password) {
+  _cacheKey = await deriveCacheKey(password, cacheSalt());
+  try { sessionStorage.setItem(CACHE_KEY_SESSION, await exportCacheKey(_cacheKey)); } catch { /* storage blocked */ }
+  return _cacheKey;
+}
+
+// Null means "locked": no key this session. Callers must treat that as "cache
+// unreadable / unwritable", never as an error to retry.
+async function getCacheKey() {
+  if (_cacheKey) return _cacheKey;
+  let b64 = "";
+  try { b64 = sessionStorage.getItem(CACHE_KEY_SESSION) || ""; } catch { /* storage blocked */ }
+  if (!b64) return null;
+  try { _cacheKey = await importCacheKey(b64); } catch { _cacheKey = null; }
+  return _cacheKey;
+}
+
+function clearCacheKey() {
+  _cacheKey = null;
+  try { sessionStorage.removeItem(CACHE_KEY_SESSION); } catch { /* storage blocked */ }
+}
+
 const SAVE_LOCAL_DEBOUNCE_MS = 400;
 let _saveLocalTimer = null;
 let _saveLocalPending = false;

@@ -39,6 +39,7 @@ const ROOT = __dirname;
 // than parsed out of the HTML because ESLint config load failures are opaque and
 // this list changes roughly twice a year.
 const FRONTEND_FILES = [
+  "js/cache-crypto.js",
   "js/state.js", "js/api.js", "js/ippt-scoring.js", "js/calc.js", "js/appointment-4d.js", "js/helpers.js",
   "js/sick-history-import.js", "js/duty-points.js", "js/duty-eligibility.js",
   "js/duty-conflicts.js", "js/duty-import.js", "js/duty-schedule.js", "js/duty-unavailable.js", "js/duty-request.js",

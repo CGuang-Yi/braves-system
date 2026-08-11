@@ -26,6 +26,17 @@ function makeBrowser() {
     clear: () => store.clear()
   };
 
+  const sessionStore = new Map();
+  // sessionStorage is where the DERIVED CACHE KEY lives (never the password).
+  // Separate from localStorage on purpose: it is what dies with the browser
+  // session, which is the whole basis of the cache-encryption threat model.
+  const sessionStorage = {
+    getItem: k => (sessionStore.has(k) ? sessionStore.get(k) : null),
+    setItem: (k, v) => { sessionStore.set(k, String(v)); },
+    removeItem: k => { sessionStore.delete(k); },
+    clear: () => sessionStore.clear()
+  };
+
   function makeEl() {
     return {
       style: { cssText: "" }, innerHTML: "", textContent: "", title: "", onclick: null,
@@ -100,7 +111,12 @@ function makeBrowser() {
   return {
     ctl,
     globals: {
-      localStorage, document, window,
+      localStorage, sessionStorage, document, window,
+      // Real Web Crypto from Node 18+ — the cache encryption is exercised for
+      // real in the sandbox tests rather than stubbed, so a broken envelope or a
+      // wrong-key path fails here instead of in a browser.
+      crypto: globalThis.crypto,
+      TextEncoder, TextDecoder, btoa, atob,
       confirm: () => ctl.confirm,
       performance: { now: () => Date.now() },
       setTimeout: fn => { const id = nextTimerId++; timers.set(id, fn); return id; },

@@ -19,7 +19,8 @@ const { makeBrowser } = require("./mocks/browser");
 
 const ROOT = path.resolve(__dirname, "..");
 const GS_PATH = path.join(ROOT, "apps-script-Code.gs");
-const FRONTEND_FILES = ["js/state.js", "js/api.js", "js/sync.js"];
+// cache-crypto.js FIRST, matching index.html — state.js calls into it.
+const FRONTEND_FILES = ["js/cache-crypto.js", "js/state.js", "js/api.js", "js/sync.js"];
 const VALID_TOKEN = "testtoken";
 // Braves uses per-account auth: getAuthContext() parses the stored value as a
 // JSON {email, personId, role, issuedAt} and isTokenExpired() checks issuedAt
