@@ -31,6 +31,7 @@ function renderSync(el) {
         <button class="btn btn-primary" onclick="doPull()" id="pull-btn" ${authed ? "" : "disabled"}>⬇ Pull from Sheet</button>
         <button class="btn btn-success write-only" onclick="doPushAll()" id="push-btn" ${authed ? "" : "disabled"}>⬆ Push All to Sheet</button>
         <button class="btn" onclick="doPing()">🏓 Test Connection</button>
+        <button class="btn" onclick="refreshLocalCache()" ${authed ? "" : "disabled"} title="Rebuild this device's offline copy from the sheet. Unsynced changes are KEPT — use Force Resync only if you want to discard them.">⟳ Refresh Local Copy</button>
         <button class="btn btn-danger" onclick="forceResync()" ${authed ? "" : "disabled"} title="Discard this device's unsynced changes and reload from the sheet. Use if stuck on 'unsaved'.">⟳ Force Resync</button>
       </div>
       <div id="sync-log" class="sync-log card" style="padding:10px"></div>
@@ -843,6 +844,35 @@ async function retryAllDirty() {
   // Outside the `if` deliberately: that branch is the still-failing case, and
   // the button must come back whether the retry succeeded or not.
   restoreBtn();
+}
+
+// Rebuild this device's offline copy from the sheet. Deliberately DISTINCT from
+// forceResync below: this one does NOT discard unsynced changes. API.pullAll()
+// already skips any tab marked dirty and preserves its rev, so unpushed edits
+// survive a refresh — which is what makes this safe to offer as a routine action
+// beside a destructive one.
+//
+// Reachable from Settings, and the manual counterpart to the automatic recovery
+// bootstrap() runs when it finds an interrupted cache write.
+async function refreshLocalCache() {
+  setSyncIndicator("● Refreshing…", "var(--orange)");
+  try {
+    const p = timed("pull", "pull ALL (refresh local copy)", () => API.pullAll(), true);
+    setPullInFlight(p);
+    await p;
+    // Re-encrypt and persist right away rather than waiting on the debounce, so
+    // the thing the user just asked for is actually on disk when they close the
+    // tab a second later.
+    await saveLocalNow();
+    _lastSyncedAt = Date.now();
+    refreshSyncIndicator();
+    if (typeof render === "function") render();
+    syncLog("Local copy refreshed from the sheet. Unsynced changes were kept.", "var(--green)");
+  } catch (e) {
+    if (e.name === "AuthError") { setSyncIndicator("● Not authenticated", "var(--red)"); return; }
+    setSyncIndicator("● Refresh failed", "var(--red)");
+    syncLog("Could not refresh the local copy: " + e.message, "var(--red)");
+  }
 }
 
 // Escape hatch for a device stuck showing "unsaved" that a normal retry can't

@@ -173,4 +173,18 @@ module.exports = async function run() {
     eq(C.browser.globals.localStorage.getItem("braves-cache-salt"), salt, "salt unchanged");
     eq(C.browser.globals.sessionStorage.getItem("braves-cache-key"), a, "same key");
   });
+
+  await test("refreshLocalCache keeps dirty tabs and re-encrypts", async () => {
+    const backend = loadBackend();
+    backend.db.seed("Medical", ["id", "d4", "date", "reason", "location", "status", "startDate", "endDate"],
+      [["1", "1101", "", "server-row", "", "", "", ""]]);
+    const C = makeClient(backend);
+    await C.sb.setCacheKeyFromPassword("hunter2");
+    C.sb.STATE.dirty = new Set(["Attendance"]);
+    C.sb.saveDirty();
+    await C.sb.refreshLocalCache();
+    ok(C.sb.STATE.dirty.has("Attendance"), "dirty markers survive — this is not forceResync");
+    const raw = C.browser.globals.localStorage.getItem(LS);
+    ok(C.sb.isCacheCiphertext(raw), "re-encrypted, not left plaintext");
+  });
 };
