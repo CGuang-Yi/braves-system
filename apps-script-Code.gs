@@ -2361,10 +2361,35 @@ function getTabNames() {
   return ss.getSheets().map(function (s) { return s.getName(); });
 }
 
+// Sheets hands back Date objects for any date-typed cell, and the frontend expects
+// "dd MMM yyyy". Utilities.formatDate + Session.getScriptTimeZone are SERVICE-BRIDGE
+// calls (V8 -> Java), ~3.4ms each in situ; at ~7,400 date cells that was 76% of a
+// readAll (26,119ms of 34,929ms — tools/diagnostics/readall-phases.gs, 2026-08-11).
+// Plain JS getters read the runtime timezone, which in GAS V8 IS the script timezone
+// — so this is the same instant rendered the same way, without the bridge.
+// Verified byte-identical against Utilities.formatDate over 500 real cells from the
+// live sheet (tools/diagnostics/formatdate-bench.gs, 0 mismatches, 2026-08-11).
+// If the script locale is ever set to a non-English one, SHEET_MONTHS_ below stops
+// matching Java's "MMM" — re-run that differ before assuming it still holds.
+var SHEET_MONTHS_ = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatSheetDate_(d) {
+  var day = d.getDate();
+  return (day < 10 ? "0" + day : String(day)) + " " +
+         SHEET_MONTHS_[d.getMonth()] + " " + d.getFullYear();
+}
+
 function readTab(tabName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return { error: "Tab '" + tabName + "' not found", available: getTabNames() };
+
+  // P1: a per-RPC floor of ~150-185ms applies whether a tab holds 3,600 rows or none,
+  // and twelve of the twenty-three tabs readAllTabs walks are empty. One getLastRow()
+  // metadata call replaces getDataRange + getValues + getDisplayValues for those.
+  // Behaviour is unchanged — the data.length < 2 guard below already returned [].
+  if (sheet.getLastRow() < 2) return [];
 
   var range = sheet.getDataRange();
   var data = range.getValues();
@@ -2389,7 +2414,7 @@ function readTab(tabName) {
         if (val instanceof Date) {
           val = val.getFullYear() < 1900
             ? display[i][j]
-            : Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
+            : formatSheetDate_(val);
         }
         row[headers[j]] = val;
         if (val !== "" && val !== null && val !== undefined) hasData = true;
@@ -2438,7 +2463,7 @@ function readTabTail(tabName, maxRows) {
         if (val instanceof Date) {
           val = val.getFullYear() < 1900
             ? display[i][j]
-            : Utilities.formatDate(val, Session.getScriptTimeZone(), "dd MMM yyyy");
+            : formatSheetDate_(val);
         }
         row[headers[j]] = val;
         if (val !== "" && val !== null && val !== undefined) hasData = true;
@@ -2819,7 +2844,7 @@ function replaceConductRows(tabName, match, rows) {
       if (v instanceof Date) {
         return v.getFullYear() < 1900
           ? d   // time-only cell → whatever the sheet displays (mirrors readTab)
-          : Utilities.formatDate(v, Session.getScriptTimeZone(), "dd MMM yyyy");
+          : formatSheetDate_(v);   // same formatter readTab uses, so the two cannot drift
       }
       return String(v);
     };
