@@ -147,7 +147,7 @@
 
 <!--
   Plain scripts (not modules) so this works under file:// too.
-  Load order matters: state → api → ippt-scoring → calc → appointment-4d → helpers →
+  Load order matters: cache-crypto → state → api → ippt-scoring → calc → appointment-4d → helpers →
   sick-history-import → duty-points → duty-eligibility → duty-conflicts → duty-import →
   duty-schedule → duty-unavailable → duty-request →
   render* → forms* → braves-parade → actions → parade-tab → render-duty →
@@ -177,8 +177,12 @@
   personSection) and duty-eligibility (dutyAppointmentOf) call it, so it loads
   before both — it is a leaf precisely so neither of those has to depend on the
   other.
+  cache-crypto is FIRST: it is the Web Crypto layer state.js encrypts the
+  localStorage cache with, and it references nothing else in the bundle at all
+  (that purity is what test/cache-crypto.test.js enforces), so it can lead.
 -->
-<script src="js/state.js?v=139"></script>
+<script src="js/cache-crypto.js?v=1"></script>
+<script src="js/state.js?v=140"></script>
 <script src="js/api.js?v=134"></script>
 <script src="js/ippt-scoring.js?v=113"></script>
 <script src="js/calc.js?v=8"></script>
@@ -203,13 +207,13 @@
 <script src="js/forms-reports.js?v=5"></script>
 <script src="js/forms-conducts.js?v=2"></script>
 <script src="js/forms-wizard.js?v=4"></script>
-<script src="js/forms-admin.js?v=4"></script>
+<script src="js/forms-admin.js?v=5"></script>
 <script src="js/forms-duty.js?v=6"></script>
 <script src="js/braves-parade.js?v=142"></script>
 <script src="js/actions.js?v=1"></script>
 <script src="js/parade-tab.js?v=31"></script>
 <script src="js/render-duty.js?v=8"></script>
-<script src="js/sync.js?v=133"></script>
-<script src="js/main.js?v=125"></script>
+<script src="js/sync.js?v=134"></script>
+<script src="js/main.js?v=126"></script>
 </body>
 </html>

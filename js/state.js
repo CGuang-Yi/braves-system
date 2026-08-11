@@ -1002,23 +1002,31 @@ function mergeAttendanceEdit(existing, entry) {
   return existing ? { ...existing, ...entry } : entry;
 }
 
-// CodeQL js/clear-text-storage-of-sensitive-data (alert #20): medical/appointments
-// data is cached here unencrypted. Encryption is still NOT the fix, for the
-// original reason — any key derivable client-side (e.g. from authToken, itself
-// in localStorage — see AUTH_KEY) sits right next to the ciphertext, so it
-// blocks nothing an XSS or local-device attacker couldn't already read, and a
-// key that is NOT derivable client-side (one wrapped by the password at login)
-// would have to be re-supplied on every cold start, which destroys the offline
-// tolerance this cache exists for. Real defense is XSS prevention (escapeHTML at
-// render) plus bounding the copy itself.
+// CodeQL js/clear-text-storage-of-sensitive-data (alert #20). This cache is now
+// ENCRYPTED — AES-GCM, key derived from the login password (js/cache-crypto.js).
 //
-// What DID change (BACKEND_MIGRATION_REVIEW.md §4.6 item 3, §4.7.5a): the answer
-// to "should we encrypt it?" was always going to be no, but the prior question —
-// "should this device hold the whole company's medical data at all, forever?" —
-// now has an answer. Caching is opt-in, time-limited and revocable (the offline
-// grant above), the write below is gated on it, and sign-out wipes it. That is a
-// bound on scope and lifetime rather than a lock, and it is the control that
-// actually reduces the exposure.
+// This reverses an earlier decision, and the earlier reasoning was half right,
+// so it is worth recording which half. It argued that (a) any key derivable
+// client-side sits beside the ciphertext and blocks nothing, and (b) a key NOT
+// derivable client-side would have to be re-supplied on every cold start, which
+// would destroy the offline tolerance this cache exists for.
+//
+// (a) still stands and this design does not pretend otherwise: encryption buys
+// NOTHING against XSS in the running page or against anyone at the unlocked,
+// signed-in machine. The mitigation there is still escapeHTML at render.
+//
+// (b) is what changed. The password is a LOCAL UNLOCK, not a re-login: the
+// 30-day token still handles auth, and PBKDF2 runs in-browser, so the cold-start
+// prompt works offline. The derived key lives in sessionStorage, so a
+// same-session reload skips it entirely and the warm-launch path is unchanged.
+//
+// What it does buy: a cold disk image with no live browser session — a stolen,
+// sold, repaired or handed-over device — is inert ciphertext.
+//
+// The offline grant above remains the PRIMARY control. It bounds scope and
+// lifetime (opt-in, per device and per account, expiring, revocable, wiped on
+// sign-out); this adds a lock on what is left. Neither replaces the other, and
+// the grant still gates the write below.
 // SYNC_PERF_IMPROVEMENTS_SPEC.md P3-2: saveLocal() used to JSON.stringify the
 // ENTIRE dataset (16 STATE keys, MB-scale for a real company) SYNCHRONOUSLY on
 // every call — 29 form-edit call sites in forms.js, every successful write ack
