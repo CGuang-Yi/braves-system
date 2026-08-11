@@ -15,6 +15,21 @@
 // a blank screen, so the ✕, the backdrop and any Cancel button all restore the
 // caller. Cleared on every open, so an ordinary modal never inherits the hook.
 let _modalOnClose = null;
+
+// A modal may veto its own close — used by the conduct wizard to warn about
+// unsaved work. One slot, like _modalOnClose above, but with a deliberately
+// DIFFERENT lifetime: openModal() clears _modalOnClose and must NOT clear this.
+// The wizard re-renders itself through openModal() on every edit, so a guard
+// cleared there would survive only until the first keystroke.
+//
+// What stops the guard leaking onto an unrelated modal is therefore the guard's
+// own liveness check, not the slot's lifetime — see wizardCloseGuard in
+// js/forms-wizard.js, which confirms the wizard's own DOM is the thing on
+// screen before it prompts.
+let _modalCloseGuard = null;
+function registerModalCloseGuard(fn) { _modalCloseGuard = fn || null; }
+function clearModalCloseGuard() { _modalCloseGuard = null; }
+
 function openModal(title, html, onClose) {
   _modalOnClose = onClose || null;
   document.getElementById("modal-title").textContent = title;
@@ -22,6 +37,10 @@ function openModal(title, html, onClose) {
   document.getElementById("modal-overlay").classList.remove("hidden");
 }
 function closeModal() {
+  // The guard runs FIRST — before the overlay is hidden and before the onClose
+  // hook fires — so a veto leaves the modal exactly as it was. It may prompt;
+  // returning false means "stay open".
+  if (_modalCloseGuard && _modalCloseGuard() === false) return;
   // Read and clear BEFORE running: the hook re-opens a modal, and a hook that
   // was still installed at that moment would fire again on the next close.
   const after = _modalOnClose;
