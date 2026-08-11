@@ -31,6 +31,7 @@ function renderSync(el) {
         <button class="btn btn-primary" onclick="doPull()" id="pull-btn" ${authed ? "" : "disabled"}>⬇ Pull from Sheet</button>
         <button class="btn btn-success write-only" onclick="doPushAll()" id="push-btn" ${authed ? "" : "disabled"}>⬆ Push All to Sheet</button>
         <button class="btn" onclick="doPing()">🏓 Test Connection</button>
+        <button class="btn" onclick="refreshLocalCache()" ${authed ? "" : "disabled"} title="Rebuild this device's offline copy from the sheet. Unsynced changes are KEPT — use Force Resync only if you want to discard them.">⟳ Refresh Local Copy</button>
         <button class="btn btn-danger" onclick="forceResync()" ${authed ? "" : "disabled"} title="Discard this device's unsynced changes and reload from the sheet. Use if stuck on 'unsaved'.">⟳ Force Resync</button>
       </div>
       <div id="sync-log" class="sync-log card" style="padding:10px"></div>
@@ -155,7 +156,9 @@ function offlineGrantCardHtml() {
 
 async function doGrantOffline(days) {
   grantOffline(days);
-  saveLocalNow();               // materialise the cache immediately, so "on" means on
+  // Materialise the cache immediately, so "on" means on. Awaited now that the
+  // flush encrypts, so the toggle does not report success before the write lands.
+  await saveLocalNow();
   // Best-effort registration for the admin-review list. A failure here must not
   // block the grant: the client-side expiry is the enforcement, the server copy
   // is visibility. Say so rather than pretending the grant failed.
@@ -843,6 +846,35 @@ async function retryAllDirty() {
   restoreBtn();
 }
 
+// Rebuild this device's offline copy from the sheet. Deliberately DISTINCT from
+// forceResync below: this one does NOT discard unsynced changes. API.pullAll()
+// already skips any tab marked dirty and preserves its rev, so unpushed edits
+// survive a refresh — which is what makes this safe to offer as a routine action
+// beside a destructive one.
+//
+// Reachable from Settings, and the manual counterpart to the automatic recovery
+// bootstrap() runs when it finds an interrupted cache write.
+async function refreshLocalCache() {
+  setSyncIndicator("● Refreshing…", "var(--orange)");
+  try {
+    const p = timed("pull", "pull ALL (refresh local copy)", () => API.pullAll(), true);
+    setPullInFlight(p);
+    await p;
+    // Re-encrypt and persist right away rather than waiting on the debounce, so
+    // the thing the user just asked for is actually on disk when they close the
+    // tab a second later.
+    await saveLocalNow();
+    _lastSyncedAt = Date.now();
+    refreshSyncIndicator();
+    if (typeof render === "function") render();
+    syncLog("Local copy refreshed from the sheet. Unsynced changes were kept.", "var(--green)");
+  } catch (e) {
+    if (e.name === "AuthError") { setSyncIndicator("● Not authenticated", "var(--red)"); return; }
+    setSyncIndicator("● Refresh failed", "var(--red)");
+    syncLog("Could not refresh the local copy: " + e.message, "var(--red)");
+  }
+}
+
 // Escape hatch for a device stuck showing "unsaved" that a normal retry can't
 // clear (expired session, a poison local row, or stale cached code). Discards
 // this device's unsynced local changes and reloads the authoritative sheet
@@ -853,9 +885,9 @@ async function forceResync() {
     "Use this if the device is stuck on \"unsaved\". Local edits that never reached the sheet will be lost."
   )) return;
   // P3-2: flush any debounced saveLocal() before we start tearing down local
-  // state (rev/dirty below, then a full pullAll overwrite) — a synchronous
-  // persist point, not the default debounced path.
-  if (typeof saveLocalNow === "function") saveLocalNow();
+  // state (rev/dirty below, then a full pullAll overwrite). Awaited now that the
+  // flush encrypts — starting the teardown mid-encrypt would race the write.
+  if (typeof saveLocalNow === "function") await saveLocalNow();
   STATE.dirty = new Set();
   _dirtyOps.clear();
   saveDirty();
@@ -924,6 +956,10 @@ async function signOut() {
   // The grant goes with it, so signing back in is an explicit opt-in again.
   clearOfflineGrant();
   wipeLocalDataCache();
+  // The key must go too. Leaving it in sessionStorage would let the NEXT account
+  // on this device silently inherit a working key — and the offline grant is
+  // already per-account for exactly that reason.
+  clearCacheKey();
   clearSession();
   if (typeof applyRoleUI === "function") applyRoleUI();
   showLogin();
