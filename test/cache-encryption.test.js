@@ -142,4 +142,35 @@ module.exports = async function run() {
     eq(C.sb.STATE.roster.length, 1, "loaded, so the dirty rows are not stranded");
     ok(C.browser.globals.localStorage.getItem(LS), "retained until the edits drain");
   });
+
+  suite("cache encryption: key lifecycle");
+
+  await test("sign-out clears the key so the next account cannot inherit it", async () => {
+    const C = makeClient(loadBackend());
+    await C.sb.setCacheKeyFromPassword("hunter2");
+    ok(C.browser.globals.sessionStorage.getItem("braves-cache-key"), "key present");
+    C.sb.clearCacheKey();
+    eq(C.browser.globals.sessionStorage.getItem("braves-cache-key"), null);
+    eq(await C.sb.getCacheKey(), null);
+  });
+
+  await test("a re-derive from a new password produces a different key", async () => {
+    const C = makeClient(loadBackend());
+    await C.sb.setCacheKeyFromPassword("old-password");
+    const before = C.browser.globals.sessionStorage.getItem("braves-cache-key");
+    await C.sb.setCacheKeyFromPassword("new-password");
+    const after = C.browser.globals.sessionStorage.getItem("braves-cache-key");
+    ok(before !== after);
+  });
+
+  await test("the salt is stable across derives, so the same password re-derives the same key", async () => {
+    const C = makeClient(loadBackend());
+    await C.sb.setCacheKeyFromPassword("hunter2");
+    const salt = C.browser.globals.localStorage.getItem("braves-cache-salt");
+    const a = C.browser.globals.sessionStorage.getItem("braves-cache-key");
+    C.sb.clearCacheKey();
+    await C.sb.setCacheKeyFromPassword("hunter2");
+    eq(C.browser.globals.localStorage.getItem("braves-cache-salt"), salt, "salt unchanged");
+    eq(C.browser.globals.sessionStorage.getItem("braves-cache-key"), a, "same key");
+  });
 };

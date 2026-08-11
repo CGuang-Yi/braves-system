@@ -307,7 +307,20 @@ async function submitChangePassword() {
   if (nw !== cf) { err.textContent = "New passwords do not match."; return; }
   try {
     const res = await API.changePassword(cur, nw);
-    if (res && res.ok) { closeModal(); alert("Password updated."); }
+    if (res && res.ok) {
+      // The cache key is derived from the password, so it is now wrong. Re-derive
+      // from the NEW password and rewrite the cache immediately — otherwise the
+      // next cold start would fail to unlock with a password the user believes
+      // is correct, which reads as data loss rather than as a stale key.
+      try {
+        await setCacheKeyFromPassword(nw);
+        await saveLocalNow();
+      } catch (e) {
+        console.error("cache key re-derive failed", e);
+      }
+      closeModal();
+      alert("Password updated.");
+    }
     else err.textContent = (res && res.error) || "Could not change password.";
   } catch (e) {
     if (e.name === "AuthError") { handleAuthFailure(); return; }

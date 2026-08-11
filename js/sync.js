@@ -926,6 +926,10 @@ async function signOut() {
   // The grant goes with it, so signing back in is an explicit opt-in again.
   clearOfflineGrant();
   wipeLocalDataCache();
+  // The key must go too. Leaving it in sessionStorage would let the NEXT account
+  // on this device silently inherit a working key — and the offline grant is
+  // already per-account for exactly that reason.
+  clearCacheKey();
   clearSession();
   if (typeof applyRoleUI === "function") applyRoleUI();
   showLogin();

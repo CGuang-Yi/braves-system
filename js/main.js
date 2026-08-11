@@ -275,6 +275,7 @@ function handleAuthFailure() {
   // async now (it encrypts) and this function is not, so the FLUSH_PENDING_KEY
   // marker is what covers an interrupted write.
   if (typeof saveLocalNow === "function") saveLocalNow();
+  clearCacheKey();
   clearSession();
   applyRoleUI();
   showLogin();
