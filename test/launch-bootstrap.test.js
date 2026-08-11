@@ -7,7 +7,7 @@
 // nothing changed, and does a cold cache still block on a full pull like
 // before.
 const { suite, test, ok, eq } = require("./_tap");
-const { loadBackend, makeClient, makeLaunchClient, flushMicrotasks, seedCache } = require("./harness");
+const { loadBackend, makeClient, makeLaunchClient, flushMicrotasks } = require("./harness");
 
 // A minimal but complete cached-STATE snapshot (the shape saveLocal() writes /
 // loadLocal() reads — see js/state.js). `rev` is filled in per-test from a
@@ -43,15 +43,16 @@ module.exports = async function run() {
     // the harness mints). Without it the launch correctly forces a one-time
     // Medical/MSK re-pull — right behaviour, but it would be measuring the
     // scope-key migration rather than the P1-1 property under test here.
-    const warm = makeLaunchClient(backend, { cachedState: await seedCache(cachedState), scopeKey: "company" });
-    await flushMicrotasks();
-    // renderCalls records fetchSpy.length AT THE MOMENT render() ran, so a 0
-    // here means the cache render happened before any network call was even
-    // dispatched — not merely before a response came back. (It is asserted after
-    // the flush rather than before it because loadLocal() is async now: the
-    // cache render no longer lands inside vm.runInContext's synchronous window.)
+    const warm = makeLaunchClient(backend, { cachedState, scopeKey: "company" });
+    // By the time makeLaunchClient() returns, bootstrap()'s synchronous prefix
+    // (loadLocal → warm-cache check → applyRoleUI → render) has already run —
+    // vm.runInContext doesn't return until that synchronous portion finishes,
+    // and the first `await` inside it is INSIDE autoSyncOnLaunch, past the
+    // render() call. So asserting here (before any flush) proves render fired
+    // strictly before autoSyncOnLaunch's revCheck fetch was even dispatched.
     eq(warm.renderCalls[0], 0, "render() fired while fetchSpy was still empty — before any network call, not just before any response");
 
+    await flushMicrotasks();
     const actions = warm.fetchSpy.map(r => r.action);
     // checkOfflineGrant rides along on every launch that holds an offline grant
     // (BACKEND_MIGRATION_REVIEW.md §4.7.5a): it is the revoke-on-next-contact
@@ -84,9 +85,9 @@ module.exports = async function run() {
 
     // See the scopeKey note in the previous test — this device already holds the
     // server's scope key, so the ONE partial read below is rev-driven only.
-    const warm = makeLaunchClient(backend, { cachedState: await seedCache(cachedState), scopeKey: "company" });
-    await flushMicrotasks();
+    const warm = makeLaunchClient(backend, { cachedState, scopeKey: "company" });
     eq(warm.renderCalls[0], 0, "instant render from cache still happens first");
+    await flushMicrotasks();
 
     const actions = warm.fetchSpy.map(r => r.action);
     ok(actions.includes("revCheck"), "polled revCheck");
@@ -117,9 +118,9 @@ module.exports = async function run() {
     // A token the backend has never seen (loadBackend only seeds VALID_TOKEN)
     // → revCheck's auth lookup fails → 401 → AuthError, same as a genuinely
     // expired/revoked session.
-    const warm = makeLaunchClient(backend, { cachedState: await seedCache(cachedState), authToken: "revoked-or-expired-token" });
-    await flushMicrotasks();
+    const warm = makeLaunchClient(backend, { cachedState, authToken: "revoked-or-expired-token" });
     eq(warm.renderCalls[0], 0, "still renders the stale cache instantly before finding out the token is bad");
+    await flushMicrotasks();
 
     ok(warm.fetchSpy.map(r => r.action).includes("revCheck"), "attempted the revCheck");
     eq(warm.sb.STATE.authToken, "", "handleAuthFailure cleared the session (clearSession → authToken reset)");
@@ -152,7 +153,7 @@ module.exports = async function run() {
     // to the blocking full pull exactly like a truly empty cache.
     const cachedState = emptyCache([{ id: "1", d4: "1101", name: "Stale Cached Name" }], {});
 
-    const client = makeLaunchClient(backend, { cachedState: await seedCache(cachedState) });
+    const client = makeLaunchClient(backend, { cachedState });
     await flushMicrotasks();
 
     const actions = client.fetchSpy.map(r => r.action);

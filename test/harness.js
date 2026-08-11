@@ -19,8 +19,7 @@ const { makeBrowser } = require("./mocks/browser");
 
 const ROOT = path.resolve(__dirname, "..");
 const GS_PATH = path.join(ROOT, "apps-script-Code.gs");
-// cache-crypto.js FIRST, matching index.html — state.js calls into it.
-const FRONTEND_FILES = ["js/cache-crypto.js", "js/state.js", "js/api.js", "js/sync.js"];
+const FRONTEND_FILES = ["js/state.js", "js/api.js", "js/sync.js"];
 const VALID_TOKEN = "testtoken";
 // Braves uses per-account auth: getAuthContext() parses the stored value as a
 // JSON {email, personId, role, issuedAt} and isTokenExpired() checks issuedAt
@@ -139,10 +138,7 @@ function makeClient(backend, opts) {
     sandbox.grantOffline(7);
   }
 
-  // `browser` is exposed so cache tests can reach localStorage/sessionStorage
-  // by the same handle the bootstrap harness uses (browser.globals.*), rather
-  // than relying on them also being merged onto the sandbox.
-  return { sb: sandbox, browser, fetchSpy, ctl: browser.ctl, db: backend.db };
+  return { sb: sandbox, fetchSpy, ctl: browser.ctl, db: backend.db };
 }
 
 // Convenience: pull a client to a clean baseline (full readAll → STATE.rev set).
@@ -168,33 +164,6 @@ const LS_ROLE_KEY = "braves-role";
 const LS_PERSONID_KEY = "braves-personid";
 const LS_EMAIL_KEY = "braves-email";
 const LS_DIRTY_KEY = "cougar-dirty-tabs";
-const LS_CACHE_KEY_SESSION = "braves-cache-key";   // sessionStorage; js/state.js CACHE_KEY_SESSION
-
-// Tests that want a WARM cache now have to seed ciphertext plus the matching
-// sessionStorage key, because plaintext is treated as legacy and wiped. Encrypt
-// here (async) and hand back both halves so makeLaunchClient can stay
-// synchronous — it evaluates the bundle immediately and cannot await.
-//
-// A fixed all-zero key: this is test scaffolding, not a secret.
-const HARNESS_CACHE_KEY_B64 = Buffer.alloc(32).toString("base64");
-
-async function seedCache(stateObj) {
-  const key = await globalThis.crypto.subtle.importKey(
-    "raw", Buffer.from(HARNESS_CACHE_KEY_B64, "base64"), { name: "AES-GCM" }, true, ["encrypt", "decrypt"]
-  );
-  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-  const ct = await globalThis.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(stateObj))
-  );
-  return {
-    envelope: JSON.stringify({
-      v: 1,
-      iv: Buffer.from(iv).toString("base64"),
-      ct: Buffer.from(ct).toString("base64")
-    }),
-    keyB64: HARNESS_CACHE_KEY_B64
-  };
-}
 // Report-sick scope key (js/state.js SCOPE_KEY_KEY). Lives in its own key, like
 // role/caps, so it is NOT part of the cachedState snapshot. A device that has
 // run this build holds one; a device whose cache predates the gate does not, and
@@ -244,16 +213,7 @@ function makeLaunchClient(backend, opts) {
   browser.globals.localStorage.setItem(LS_ROLE_KEY, opts.role || "admin");
   if (opts.personId) browser.globals.localStorage.setItem(LS_PERSONID_KEY, opts.personId);
   if (opts.email) browser.globals.localStorage.setItem(LS_EMAIL_KEY, opts.email);
-  if (opts.cachedState) {
-    // A {envelope, keyB64} from seedCache() → warm ENCRYPTED cache.
-    // A plain object → LEGACY plaintext, for the migration tests only.
-    if (opts.cachedState.envelope && opts.cachedState.keyB64) {
-      browser.globals.localStorage.setItem(LS_STORAGE_KEY, opts.cachedState.envelope);
-      browser.globals.sessionStorage.setItem(LS_CACHE_KEY_SESSION, opts.cachedState.keyB64);
-    } else {
-      browser.globals.localStorage.setItem(LS_STORAGE_KEY, JSON.stringify(opts.cachedState));
-    }
-  }
+  if (opts.cachedState) browser.globals.localStorage.setItem(LS_STORAGE_KEY, JSON.stringify(opts.cachedState));
   if (opts.dirty) browser.globals.localStorage.setItem(LS_DIRTY_KEY, JSON.stringify(opts.dirty));
   if (opts.scopeKey) browser.globals.localStorage.setItem(LS_SCOPE_KEY, opts.scopeKey);
 
@@ -286,21 +246,11 @@ function makeLaunchClient(backend, opts) {
 // queue lets every pending .then/await in the chain settle without needing a
 // handle on bootstrap()'s own promise (it's an unexported IIFE — see comment
 // above makeLaunchClient).
-//
-// The launch chain now also awaits crypto.subtle (loadLocal decrypts), and
-// Node's WebCrypto resolves off the threadpool — a MACROTASK, which a pure
-// microtask drain would spin past forever. So yield a real tick periodically as
-// well. `setTimeout` here is Node's own; the vm sandbox's stubbed one is a
-// different function entirely.
 async function flushMicrotasks(rounds) {
-  const n = rounds || 40;
-  for (let i = 0; i < n; i++) {
-    await Promise.resolve();
-    if (i % 4 === 0) await new Promise(r => setTimeout(r, 0));
-  }
+  for (let i = 0; i < (rounds || 40); i++) await Promise.resolve();
 }
 
 module.exports = {
-  loadBackend, makeClient, readVia, baseline, makeLaunchClient, flushMicrotasks, seedCache,
+  loadBackend, makeClient, readVia, baseline, makeLaunchClient, flushMicrotasks,
   VALID_TOKEN, ROOT, FRONTEND_FILES, LAUNCH_FRONTEND_FILES
 };

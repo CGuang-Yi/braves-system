@@ -43,27 +43,6 @@
   </form>
 </div>
 
-<!-- Cache unlock. Shown ONLY on a cold start (browser restarted) when an
-     encrypted cache is on disk but sessionStorage no longer holds the key. The
-     password here unlocks the local cache; it is NOT a re-login — the 30-day
-     token still handles auth, and the derive runs entirely in-browser so this
-     works offline. -->
-<div id="unlock-overlay" class="login-overlay hidden">
-  <form id="unlock-form" class="login-card" autocomplete="on">
-    <div class="login-brand">
-      <small>40 SAR</small>
-      <h1>Unlock Offline Copy</h1>
-    </div>
-    <p class="login-sub">Your offline copy is encrypted. Enter your password to unlock it — this works without a connection.</p>
-    <label class="login-field">Password
-      <input type="password" id="unlock-password" autocomplete="current-password" placeholder="••••••••">
-    </label>
-    <div id="unlock-error" class="login-error"></div>
-    <button type="submit" id="unlock-submit" class="btn btn-primary login-submit">Unlock</button>
-    <button type="button" id="unlock-skip" class="btn login-submit" style="margin-top:8px">Continue online instead</button>
-  </form>
-</div>
-
 <!-- SIDEBAR -->
 <div id="sidebar">
   <div class="logo">
@@ -147,7 +126,7 @@
 
 <!--
   Plain scripts (not modules) so this works under file:// too.
-  Load order matters: cache-crypto → state → api → ippt-scoring → calc → appointment-4d → helpers →
+  Load order matters: state → api → ippt-scoring → calc → appointment-4d → helpers →
   sick-history-import → duty-points → duty-eligibility → duty-conflicts → duty-import →
   duty-schedule → duty-unavailable → duty-request →
   render* → forms* → braves-parade → actions → parade-tab → render-duty →
@@ -177,12 +156,8 @@
   personSection) and duty-eligibility (dutyAppointmentOf) call it, so it loads
   before both — it is a leaf precisely so neither of those has to depend on the
   other.
-  cache-crypto is FIRST: it is the Web Crypto layer state.js encrypts the
-  localStorage cache with, and it references nothing else in the bundle at all
-  (that purity is what test/cache-crypto.test.js enforces), so it can lead.
 -->
-<script src="js/cache-crypto.js?v=1"></script>
-<script src="js/state.js?v=140"></script>
+<script src="js/state.js?v=139"></script>
 <script src="js/api.js?v=134"></script>
 <script src="js/ippt-scoring.js?v=113"></script>
 <script src="js/calc.js?v=8"></script>
@@ -207,13 +182,13 @@
 <script src="js/forms-reports.js?v=5"></script>
 <script src="js/forms-conducts.js?v=2"></script>
 <script src="js/forms-wizard.js?v=4"></script>
-<script src="js/forms-admin.js?v=5"></script>
+<script src="js/forms-admin.js?v=4"></script>
 <script src="js/forms-duty.js?v=6"></script>
 <script src="js/braves-parade.js?v=142"></script>
 <script src="js/actions.js?v=1"></script>
 <script src="js/parade-tab.js?v=31"></script>
 <script src="js/render-duty.js?v=8"></script>
-<script src="js/sync.js?v=134"></script>
-<script src="js/main.js?v=126"></script>
+<script src="js/sync.js?v=133"></script>
+<script src="js/main.js?v=125"></script>
 </body>
 </html>

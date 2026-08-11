@@ -40,15 +40,6 @@ const DIRTY_KEY = "cougar-dirty-tabs";
 const CUSTOM_STATUS_KEY = "cougar-custom-statuses";
 const DEFER_CHARTS_KEY = "braves-defer-charts"; // chart lazy-load pref: auto|defer|eager
 
-// ── Cache encryption keys ────────────────────────────────────────────────────
-// Salt is PLAINTEXT on purpose (salts are not secret); it only has to be stable
-// per device. The derived key lives in sessionStorage, never in localStorage and
-// never on disk in a form that survives the browser session — that separation is
-// the entire threat model (see js/cache-crypto.js).
-const CACHE_SALT_KEY = "braves-cache-salt";              // localStorage, plaintext
-const CACHE_KEY_SESSION = "braves-cache-key";            // sessionStorage, derived key
-const FLUSH_PENDING_KEY = "braves-cache-flush-pending";  // localStorage, torn-write marker
-
 // ── Offline data grant (BACKEND_MIGRATION_REVIEW.md §4.6 item 3 / §4.7.5a) ──
 //
 // The single largest privacy exposure in this system is not which cloud holds
@@ -423,36 +414,17 @@ function saveCustomStatuses() {
 // Shape: { "1101": "2026-05-27T14:40:25.296Z", ... }.
 // Lives in localStorage so it doesn't get touched by saveLocal / pullAll,
 // which means it survives `localStorage.removeItem(STORAGE_KEY)` resets.
-//
-// ENCRYPTED, like STORAGE_KEY: it is a map of personnel 4Ds, so it is in scope
-// for the same treatment. That makes both halves async — hence the STATE literal
-// below initialises `fitnessSent` to {} and loadLocal() fills it in. No
-// flush-pending marker here: this is not on the pagehide path, and a torn write
-// costs a "we already sent this one" marker, not data.
-async function loadFitnessSent() {
+function loadFitnessSent() {
   try {
     const raw = localStorage.getItem(FITNESS_SENT_KEY);
     if (!raw) return {};
-    let json = raw;
-    if (isCacheCiphertext(raw)) {
-      const key = await getCacheKey();
-      if (!key) return {};                 // locked session: no marks, so nothing is skipped
-      json = await decryptCache(key, raw);
-      if (json == null) return {};
-    }
-    const obj = JSON.parse(json);
+    const obj = JSON.parse(raw);
     return obj && typeof obj === "object" ? obj : {};
   } catch { return {}; }
 }
-async function saveFitnessSent(map) {
-  const key = await getCacheKey();
-  if (!key) return;                        // locked: same write-nothing policy as the main cache
-  localStorage.setItem(FITNESS_SENT_KEY, await encryptCache(key, JSON.stringify(map || {})));
+function saveFitnessSent(map) {
+  localStorage.setItem(FITNESS_SENT_KEY, JSON.stringify(map || {}));
 }
-// The three saveFitnessSent() calls below are deliberately fire-and-forget: it
-// is async now (it encrypts) and these three keep their synchronous signatures
-// because every caller treats the in-memory STATE.fitnessSent as the truth and
-// the persisted copy as a convenience.
 function markFitnessSent(d4, when) {
   if (!d4) return;
   STATE.fitnessSent[String(d4)] = when || new Date().toISOString();
@@ -558,9 +530,7 @@ const STATE = {
   // emailed to them. Drives the "skip already sent" default on bulk send so
   // a session interrupted mid-batch (or a fresh device) can resume without
   // double-sending. Map of d4 → ISO timestamp of last successful send.
-  // Filled in by loadLocal(); loadFitnessSent() is async now (it decrypts), and
-  // this literal is evaluated synchronously at script load.
-  fitnessSent: {},
+  fitnessSent: loadFitnessSent(),
   // Set of sheet-tab names with unpushed local changes (push failed or
   // never attempted). Drives the sidebar "X tabs need retry" warning and
   // the on-launch dirty-restore prompt.
@@ -1002,31 +972,23 @@ function mergeAttendanceEdit(existing, entry) {
   return existing ? { ...existing, ...entry } : entry;
 }
 
-// CodeQL js/clear-text-storage-of-sensitive-data (alert #20). This cache is now
-// ENCRYPTED — AES-GCM, key derived from the login password (js/cache-crypto.js).
+// CodeQL js/clear-text-storage-of-sensitive-data (alert #20): medical/appointments
+// data is cached here unencrypted. Encryption is still NOT the fix, for the
+// original reason — any key derivable client-side (e.g. from authToken, itself
+// in localStorage — see AUTH_KEY) sits right next to the ciphertext, so it
+// blocks nothing an XSS or local-device attacker couldn't already read, and a
+// key that is NOT derivable client-side (one wrapped by the password at login)
+// would have to be re-supplied on every cold start, which destroys the offline
+// tolerance this cache exists for. Real defense is XSS prevention (escapeHTML at
+// render) plus bounding the copy itself.
 //
-// This reverses an earlier decision, and the earlier reasoning was half right,
-// so it is worth recording which half. It argued that (a) any key derivable
-// client-side sits beside the ciphertext and blocks nothing, and (b) a key NOT
-// derivable client-side would have to be re-supplied on every cold start, which
-// would destroy the offline tolerance this cache exists for.
-//
-// (a) still stands and this design does not pretend otherwise: encryption buys
-// NOTHING against XSS in the running page or against anyone at the unlocked,
-// signed-in machine. The mitigation there is still escapeHTML at render.
-//
-// (b) is what changed. The password is a LOCAL UNLOCK, not a re-login: the
-// 30-day token still handles auth, and PBKDF2 runs in-browser, so the cold-start
-// prompt works offline. The derived key lives in sessionStorage, so a
-// same-session reload skips it entirely and the warm-launch path is unchanged.
-//
-// What it does buy: a cold disk image with no live browser session — a stolen,
-// sold, repaired or handed-over device — is inert ciphertext.
-//
-// The offline grant above remains the PRIMARY control. It bounds scope and
-// lifetime (opt-in, per device and per account, expiring, revocable, wiped on
-// sign-out); this adds a lock on what is left. Neither replaces the other, and
-// the grant still gates the write below.
+// What DID change (BACKEND_MIGRATION_REVIEW.md §4.6 item 3, §4.7.5a): the answer
+// to "should we encrypt it?" was always going to be no, but the prior question —
+// "should this device hold the whole company's medical data at all, forever?" —
+// now has an answer. Caching is opt-in, time-limited and revocable (the offline
+// grant above), the write below is gated on it, and sign-out wipes it. That is a
+// bound on scope and lifetime rather than a lock, and it is the control that
+// actually reduces the exposure.
 // SYNC_PERF_IMPROVEMENTS_SPEC.md P3-2: saveLocal() used to JSON.stringify the
 // ENTIRE dataset (16 STATE keys, MB-scale for a real company) SYNCHRONOUSLY on
 // every call — 29 form-edit call sites in forms.js, every successful write ack
@@ -1049,80 +1011,11 @@ function mergeAttendanceEdit(existing, entry) {
 // it's the crash-safe record of which tabs still need pushing — and every
 // acked write already lives on the server. A crash inside the window loses at
 // most a few hundred ms of cache freshness, rebuilt on the next pull.
-// ── Cache key holder ─────────────────────────────────────────────────────────
-//
-// The PASSWORD is never stored anywhere. What is stored is the DERIVED key, in
-// sessionStorage, so a same-session reload skips the 250k-round PBKDF2 and the
-// warm-launch path is unchanged. Only a true browser restart finds it gone and
-// prompts to unlock (js/main.js).
-//
-// _cacheKey caches the imported CryptoKey for this page so the per-flush cost is
-// an AES-GCM encrypt, not a key import.
-let _cacheKey = null;
-
-// Minted on first use and kept forever for this device: changing the salt would
-// orphan the existing cache for no benefit.
-function cacheSalt() {
-  let s = "";
-  try { s = localStorage.getItem(CACHE_SALT_KEY) || ""; } catch { /* storage blocked */ }
-  if (!s) {
-    s = newCacheSalt();
-    try { localStorage.setItem(CACHE_SALT_KEY, s); } catch { /* storage blocked */ }
-  }
-  return s;
-}
-
-// Called at login and after a successful password change — the only two moments
-// the plaintext password is in hand.
-async function setCacheKeyFromPassword(password) {
-  _cacheKey = await deriveCacheKey(password, cacheSalt());
-  try { sessionStorage.setItem(CACHE_KEY_SESSION, await exportCacheKey(_cacheKey)); } catch { /* storage blocked */ }
-  return _cacheKey;
-}
-
-// Null means "locked": no key this session. Callers must treat that as "cache
-// unreadable / unwritable", never as an error to retry.
-async function getCacheKey() {
-  if (_cacheKey) return _cacheKey;
-  let b64 = "";
-  try { b64 = sessionStorage.getItem(CACHE_KEY_SESSION) || ""; } catch { /* storage blocked */ }
-  if (!b64) return null;
-  try { _cacheKey = await importCacheKey(b64); } catch { _cacheKey = null; }
-  return _cacheKey;
-}
-
-function clearCacheKey() {
-  _cacheKey = null;
-  try { sessionStorage.removeItem(CACHE_KEY_SESSION); } catch { /* storage blocked */ }
-}
-
 const SAVE_LOCAL_DEBOUNCE_MS = 400;
 let _saveLocalTimer = null;
 let _saveLocalPending = false;
 
-// The in-flight flush, if any. A debounce-armed flush is started by a timer
-// callback, so whoever called saveLocal() has no handle on it — and now that the
-// flush is async, "the timer fired" no longer means "the write landed". This is
-// the handle: saveLocalSettled() waits for the current flush to finish.
-let _saveLocalFlushInFlight = null;
-
-// Every path into the flush goes through here, so the in-flight handle covers
-// the timer, saveLocalNow(), and the pagehide/visibilitychange listeners alike.
 function _saveLocalFlush() {
-  const p = _saveLocalFlushImpl().finally(() => {
-    if (_saveLocalFlushInFlight === p) _saveLocalFlushInFlight = null;
-  });
-  _saveLocalFlushInFlight = p;
-  return p;
-}
-
-function saveLocalSettled() {
-  return _saveLocalFlushInFlight || Promise.resolve();
-}
-
-// ASYNC as of the cache-encryption change: crypto.subtle has no synchronous
-// form. See the saveLocalNow note below for what that costs.
-async function _saveLocalFlushImpl() {
   _saveLocalTimer = null;
   _saveLocalPending = false;
   // §4.7.5a: the grant has to gate the WRITE boundary, not just the read path —
@@ -1131,15 +1024,6 @@ async function _saveLocalFlushImpl() {
   // anything a previous grant left behind, so a lapse mid-session cleans up at
   // the next save rather than waiting for the next launch.
   if (!hasOfflineGrant()) { wipeLocalDataCache(); return; }
-
-  // No key this session (unlock cancelled, or a failed unlock) → the app runs
-  // online-only and writes NOTHING. The existing ciphertext on disk is left
-  // exactly as it is: the approved failure policy is "keep it, retry next
-  // launch", because ciphertext without a key leaks nothing and wiping it would
-  // punish one mistyped password with the loss of an outfield cache.
-  const key = await getCacheKey();
-  if (!key) return;
-
   const d = {
     roster: STATE.roster, medical: STATE.medical, attendance: STATE.attendance,
     ippt: STATE.ippt, rm: STATE.rm, soc: STATE.soc, polar: STATE.polar,
@@ -1151,24 +1035,7 @@ async function _saveLocalFlushImpl() {
     dutyChangeRequest: STATE.dutyChangeRequest,
     rev: STATE.rev || {}
   };
-  // Bracket the async write with two SYNCHRONOUS markers. A killed encrypt is
-  // otherwise silent, and silent staleness is the worst failure mode here: the
-  // user would keep working from a cache that quietly stopped advancing. Both
-  // calls are synchronous, so the marker lands even if the tab dies a
-  // millisecond later, and the next launch (js/main.js) turns a leftover marker
-  // into an automatic full pull plus a banner.
-  try { localStorage.setItem(FLUSH_PENDING_KEY, "1"); } catch { /* storage blocked */ }
-  const envelope = await encryptCache(key, JSON.stringify(d));
-  localStorage.setItem(STORAGE_KEY, envelope);
-  try { localStorage.removeItem(FLUSH_PENDING_KEY); } catch { /* storage blocked */ }
-}
-
-function cacheFlushWasInterrupted() {
-  try { return localStorage.getItem(FLUSH_PENDING_KEY) === "1"; } catch { return false; }
-}
-
-function clearCacheFlushMarker() {
-  try { localStorage.removeItem(FLUSH_PENDING_KEY); } catch { /* storage blocked */ }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
 }
 
 // Debounced entry point — what nearly every call site should keep using.
@@ -1181,26 +1048,13 @@ function saveLocal() {
   _saveLocalTimer = setTimeout(_saveLocalFlush, SAVE_LOCAL_DEBOUNCE_MS);
 }
 
-// Escape hatch: flush right now, cancelling any pending timer.
-//
-// ⚠️ NO LONGER SYNCHRONOUS. crypto.subtle has no sync form, so this returns a
-// promise and the pagehide/visibilitychange handlers below cannot await it —
-// the browser may kill the tab mid-encrypt.
-//
-// What that costs, precisely:
-//   NOT at risk — anything durable. saveDirty() is still fully synchronous (the
-//     crash-safe record of which tabs still need pushing), every acked write
-//     already lives on the server, and signOut/forceResync want a wipe or a
-//     discard, which is still a synchronous removeItem.
-//   AT RISK — cache freshness only. The loss window widens from "the 400ms
-//     debounce" to "the 400ms debounce plus one encrypt". Same class of loss as
-//     the debounce already accepted above, slightly wider — not a new one.
-// And it is no longer silent: the FLUSH_PENDING_KEY marker above makes an
-// interrupted flush detectable, and the next launch auto-recovers with a full
-// pull plus a visible banner.
-async function saveLocalNow() {
+// Escape hatch: flush synchronously right now, cancelling any pending timer.
+// Use where a synchronous persist genuinely matters (about to sign out /
+// discard local state / navigate away) rather than sprinkling this in place
+// of saveLocal() by default — that would defeat the coalescing above.
+function saveLocalNow() {
   if (_saveLocalTimer != null) { clearTimeout(_saveLocalTimer); _saveLocalTimer = null; }
-  await _saveLocalFlush();
+  _saveLocalFlush();
 }
 
 // Last-chance flush on page hide. pagehide fires on normal navigation/close
@@ -1210,12 +1064,8 @@ async function saveLocalNow() {
 // window/document as plain objects whose addEventListener is a no-op (no
 // real event ever fires there — tests that need this exercise
 // saveLocalNow()/ctl.flushTimers() explicitly instead).
-//
-// Best-effort now rather than guaranteed — see the note on saveLocalNow above.
-// Deliberately NOT awaited (nothing can await inside these handlers); the
-// FLUSH_PENDING_KEY marker is what covers the failure.
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-  window.addEventListener("pagehide", () => { saveLocalNow(); });
+  window.addEventListener("pagehide", saveLocalNow);
 }
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("visibilitychange", () => {
@@ -1261,50 +1111,14 @@ function enforceOfflineGrant() {
   return "wiped";
 }
 
-// ASYNC as of the cache-encryption change. Its only caller is bootstrap() in
-// js/main.js, which is already async — and enforceOfflineGrant() must still run
-// BEFORE it, since that is the one path guaranteed to precede the first render.
-async function loadLocal() {
+function loadLocal() {
   if (localStorage.getItem(STORAGE_KEY_LEGACY)) {
     localStorage.removeItem(STORAGE_KEY_LEGACY);
   }
-  // The fitness-sent map is encrypted too, and its loader is async for the same
-  // reason. Filled in here rather than in the STATE literal, which is evaluated
-  // synchronously at script load.
-  try { STATE.fitnessSent = await loadFitnessSent(); } catch { /* leave it {} */ }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-
-    let json = null;
-    if (isCacheCiphertext(raw)) {
-      const key = await getCacheKey();
-      // Locked (no key this session) or unreadable (wrong key / tampered /
-      // unknown version). Either way: load NOTHING and RETAIN the ciphertext.
-      // Leaving STATE empty is what makes bootstrap()'s warmCache test false, so
-      // the device falls through to the blocking full pull — today's behaviour
-      // for a cold cache. Retaining is the approved failure policy: ciphertext
-      // without a key leaks nothing, and wiping would make one mistyped password
-      // cost an offline device its whole cache.
-      if (!key) return;
-      json = await decryptCache(key, raw);
-      if (json == null) return;
-    } else {
-      // Legacy plaintext, written before encryption shipped. There is a valid
-      // 30-day token but no key on this first launch, so the existing plaintext
-      // CANNOT be encrypted in place — and leaving it would let it sit
-      // unencrypted for the token's full life. So: wipe and full-pull once, the
-      // same one-time cost the offline-grant rollout absorbed.
-      //
-      // EXCEPT on a device with unpushed edits: the cached rows are what those
-      // dirty markers refer to, so wiping would turn a privacy feature into data
-      // loss. Same "held" rule enforceOfflineGrant applies. Such a device keeps
-      // its plaintext until the edits drain, then upgrades on the next launch.
-      if (!(STATE.dirty && STATE.dirty.size)) { wipeLocalDataCache(); return; }
-      json = raw;
-    }
-
-    const d = JSON.parse(json);
+    const d = JSON.parse(raw);
     STATE.roster = normalizeRoster(d.roster);
     STATE.medical = normalizeMedical(d.medical);
     STATE.attendance = normalizeAttendance(d.attendance);
