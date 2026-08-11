@@ -139,7 +139,7 @@ function readAllPhases() {
   out.push("");
   out.push("--- Post-fix verification (expected readings in brackets) ---");
   out.push("  Row-shaping loop              " + phasePad_(sum.shape + "ms", 10) +
-           phasePct_(sum.shape, phaseTotal) + " [expect double-digit ms]");
+           phasePct_(sum.shape, phaseTotal) + " [expect <50ms; measured 6-15]");
   out.push("  getDisplayValues              " + phasePad_(sum.display + "ms", 10) +
            phasePct_(sum.display, phaseTotal) + " [expect 0 — the call is gone]");
   out.push("  Empty-tab probes              " + phasePad_(sum.empty + "ms", 10) +
@@ -151,8 +151,13 @@ function readAllPhases() {
   out.push("  Manage Deployments points at a NEW version. SYNC_PERF 8.5 records a");
   out.push("  full measurement pass wasted on an un-redeployed backend.");
   out.push("");
-  out.push("  VARIANCE: two pre-fix runs of this file totalled 34,929ms and");
-  out.push("  15,410ms on identical code. Median 3-5 runs; trust shares over ms.");
+  out.push("  VARIANCE: 5 pre-fix runs spanned 14,462-30,645ms on identical code");
+  out.push("  and data (2.12x); 5 post-fix runs spanned 5,390-8,635ms (1.60x).");
+  out.push("  Median 3-5 runs; trust shares over ms. A single run proves nothing.");
+  out.push("");
+  out.push("  REFERENCE MEDIANS (5 runs each, commander, 2026-08-11):");
+  out.push("    pre-fix   in-script 22,351  shaping 11,038  empty 3,393  I/O 7,311");
+  out.push("    post-fix  in-script  6,366  shaping     11  empty 1,411  I/O 5,984");
   out.push("");
   out.push("  Sheet I/O above ~10s is the trigger to reopen the backend-migration");
   out.push("  question (READALL_PERF_SPEC.md 5). Currently expected 12-18 months out.");
