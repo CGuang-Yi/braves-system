@@ -108,6 +108,29 @@ function wizIsDirty() {
   return JSON.stringify(wizSnapshot(_logConduct)) !== _logConductBaseline;
 }
 
+// Registered with the shared modal infra on open. Returning false vetoes the
+// close; the Cancel button, the ✕ (index.html:121) and a backdrop click all
+// route through closeModal(), so this one function covers every route.
+//
+// The liveness test is deliberately the SAME one bindWizardEnterToSave uses
+// (just below): _logConduct alone cannot tell a live wizard from a stale one,
+// because it is cleared only on a SUCCESSFUL save — not on Cancel and not by a
+// generic closeModal(). Confirming the wizard's own #wiz-remarks is the modal
+// actually on screen is the decisive check, and it is also what makes this
+// inert for the wizard's sub-modals (which replace that DOM on the shared
+// overlay and restore the wizard through the onClose hook).
+function wizardCloseGuard() {
+  if (!_logConduct) return true;
+  if (!document.getElementById("wiz-remarks")) return true;
+  if (!wizIsDirty()) return true;
+  if (!confirm(
+    "This conduct has unsaved changes — status, fallouts and remarks will be lost.\n\n" +
+    "Discard them?"
+  )) return false;
+  clearModalCloseGuard();
+  return true;
+}
+
 // Enter-to-save for the conduct wizard. The wizard is a plain <div> (not a
 // <form>), so Enter does nothing by default. We bind ONE keydown listener on the
 // shared #modal-overlay and self-gate it: it acts only while _logConduct is open
@@ -198,6 +221,11 @@ function openLogConductWizard(attendanceId) {
     _logConduct.haPeriods = Number(a.periods) || 1;
   }
   rebuildLogConductStatus();
+  // Baseline AFTER rebuildLogConductStatus(): that call populates
+  // _logConduct.status from the day's medical layer, so a baseline taken before
+  // it would read dirty on literally every open.
+  _logConductBaseline = JSON.stringify(wizSnapshot(_logConduct));
+  registerModalCloseGuard(wizardCloseGuard);
   renderLogConductWizard();
 }
 
@@ -1344,6 +1372,10 @@ async function saveLogConductWizard() {
   const isNew = !w.attendanceId;
   const priorDetailCount = (w.originalDetailIds || []).length;
   _logConduct = null;
+  // Redundant with the null above (the guard's liveness test would already pass
+  // it through) — explicit anyway, so the teardown does not silently depend on
+  // that coupling if either side changes.
+  clearModalCloseGuard();
   closeModal();
   render();
 
