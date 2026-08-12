@@ -7,6 +7,21 @@ const AuthError = class extends Error {
   constructor(message) { super(message); this.name = "AuthError"; }
 };
 
+// Raised when a request does not come back as a usable JSON body — a non-2xx
+// status, or (the real-world case that motivated this) an HTML page where JSON
+// was expected. Apps Script web apps do not answer the fetch directly: every
+// response is delivered via a mandatory 302 redirect from script.google.com to
+// script.googleusercontent.com/macros/echo. On some networks/devices that second
+// hop intermittently returns a 404 HTML error page, and the old `res.json()`
+// then threw a raw, UNCAUGHT `SyntaxError: JSON.parse: unexpected character`.
+// Making it a named, catchable error means the sync engine's existing failure
+// handling (syncLog, dirty-marking, retry prompts) takes over instead of the
+// app throwing at the top of a promise and hanging. See handoff_docs/
+// SYNC_RELIABILITY_AND_SUPABASE_EVALUATION.md for the full root-cause writeup.
+const TransportError = class extends Error {
+  constructor(message) { super(message); this.name = "TransportError"; }
+};
+
 // STATE-array-key → normalizer that assigns fresh sheet rows into STATE. Shared
 // by the full pull (pullAll) and partial pulls (pullTabs) so both paths apply
 // IDENTICAL normalization. Keys match the readAll response keys (and map back to
@@ -50,6 +65,29 @@ const STATE_KEY_TO_TAB = Object.keys(TAB_TO_STATE).reduce((m, sheet) => {
 let _readTabsUnsupported = false;
 
 const API = {
+  // Do the fetch and return a parsed JSON object, or throw a TransportError.
+  // Reading the body as text and parsing it ourselves (rather than res.json())
+  // is the whole point: an HTML error page from the redirect layer becomes a
+  // typed, catchable error instead of an uncaught JSON.parse SyntaxError. A JSON
+  // body starts with `{` or `[`; a Google 404/interstitial starts with `<`.
+  async _fetchJson(url, opts) {
+    let res, text;
+    try {
+      res = await fetch(url, opts);
+      text = await res.text();
+    } catch (e) {
+      // fetch/network-level failure (offline, DNS, the redirect never completing)
+      throw new TransportError(`network error: ${e.message || e}`);
+    }
+    const head = text.trimStart().charAt(0);
+    if (!res.ok || (head !== "{" && head !== "[")) {
+      throw new TransportError(
+        `sync transport failed (HTTP ${res.status}${head === "<" ? ", HTML instead of JSON" : ""})`
+      );
+    }
+    try { return JSON.parse(text); }
+    catch { throw new TransportError("sync response was not valid JSON"); }
+  },
   // Unauthenticated GET. `ping` is the only thing that goes through here, and
   // that is the point: a GET puts everything it carries in the URL, where it
   // reaches the deployment's request logs and any Referer the page emits. Reads
@@ -57,16 +95,14 @@ const API = {
   // them — which put the session token in the query string on essentially every
   // request. They go through post() now; see read() below.
   async getPublic(action) {
-    const res = await fetch(`${STATE.apiUrl}?action=${action}`);
-    return res.json();
+    return this._fetchJson(`${STATE.apiUrl}?action=${action}`);
   },
   async post(body) {
-    const res = await fetch(STATE.apiUrl, {
+    const data = await this._fetchJson(STATE.apiUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ ...body, auth: STATE.authToken })
     });
-    const data = await res.json();
     if (data && data.code === 401) throw new AuthError(data.error);
     return data;
   },
@@ -76,17 +112,28 @@ const API = {
   // instead of the query string. Kept as its own name rather than folded into
   // post() so a read still reads as a read at every call site.
   async read(action, tab, extra) {
-    return this.post(Object.assign({ action }, tab ? { tab } : null, extra || null));
+    const body = Object.assign({ action }, tab ? { tab } : null, extra || null);
+    // The redirect-layer 404 (see TransportError) is typically transient, so give
+    // reads ONE automatic retry — this is what turns "sync errors on every
+    // refresh" into "occasionally one silent retry". Retry is confined to reads
+    // on purpose: they are idempotent, whereas an append/upsert/replace must not
+    // be silently re-sent (the sync engine's OCC + dirty-replay owns write
+    // retries). AuthError is not retried — a rejected token won't fix itself.
+    try {
+      return await this.post(body);
+    } catch (e) {
+      if (e instanceof TransportError) return this.post(body);
+      throw e;
+    }
   },
   // ── Account auth (Step 1) ──────────────────────────────
   // login does not carry an existing token — it's how you get one.
   async login(email, password) {
-    const res = await fetch(STATE.apiUrl, {
+    return this._fetchJson(STATE.apiUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({ action: "login", email, password })
     });
-    return res.json();
   },
   async logout() { return this.post({ action: "logout" }); },
   async changePassword(currentPassword, newPassword) {

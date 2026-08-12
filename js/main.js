@@ -269,7 +269,14 @@ function afterLaunchSyncSettles() {
   maybeRestoreDirty();
   // Honour an admin's offline-grant revocation now that we're demonstrably
   // online (§4.7.5a: revoke-on-next-contact — never advertised as a remote wipe).
-  if (typeof checkOfflineGrantRevocation === "function") checkOfflineGrantRevocation();
+  // .catch(): this is a fire-and-forget async call; without it a rejected
+  // request (e.g. the redirect-layer TransportError) surfaces as an uncaught
+  // "Uncaught (in promise)" instead of a swallowed best-effort failure. Offline
+  // grant enforcement is client-side anyway (state.js), so a failed check is
+  // safe to ignore — but it must not throw at the top of a promise.
+  if (typeof checkOfflineGrantRevocation === "function") {
+    Promise.resolve(checkOfflineGrantRevocation()).catch(() => {});
+  }
   // Keep this tab fresh: poll the cheap revCheck endpoint (~20s while visible +
   // on focus/visibility/online) and pull only changed tabs. STATE.rev was just
   // baselined by the pull above. Guarded so login + bootstrap don't double-wire.
@@ -371,7 +378,12 @@ function maybeRestoreDirty() {
     const ok = confirm(
       `${tabs.length} tab${tabs.length === 1 ? " has" : "s have"} unpushed changes from your last session:\n  • ${tabs.join("\n  • ")}\n\nPush now?`
     );
-    if (ok && typeof retryAllDirty === "function") retryAllDirty();
+    // .catch(): retryAllDirty is async and fired from a bare setTimeout, so an
+    // unhandled rejection here (e.g. a redirect-layer TransportError while
+    // pushing) would surface as "Uncaught (in promise)" rather than being
+    // handled. retryAllDirty already logs and re-marks tabs dirty on failure, so
+    // there is nothing to do here but stop the rejection escaping the timer.
+    if (ok && typeof retryAllDirty === "function") Promise.resolve(retryAllDirty()).catch(() => {});
     else if (typeof refreshSyncIndicator === "function") refreshSyncIndicator();
   }, 600);
 }

@@ -99,7 +99,11 @@ function makeClient(backend, opts) {
     }
     fetchSpy.push(rec);
     const text = out.getContent();
-    return { ok: true, status: 200, json: async () => JSON.parse(text) };
+    // text() as well as json(): API._fetchJson reads the body via res.text() and
+    // parses it itself (so an HTML error page becomes a catchable TransportError
+    // instead of an uncaught SyntaxError), so a mock must expose both like a real
+    // Response does.
+    return { ok: true, status: 200, text: async () => text, json: async () => JSON.parse(text) };
   }
 
   // Quiet console for the client so sync.js's "[sync] …" timing logs don't spam
@@ -204,7 +208,11 @@ function makeLaunchClient(backend, opts) {
     }
     fetchSpy.push(rec);
     const text = out.getContent();
-    return { ok: true, status: 200, json: async () => JSON.parse(text) };
+    // text() as well as json(): API._fetchJson reads the body via res.text() and
+    // parses it itself (so an HTML error page becomes a catchable TransportError
+    // instead of an uncaught SyntaxError), so a mock must expose both like a real
+    // Response does.
+    return { ok: true, status: 200, text: async () => text, json: async () => JSON.parse(text) };
   }
 
   const quietConsole = { log() {}, info() {}, warn() {}, table() {}, error: console.error.bind(console) };
