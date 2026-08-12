@@ -47,7 +47,7 @@ function patchTabsAwareFetch(client, backend) {
     }
     client.fetchSpy.push(rec);
     const text = out.getContent();
-    return { ok: true, status: 200, json: async () => JSON.parse(text) };
+    return { ok: true, status: 200, text: async () => text, json: async () => JSON.parse(text) };
   };
 }
 
@@ -86,7 +86,7 @@ function patchFetchDropTabsParam(client, backend) {
     }
     client.fetchSpy.push(rec);
     const text = out.getContent();
-    return { ok: true, status: 200, json: async () => JSON.parse(text) };
+    return { ok: true, status: 200, text: async () => text, json: async () => JSON.parse(text) };
   };
 }
 
@@ -105,6 +105,7 @@ function patchFetchSimulateOldBackend(client, backend) {
       client.fetchSpy.push({ method: "POST", action: "readTabs", tabs: body.tabs });
       return {
         ok: true, status: 200,
+        text: async () => JSON.stringify({ error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, or ping" }),
         json: async () => ({ error: "Unknown action. Use: readAll, revCheck, read&tab=TabName, or ping" })
       };
     }

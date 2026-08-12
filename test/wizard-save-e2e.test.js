@@ -69,7 +69,7 @@ function makeWizardClient(backend, opts) {
     }
     fetchSpy.push(rec);
     const text = out.getContent();
-    return { ok: true, status: 200, json: async () => JSON.parse(text) };
+    return { ok: true, status: 200, text: async () => text, json: async () => JSON.parse(text) };
   }
 
   const quietConsole = { log() {}, info() {}, warn() {}, table() {}, error: console.error.bind(console) };
