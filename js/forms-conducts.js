@@ -416,10 +416,15 @@ function deleteConduct(id) {
   STATE.conductDetail = STATE.conductDetail.filter(r => r.conductId !== id);
   STATE.conducts = STATE.conducts.filter(x => x.id !== id);
   saveLocal();
+  // allowEmpty: deleting the only conduct that had records leaves these arrays
+  // genuinely empty, and a full replace with no rows is a delete-every-row that
+  // the backend otherwise refuses (an empty array is normally a symptom of a
+  // local copy that failed to load, not an intention). Here it IS the
+  // intention — the user confirmed the cascade above — so say so.
   autoSync("Conducts", { type: "delete", id });
-  if (usage.attendance > 0) autoSync("Attendance", { type: "replace", data: STATE.attendance });
-  if (usage.polar > 0) autoSync("PolarFlow", { type: "replace", data: STATE.polar });
-  if (usage.detail > 0) autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail });
+  if (usage.attendance > 0) autoSync("Attendance", { type: "replace", data: STATE.attendance, allowEmpty: true });
+  if (usage.polar > 0) autoSync("PolarFlow", { type: "replace", data: STATE.polar, allowEmpty: true });
+  if (usage.detail > 0) autoSync("ConductDetail", { type: "replace", data: STATE.conductDetail, allowEmpty: true });
   render();
 }
 

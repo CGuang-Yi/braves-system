@@ -302,8 +302,12 @@ const API = {
   async revCheck() {
     return this.read("revCheck");
   },
-  async pushTab(tabName, data, imported) {
-    return this.post({ action: "write", tab: tabName, data, baseRev: STATE.rev[tabName], imported });
+  // `allowEmpty` is the client half of the backend's refuse-to-clear guard: an
+  // empty `data` is a delete-every-row, so the backend only honours one that
+  // says it meant it. Never defaulted to true — the whole point is that it
+  // reaches here only from a call site that established intent.
+  async pushTab(tabName, data, imported, allowEmpty) {
+    return this.post({ action: "write", tab: tabName, data, baseRev: STATE.rev[tabName], imported, allowEmpty: allowEmpty === true });
   },
   async appendRow(tabName, row) {
     return this.post({ action: "append", tab: tabName, row, baseRev: STATE.rev[tabName] });
