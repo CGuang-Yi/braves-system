@@ -1436,9 +1436,20 @@ function getDataLock() {
 // longer matches the server (lost-update prevention). Runs fn() (the actual
 // sheet mutation) under the data lock, then bumps the tab's revision on success
 // and returns it as `result.rev` so the client can advance its baseline.
-// Backward-compat: a missing baseRev (old cached client, or a server-side
-// trigger call routed here) skips the check but still bumps, so newer clients
-// see it. Untracked tabs (the archives) just run fn() — no rev to bump.
+// A MISSING baseRev skips the check on the granular writers (enforce false),
+// which never consulted it anyway — they are row-scoped and safe by
+// construction. Untracked tabs (the archives) just run fn() — no rev to bump.
+//
+// It does NOT skip the check on `write`, the full-tab replace. That leniency
+// was written for "an old cached client, or a server-side trigger call routed
+// here" — but nothing on the server calls the enforcing path, and a full-tab
+// overwrite from a client that cannot say what it is overwriting is a bug on
+// the client, not an old version of it. It is also how the 2026-08-12 wipe got
+// through: rev lived inside the encrypted localStorage blob, so a device that
+// could not decrypt its cache sent baseRev undefined, and an absent baseRev
+// meant "skip OCC" rather than "you have no idea what you are replacing".
+// Reported as a conflict (not a hard error) because the client already knows
+// how to recover from one — resolveConflict pulls fresh and surfaces a banner.
 function withRevLock(tabName, baseRev, enforce, fn) {
   if (REV_TABS.indexOf(tabName) === -1) return fn();   // not a tracked data tab
   var lock = getDataLock();
@@ -1446,8 +1457,8 @@ function withRevLock(tabName, baseRev, enforce, fn) {
   catch (e) { return { error: "Server busy, please retry", code: 503 }; }
   try {
     var serverRev = getRev(tabName);
-    if (enforce && baseRev !== undefined && baseRev !== null && baseRev !== "" &&
-        Number(baseRev) !== serverRev) {
+    var hasBase = baseRev !== undefined && baseRev !== null && baseRev !== "";
+    if (enforce && (!hasBase || Number(baseRev) !== serverRev)) {
       return { conflict: true, tab: tabName, serverRev: serverRev };
     }
     var result = fn();
@@ -1590,7 +1601,7 @@ function routeAuthedPost(action, tab, body, ctx) {
   // storms) — they just apply and bump the rev. withRevLock returns the new rev
   // on the result so the client can advance its baseline; baseRev rides in body.
   var res;
-  if (action === "write" && tab && body.data)                    res = withRevLock(tab, body.baseRev, true,  function () { return writeTab(tab, body.data); });
+  if (action === "write" && tab && body.data)                    res = withRevLock(tab, body.baseRev, true,  function () { return writeTab(tab, body.data, body.allowEmpty === true); });
   else if (action === "append" && tab && body.row)               res = withRevLock(tab, body.baseRev, false, function () { return appendRow(tab, body.row); });
   else if (action === "appendMany" && tab && body.rows)          res = withRevLock(tab, body.baseRev, false, function () { return appendMany(tab, body.rows); });
   else if (action === "replaceConductRows" && tab && body.match)  res = withRevLock(tab, body.baseRev, false, function () { return replaceConductRows(tab, body.match, body.rows || []); });
@@ -2614,7 +2625,7 @@ function keyMatches_(tabName, cellValue, rowId) {
   return String(cellValue) === String(rowId);
 }
 
-function writeTab(tabName, data) {
+function writeTab(tabName, data, allowEmpty) {
   if (!Array.isArray(data)) {
     return { error: "Data must be an array of objects" };
   }
@@ -2625,9 +2636,21 @@ function writeTab(tabName, data) {
   // A replace that legitimately zeroes out a tab (e.g. cascade-deleting a
   // conduct's last remaining records) can't derive headers from data[0] since
   // there isn't one — just clear the existing data rows and keep the header.
+  //
+  // But an empty array that arrived by ACCIDENT looks identical to one sent on
+  // purpose, and this branch is a delete-every-row. On 2026-08-12 that is what
+  // it did: a client whose local cache failed to load pushed its empty
+  // in-memory arrays as full replaces, and each one landed here. So purpose now
+  // has to be stated — `allowEmpty` rides on the request from the one call site
+  // that means it. Refusing is safe in a way that deleting is not: a legitimate
+  // clear that forgets the flag fails loudly and is retried, whereas an
+  // accidental clear that is honoured is gone.
   if (data.length === 0) {
     if (!sheet) return { ok: true, tab: tabName, rowsWritten: 0 };
     var lastRow = sheet.getLastRow();
+    if (!allowEmpty && lastRow > 1) {
+      return { error: "Refusing to clear '" + tabName + "': a full replace arrived with no rows and did not ask to empty the tab." };
+    }
     if (lastRow > 1) sheet.deleteRows(2, lastRow - 1);
     return { ok: true, tab: tabName, rowsWritten: 0, timestamp: new Date().toISOString() };
   }
