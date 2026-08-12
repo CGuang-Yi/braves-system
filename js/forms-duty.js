@@ -64,113 +64,16 @@ function dutyConflictsFor(cand) {
 }
 
 // ── Assignment ───────────────────────────────────────────────────────────────
-
-// The row currently being edited, so the conflict preview and the save path
-// agree on what they are looking at without re-parsing the DOM.
-let _dutyEditing = null;
+//
+// The assignment MODAL used to live here — openDutyAssignForm, its live conflict
+// preview, submitDutyAssign and clearDutyAssignment. It is gone: cells are now
+// edited in place on the month grid (js/duty-inline.js), and keeping both would
+// leave two ways to do the one thing this screen exists for. The lookups below
+// stayed because the inline editor and the other duty forms all call them.
 
 function dutyRowAt(isoDate, dutyType, platoon) {
   return (STATE.duty || []).find(r =>
     r && r.date === isoDate && r.dutyType === dutyType && (r.platoon || "") === (platoon || "")) || null;
-}
-
-function openDutyAssignForm(isoDate, dutyType, platoon) {
-  if (!canPlanDuty()) return;
-  const cfg = dutyConfig();
-  const existing = dutyRowAt(isoDate, dutyType, platoon);
-  _dutyEditing = { isoDate, dutyType, platoon: platoon || "", id: existing ? existing.id : "" };
-
-  // Grandfathering: the current holder is passed as `currentAssignee` so they
-  // stay in the list even after transferring platoon or leaving. Without it,
-  // re-opening a past row to change the date would silently drop whoever
-  // actually did the duty (spec §5.1.3).
-  const eligible = dutyEligible(dutyType, platoon || "", isoDate, STATE.roster, cfg,
-    { currentAssignee: existing ? existing.d4 : "" });
-
-  const opts = eligible
-    .map(d4 => `<option value="${escapeAttr(d4)}"${existing && existing.d4 === d4 ? " selected" : ""}>${escapeHTML(displayPersonLabel(d4))}</option>`)
-    .join("");
-
-  const label = dutyType + (platoon ? " " + platoon.replace(/^PLT/, "") : "");
-  openModal(`${label} — ${isoDate}`, `
-    <form onsubmit="event.preventDefault(); submitDutyAssign(); return false">
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${eligible.length ? "" : '<p style="color:var(--orange)">Nobody is eligible for this slot. Check the platoon\'s commanders on the Roster.</p>'}
-        <div class="form-group">
-          <label>Assign to</label>
-          <select id="f-duty-d4" onchange="previewDutyConflicts()" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-size:12px;box-sizing:border-box">
-            <option value="">Unassigned</option>${opts}
-          </select>
-        </div>
-        <div id="duty-conflict-box"></div>
-        <div style="display:flex;gap:8px">
-          <button type="submit" class="btn btn-primary">Save</button>
-          ${existing ? '<button type="button" class="btn btn-danger" onclick="clearDutyAssignment()">Clear slot</button>' : ""}
-        </div>
-      </div>
-    </form>`);
-  previewDutyConflicts();
-}
-
-// Conflicts are shown live as the planner picks, and are ALWAYS advisory —
-// there is no state in which this disables the Save button. The company
-// knowingly double-books and pays a -2 for it; the job here is to make that
-// cost visible at the moment of choosing, and to make logging the matching
-// correction one click rather than a separate errand.
-function previewDutyConflicts() {
-  const box = document.getElementById("duty-conflict-box");
-  if (!box || !_dutyEditing) return;
-  const d4 = gv("f-duty-d4");
-  if (!d4) { box.innerHTML = ""; return; }
-  const list = dutyConflictsFor({
-    d4, date: _dutyEditing.isoDate, dutyType: _dutyEditing.dutyType,
-    platoon: _dutyEditing.platoon, id: _dutyEditing.id
-  });
-  if (!list.length) { box.innerHTML = '<p style="color:var(--muted);font-size:12px">No conflicts.</p>'; return; }
-  box.innerHTML = list.map(c => `
-    <div style="border:1px solid var(--border);border-left:3px solid var(--orange);border-radius:6px;padding:8px;margin-bottom:6px">
-      <div style="font-size:12px">${escapeHTML(c.message)}</div>
-      ${c.reason ? `<button type="button" class="btn" style="font-size:11px;margin-top:6px"
-          onclick="openDutyCorrectionForm('${escapeAttr(d4)}','${escapeAttr(_dutyEditing.isoDate)}','${escapeAttr(c.reason)}')">Log "${escapeHTML(c.reason)}"</button>`
-        : '<div style="font-size:11px;color:var(--muted);margin-top:4px">No correction applies — nothing in the point legend pays out for this.</div>'}
-    </div>`).join("");
-}
-
-function submitDutyAssign() {
-  if (!canPlanDuty() || !_dutyEditing) return;
-  const d4 = gv("f-duty-d4");
-  const { isoDate, dutyType, platoon, id } = _dutyEditing;
-  // An empty pick on an existing row means "clear it" — the same operation the
-  // Clear button performs, reached the other way round.
-  if (!d4) { clearDutyAssignment(); return; }
-
-  const existing = id ? (STATE.duty || []).find(r => String(r.id) === String(id)) : null;
-  const row = {
-    id: existing ? existing.id : nextId(),
-    date: isoDate,
-    dutyType,
-    // The literal platoon at assignment time, never re-resolved from the
-    // roster. This is what keeps a later transfer from moving a past total
-    // (spec §5.1.1).
-    platoon: platoon || "",
-    d4,
-    assignedBy: STATE.email || "",
-    assignedAt: new Date().toISOString(),
-    source: existing && existing.source === "import" ? "import" : "manual"
-  };
-  if (existing) Object.assign(existing, row);
-  else (STATE.duty = STATE.duty || []).push(row);
-
-  saveLocal(); closeModal(); render();
-  if (STATE.apiUrl) autoSync("Duty", { type: "upsert", row });
-}
-
-function clearDutyAssignment() {
-  if (!canPlanDuty() || !_dutyEditing || !_dutyEditing.id) { closeModal(); return; }
-  const id = _dutyEditing.id;
-  STATE.duty = (STATE.duty || []).filter(r => String(r.id) !== String(id));
-  saveLocal(); closeModal(); render();
-  if (STATE.apiUrl) autoSync("Duty", { type: "delete", id });
 }
 
 // ── Auto-scheduler (spec §11) ────────────────────────────────────────────────
@@ -183,6 +86,10 @@ function clearDutyAssignment() {
 let _dutyProposal = null;
 
 function openDutySchedulerForm(anchorISO) {
+  // Reads STATE.duty, so any assignment still buffered by the inline editor has
+  // to reach the server first — otherwise the scheduler scores a month the
+  // server does not have. Same reasoning in the two other forms below.
+  flushDutyWrites();
   if (!canPlanDuty()) return;
   const cfg = dutyConfig();
   const range = dutyRangeFor("month", anchorISO || dutyMonthAnchor(), cfg);
@@ -319,6 +226,7 @@ function commitDutyProposal() {
 // ── Corrections ──────────────────────────────────────────────────────────────
 
 function openDutyCorrectionForm(d4, isoDate, presetReason, editId) {
+  flushDutyWrites();
   if (!canPlanDuty()) return;
   const cfg = dutyConfig();
   const reasons = cfg.dutyCorrectionReasons || [];
@@ -564,7 +472,7 @@ function deleteDutyUnavail(id) {
 
 // The slot a request is being filed against, so the kind picker and the preview
 // agree on what they are looking at without re-parsing the DOM. Mirrors the
-// _dutyEditing pattern above.
+// _dutyCellEdit pattern in js/duty-inline.js.
 let _dutyRequesting = null;
 
 function dcrPersonOptions(dutyType, platoon, isoDate, selected) {
@@ -585,6 +493,7 @@ function dcrSlotOptions(cfg, selDutyType, selPlatoon) {
 }
 
 function openDutyRequestForm(isoDate, dutyType, platoon) {
+  flushDutyWrites();
   if (!canWrite()) return;
   const cfg = dutyConfig();
   const existing = isoDate && dutyType ? dutyRowAt(isoDate, dutyType, platoon) : null;
