@@ -96,6 +96,30 @@ module.exports = async function run() {
        "js/render-duty.js must load after js/actions.js");
   });
 
+  // The two files that turn the month grid from a read-only view into an editor.
+  // Both call registerActions at the top level, so both share render-duty's
+  // "after actions.js" requirement; duty-inline additionally has to follow
+  // render-duty and forms-duty. Every one of these is a load-time or
+  // first-click ReferenceError in the browser and invisible everywhere else.
+  await test("the duty editor files load after everything they call at load time", () => {
+    ["js/forms-duty-import.js", "js/duty-inline.js"].forEach(src => {
+      ok(at(src) !== -1, src + " is not in index.html");
+      ok(at("js/actions.js") < at(src), src + " must load after js/actions.js");
+    });
+    ok(at("js/duty-import.js") < at("js/forms-duty-import.js"),
+       "js/forms-duty-import.js must load after the parser it adapts, js/duty-import.js");
+  });
+
+  // duty-inline registers the dutyAssign action for the cells render-duty draws,
+  // and registerActions THROWS on a duplicate name — so this ordering is not just
+  // about ReferenceErrors, it is what keeps exactly one owner of that action.
+  await test("duty-inline loads after render-duty and forms-duty", () => {
+    ["js/render-duty.js", "js/forms-duty.js"].forEach(src => {
+      ok(at(src) !== -1 && at(src) < at("js/duty-inline.js"),
+         "js/duty-inline.js must load after " + src);
+    });
+  });
+
   // (d) The modal must not swallow clicks before they reach document. js/actions.js
   // delegates EVERY data-action from a single document listener, so a
   // stopPropagation() anywhere on the modal's own container silently disables

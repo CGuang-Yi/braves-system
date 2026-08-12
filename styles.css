@@ -589,7 +589,16 @@ body.role-admin .nav-btn.commander-plus,body.role-commander .nav-btn.commander-p
    only affordance an empty cell has, and empty cells are precisely the ones a
    planner most needs to click. That tint now lives in the pointer-only hover
    block at the end of this file, so a finger doesn't leave it stuck lit. */
-.duty-cell{cursor:pointer}
+   position:relative is load-bearing rather than cosmetic: the inline editor
+   (js/duty-inline.js) absolutely-positions its type-ahead menu inside the cell,
+   and without a positioned ancestor that menu escapes to the viewport corner. */
+.duty-cell{cursor:pointer;position:relative}
+
+/* A cell whose assignment conflicts with something — advisory, never a block.
+   Red against .duty-unavail's amber, matching the split already documented
+   there: amber is "check this", red is a clash the app has actually confirmed. */
+.duty-conflict{background:rgba(248,81,73,.14)}
+.duty-conflict-flag{font-size:11px;opacity:.9}
 
 /* Dashboard duty card (spec §2) — today beside tomorrow. Below 640px the two
    days stack: at 375px a slot label and a name chip side by side in a half-width

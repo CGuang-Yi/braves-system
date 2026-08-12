@@ -139,6 +139,12 @@ function dutyUnavailMark(idx, d4, iso) {
 }
 
 function renderDuty(el) {
+  // The catch-all flush point for the inline editor's write buffer. Every route
+  // off this screen or onto a different month ends in a re-render, so flushing
+  // here covers the nav handler in js/main.js and the view/range toggles without
+  // this branch having to reach into any of them. It is a no-op when the buffer
+  // is empty, which is every render that is not following an edit.
+  flushDutyWrites();
   const cfg = dutyConfig();
 
   // The corrections log is planner-only. It is an audit trail of manual point
@@ -238,6 +244,8 @@ function dutyGridHTML(cfg) {
       <strong>${escapeHTML(anchor.slice(0, 7))}</strong>
       <button type="button" class="btn" data-action="dutyMonthStep" data-value="1">Next ›</button>
       ${canPlan ? `<button type="button" class="btn btn-primary" data-action="dutyAutoPlan">✨ Auto-plan month</button>` : ""}
+      ${canPlan ? `<button type="button" class="btn" data-action="dutyImport">⬆ Import workbook</button>` : ""}
+      ${canPlan ? `<span id="duty-pending-pill" style="font-size:11px;color:var(--muted)">✓ synced</span>` : ""}
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th>Date</th>${head}</tr></thead>
@@ -444,6 +452,9 @@ function setDutySort(k) {
 }
 
 function stepDutyMonth(delta) {
+  // The grid is about to be rebuilt for a different month, so anything still
+  // buffered by the inline editor has to go out first — see flushDutyWrites.
+  flushDutyWrites();
   const anchor = dutyMonthAnchor();
   const y = Number(anchor.slice(0, 4)), m = Number(anchor.slice(5, 7));
   const abs = y * 12 + (m - 1) + Number(delta);
@@ -459,7 +470,11 @@ registerActions({
   // The write actions (js/forms-duty.js). They are only ever rendered for a
   // planner, and each handler re-checks canPlanDuty() anyway — the markup being
   // absent is a convenience, not the guard.
-  dutyAssign: el => openDutyAssignForm(el.dataset.date, el.dataset.type, el.dataset.platoon),
+  //
+  // `dutyAssign` is NOT here: the cells this file renders are edited in place by
+  // js/duty-inline.js, which registers it. registerActions THROWS on a duplicate
+  // name (js/actions.js) — deliberately, so a second definition can never quietly
+  // win — so the action lives in exactly one file, the one that handles it.
   dutyHoliday: el => openDutyHolidayForm(el.dataset.date),
   dutyCorrectionNew: () => openDutyCorrectionForm("", todayISO(), ""),
   dutyCorrectionEdit: el => openDutyCorrectionForm(el.dataset.d4, el.dataset.date, "", el.dataset.id),
@@ -470,6 +485,7 @@ registerActions({
   // may want to see what has already lapsed.
   dutyUnavailExpired: el => setDutyShowExpired(el.dataset.value),
   dutyAutoPlan: () => openDutySchedulerForm(dutyMonthAnchor()),
+  dutyImport: () => openDutyImportForm(),
   // Change requests (design §3). dutyRequestNew is deliberately NOT planner-
   // gated — submitting is open to every commander, and that is the whole point
   // of the feature; the handler re-checks canWrite() and the server enforces.
