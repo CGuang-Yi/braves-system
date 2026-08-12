@@ -299,19 +299,62 @@ module.exports = async function run() {
   const forms = sourceText("forms");
 
   await test("the omit checkbox is gated on RS OR RSIP, not RS alone", () => {
-    ok(/showOmitToggle\s*=\s*type === "RS" \|\| type === "RSIP"/.test(forms),
-      "showOmitToggle no longer covers both report types");
+    ok(/const isSick = type === "RS" \|\| type === "RSIP"/.test(forms),
+      "isSick no longer covers both report types");
+    ok(/showOmitToggle\s*=\s*isSick/.test(forms), "the toggle is no longer gated on isSick");
     ok(/\$\{showOmitToggle \? `<label/.test(forms),
       "the checkbox block is still gated on the old isRS flag");
   });
 
-  await test("the checkbox onchange dispatches to the live report type", () => {
-    ok(/id="rep-omit-status" onchange="regenerateReport\('\$\{type\}'\)"/.test(forms),
-      "onchange still hardcodes regenerateReport('RS') — RSIP toggling would regenerate the wrong report");
+  await test("the checkbox onchange rebuilds the checklist AND dispatches to the live type", () => {
+    // Rebuilding matters as much as regenerating: the toggle changes WHO the
+    // candidates are, so a stale list would offer ticks for people the toggle
+    // has already dropped (spec §4.1).
+    ok(/id="rep-omit-status" onchange="renderSickPicker\('\$\{type\}'\); regenerateReport\('\$\{type\}'\)"/.test(forms),
+      "the toggle must rebuild the picker and regenerate the live report type");
   });
 
-  await test("the RSIP branch forwards the checkbox into generateRSIPersonnel", () => {
-    ok(/generateRSIPersonnel\(dateIso, time, code, \{ omitOnStatus: !!document\.getElementById\("rep-omit-status"\)\?\.checked \}\)/.test(forms),
-      "RSIP dispatch does not pass the omitOnStatus option");
+  await test("both sick reports forward the toggle through one shared opts object", () => {
+    ok(/type === "RS" \|\| type === "RSIP"/.test(forms), "RS and RSIP no longer share a branch");
+    ok(/const opts = \{ omitOnStatus: !!document\.getElementById\("rep-omit-status"\)\?\.checked \}/.test(forms),
+      "the omitOnStatus option is no longer built for both reports");
+    ok(/generateRSIPersonnel\(dateIso, time, code, opts\)/.test(forms), "RSIP dispatch drops opts");
+    ok(/generateRSFormat\(dateIso, time, opts\)/.test(forms), "RS dispatch drops opts");
+  });
+
+  // ── §4 checklist wiring ─────────────────────────────────────────────────────
+  // The checklist is pure DOM, which this repo has no harness for, so its
+  // load-bearing wiring is guarded by source assertion the same way the toggle
+  // above is. Each of these encodes a decision that is silently wrong if edited
+  // out — not merely "the code exists".
+  suite("forms wiring: §4 per-person checklist");
+
+  await test("only is OMITTED, not passed empty, when there is no checklist", () => {
+    // The distinction the generators depend on: `only: []` means nobody, so the
+    // absent case has to leave the key off entirely or every non-checklist
+    // caller would produce an empty message.
+    ok(/const picked = sickPickerSelection\(\);\s*\n\s*if \(picked\) opts\.only = picked;/.test(forms),
+      "opts.only must be set only when a selection exists");
+    ok(/if \(!document\.getElementById\("rep-sick-picker"\) \|\| !boxes\.length\) return null/.test(forms),
+      "sickPickerSelection must return null (not []) when no picker is on screen");
+  });
+
+  await test("the checklist lists only what survives the on-status toggle", () => {
+    ok(/rows = rows\.filter\(m => !bpHasSameDayOutcome\(m, dateIso\)\)/.test(forms),
+      "the picker must apply the toggle, or it offers ticks that do nothing");
+  });
+
+  await test("the date field rebuilds the checklist; the time field does not", () => {
+    ok(/isSick\s*\n?\s*\/\/[\s\S]*?\? `value="\$\{defaultDate\}" required onchange="renderSickPicker\('\$\{type\}'\); regenerateReport\('\$\{type\}'\)"/.test(forms),
+      "the date must rebuild the candidate set");
+    ok(!/maxlength="4"[^`]*renderSickPicker/.test(forms),
+      "the time field must NOT rebuild — a time correction has to preserve the selection");
+  });
+
+  await test("All/None regenerates once rather than per checkbox", () => {
+    ok(/function sickPickerSetAll\(type, on\) \{\s*\n\s*document\.querySelectorAll\("\.rep-sick-pick"\)\.forEach/.test(forms),
+      "All/None must set every box directly");
+    ok(/sickPickerSetAll[\s\S]{0,220}?renderSickCount\(\);\s*\n\s*regenerateReport\(type\);/.test(forms),
+      "All/None must regenerate exactly once after setting the boxes");
   });
 };
