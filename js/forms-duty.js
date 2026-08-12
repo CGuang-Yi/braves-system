@@ -474,7 +474,10 @@ function deleteDutyHoliday(isoDate) {
   if (!confirm(`Remove ${h.name || "the public holiday"} on ${isoDate}?\n\nEvery duty that day drops from 5 points to its ordinary weekday weight.`)) return;
   STATE.holidays = (STATE.holidays || []).filter(x => x && x.date !== isoDate);
   saveLocal(); closeModal(); render();
-  if (STATE.apiUrl) autoSync("Holidays", { type: "replace", data: STATE.holidays });
+  // allowEmpty: removing the last holiday of the year empties the tab, and the
+  // whole-tab replace is the only write shape Holidays has (no id column to
+  // delete by). The user confirmed the removal, so the empty is deliberate.
+  if (STATE.apiUrl) autoSync("Holidays", { type: "replace", data: STATE.holidays, allowEmpty: true });
 }
 
 // ── Unavailability flags ─────────────────────────────────────────────────────
