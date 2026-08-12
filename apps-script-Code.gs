@@ -3998,24 +3998,36 @@ function bpSickUrtiBlocks(reports) {
 }
 
 // §10.1 — single report-sick message: header → URTI block → NON-URTI block.
-// True when the person carries an unexpired medical status as of dateIso (started
-// before that day, on it, or later), INCLUDING the one this very report-sick row
-// is carrying — see js/braves-parade.js: bpHasCoveringStatus for the full
-// rationale. A blank end date does NOT suppress.
+// True when the MO has already resolved a visit this person made ON dateIso — a
+// medical row whose OWN report date is dateIso carrying a real status (not
+// blank/Pending/NIL), INCLUDING the one this very report-sick row is carrying.
+// See js/braves-parade.js: bpHasSameDayOutcome for the full rationale; endDate is
+// deliberately NOT consulted, so a status still running from an earlier visit no
+// longer suppresses a fresh report.
 // Mirrored here so the frontend and archiver copies stay behaviourally identical
 // (test/parade-port-parity.test.js guards this).
-function bpHasCoveringStatus(m, dateIso) {
+function bpHasSameDayOutcome(m, dateIso) {
   return (STATE.medical || []).some(x => {
     if (x.d4 !== m.d4) return false;
     if (!x.status || x.status === "Pending" || x.status === "NIL") return false;
-    const end = displayDateToISO(x.endDate || "");
-    return !!end && end >= dateIso;
+    return displayDateToISO(x.date || "") === dateIso;
   });
+}
+
+// Narrow a report set to an explicit allow-list of medical row IDs, backing the
+// per-person checklist in the frontend's RS/RSI modals. The archiver never passes
+// opts, so this is a no-op here — mirrored only to keep the two copies comparable
+// (see js/braves-parade.js: bpOnlyRows).
+function bpOnlyRows(reports, opts) {
+  if (!opts || !opts.only) return reports;
+  const keep = new Set(opts.only.map(String));
+  return reports.filter(m => keep.has(String(m.id)));
 }
 
 function generateRSFormat(dateIso, time, opts) {
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasCoveringStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasSameDayOutcome(m, dateIso));
+  reports = bpOnlyRows(reports, opts);
   const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
   lines.push(...bpSickUrtiBlocks(reports));
   return lines.join("\n\n");
@@ -4025,14 +4037,16 @@ function generateRSFormat(dateIso, time, opts) {
 // with ≥1 report-sick entry are shown; TOTAL = sum across them.
 // scopeCode: optional platoon code (e.g. "PLT1", "HQ") to restrict output to a
 // single platoon; "" or omitted → full company output (backward-compatible).
-// opts.omitOnStatus (optional) mirrors generateRSFormat — drops report-sick rows
-// for personnel already on a prior active status, applied BEFORE the platoon
-// partition so TOTAL and per-platoon PAX counts follow the filtered set. Kept in
-// sync with js/braves-parade.js (guarded by test/parade-port-parity.test.js).
+// opts.omitOnStatus and opts.only (both optional) mirror generateRSFormat — they
+// drop report-sick rows the MO already resolved today, and narrow to an explicit
+// row-id allow-list, respectively. Both are applied BEFORE the platoon partition
+// so TOTAL and per-platoon PAX counts follow the filtered set. Kept in sync with
+// js/braves-parade.js (guarded by test/parade-port-parity.test.js).
 function generateRSIPersonnel(dateIso, time, scopeCode, opts) {
   scopeCode = scopeCode || "";
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasCoveringStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasSameDayOutcome(m, dateIso));
+  reports = bpOnlyRows(reports, opts);
   const platoonOf = d4 => {
     const r = STATE.roster.find(x => x.id == d4);
     return r ? personPlatoon(r) : "";
