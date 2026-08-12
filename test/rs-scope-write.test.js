@@ -40,6 +40,11 @@ module.exports = async function run() {
   const post = (b, t, body) => JSON.parse(b.doPost({
     parameter: {}, postData: { contents: JSON.stringify(Object.assign({ auth: t }, body)) }
   }).getContent());
+  // `write` is OCC-enforcing and no longer accepts a missing baseRev (an absent
+  // one is how the 2026-08-12 wipe slipped past the check). The tests below are
+  // about SCOPE, not staleness, so they need a current rev to get far enough to
+  // exercise the scope guard at all.
+  const revOf = (b, t, tab) => post(b, t, { action: "revCheck" }).revs[tab];
 
   await test("a scoped commander may append a row for their own platoon", () => {
     const b = setup();
@@ -100,14 +105,16 @@ module.exports = async function run() {
 
   await test("company scope and admin may still replace the tab", () => {
     const b = setup();
-    ok(post(b, tok(b, "0011", "rs:company"), {
-      action: "write", tab: "Medical",
+    const t1 = tok(b, "0011", "rs:company");
+    ok(post(b, t1, {
+      action: "write", tab: "Medical", baseRev: revOf(b, t1, "Medical"),
       data: [{ id: "m1", d4: "1101", date: "01 Feb 2026", reason: "fever", status: "MC" }]
     }).ok, "rs:company may replace");
 
     const b2 = setup();
-    ok(post(b2, tok(b2, "0001", "", "admin"), {
-      action: "write", tab: "Medical",
+    const t2 = tok(b2, "0001", "", "admin");
+    ok(post(b2, t2, {
+      action: "write", tab: "Medical", baseRev: revOf(b2, t2, "Medical"),
       data: [{ id: "m1", d4: "1101", date: "01 Feb 2026", reason: "fever", status: "MC" }]
     }).ok, "admin may replace");
   });
@@ -115,10 +122,12 @@ module.exports = async function run() {
   await test("the guard does not spill onto other tabs", () => {
     const b = setup();
     b.db.seed("Attendance", ["id", "date", "conductId"], []);
-    ok(post(b, tok(b, "0011"), { action: "append", tab: "Attendance", row: { id: "a1", date: "04 Aug 2026" } }).ok,
+    const t = tok(b, "0011");
+    ok(post(b, t, { action: "append", tab: "Attendance", row: { id: "a1", date: "04 Aug 2026" } }).ok,
        "Attendance write unaffected");
-    ok(post(b, tok(b, "0011"), {
-      action: "write", tab: "Attendance", data: [{ id: "a1", date: "04 Aug 2026", conductId: "c1" }]
+    ok(post(b, t, {
+      action: "write", tab: "Attendance", baseRev: revOf(b, t, "Attendance"),
+      data: [{ id: "a1", date: "04 Aug 2026", conductId: "c1" }]
     }).ok, "Attendance replace unaffected");
   });
 

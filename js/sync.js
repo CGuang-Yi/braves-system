@@ -734,7 +734,7 @@ function dispatchWrite(tabName, mode) {
   if (mode.type === "replaceConduct") return API.post({ action: "replaceConductRows", tab: tabName, match: mode.match, rows: mode.rows, baseRev: STATE.rev[tabName], imported: mode.imported });
   if (mode.type === "upsert")      return API.upsertRow(tabName, mode.row);
   if (mode.type === "delete")      return API.deleteRowById(tabName, mode.id);
-  if (mode.type === "replace")     return API.pushTab(tabName, mode.data, mode.imported);
+  if (mode.type === "replace")     return API.pushTab(tabName, mode.data, mode.imported, mode.allowEmpty);
   return Promise.reject(new Error(`Unknown autoSync mode: ${mode.type}`));
 }
 
@@ -808,9 +808,48 @@ function reapplyMode(arrKey, mode) {
   }
 }
 
+// A tab is marked dirty but the rows it refers to are gone. That pairing is not
+// a data state anyone can produce by editing: STATE.dirty is persisted under its
+// own key so it outlives a cache wipe, so it means the markers reloaded and
+// their rows did not — a cache that failed to open, a storage quota error, a
+// half-written blob.
+//
+// There is deliberately no attempt to guess whether the user "really did delete
+// everything". After a reload the granular ops are gone (_dirtyOps is in-memory)
+// and an accidental empty is indistinguishable from a deliberate one, so this
+// picks the recoverable failure over the unrecoverable one: refuse to push, and
+// take the sheet's copy instead. A user who genuinely emptied the tab redoes it;
+// the alternative is everyone else losing the tab.
+//
+// Clearing the marker BEFORE the pull matters — pullAll/pullTabs skip dirty tabs
+// by design, so leaving it set would freeze this device on the empty copy
+// permanently, which is its own quiet data-loss bug.
+async function recoverEmptyDirtyTab(tabName, arrKey) {
+  syncLog(`${tabName}: marked unsaved but this device has no rows for it — not pushing. Refreshing from the sheet.`, "var(--orange)");
+  clearDirty(tabName);
+  try {
+    await API.pullTabs([tabName]);
+    saveLocal();
+    if (typeof render === "function") render();
+    const n = Array.isArray(STATE[arrKey]) ? STATE[arrKey].length : 0;
+    syncLog(`${tabName}: refreshed from the sheet (${n} rows).`, "var(--green)");
+    showSyncBanner(
+      `"${tabName}" was marked unsaved but this device's local copy was empty, so nothing was pushed — ` +
+      `the sheet's copy has been reloaded. If you had changes here, please redo them.`
+    );
+  } catch (e) {
+    // The marker is already cleared, so the next successful pull repairs this
+    // device on its own. Say what happened rather than silently leaving an
+    // empty tab on screen.
+    syncLog(`${tabName}: could not refresh — ${e.message || e}`, "var(--red)");
+    showSyncBanner(`"${tabName}" is empty on this device and could not be refreshed. Reconnect and reload before editing it.`);
+  }
+}
+
 // Retry every dirty tab. Safe now: the server's OCC check rejects a stale
-// replace (resolveConflict refreshes + warns) instead of clobbering. Used by
-// the sidebar warning click and the launch dirty-restore prompt.
+// replace (resolveConflict refreshes + warns) instead of clobbering, and an
+// empty local array is diverted to recoverEmptyDirtyTab rather than pushed.
+// Used by the sidebar warning click and the launch dirty-restore prompt.
 async function retryAllDirty() {
   if (!STATE.dirty || STATE.dirty.size === 0) return;
   // A retry is one Apps Script round trip per dirty tab — easily several
@@ -827,8 +866,21 @@ async function retryAllDirty() {
       for (const mode of ops) await autoSync(tab, mode);
     } else {
       // No stashed ops (e.g. after a reload) → full replace, OCC-guarded.
+      //
+      // Length-checked, not truthiness-checked. `[]` is truthy, so the old
+      // `if (arrKey && STATE[arrKey])` passed an EMPTY array through as a
+      // full-tab replace — which the backend read as delete-every-row. That is
+      // the 2026-08-12 wipe: dirty markers live in their own localStorage key
+      // so they survive a cache that fails to load, which leaves precisely this
+      // pairing — a tab marked dirty with no rows behind it — and the launch
+      // restore prompt then offered to "push" it.
       const arrKey = TAB_TO_STATE[tab];
-      if (arrKey && STATE[arrKey]) await autoSync(tab, { type: "replace", data: STATE[arrKey] });
+      if (!arrKey) continue;
+      if (Array.isArray(STATE[arrKey]) && STATE[arrKey].length) {
+        await autoSync(tab, { type: "replace", data: STATE[arrKey] });
+      } else {
+        await recoverEmptyDirtyTab(tab, arrKey);
+      }
     }
   }
   // If a tab is STILL dirty after a full retry pass, the push is genuinely
@@ -898,6 +950,31 @@ async function confirmStaleness(tabName) {
       `OK = push anyway.  Cancel = abort and pull first (recommended).`
     );
   } catch { return true; }
+}
+
+// Gate for a full replace that carries no rows. Asks the SERVER how many rows
+// it is about to delete — an empty local array tells you nothing about the
+// blast radius, and the number is the whole content of the warning. Returns
+// true only for a deliberate clear.
+//
+// Server already empty → true without a prompt: there is nothing to destroy, so
+// there is nothing to confirm. Row count unavailable (offline, error) → false:
+// this is the one place where failing closed is clearly right, since the cost of
+// a wrong "yes" is the tab and the cost of a wrong "no" is one retry.
+async function confirmClearTab(tabName) {
+  let serverRows;
+  try {
+    const res = await API.rowCount(tabName);
+    if (!res || res.error || typeof res.dataRows !== "number") return false;
+    serverRows = res.dataRows;
+  } catch { return false; }
+  if (serverRows === 0) return true;
+  return confirm(
+    `This will DELETE all ${serverRows} row${serverRows === 1 ? "" : "s"} of "${tabName}" from the sheet, for everyone.\n\n` +
+    `Your local copy of this tab is empty. If you did not just delete these rows yourself, ` +
+    `this is a stale or broken local copy — Cancel, then reload the page.\n\n` +
+    `OK = delete them.  Cancel = leave the sheet alone (recommended).`
+  );
 }
 
 async function signOut() {
@@ -988,9 +1065,20 @@ async function pushTab(tabName, data) {
     syncLog(`${tabName}: push cancelled — pull first to see latest rows`, "var(--orange)");
     return;
   }
+  // Pushing nothing over something is a delete-every-row, and it is reachable
+  // from an ordinary-looking "Re-push all" button. Legitimate cases exist (the
+  // conduct-id cascade can leave Conducts genuinely empty), so this asks rather
+  // than refuses — but it asks against the SERVER's count, not the local one,
+  // because the dangerous case is precisely the one where the local copy is
+  // empty for a reason the user doesn't know about.
+  const allowEmpty = localCount === 0 ? await confirmClearTab(tabName) : false;
+  if (localCount === 0 && !allowEmpty) {
+    syncLog(`${tabName}: push cancelled — nothing local to push`, "var(--orange)");
+    return;
+  }
   try {
     syncLog(`Pushing ${tabName} (${localCount} rows)...`);
-    await autoSync(tabName, { type: "replace", data });
+    await autoSync(tabName, { type: "replace", data, allowEmpty });
     syncLog(`${tabName}: re-push complete ✓`, "var(--green)");
   } catch (e) { syncLog(`${tabName}: ${e.message}`, "var(--red)"); }
 }
