@@ -390,6 +390,10 @@ function openReportModal(type) {
   // data (see dutyPlannedTill), and offering a date box would invite someone to
   // type a number the duty grid does not actually back.
   const isDutyRemind = type === "DUTYREMIND";
+  // The two sick reports share a personnel checklist and the on-status toggle
+  // that feeds it (spec §4/§5). Both are per-report-row, so both apply to
+  // exactly RS and RSIP and to nothing else.
+  const isSick = type === "RS" || type === "RSIP";
   const dateExtra = isDutyBoard
     ? `value="${defaultDate}" required onchange="regenerateReport('DUTYBOARD')"`
     : isParade
@@ -398,7 +402,12 @@ function openReportModal(type) {
       ? `value="${defaultDate}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
       : isMR
         ? `value="${defaultDate}" required onchange="renderMRDateFields(); regenerateReport('MR')"`
-        : `value="${defaultDate}" required`;
+        : isSick
+          // The date decides WHO is a candidate, so it must rebuild the checklist
+          // and not merely regenerate. Ticks are deliberately not carried across:
+          // they would assert a choice about a set of people that no longer exists.
+          ? `value="${defaultDate}" required onchange="renderSickPicker('${type}'); regenerateReport('${type}')"`
+          : `value="${defaultDate}" required`;
   const timeExtra = isConduct
     ? `value="${defaultTime}" maxlength="4" pattern="[0-9]{4}" required onchange="renderConductPicker(); regenerateReport('CONDUCT')"`
     : isParade
@@ -420,13 +429,15 @@ function openReportModal(type) {
   // selector pattern but defaults to "All platoons" (full company).
   const isRSIP = type === "RSIP";
 
-  // RS Format AND RSI Personnel offer an "omit personnel already on status"
-  // toggle: anyone carrying an unexpired MC/LD/Warded/Excuse is suppressed, so the
-  // message lists only the cases still open. That covers a status carried in from
-  // an earlier visit AND one the MO issued at this morning's report sick — see
-  // bpHasCoveringStatus. (RS Format — 2026-07-20; extended to RSI Personnel —
-  // PR feat/rsip-omit-on-status; widened to same-visit statuses 2026-08-02.)
-  const showOmitToggle = type === "RS" || type === "RSIP";
+  // RS Format AND RSI Personnel offer a toggle that hides anyone whose outcome
+  // the MO has already issued TODAY, so the message lists only the cases still
+  // open — see bpHasSameDayOutcome. The label names whose status it means because
+  // the rule is no longer "anyone on a status": a person still on last week's LD
+  // who reports sick again this morning is an open case and stays listed.
+  // (RS Format — 2026-07-20; extended to RSI Personnel — PR feat/rsip-omit-on-status;
+  // widened to same-visit statuses 2026-08-02; narrowed to same-DAY statuses per
+  // DUTY_UX_AND_RS_SELECTION_SPEC §5.)
+  const showOmitToggle = isSick;
 
   openModal("Generate " + titleLabel, `
     <form onsubmit="event.preventDefault(); regenerateReport('${type}'); return false">
@@ -456,9 +467,10 @@ function openReportModal(type) {
           </select>
         </div>` : ""}
         ${showOmitToggle ? `<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
-          <input type="checkbox" id="rep-omit-status" onchange="regenerateReport('${type}')" style="width:15px;height:15px;cursor:pointer">
-          <span>Omit personnel already on status <span style="color:var(--muted)">(hide anyone on an unexpired MC/LD/status, including one issued at today's visit — leaves only the cases still awaiting an outcome)</span></span>
+          <input type="checkbox" id="rep-omit-status" onchange="renderSickPicker('${type}'); regenerateReport('${type}')" style="width:15px;height:15px;cursor:pointer">
+          <span>Omit personnel whose outcome is already in <span style="color:var(--muted)">(hide anyone the MO already issued a status to at this date's visit — leaves only the cases still awaiting an outcome. Someone still on an earlier MC/LD who reported sick again stays listed.)</span></span>
         </label>` : ""}
+        ${isSick ? `<div id="rep-sick-picker"></div>` : ""}
         ${isConduct ? `<div id="rep-conduct-picker"></div>` : ""}
         ${isMR ? `<div id="rep-mr-dates" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px"></div>` : ""}
         <button type="submit" class="btn">↻ Regenerate</button>
@@ -475,8 +487,85 @@ function openReportModal(type) {
   // which composer to call.
   document.getElementById("rep-text").dataset.type = type;
   if (isConduct) renderConductPicker();
+  if (isSick) renderSickPicker(type);
   if (isMR) { _mrDates = {}; renderMRDateFields(); }
   regenerateReport(type);
+}
+
+// Renders the personnel checklist inside the RS / RSI Personnel modals (spec
+// §4.1). Everyone who reported sick on the chosen date gets a row, all ticked;
+// unticking is how you narrow the message to one person or a handful.
+//
+// The candidate set is what survives the on-status toggle, NOT the raw report
+// list — the checklist is a second filter stacked on the toggle, not a competing
+// one. Listing someone the toggle has already dropped would show an unticked row
+// with no visible explanation, and ticking it would do nothing (bpOnlyRows runs
+// after the toggle in the generators, deliberately).
+//
+// Rebuilt from scratch on every date/toggle change, which resets every tick.
+// That is intended: both inputs change WHO the candidates are, and carrying
+// ticks across would assert a selection over a set that no longer exists. The
+// time field does not rebuild, so a time correction keeps the selection.
+function renderSickPicker(type) {
+  const host = document.getElementById("rep-sick-picker");
+  if (!host) return;
+  const dateIso = gv("rep-date");
+  let rows = dateIso ? bpSickReports(dateIso) : [];
+  if (document.getElementById("rep-omit-status")?.checked) {
+    rows = rows.filter(m => !bpHasSameDayOutcome(m, dateIso));
+  }
+
+  if (!rows.length) {
+    // No candidates is a normal state (a quiet day, or the toggle cleared them
+    // all), not an error — say so plainly instead of rendering an empty box.
+    host.innerHTML = `<div style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px">No report-sick entries on this date.</div>`;
+    return;
+  }
+
+  // Collapsed by default: the common case is "send everyone", and an expanded
+  // list of 20 names would push the textarea off screen for no benefit.
+  host.innerHTML = `
+    <details style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px">
+      <summary style="cursor:pointer;font-size:12px;color:var(--text);list-style:revert">
+        Personnel <span id="rep-sick-count" style="color:var(--muted)">(${rows.length} of ${rows.length} selected)</span>
+      </summary>
+      <div style="display:flex;gap:6px;margin:8px 0">
+        <button type="button" class="btn btn-sm" onclick="sickPickerSetAll('${type}', true)">All</button>
+        <button type="button" class="btn btn-sm" onclick="sickPickerSetAll('${type}', false)">None</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto">
+        ${rows.map(m => `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+          <input type="checkbox" class="rep-sick-pick" value="${escapeAttr(String(m.id))}" checked
+                 onchange="renderSickCount(); regenerateReport('${type}')" style="width:14px;height:14px;cursor:pointer">
+          <span>${escapeAttr(sickRN(m.d4))}</span>
+        </label>`).join("")}
+      </div>
+    </details>`;
+}
+
+// All / None. Sets every box then regenerates once, rather than firing the
+// per-box onchange N times — each of those would rebuild the whole message.
+function sickPickerSetAll(type, on) {
+  document.querySelectorAll(".rep-sick-pick").forEach(cb => { cb.checked = on; });
+  renderSickCount();
+  regenerateReport(type);
+}
+
+// Keeps the summary line's count honest without rebuilding the list (a rebuild
+// would reset the very ticks the user just made).
+function renderSickCount() {
+  const boxes = [...document.querySelectorAll(".rep-sick-pick")];
+  const el = document.getElementById("rep-sick-count");
+  if (el) el.textContent = `(${boxes.filter(b => b.checked).length} of ${boxes.length} selected)`;
+}
+
+// The selected row ids, or null when there is no checklist on screen (every
+// report type other than RS/RSIP). null → the generators' opts.only is omitted
+// entirely, which is what keeps the default output path byte-identical.
+function sickPickerSelection() {
+  const boxes = [...document.querySelectorAll(".rep-sick-pick")];
+  if (!document.getElementById("rep-sick-picker") || !boxes.length) return null;
+  return boxes.filter(b => b.checked).map(b => b.value);
 }
 
 // Renders the Conduct picker dropdown inside the CONDUCT report modal.
@@ -548,11 +637,19 @@ function regenerateReport(type) {
   else if (type === "MR") text = generateMRFormat(dateIso, time);
   else if (type === "DUTYBOARD") text = generateDutyBoard(dateIso);
   else if (type === "DUTYREMIND") text = generateDutyReminder();
-  else if (type === "RS") text = generateRSFormat(dateIso, time, { omitOnStatus: !!document.getElementById("rep-omit-status")?.checked });
-  else if (type === "RSIP") {
-    const sc = document.getElementById("rep-scope")?.value || "company";
-    const code = sc.startsWith("platoon:") ? sc.slice("platoon:".length) : "";
-    text = generateRSIPersonnel(dateIso, time, code, { omitOnStatus: !!document.getElementById("rep-omit-status")?.checked });
+  // Shared by both sick reports. `only` is left OFF the object when there is no
+  // checklist on screen, rather than passed as null/[] — an empty array is a real
+  // selection meaning nobody (see bpOnlyRows), so the absent case must be absent.
+  else if (type === "RS" || type === "RSIP") {
+    const opts = { omitOnStatus: !!document.getElementById("rep-omit-status")?.checked };
+    const picked = sickPickerSelection();
+    if (picked) opts.only = picked;
+    if (type === "RS") text = generateRSFormat(dateIso, time, opts);
+    else {
+      const sc = document.getElementById("rep-scope")?.value || "company";
+      const code = sc.startsWith("platoon:") ? sc.slice("platoon:".length) : "";
+      text = generateRSIPersonnel(dateIso, time, code, opts);
+    }
   }
   else if (type === "CONDUCT") {
     const id = +gv("rep-conduct-id") || null;

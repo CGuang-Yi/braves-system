@@ -842,44 +842,65 @@ function bpSickUrtiBlocks(reports) {
   return lines;
 }
 
-// True when the person is already accounted for by a real medical status (not
-// blank/Pending/NIL) whose coverage has NOT yet ended as of dateIso — whether it
-// started before that day, ON it, or LATER. Powers the RS/RSI "omit personnel
-// already on status" option: someone the MO has assigned a status to is no longer
-// an open case on the day's sick parade, so their entry is suppressed.
+// True when the MO has already resolved a visit this person made ON dateIso —
+// that is, they hold a medical row whose OWN report date is dateIso and which
+// carries a real status (not blank/Pending/NIL). Powers the RS/RSI "omit
+// personnel whose outcome is already in" option: the status IS the outcome of
+// the report being listed, so showing both double-counts one event.
 //
-// The report-sick row ITSELF counts. This was named bpHasOtherStatus and skipped
-// `x === m` and so only ever looked at OTHER rows — but submitMedical writes the
-// MO outcome onto the visit's FIRST row, which is exactly the row bpSickReports
-// returns. A recruit who reported sick and walked out with "Excuse Uniform"
-// therefore carried that status on the report row and had no second row to find,
-// so the toggle passed them straight through. On a day where every report sick
-// had been resolved — the normal state of things by evening — ticking the box
-// changed nothing at all.
+// The report-sick row ITSELF counts, and is in fact the usual match:
+// submitMedical writes the MO outcome onto the visit's FIRST row, which is
+// exactly the row bpSickReports returns. (The ancestor of this predicate,
+// bpHasOtherStatus, skipped `x === m` and so only ever looked at OTHER rows —
+// meaning a recruit who reported sick and walked out with "Excuse Uniform" had
+// no second row to find and passed straight through. Do not reintroduce that
+// skip; it made the toggle a no-op by evening, when every report is resolved.)
 //
-// "Not yet ended" = a real end date on or after dateIso. A BLANK end date does
-// NOT suppress: medStatusActive treats an end-less record as inactive everywhere
-// else in this codebase, so treating one as "unexpired forever" here would be
-// inconsistent and would silently hide people from the sick parade.
+// KEYED ON THE STATUS ROW'S OWN REPORT DATE, not on whether its coverage has
+// lapsed (spec §5). The previous rule suppressed on `endDate >= dateIso`, which
+// swept up statuses issued days earlier and still running: someone three days
+// into an LD who reported sick AGAIN today was hidden from the sick parade
+// entirely, even though the new visit is a genuinely new event that nothing had
+// resolved. Narrowing to same-day keeps that row visible while still dropping
+// the case this morning's MO already closed.
 //
-// (Widened from the original bpHasPriorStatus, which required start < dateIso and
-// so let a same-day/future status through — reversed deliberately per request.)
-function bpHasCoveringStatus(m, dateIso) {
+// A same-day row that is blank or Pending does not suppress — the case is still
+// open. Neither does NIL, which records that the MO saw them and issued nothing.
+function bpHasSameDayOutcome(m, dateIso) {
   return (STATE.medical || []).some(x => {
     if (x.d4 !== m.d4) return false;
     if (!x.status || x.status === "Pending" || x.status === "NIL") return false;
-    const end = displayDateToISO(x.endDate || "");
-    return !!end && end >= dateIso;
+    return displayDateToISO(x.date || "") === dateIso;
   });
 }
 
+// Narrow a report set to an explicit allow-list of medical row IDs (spec §4) —
+// the per-person checklist in the RS/RSI modals. Absent/null opts.only → the set
+// is returned untouched, so the archiver and the GAS port stay byte-identical on
+// the default path; an EMPTY array is a real selection meaning "nobody", not a
+// missing filter, so it must not fall back to everyone.
+//
+// Keyed on row id rather than 4D because one person can hold two report rows on
+// one date, and the checklist has to be able to tick one without the other. IDs
+// are String()-compared: they arrive from DOM dataset values as strings but are
+// numeric in some sheet-sourced rows.
+function bpOnlyRows(reports, opts) {
+  if (!opts || !opts.only) return reports;
+  const keep = new Set(opts.only.map(String));
+  return reports.filter(m => keep.has(String(m.id)));
+}
+
 // §10.1 — single report-sick message: header → URTI block → NON-URTI block.
-// opts.omitOnStatus (optional) drops report-sick rows for personnel already on an
-// unexpired status (see bpHasCoveringStatus). Omitted/false → unchanged output, so
-// the archiver and the GAS port stay byte-identical.
+// opts.omitOnStatus (optional) drops report-sick rows whose outcome the MO has
+// already issued today (see bpHasSameDayOutcome). opts.only (optional) narrows to
+// an allow-list of medical row ids (see bpOnlyRows). Both omitted → unchanged
+// output, so the archiver and the GAS port stay byte-identical.
 function generateRSFormat(dateIso, time, opts) {
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasCoveringStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasSameDayOutcome(m, dateIso));
+  // AFTER the toggle: the checklist lists the set the toggle leaves behind, so a
+  // row it already dropped must not be resurrected by an explicit tick.
+  reports = bpOnlyRows(reports, opts);
   const lines = [`${bpDDMMYY(dateIso)} ${configGet("companyCoyCode")} ${configGet("unitCode")} ${bpTimeH(time)}`];
   lines.push(...bpSickUrtiBlocks(reports));
   return lines.join("\n\n");
@@ -889,15 +910,19 @@ function generateRSFormat(dateIso, time, opts) {
 // with ≥1 report-sick entry are shown; TOTAL = sum across them.
 // scopeCode: optional platoon code (e.g. "PLT1", "HQ") to restrict output to a
 // single platoon; "" or omitted → full company output (backward-compatible).
-// opts.omitOnStatus (optional) drops report-sick rows for personnel already on an
-// unexpired status (see bpHasCoveringStatus), the same toggle generateRSFormat
-// offers — applied BEFORE the platoon partition so TOTAL and every per-platoon
-// PAX count follow the filtered set. Omitted/false → unchanged output, so the
-// archiver and the GAS port stay byte-identical on the default path.
+// opts.omitOnStatus (optional) drops report-sick rows whose outcome the MO has
+// already issued today (see bpHasSameDayOutcome), and opts.only (optional)
+// narrows to an allow-list of medical row ids (see bpOnlyRows) — the same two
+// filters generateRSFormat offers. BOTH are applied BEFORE the platoon partition,
+// so TOTAL and every per-platoon PAX count follow the filtered set, and a platoon
+// left with nothing drops out of the message rather than showing as 00 PAX.
+// Both omitted → unchanged output, so the archiver and the GAS port stay
+// byte-identical on the default path.
 function generateRSIPersonnel(dateIso, time, scopeCode, opts) {
   scopeCode = scopeCode || "";
   let reports = bpSickReports(dateIso);
-  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasCoveringStatus(m, dateIso));
+  if (opts && opts.omitOnStatus) reports = reports.filter(m => !bpHasSameDayOutcome(m, dateIso));
+  reports = bpOnlyRows(reports, opts);
   const platoonOf = d4 => {
     const r = STATE.roster.find(x => x.id == d4);
     return r ? personPlatoon(r) : "";

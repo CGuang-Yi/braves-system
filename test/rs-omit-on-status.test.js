@@ -3,16 +3,32 @@
 //   • generateRSFormat  — the RS Format (URTI / NON-URTI) message.
 //   • generateRSIPersonnel — the RSI-Personnel-by-platoon message (PR 1 adds the
 //     option here; it already existed on generateRSFormat since PR #71).
-// The option filters out report-sick rows for personnel who carry an unexpired
-// medical status, via bpHasCoveringStatus — so the message lists only the cases
-// still open and the TOTAL / per-platoon PAX counts follow the filtered set.
+// The option filters out report-sick rows whose outcome the MO has already
+// issued, via bpHasSameDayOutcome — so the message lists only the cases still
+// open and the TOTAL / per-platoon PAX counts follow the filtered set.
 //
 // This file is the feature's FIRST direct coverage (PR #71 shipped it untested).
 // Loaded in a vm sandbox (parade-classifier.test.js pattern) with faithful stubs
-// for the external globals the generators lean on. Covers the PR-1 second call
-// site (RSI Personnel) AND the PR-2 widened predicate — a status is suppressive
-// if its end date is on or after the report date, whether it started before that
-// day, on it, or later.
+// for the external globals the generators lean on.
+//
+// ⚠ THE PREDICATE WAS NARROWED (spec §5) AND MUCH OF THIS FILE CHANGED WITH IT.
+// It previously suppressed on `endDate >= dateIso` — any status still running,
+// whenever it started. That swept up statuses issued days earlier: a recruit
+// three days into an LD who reported sick AGAIN today vanished from the sick
+// parade, even though nothing had resolved the new visit. The rule now keys on
+// the status row's OWN report date, so only an outcome recorded for *this* day
+// suppresses this day's entry.
+//
+// Three consequences retired assertions that used to live here, and they are
+// worth naming because each looks like a regression if you meet it cold:
+//   • A prior unexpired status no longer suppresses — that is the whole point.
+//   • A FUTURE-dated status no longer suppresses; its own date is not today.
+//   • The blank-end-date edge case is GONE, not flipped. The predicate no longer
+//     reads endDate at all, so "an end-less status is inactive" has nothing left
+//     to say about it; such a row now suppresses or not purely on its date and
+//     status, like any other.
+// What did NOT change: the report row's own status still counts (see the last
+// suite), and Pending / NIL still never suppress.
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
@@ -73,15 +89,23 @@ function loadParade(roster, medical) {
 function rsiRow(d4, extra) { return Object.assign({ id: `rs-${d4}`, d4, type: "RSI", date: TODAY, status: "Pending", startDate: TODAY, reason: "FEVER" }, extra || {}); }
 
 module.exports = async function run() {
-  // Three recruits report sick today; B also sits on a prior active MC.
+  // Three recruits report sick today. B also sits on a prior active MC (which no
+  // longer suppresses him — §5); C walked out of today's visit with an MC (which
+  // does). C is alone in HQ, so suppressing him also empties a platoon.
   const ROSTER = [
     { id: "0001", name: "Alpha One", fourD: "0001", plt: "PLT1", role: "Recruit" },
     { id: "0002", name: "Bravo Two", fourD: "0002", plt: "PLT2", role: "Recruit" },
     { id: "0003", name: "Charlie Three", fourD: "0003", plt: "HQ", role: "Recruit" }
   ];
-  // B's prior active MC: started a week ago, still covering today.
+  // B's prior active MC: started a week ago, still covering today. Its own report
+  // date is a week ago, so under the narrowed rule it accounts for nothing today.
   const priorMC = { id: "mc-b", d4: "0002", type: "RSO", status: "MC", startDate: "2026-06-22", endDate: "2026-07-03", date: "2026-06-22" };
-  const medical = () => [rsiRow("0001"), rsiRow("0002"), rsiRow("0003"), priorMC];
+  const medical = () => [
+    rsiRow("0001"),
+    rsiRow("0002"),
+    rsiRow("0003", { status: "MC", endDate: "2026-07-03" }),   // resolved at today's visit
+    priorMC
+  ];
 
   // ── generateRSIPersonnel ───────────────────────────────────────────────────
   suite("RSI Personnel: omit-on-status option");
@@ -95,24 +119,32 @@ module.exports = async function run() {
     ok(/HQ: 01 PAX/.test(out), "HQ present");
   });
 
-  await test("omit ON → prior-status B suppressed, TOTAL 2", () => {
+  await test("omit ON → only today's resolved case C is suppressed, TOTAL 2", () => {
     const sb = loadParade(ROSTER, medical());
     const out = sb.generateRSIPersonnel(TODAY, "0700", "", { omitOnStatus: true });
     ok(/TOTAL: 02 PAX/.test(out), "TOTAL drops to two");
-    ok(/PLATOON 1: 01 PAX/.test(out), "PLT1 still present");
-    ok(/HQ: 01 PAX/.test(out), "HQ still present");
+    ok(/PLATOON 1: 01 PAX/.test(out), "PLT1 (A, still Pending) present");
+    ok(/PLATOON 2: 01 PAX/.test(out), "PLT2 (B) present — a running prior MC no longer suppresses");
+  });
+
+  await test("omit ON → a prior unexpired status does NOT suppress a new report (§5)", () => {
+    // THE NARROWING. B is mid-MC (22 Jun → 3 Jul) and reported sick again today;
+    // the old endDate>=today rule hid this row, silently dropping a real event.
+    const sb = loadParade(ROSTER, medical());
+    const out = sb.generateRSIPersonnel(TODAY, "0700", "", { omitOnStatus: true });
+    ok(/PLATOON 2/.test(out), "B's platoon survives the filter");
   });
 
   await test("omit ON → a platoon emptied by filtering drops out entirely", () => {
     const sb = loadParade(ROSTER, medical());
     const out = sb.generateRSIPersonnel(TODAY, "0700", "", { omitOnStatus: true });
-    ok(!/PLATOON 2/.test(out), "PLT2 (only B) disappears from the message");
+    ok(!/HQ/.test(out), "HQ (only C, resolved today) disappears from the message");
   });
 
   await test("omit ON + platoon scope on the emptied platoon → TOTAL 0", () => {
     const sb = loadParade(ROSTER, medical());
-    const out = sb.generateRSIPersonnel(TODAY, "0700", "PLT2", { omitOnStatus: true });
-    ok(/TOTAL: 00 PAX/.test(out), "scoped-to-PLT2 total is zero once B is omitted");
+    const out = sb.generateRSIPersonnel(TODAY, "0700", "HQ", { omitOnStatus: true });
+    ok(/TOTAL: 00 PAX/.test(out), "scoped-to-HQ total is zero once C is omitted");
   });
 
   await test("opts omitted → byte-identical to opts:false (back-compat)", () => {
@@ -124,23 +156,24 @@ module.exports = async function run() {
   // ── generateRSFormat (regression: the option keeps working after PR 1) ───────
   suite("RS Format: omit-on-status option (regression)");
 
-  await test("omit ON → prior-status B suppressed from the URTI/NON-URTI counts", () => {
+  await test("omit ON → today's resolved case drops out of the URTI/NON-URTI counts", () => {
     const sb = loadParade(ROSTER, medical());
     const off = sb.generateRSFormat(TODAY, "0700");
     const on = sb.generateRSFormat(TODAY, "0700", { omitOnStatus: true });
     ok(/NON-URTI: 03/.test(off), "unfiltered lists all three");
-    ok(/NON-URTI: 02/.test(on), "filtered drops B");
+    ok(/NON-URTI: 02/.test(on), "filtered drops C only");
   });
 
-  // ── Widened predicate (bpHasCoveringStatus) ─────────────────────────────────
-  // The omit toggle originally suppressed only personnel whose other status
-  // STARTED before the report date. It now suppresses anyone carrying an unexpired
-  // other status regardless of when it starts — so an MC handed out as the outcome
-  // of today's report sick, or a future-dated status, also drop the entry. A
-  // status is "unexpired" iff it has a real end date on or after the report date;
-  // a blank end date does NOT suppress (consistent with medStatusActive, which
-  // treats end-less records as inactive everywhere else).
-  suite("RS Format: widened omit predicate (starts today / future / edge cases)");
+  // ── Narrowed predicate (bpHasSameDayOutcome) ────────────────────────────────
+  // A SEPARATE medical row suppresses the day's report only when that row's own
+  // report date is the report date. This suite walks the four positions a status
+  // row can sit in relative to today, and only the first suppresses.
+  //
+  // Two of these assertions are the reverse of what they were. The predicate used
+  // to ask "has this status expired?"; it now asks "was this status recorded
+  // today?", so a future-dated MC — previously suppressive because its end date
+  // had obviously not passed — accounts for nothing about today's visit.
+  suite("RS Format: narrowed omit predicate (today / future / expired / end-less)");
 
   // Each person reports sick today and carries exactly one OTHER medical record.
   const wRoster = [
@@ -166,26 +199,30 @@ module.exports = async function run() {
     ok(!/Delta Four/.test(on), "Delta's own MC starting today accounts for him → omitted");
   });
 
-  await test("status starting in the FUTURE is suppressed", () => {
+  await test("status dated in the FUTURE is NOT suppressed (reversed by §5)", () => {
+    // Previously omitted, on the grounds that its end date had not passed. A
+    // status recorded for 1 Jul says nothing about a visit made on 29 Jun.
     const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
-    ok(!/Echo Five/.test(on), "Echo's future-dated MC accounts for him → omitted");
+    ok(/Echo Five/.test(on), "a future-dated MC does not resolve today's report");
   });
 
-  await test("status that ENDED before the report date is still listed", () => {
+  await test("status dated BEFORE the report date is still listed", () => {
     const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
-    ok(/Foxtrot Six/.test(on), "Foxtrot's expired MC does not account for a fresh report sick");
+    ok(/Foxtrot Six/.test(on), "an older MC does not account for a fresh report sick");
   });
 
-  await test("a BLANK end date does NOT suppress (resolved edge case)", () => {
+  await test("an end-less status dated before today is listed, on its DATE not its end", () => {
+    // Golf's LD is dated 22 Jun. It stays listed because that is not today — the
+    // blank end date is now irrelevant, where it used to be the deciding fact.
     const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
-    ok(/Golf Seven/.test(on), "an end-less status is treated as inactive, so Golf stays listed");
+    ok(/Golf Seven/.test(on), "endDate is no longer consulted by the predicate");
   });
 
-  await test("net count: only the two unexpired-status people drop", () => {
+  await test("net count: only the status recorded TODAY drops", () => {
     const off = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700");
     const on = loadParade(wRoster, wMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
     ok(/NON-URTI: 04/.test(off), "all four listed unfiltered");
-    ok(/NON-URTI: 02/.test(on), "Delta + Echo omitted; Foxtrot + Golf remain");
+    ok(/NON-URTI: 03/.test(on), "Delta omitted; Echo + Foxtrot + Golf remain");
   });
 
   // ── The report-sick row's OWN status counts ─────────────────────────────────
@@ -213,9 +250,11 @@ module.exports = async function run() {
     ok(!/Own 0008/.test(on), "the status on the report row itself must account for them");
   });
 
-  await test("a status ending exactly on the report date still omits", () => {
+  await test("a one-day status issued at this visit omits", () => {
+    // Still omitted, but for a different reason than it used to be: the row is
+    // dated today and carries a real status. Its end date is not consulted.
     const on = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
-    ok(!/Own 0009/.test(on), "end >= dateIso is inclusive of the report day");
+    ok(!/Own 0009/.test(on), "an MC issued and expiring today is still today's outcome");
   });
 
   await test("a still-Pending report sick is NOT omitted — that is the open case", () => {
@@ -228,9 +267,14 @@ module.exports = async function run() {
     ok(/Own 0011/.test(on), "NIL means no status was issued — they are still a case of the day");
   });
 
-  await test("own status with a BLANK end date stays listed, as for any other row", () => {
+  await test("own status with a BLANK end date now OMITS (reversed by §5)", () => {
+    // This assertion is inverted from its previous form, and the inversion is the
+    // point rather than an accident. The old predicate required a real end date
+    // to suppress, so an Excuse recorded without one leaked onto the sick parade
+    // as an unresolved case. Dropping endDate from the predicate closes that:
+    // the MO issued a status at today's visit, which is all the rule now asks.
     const on = loadParade(oRoster, oMedical()).generateRSFormat(TODAY, "0700", { omitOnStatus: true });
-    ok(/Own 0012/.test(on), "end-less records are inactive everywhere else; do not special-case them here");
+    ok(!/Own 0012/.test(on), "a resolved same-day outcome omits regardless of end date");
   });
 
   await test("omit OFF still lists all five, so the default message is untouched", () => {
@@ -241,8 +285,8 @@ module.exports = async function run() {
   await test("RSI Personnel applies the same rule to its PAX counts", () => {
     const sb = loadParade(oRoster, oMedical());
     ok(/TOTAL: 05 PAX/.test(sb.generateRSIPersonnel(TODAY, "0700")), "unfiltered");
-    ok(/TOTAL: 03 PAX/.test(sb.generateRSIPersonnel(TODAY, "0700", "", { omitOnStatus: true })),
-      "0008 + 0009 drop; 0010 (Pending), 0011 (NIL) and 0012 (no end date) remain");
+    ok(/TOTAL: 02 PAX/.test(sb.generateRSIPersonnel(TODAY, "0700", "", { omitOnStatus: true })),
+      "0008 + 0009 + 0012 drop (all resolved today); 0010 (Pending) and 0011 (NIL) remain");
   });
 
   // ── forms.js UI wiring ───────────────────────────────────────────────────────
@@ -255,19 +299,62 @@ module.exports = async function run() {
   const forms = sourceText("forms");
 
   await test("the omit checkbox is gated on RS OR RSIP, not RS alone", () => {
-    ok(/showOmitToggle\s*=\s*type === "RS" \|\| type === "RSIP"/.test(forms),
-      "showOmitToggle no longer covers both report types");
+    ok(/const isSick = type === "RS" \|\| type === "RSIP"/.test(forms),
+      "isSick no longer covers both report types");
+    ok(/showOmitToggle\s*=\s*isSick/.test(forms), "the toggle is no longer gated on isSick");
     ok(/\$\{showOmitToggle \? `<label/.test(forms),
       "the checkbox block is still gated on the old isRS flag");
   });
 
-  await test("the checkbox onchange dispatches to the live report type", () => {
-    ok(/id="rep-omit-status" onchange="regenerateReport\('\$\{type\}'\)"/.test(forms),
-      "onchange still hardcodes regenerateReport('RS') — RSIP toggling would regenerate the wrong report");
+  await test("the checkbox onchange rebuilds the checklist AND dispatches to the live type", () => {
+    // Rebuilding matters as much as regenerating: the toggle changes WHO the
+    // candidates are, so a stale list would offer ticks for people the toggle
+    // has already dropped (spec §4.1).
+    ok(/id="rep-omit-status" onchange="renderSickPicker\('\$\{type\}'\); regenerateReport\('\$\{type\}'\)"/.test(forms),
+      "the toggle must rebuild the picker and regenerate the live report type");
   });
 
-  await test("the RSIP branch forwards the checkbox into generateRSIPersonnel", () => {
-    ok(/generateRSIPersonnel\(dateIso, time, code, \{ omitOnStatus: !!document\.getElementById\("rep-omit-status"\)\?\.checked \}\)/.test(forms),
-      "RSIP dispatch does not pass the omitOnStatus option");
+  await test("both sick reports forward the toggle through one shared opts object", () => {
+    ok(/type === "RS" \|\| type === "RSIP"/.test(forms), "RS and RSIP no longer share a branch");
+    ok(/const opts = \{ omitOnStatus: !!document\.getElementById\("rep-omit-status"\)\?\.checked \}/.test(forms),
+      "the omitOnStatus option is no longer built for both reports");
+    ok(/generateRSIPersonnel\(dateIso, time, code, opts\)/.test(forms), "RSIP dispatch drops opts");
+    ok(/generateRSFormat\(dateIso, time, opts\)/.test(forms), "RS dispatch drops opts");
+  });
+
+  // ── §4 checklist wiring ─────────────────────────────────────────────────────
+  // The checklist is pure DOM, which this repo has no harness for, so its
+  // load-bearing wiring is guarded by source assertion the same way the toggle
+  // above is. Each of these encodes a decision that is silently wrong if edited
+  // out — not merely "the code exists".
+  suite("forms wiring: §4 per-person checklist");
+
+  await test("only is OMITTED, not passed empty, when there is no checklist", () => {
+    // The distinction the generators depend on: `only: []` means nobody, so the
+    // absent case has to leave the key off entirely or every non-checklist
+    // caller would produce an empty message.
+    ok(/const picked = sickPickerSelection\(\);\s*\n\s*if \(picked\) opts\.only = picked;/.test(forms),
+      "opts.only must be set only when a selection exists");
+    ok(/if \(!document\.getElementById\("rep-sick-picker"\) \|\| !boxes\.length\) return null/.test(forms),
+      "sickPickerSelection must return null (not []) when no picker is on screen");
+  });
+
+  await test("the checklist lists only what survives the on-status toggle", () => {
+    ok(/rows = rows\.filter\(m => !bpHasSameDayOutcome\(m, dateIso\)\)/.test(forms),
+      "the picker must apply the toggle, or it offers ticks that do nothing");
+  });
+
+  await test("the date field rebuilds the checklist; the time field does not", () => {
+    ok(/isSick\s*\n?\s*\/\/[\s\S]*?\? `value="\$\{defaultDate\}" required onchange="renderSickPicker\('\$\{type\}'\); regenerateReport\('\$\{type\}'\)"/.test(forms),
+      "the date must rebuild the candidate set");
+    ok(!/maxlength="4"[^`]*renderSickPicker/.test(forms),
+      "the time field must NOT rebuild — a time correction has to preserve the selection");
+  });
+
+  await test("All/None regenerates once rather than per checkbox", () => {
+    ok(/function sickPickerSetAll\(type, on\) \{\s*\n\s*document\.querySelectorAll\("\.rep-sick-pick"\)\.forEach/.test(forms),
+      "All/None must set every box directly");
+    ok(/sickPickerSetAll[\s\S]{0,220}?renderSickCount\(\);\s*\n\s*regenerateReport\(type\);/.test(forms),
+      "All/None must regenerate exactly once after setting the boxes");
   });
 };
