@@ -232,6 +232,19 @@ module.exports = async function run() {
     roster: clone(ROSTER).map(r => (r.id === "1422" ? Object.assign(r, { status: "MC" }) : r))
   }));
 
+  // The leave / Warded 2-day persist-until-booked-in tails (design 2026-08-14):
+  // an AL/OIL leave and a Warded that ENDED yesterday (28 Jun, today is 29 Jun)
+  // and was never booked in must still list, identically in both copies.
+  await parity("AL/OIL — ended-leave persistence tail", "AL/OIL", fixture({
+    leave: [{ id: 1, d4: "1411", type: "AL", reason: "ANNUAL LEAVE",
+              startDate: "26 Jun 2026", endDate: "28 Jun 2026", isInCamp: false }]
+  }));
+
+  await parity("OTHERS — ended-Warded persistence tail", "OTHERS", fixture({
+    medical: [{ id: 1, d4: "1422", type: "RSI", date: "26 Jun 2026", status: "Warded",
+                startDate: "26 Jun 2026", endDate: "28 Jun 2026", reason: "dengue" }]
+  }));
+
   // Two MCs of the same type → bpSupersedeSameType keeps the later-ending one.
   // Also a drifted function (sup → meta), so worth pinning behaviourally.
   await parity("ATT C — same-type supersede keeps the later end date", "ATT C", fixture({

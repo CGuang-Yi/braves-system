@@ -583,6 +583,19 @@ function paradeClearPerson(d4) {
     const sinceEnd = endIso ? Math.round((new Date(iso + "T00:00:00") - new Date(endIso + "T00:00:00")) / 86400000) : 99;
     if (sinceEnd <= 2) { graceMc.bookInDate = isoToDisplayDate(iso); changed.push(["Medical", graceMc]); }
   }
+  // Same grace book-in for the leave / Warded persist tails (design 2026-08-14):
+  // paradeEndActiveContributors only books in rows active TODAY, so a person
+  // parked by an ended-within-2-days leave/Warded tail has no active row to touch.
+  // Book in every such ended-but-unbooked AWAY row directly (all of them, so a
+  // person with two overlapping ended leaves is fully cleared) — mirrors graceMc.
+  const graceBookIn = (rows, tab) => rows.forEach(x => {
+    const e = displayDateToISO(x.endDate || "");
+    if (!e || e >= iso || bookedInBy(x, iso)) return;
+    const sinceEnd = Math.round((new Date(iso + "T00:00:00") - new Date(e + "T00:00:00")) / 86400000);
+    if (sinceEnd <= 2) { x.bookInDate = isoToDisplayDate(iso); changed.push([tab, x]); }
+  });
+  graceBookIn((STATE.leave || []).filter(l => l.d4 === d4 && (bpIsAlOilType(l.type) || l.isInCamp !== true)), "Leave");
+  graceBookIn((STATE.medical || []).filter(m => m.d4 === d4 && m.status === "Warded"), "Medical");
   // Marking Present means nothing is outstanding, so also resolve a same-day
   // pending MR. MR is normally additive (a person can be on LD AND MR), so
   // applying another code leaves it alone — but a blank-status MR carries no end

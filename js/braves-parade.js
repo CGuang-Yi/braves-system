@@ -221,6 +221,10 @@ function bpClassifyPerson(r, dateIso, idx, opts) {
   // not-yet-started MC in that array — see the recovery tail below, whose whole
   // premise is "no MC running TODAY".
   let hasCurrentAttC = false;
+  // Same "is there a LIVE row today" guard for the leave/Warded recovery tails
+  // added below — mirrors hasCurrentAttC so an ended-but-unbooked row does not
+  // double-list when the person also has an active row of the same category.
+  let hasCurrentAlOil = false, hasCurrentOthersOut = false, hasCurrentWarded = false;
   // Push to both `out` and `meta`, keeping the formatted line and its structured
   // record aligned. `body` is the text after "RN - "; the line is built exactly as
   // before (`${rn} - ${body}` trimmed) so output is unchanged.
@@ -320,7 +324,7 @@ function bpClassifyPerson(r, dateIso, idx, opts) {
     const leaveSup = { supKey: supPool(upcoming) + String(l.type || "").trim().toUpperCase(), supEnd: displayDateToISO(l.endDate || ""), upcoming };
     if (bpIsAlOilType(l.type)) {
       push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL", leaveSup);
-      if (!upcoming) notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
+      if (!upcoming) { notInCamp = true; hasCurrentAlOil = true; }  // AL/OIL is not in camp unless overridden (below)
     } else {
       // Non-AL/OIL leave → OTHERS; the commander picks In Camp/Not In Camp
       // explicitly on every record (see bpOthersNotInCamp's own comment for
@@ -328,7 +332,7 @@ function bpClassifyPerson(r, dateIso, idx, opts) {
       const label = inCamp ? "OTHERS (IN CAMP)" : "OTHERS (NOT IN CAMP)";
       const rng = bpRange(l, false);
       push2("others", `${reason}${rng ? " " + rng : ""} (${label})`, "OTHERS", leaveSup);
-      if (!inCamp && !upcoming) notInCamp = true;
+      if (!inCamp && !upcoming) { notInCamp = true; hasCurrentOthersOut = true; }
     }
   });
   if (leaveOverride) notInCamp = false;
@@ -422,7 +426,7 @@ function bpClassifyPerson(r, dateIso, idx, opts) {
     // indistinguishable from an in-camp OTHERS entry — see bpGridCell/bpPrimaryForDay.
     if (m.status === "Warded" && (medStatusActive(m, dateIso) || stUpcoming) && !bookedInFor(m, stUpcoming, displayDateToISO(m.startDate || m.date || ""))) {
       push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "WD", { supKey: supPool(stUpcoming) + "WD", supEnd: displayDateToISO(m.endDate || ""), upcoming: stUpcoming });
-      if (!stUpcoming) notInCamp = true;
+      if (!stUpcoming) { notInCamp = true; hasCurrentWarded = true; }
     }
 
     // Item 17: Medical Appointment (type MA) dated today → OTHERS. Mirrors the
@@ -477,6 +481,57 @@ function bpClassifyPerson(r, dateIso, idx, opts) {
       // the Status Board calendar grid uses it to stop colouring MC past the real
       // end date — the grid shows the MC's actual duration, not the un-booked tail.
       push2("attC", `${label} ${bpRange(endedMc, false)}`.trim(), "MC", { supKey: "MC", supEnd: displayDateToISO(endedMc.endDate || ""), persisted: true });
+      notInCamp = true;
+    }
+  }
+
+  // Same 2-day persist-until-booked-in tail for the OTHER out-of-camp categories
+  // (design 2026-08-14): AL/OIL leave, OTHERS-not-in-camp leave, and Warded used
+  // to auto-return the person to Present the day AFTER their end date. Mirror the
+  // MC tail above so they instead stay listed (and counted out of camp) for up to
+  // 2 days past the end date until a commander books them in. `persisted:true`
+  // marks the tail so the Status Board grid keeps showing each record's real
+  // duration while parade state / strength still count the person out — exactly
+  // as for MC. endedInGrace returns the most-recent row that ended within the 1–2
+  // day window and is NOT booked in, or null; `endOf` extracts its ISO end date.
+  const endedInGrace = (rows, endOf) => {
+    const cand = rows
+      .filter(x => { const e = endOf(x); return e && e < dateIso && !bookedInBy(x, dateIso); })
+      .sort((a, b) => endOf(b).localeCompare(endOf(a)))[0];
+    if (!cand) return null;
+    const e = endOf(cand);
+    const sinceEnd = Math.round((new Date(dateIso + "T00:00:00") - new Date(e + "T00:00:00")) / 86400000);
+    return sinceEnd <= 2 ? cand : null;
+  };
+  const rowEnd = x => displayDateToISO(x.endDate || "");
+  // AL/OIL leave tail — same line/supKey as the active AL/OIL branch above.
+  if (!hasCurrentAlOil) {
+    const l = endedInGrace(leaveRows.filter(x => bpIsAlOilType(x.type)), rowEnd);
+    if (l) {
+      const reason = l.reason || l.type || "";
+      push2("alOil", `${reason} ${bpRange(l, true)}`.trim(), "AL/OIL",
+        { supKey: String(l.type || "").trim().toUpperCase(), supEnd: rowEnd(l), persisted: true });
+      notInCamp = true;
+    }
+  }
+  // OTHERS-not-in-camp leave tail — keyed off the stored isInCamp flag (isInCamp
+  // !== true means Not In Camp, incl. legacy blank), never reason-keyword guessing.
+  if (!hasCurrentOthersOut) {
+    const l = endedInGrace(leaveRows.filter(x => !bpIsAlOilType(x.type) && x.isInCamp !== true), rowEnd);
+    if (l) {
+      const reason = l.reason || l.type || "";
+      const rng = bpRange(l, false);
+      push2("others", `${reason}${rng ? " " + rng : ""} (OTHERS (NOT IN CAMP))`, "OTHERS",
+        { supKey: String(l.type || "").trim().toUpperCase(), supEnd: rowEnd(l), persisted: true });
+      notInCamp = true;
+    }
+  }
+  // Warded tail — same line/type ("WD") as the active Warded branch above.
+  if (!hasCurrentWarded) {
+    const m = endedInGrace(medRows.filter(x => x.status === "Warded"), rowEnd);
+    if (m) {
+      push2("others", `${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`, "WD",
+        { supKey: "WD", supEnd: rowEnd(m), persisted: true });
       notInCamp = true;
     }
   }
@@ -592,14 +647,16 @@ function bpGridCell(r, dateIso, idx) {
   // Read the type from the structured twin rather than regex-matching the line.
   const hasRSO = c.meta.reportingSick.some(x => x.type === "RSO");
   const hasRSI = c.meta.reportingSick.some(x => x.type === "RSI");
-  const hasWarded = c.meta.others.some(x => x.type === "WD");
+  const hasWarded = c.meta.others.some(x => x.type === "WD" && !x.persisted);
   let primary = null;
-  // Only colour MC for a genuinely-active MC that day — skip the "persisted"
-  // book-in tail (MC ended, nobody booked them in). The grid shows the MC's real
-  // duration; the person still counts as ATT C in parade state / A7 (those don't
-  // read this flag). If the only ATT C entry is the persisted tail, fall through.
+  // Only colour MC/LV/WD for a genuinely-active row that day — skip the
+  // "persisted" book-in tails (record ended, nobody booked them in). The grid
+  // shows each record's real duration; the person still counts as away in parade
+  // state / A7 (those don't read this flag). If the only entry is a persisted
+  // tail, fall through.
   const activeMC = c.meta.attC.some(x => !x.persisted);
-  if (s.alOil.length) primary = "LV";
+  const activeAlOil = c.meta.alOil.some(x => !x.persisted);
+  if (activeAlOil) primary = "LV";
   else if (activeMC) primary = "MC";
   else if (hasWarded) primary = "WD";   // OTHERS-section but away-not-in-camp, same tier as ATT C
   else if (s.status.length) {

@@ -3500,6 +3500,10 @@ function bpClassifyPerson(r, dateIso, opts) {
   // not-yet-started MC in that array — see the recovery tail below, whose whole
   // premise is "no MC running TODAY".
   let hasCurrentAttC = false;
+  // Same "is there a LIVE row today" guard for the leave/Warded recovery tails
+  // added below (mirror of js/braves-parade.js) — an ended-but-unbooked row must
+  // not double-list when the person also has an active row of the same category.
+  let hasCurrentAlOil = false, hasCurrentOthersOut = false, hasCurrentWarded = false;
 
   // ── Fix 18: opt-in lookahead (mirror of js/braves-parade.js) ──────────────
   // A record is "upcoming" when its window STARTS after dateIso but within the
@@ -3567,14 +3571,14 @@ function bpClassifyPerson(r, dateIso, opts) {
     const leaveSup = { supKey: supPool(upcoming) + String(l.type || "").trim().toUpperCase(), supEnd: displayDateToISO(l.endDate || "") };
     if (bpIsAlOilType(l.type)) {
       pushS("alOil", `${rn} - ${reason} ${bpRange(l, true)}`.trim(), leaveSup, upcoming);
-      if (!upcoming) notInCamp = true;  // AL/OIL is not in camp unless overridden (below)
+      if (!upcoming) { notInCamp = true; hasCurrentAlOil = true; }  // AL/OIL is not in camp unless overridden (below)
     } else {
       // Non-AL/OIL leave → OTHERS; the commander picks In Camp/Not In Camp
       // explicitly on every record (no more reason-keyword guessing here).
       const label = inCamp ? "OTHERS (IN CAMP)" : "OTHERS (NOT IN CAMP)";
       const rng = bpRange(l, false);
       pushS("others", `${rn} - ${reason}${rng ? " " + rng : ""} (${label})`.trim(), leaveSup, upcoming);
-      if (!inCamp && !upcoming) notInCamp = true;
+      if (!inCamp && !upcoming) { notInCamp = true; hasCurrentOthersOut = true; }
     }
   });
   if (leaveOverride) notInCamp = false;
@@ -3666,7 +3670,7 @@ function bpClassifyPerson(r, dateIso, opts) {
     if (m.status === "Warded" && (medStatusActive(m, dateIso) || stUpcoming)
         && !bookedInFor(m, stUpcoming, displayDateToISO(m.startDate || m.date || ""))) {
       pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: supPool(stUpcoming) + "WD", supEnd: displayDateToISO(m.endDate || "") }, stUpcoming);
-      if (!stUpcoming) notInCamp = true;
+      if (!stUpcoming) { notInCamp = true; hasCurrentWarded = true; }
     }
 
     // Item 17: Medical Appointment (type MA) dated today → OTHERS. Mirrors the
@@ -3715,6 +3719,47 @@ function bpClassifyPerson(r, dateIso, opts) {
       const days = bpInclusiveDays(endedMc);
       const label = days ? `${days}D MC` : "MC";
       pushS("attC", `${rn} - ${label} ${bpRange(endedMc, false)}`.trim(), { supKey: "MC", supEnd: displayDateToISO(endedMc.endDate || "") });
+      notInCamp = true;
+    }
+  }
+
+  // Mirror of js/braves-parade.js: 2-day persist-until-booked-in tail for AL/OIL
+  // leave, OTHERS-not-in-camp leave, and Warded (design 2026-08-14). Same shape
+  // as the MC tail above — keep byte-parallel with the frontend (this file has no
+  // grid, so the frontend's `persisted` flag has no analogue here; the LINES and
+  // notInCamp must still match). endedInGrace returns the most-recent row that
+  // ended within the 1–2 day window and is NOT booked in, or null.
+  const endedInGrace = (rows, endOf) => {
+    const cand = rows
+      .filter(x => { const e = endOf(x); return e && e < dateIso && !bookedInBy(x, dateIso); })
+      .sort((a, b) => endOf(b).localeCompare(endOf(a)))[0];
+    if (!cand) return null;
+    const e = endOf(cand);
+    const sinceEnd = Math.round((new Date(dateIso + "T00:00:00") - new Date(e + "T00:00:00")) / 86400000);
+    return sinceEnd <= 2 ? cand : null;
+  };
+  const rowEnd = x => displayDateToISO(x.endDate || "");
+  if (!hasCurrentAlOil) {
+    const l = endedInGrace(STATE.leave.filter(x => x.d4 === r.id && bpIsAlOilType(x.type)), rowEnd);
+    if (l) {
+      const reason = l.reason || l.type || "";
+      pushS("alOil", `${rn} - ${reason} ${bpRange(l, true)}`.trim(), { supKey: String(l.type || "").trim().toUpperCase(), supEnd: rowEnd(l) });
+      notInCamp = true;
+    }
+  }
+  if (!hasCurrentOthersOut) {
+    const l = endedInGrace(STATE.leave.filter(x => x.d4 === r.id && !bpIsAlOilType(x.type) && x.isInCamp !== true), rowEnd);
+    if (l) {
+      const reason = l.reason || l.type || "";
+      const rng = bpRange(l, false);
+      pushS("others", `${rn} - ${reason}${rng ? " " + rng : ""} (OTHERS (NOT IN CAMP))`.trim(), { supKey: String(l.type || "").trim().toUpperCase(), supEnd: rowEnd(l) });
+      notInCamp = true;
+    }
+  }
+  if (!hasCurrentWarded) {
+    const m = endedInGrace(STATE.medical.filter(x => x.d4 === r.id && x.status === "Warded"), rowEnd);
+    if (m) {
+      pushS("others", `${rn} - ${m.reason || "Warded"} (OTHERS (NOT IN CAMP))`.trim(), { supKey: "WD", supEnd: rowEnd(m) });
       notInCamp = true;
     }
   }

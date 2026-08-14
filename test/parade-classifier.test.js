@@ -343,6 +343,91 @@ module.exports = async function run() {
     eq(after.sections.attC.length, 0, "past the window the tail auto-hides too");
   });
 
+  suite("parade classifier: leave / Warded persist as out-of-camp until booked in (2-day tail, like MC)");
+
+  // TODAY is 2026-06-29. 28 Jun = ended yesterday (inside the tail); 26 Jun =
+  // ended three days ago (past the 2-day tail).
+  await test("AL/OIL leave ended yesterday, not booked in → stays under AL/OIL, not in camp", () => {
+    const sb = loadParade([]);
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Leave", reason: "AL", startDate: "2026-06-26", endDate: "2026-06-28" }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.alOil.length, 1, "ended AL/OIL within the 2-day tail should persist under AL/OIL");
+    ok(c.notInCamp, "a persisted AL/OIL still counts as out of camp");
+  });
+
+  await test("AL/OIL leave ended three days ago → auto-hidden, present", () => {
+    const sb = loadParade([]);
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Leave", reason: "AL", startDate: "2026-06-24", endDate: "2026-06-26" }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.alOil.length, 0, "past the 2-day tail an ended AL/OIL auto-hides");
+    ok(!c.notInCamp, "auto-hidden AL/OIL no longer counts as out of camp");
+  });
+
+  await test("AL/OIL leave ended yesterday but booked in → present now", () => {
+    const sb = loadParade([]);
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Leave", reason: "AL", startDate: "2026-06-26", endDate: "2026-06-28", bookInDate: TODAY }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.alOil.length, 0, "a booked-in AL/OIL reads Present from the book-in date");
+    ok(!c.notInCamp, "booked-in AL/OIL is in camp");
+  });
+
+  await test("active AL/OIL today + a separate ended AL/OIL → single entry (tail must not double it)", () => {
+    const sb = loadParade([]);
+    sb.STATE.leave = [
+      { id: 1, d4: "0001", type: "Leave", reason: "AL", startDate: TODAY, endDate: "2026-07-02" },
+      { id: 2, d4: "0001", type: "Leave", reason: "AL old", startDate: "2026-06-26", endDate: "2026-06-28" }
+    ];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.alOil.length, 1, "the tail must not add a second AL/OIL line when one is active today");
+  });
+
+  await test("OTHERS (not in camp) leave ended yesterday, not booked in → stays under OTHERS, not in camp", () => {
+    const sb = loadParade([]);
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Course", reason: "APSC", startDate: "2026-06-26", endDate: "2026-06-28", isInCamp: false }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 1, "ended not-in-camp leave within the tail persists under OTHERS");
+    ok(c.sections.others[0].includes("(OTHERS (NOT IN CAMP))"), `expected a NOT IN CAMP label, got: ${c.sections.others[0]}`);
+    ok(c.notInCamp, "a persisted not-in-camp leave still counts as out of camp");
+  });
+
+  await test("OTHERS leave that was IN camp → no tail (was never away)", () => {
+    const sb = loadParade([]);
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Course", reason: "APSC", startDate: "2026-06-26", endDate: "2026-06-28", isInCamp: true }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 0, "an in-camp OTHERS was already present; nothing to persist");
+    ok(!c.notInCamp, "in-camp OTHERS is not out of camp");
+  });
+
+  await test("OTHERS (not in camp) leave ended three days ago → auto-hidden", () => {
+    const sb = loadParade([]);
+    sb.STATE.leave = [{ id: 1, d4: "0001", type: "Course", reason: "APSC", startDate: "2026-06-23", endDate: "2026-06-26", isInCamp: false }];
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 0, "past the 2-day tail an ended not-in-camp leave auto-hides");
+    ok(!c.notInCamp, "auto-hidden not-in-camp leave no longer counts as out of camp");
+  });
+
+  await test("Warded ended yesterday, not booked in → stays under OTHERS (WD), not in camp", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "Warded", reason: "SGH", startDate: "2026-06-26", endDate: "2026-06-28" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 1, "ended Warded within the tail persists under OTHERS");
+    ok(c.sections.others[0].includes("(OTHERS (NOT IN CAMP))"), `expected a NOT IN CAMP label, got: ${c.sections.others[0]}`);
+    ok(c.notInCamp, "a persisted Warded still counts as out of camp");
+  });
+
+  await test("Warded ended three days ago → auto-hidden, present", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "Warded", reason: "SGH", startDate: "2026-06-23", endDate: "2026-06-26" }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 0, "past the 2-day tail an ended Warded auto-hides");
+    ok(!c.notInCamp, "auto-hidden Warded no longer counts as out of camp");
+  });
+
+  await test("Warded ended yesterday but booked in → present now", () => {
+    const sb = loadParade([{ id: 1, d4: "0001", type: "", status: "Warded", reason: "SGH", startDate: "2026-06-26", endDate: "2026-06-28", bookInDate: TODAY }]);
+    const c = sb.bpClassifyPerson(person(sb), TODAY);
+    eq(c.sections.others.length, 0, "a booked-in Warded reads Present from the book-in date");
+    ok(!c.notInCamp, "booked-in Warded is in camp");
+  });
+
   suite("parade classifier: overlapping same-type statuses collapse to the one ending last");
 
   await test("two overlapping Excuse Running rows → only the later-ending one shows (STATUS)", () => {
