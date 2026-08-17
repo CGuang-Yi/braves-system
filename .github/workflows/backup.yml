@@ -25,6 +25,11 @@ permissions:
 
 env:
   BUCKET: s3://braves-backups
+  # R2 is S3-compatible but not S3. Two settings it needs from the aws CLI:
+  # it has no regions (the literal string "auto"), and it rejects the
+  # additional integrity checksums aws-cli v2.23+ started sending by default.
+  AWS_DEFAULT_REGION: auto
+  AWS_REQUEST_CHECKSUM_CALCULATION: when_required
 
 jobs:
   backup:
