@@ -1,6 +1,11 @@
 # ── Personal notes & scratch files ─────────────────
 # Loose plain-text (todos, chat exports, snippets) — keep these local.
 *.txt
+# The backup age PUBLIC key must ship — the nightly-backup workflow checks the
+# repo out and encrypts to this file, so an ignored copy means the runner finds
+# nothing. Public keys only lock, never unlock; the private key is maintainer-
+# held and must never appear here.
+!supabase/backup-recipient.txt
 *.md.bak
 *.csv
 *.md
