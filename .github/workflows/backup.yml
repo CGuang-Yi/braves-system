@@ -1,0 +1,109 @@
+name: nightly-backup
+
+# Nightly encrypted logical backup of the Supabase database to Cloudflare R2.
+# Plan Task 17 (R1). The dump is age-encrypted on the runner BEFORE it leaves,
+# so R2 only ever holds ciphertext and the R2 token alone cannot read personnel
+# data. The private key lives with the maintainer (password manager + sealed
+# print) and is never in this repo or in GitHub secrets.
+#
+# ── SUPABASE_DB_URL must be the SUPAVISOR SESSION-MODE POOLER string ──
+# NOT the "direct connection" string the dashboard shows first. The direct
+# endpoint (db.<ref>.supabase.co) is IPv6-only on the free tier, and GitHub
+# Actions runners are IPv4-only — the connection simply never establishes and
+# the failure reads like a firewall problem. Copy the pooler string instead:
+#   postgresql://postgres.<project-ref>:<password>@aws-<region>.pooler.supabase.com:5432/postgres
+# Port 5432 = session mode. Port 6543 is transaction mode, which has no
+# prepared statements and is not usable by pg_dump.
+
+on:
+  schedule:
+    - cron: "17 18 * * *" # 02:17 SGT
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BUCKET: s3://braves-backups
+  # R2 is S3-compatible but not S3. Two settings it needs from the aws CLI:
+  # it has no regions (the literal string "auto"), and it rejects the
+  # additional integrity checksums aws-cli v2.23+ started sending by default.
+  AWS_DEFAULT_REGION: auto
+  AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # pg_dump refuses to dump a server newer than itself, and ubuntu-latest's
+      # own `postgresql-client` is major 16 against a 17.6 server — a hard error
+      # on the first run. Install the matching major from PGDG and pin it, so a
+      # runner-image bump can't silently swap the version back out.
+      - name: install pg_dump 17 + age
+        run: |
+          set -euo pipefail
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17 age
+          # aws CLI v2 ships preinstalled on the runner image; fail loudly here
+          # rather than halfway through an upload if that ever stops being true.
+          pg_dump --version
+          age --version
+          aws --version
+
+      - name: dump + encrypt + upload
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          # The filename stamp is UTC ON PURPOSE — it is not a timezone bug.
+          # The cron fires 18:17 UTC, which is 02:17 SGT the NEXT day, so the
+          # UTC date names the SGT day the dump completely contains:
+          # braves-2026-09-01 is taken at 02:17 SGT on Sep 2 and holds all of
+          # Sep 1 SGT. That is the alignment a real recovery needs ("restore to
+          # end of business on the 1st"). Do not add TZ=Asia/Singapore here.
+          F="braves-$(date -u +%F).dump"
+          # public = app data, auth = the user accounts that own it. Everything
+          # else in a Supabase database (storage, realtime, vault, extensions)
+          # is project-scoped plumbing that a new project recreates for itself,
+          # and restoring it over a live project's copy only causes conflicts.
+          # Ownership/privileges are deliberately KEPT: 0006's revokes are part
+          # of the security posture and must survive a restore. Strip ownership
+          # at restore time with `pg_restore --no-owner` if roles differ.
+          pg_dump "$DB_URL" --schema=public --schema=auth -Fc -f "$F"
+          age -R supabase/backup-recipient.txt -o "$F.age" "$F" && rm "$F"
+          # A pg_dump that produces a near-empty file still exits 0. Check size
+          # BEFORE uploading, so a truncated dump never displaces a good one.
+          [ "$(stat -c%s "$F.age")" -gt 20000 ] || { echo "dump too small"; exit 1; }
+          aws s3 cp "$F.age" "$BUCKET/daily/" --endpoint-url "$R2_ENDPOINT"
+
+      - name: retain (30 daily, 1 per month)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          TODAY="braves-$(date -u +%F).dump.age"
+          MONTH="$(date -u +%Y-%m)"
+          # Promote to /monthly whenever this month has no monthly yet, rather
+          # than only on day 01: a run that fails or is skipped on the 1st would
+          # otherwise lose that month's long-term copy with no warning. Months
+          # are keyed off the UTC filename stamp for the same reason as above,
+          # so the monthly copy is the dump containing the 1st SGT.
+          if ! aws s3 ls "$BUCKET/monthly/braves-$MONTH" --endpoint-url "$R2_ENDPOINT" | grep -q .; then
+            aws s3 cp "$BUCKET/daily/$TODAY" "$BUCKET/monthly/" --endpoint-url "$R2_ENDPOINT"
+          fi
+          # `head -n -30` (all but the last 30) is a GNU coreutils feature —
+          # correct on ubuntu-latest, do not "portably" rewrite it with tail.
+          aws s3 ls "$BUCKET/daily/" --endpoint-url "$R2_ENDPOINT" \
+            | sort | head -n -30 | awk '{print $4}' \
+            | xargs -r -I{} aws s3 rm "$BUCKET/daily/{}" --endpoint-url "$R2_ENDPOINT"
